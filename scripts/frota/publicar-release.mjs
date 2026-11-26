@@ -23,8 +23,13 @@
  *      conferência da frota roda sobre ESTE inventário e qualquer problema de
  *      identidade, isolamento ou destino canônico bloqueia — versão antiga
  *      (ENDERECO_ANTIGO) é o esperado antes do promote e passa.
- *   3. PRONTIDÃO de cada loja ASSINANTE (todas, menos as de teste declaradas em
- *      politica.json):
+ *      Loja fora do ar POR DECISÃO (L8: adormecida = 503, encerrada = 410, com
+ *      o contrato de cabeçalhos do porteiro; ver conferir-frota.mjs) conta como
+ *      sondada, não bloqueia e NÃO passa pela prontidão: não recebe esta
+ *      release e, ao acordar, recebe tudo. Se for uma de politica.json
+ *      lojasQueNuncaDormem (IKCOUS, Savy), BLOQUEIA.
+ *   3. PRONTIDÃO de cada loja ASSINANTE ATIVA (todas, menos as de teste
+ *      declaradas em politica.json e as fora do ar por decisão):
  *      - migrations: toda versão da release no ledger da loja
  *        (`supabase migration list`) E, para cada migration NOVA em relação ao
  *        SHA que a loja serve, evidência FRESCA de objetos/corpos: o último run
@@ -77,6 +82,7 @@ import {
   criarExecutorVercel,
   inventariar,
   lerPolitica,
+  lojaForaDoAr,
   problemasDoContrato,
   problemasLojasNaoSondadas,
   refDaLojaSondada,
@@ -93,7 +99,14 @@ const RE_MIGRATION = /^(\d{13,14})_[^/]+\.sql$/;
 const RE_FUNCAO = /^[a-z0-9][a-z0-9_-]*$/;
 const RE_CONSULTA = /^[0-9a-z][0-9a-z-]*$/;
 /** Classes da conferência da frota que podem existir ANTES do promote. */
-const CLASSES_ACEITAS_ANTES = new Set(["OK", "ENDERECO_ANTIGO"]);
+const CLASSES_ACEITAS_ANTES = new Set([
+  "OK",
+  "ENDERECO_ANTIGO",
+  "ADORMECIDA",
+  "ENCERRADA",
+]);
+/** Achados de loja fora do ar por decisão (L8): não bloqueiam a publicação. */
+const CLASSES_FORA_DO_AR = new Set(["ADORMECIDA", "ENCERRADA"]);
 
 export function lerCanais(caminho = path.join(AQUI, "canais-de-backend.json")) {
   const c = JSON.parse(readFileSync(caminho, "utf8"));
@@ -332,11 +345,15 @@ function conferirNotasDaVersao(versao, sha, lerArquivoNoSha) {
 /**
  * Agrupa o inventário em lojas pelo ref Supabase da ficha servida pelo
  * porteiro. Endereço esperado sem loja (manutenção/redirecionamento) fica fora.
- * Endereço que não é esperado e não tem ficha de loja legível é problema.
+ * Loja fora do ar por decisão (contrato provado por `lojaForaDoAr`) vai para
+ * `foraDoAr` [{ref, estado, dominios}] e não para `lojas`. Endereço que não é
+ * esperado e não tem ficha de loja legível é problema, e a mesma loja ativa
+ * num endereço e fora do ar em outro (ou com dois estados) também.
  */
 export function lojasDoInventario(inventario, politica) {
   const esperados = new Set(politica.enderecosEsperados.map((e) => e.dominio));
   const lojas = new Map();
+  const paradas = new Map();
   const problemas = [];
   if (!inventario.vercel?.ok)
     problemas.push(
@@ -349,6 +366,19 @@ export function lojasDoInventario(inventario, politica) {
   for (const sonda of inventario.sondas) {
     if (esperados.has(sonda.dominio)) continue;
     const f = sonda.ficha;
+    const fora = lojaForaDoAr(sonda);
+    if (fora) {
+      if (!paradas.has(fora.ref))
+        paradas.set(fora.ref, {
+          ref: fora.ref,
+          estados: new Set(),
+          dominios: [],
+        });
+      const parada = paradas.get(fora.ref);
+      parada.estados.add(fora.estado);
+      parada.dominios.push(sonda.dominio);
+      continue;
+    }
     const ref = refDaLojaSondada(f);
     if (ref === null) {
       problemas.push(
@@ -368,6 +398,17 @@ export function lojasDoInventario(inventario, politica) {
     if (f.titulo) loja.titulos.add(f.titulo);
     if (sonda.versao?.codeSha) loja.shasServidos.add(sonda.versao.codeSha);
   }
+  for (const p of paradas.values()) {
+    p.dominios.sort();
+    if (p.estados.size > 1)
+      problemas.push(
+        `a loja ${p.ref} responde ${[...p.estados].sort().join(" e ")} em endereços diferentes (${p.dominios.join(", ")}): repetir a conferência; persistindo, conferir frota_lojas.estado`,
+      );
+    if (lojas.has(p.ref))
+      problemas.push(
+        `a loja ${p.ref} está ativa em ${lojas.get(p.ref).dominios.sort().join(", ")} e ${[...p.estados].join("/")} em ${p.dominios.join(", ")}: repetir a conferência; persistindo, conferir frota_lojas.estado`,
+      );
+  }
   return {
     lojas: [...lojas.values()].map((l) => ({
       ref: l.ref,
@@ -375,6 +416,13 @@ export function lojasDoInventario(inventario, politica) {
       dominios: l.dominios.sort(),
       shasServidos: [...l.shasServidos],
     })),
+    foraDoAr: [...paradas.values()]
+      .filter((p) => p.estados.size === 1 && !lojas.has(p.ref))
+      .map((p) => ({
+        ref: p.ref,
+        estado: [...p.estados][0],
+        dominios: p.dominios,
+      })),
     problemas,
   };
 }
@@ -386,6 +434,7 @@ export function lojasDoInventario(inventario, politica) {
  * BUILD_DIVERGENTE e ESTADO_INESPERADO na ordem de GRAVIDADE e os esconderia
  * (achado da revisão final, 06/10). Passam só:
  *   - ENDERECO_ANTIGO (o promote existe para isso);
+ *   - ADORMECIDA/ENCERRADA (loja fora do ar por decisão, L8);
  *   - BUILD_DIVERGENTE de um endereço que NÃO serve o SHA da release — é o
  *     build velho que o promote substitui; no build da release, bloqueia.
  * Roteamento, ficha, isolamento, redirecionamento e estado esperado não mudam
@@ -406,6 +455,8 @@ export function problemasAntesDoPromote(conferencia, sha) {
     const bloqueiam = achados.filter((a) => {
       const classe = a?.classe ?? r.classe;
       if (classe === "ENDERECO_ANTIGO") return false;
+      // Loja fora do ar por decisão (L8): não recebe a release, não bloqueia.
+      if (CLASSES_FORA_DO_AR.has(classe)) return false;
       if (classe === "BUILD_DIVERGENTE" && !serveARelease) return false;
       return true;
     });
@@ -1642,7 +1693,11 @@ export async function publicarRelease(opcoes, deps) {
 
   // 2. inventário oficial + identidade/isolamento/canônico antes do promote
   const inventario = await deps.inventariar(politica);
-  const { lojas, problemas: probInv } = lojasDoInventario(inventario, politica);
+  const {
+    lojas,
+    foraDoAr,
+    problemas: probInv,
+  } = lojasDoInventario(inventario, politica);
   const semBackend = new Set(
     (politica.lojasSemBackendGerenciado ?? []).map((l) => l.ref),
   );
@@ -1650,12 +1705,36 @@ export async function publicarRelease(opcoes, deps) {
   const lojasObrigatorias = Object.entries(canais.canais)
     .filter(([ref]) => !semBackend.has(ref))
     .map(([ref, canal]) => ({ ref, nome: canal.nome }));
-  const refsSondados = new Set(lojas.map((l) => l.ref));
+  // Loja fora do ar por decisão FOI sondada (a resposta provou quem ela é).
+  const refsSondados = new Set([
+    ...lojas.map((l) => l.ref),
+    ...foraDoAr.map((l) => l.ref),
+  ]);
   for (const p of [
     ...probInv,
     ...problemasLojasNaoSondadas(lojasObrigatorias, refsSondados),
   ])
     bloqueios.push({ alvo: "inventário", motivo: p });
+  // IKCOUS e Savy nunca dormem: uma delas fora do ar é incidente, não decisão.
+  // Sem a lista na política não dá para provar que a loja parada não é uma
+  // delas: com loja fora do ar, bloqueia.
+  const nuncaDormem = politica.lojasQueNuncaDormem;
+  if (foraDoAr.length && !Array.isArray(nuncaDormem))
+    bloqueios.push({
+      alvo: "scripts/frota/politica.json",
+      motivo:
+        "há loja fora do ar e a política não tem lojasQueNuncaDormem: sem a lista não há como provar que não é a IKCOUS ou a Savy",
+    });
+  const refsQueNuncaDormem = new Set(
+    (Array.isArray(nuncaDormem) ? nuncaDormem : []).map((l) => l?.ref),
+  );
+  for (const l of foraDoAr) {
+    if (!refsQueNuncaDormem.has(l.ref)) continue;
+    bloqueios.push({
+      alvo: `${canais.canais[l.ref]?.nome ?? l.ref} (${l.ref})`,
+      motivo: `loja de politica.json lojasQueNuncaDormem está ${l.estado} em ${l.dominios.join(", ")}: acordar no cadastro (frota_lojas.estado) antes de publicar`,
+    });
+  }
   const producaoAnterior = inventario.vercel?.producaoOficial ?? null;
   if (
     typeof producaoAnterior !== "string" ||
@@ -1688,6 +1767,19 @@ export async function publicarRelease(opcoes, deps) {
     linhas.push(
       `| ${celula(l.titulo)} | ${l.ref} | ${celula(l.dominios.join(", "))} | ${l.shasServidos.map((s) => s.slice(0, 8)).join(", ")} | ${papel} |`,
     );
+  }
+  linhas.push(
+    "",
+    "## Lojas adormecidas/encerradas (não recebem esta release; ao acordar recebem tudo)",
+    "",
+  );
+  if (foraDoAr.length === 0) linhas.push("- nenhuma");
+  else {
+    linhas.push("| Loja | Ref | Estado | Endereços |", "|---|---|---|---|");
+    for (const l of foraDoAr)
+      linhas.push(
+        `| ${celula(canais.canais[l.ref]?.nome ?? "(sem canal)")} | ${l.ref} | ${l.estado} | ${celula(l.dominios.join(", "))} |`,
+      );
   }
   linhas.push("");
 
@@ -1872,6 +1964,7 @@ export async function publicarRelease(opcoes, deps) {
       notasDaVersao,
       consertos,
       lojas,
+      lojasForaDoAr: foraDoAr,
       producaoAnterior,
     };
   }
@@ -1890,6 +1983,7 @@ export async function publicarRelease(opcoes, deps) {
       bloqueios,
       notasDaVersao,
       lojas,
+      lojasForaDoAr: foraDoAr,
       producaoAnterior,
     };
   }
@@ -1911,12 +2005,15 @@ export async function publicarRelease(opcoes, deps) {
       bloqueios: [{ alvo: "promote", motivo: e.message }],
       notasDaVersao,
       lojas,
+      lojasForaDoAr: foraDoAr,
       producaoAnterior,
     };
   }
   const pos = await deps.conferirFrota(politica, sha, null, {
     lojasObrigatorias,
-    dominiosDeLojasAntes: lojas.flatMap((loja) => loja.dominios),
+    dominiosDeLojasAntes: [...lojas, ...foraDoAr].flatMap(
+      (loja) => loja.dominios,
+    ),
   });
   const producaoDepois = pos.vercel?.producaoOficial ?? null;
   const ok = pos.ok === true && producaoDepois === deploymentId;
@@ -1949,6 +2046,7 @@ export async function publicarRelease(opcoes, deps) {
       : [{ alvo: "frota", motivo: "conferência pós-promote falhou" }],
     notasDaVersao,
     lojas,
+    lojasForaDoAr: foraDoAr,
     producaoAnterior,
   };
 }
@@ -2271,6 +2369,23 @@ export function lerArgumentos(argv) {
   return a;
 }
 
+/** O conteúdo do --json (o relatório em Markdown fica de fora). */
+export function resumoEmJson(r, geradoEm) {
+  return `${JSON.stringify(
+    {
+      geradoEm,
+      codigo: r.codigo,
+      bloqueios: r.bloqueios,
+      notasDaVersao: r.notasDaVersao,
+      lojas: r.lojas,
+      lojasForaDoAr: r.lojasForaDoAr ?? [],
+      producaoAnterior: r.producaoAnterior,
+    },
+    null,
+    2,
+  )}\n`;
+}
+
 const USO =
   "Uso: node scripts/frota/publicar-release.mjs --sha <40hex> --deployment <dpl_…> [--promover] [--json <arquivo>]";
 
@@ -2287,12 +2402,7 @@ export async function main(argv = process.argv.slice(2)) {
     dependenciasReais(),
   );
   console.log(r.relatorio);
-  if (a.json) {
-    writeFileSync(
-      a.json,
-      `${JSON.stringify({ geradoEm: new Date().toISOString(), codigo: r.codigo, bloqueios: r.bloqueios, notasDaVersao: r.notasDaVersao, lojas: r.lojas, producaoAnterior: r.producaoAnterior }, null, 2)}\n`,
-    );
-  }
+  if (a.json) writeFileSync(a.json, resumoEmJson(r, new Date().toISOString()));
   return r.codigo;
 }
 
