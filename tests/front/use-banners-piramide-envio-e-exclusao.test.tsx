@@ -52,19 +52,12 @@ vi.mock("sonner", () => ({
 // O jsdom não decodifica imagem: a conferência "a foto abre?" é dublada.
 vi.mock("@/lib/imagem-abre", () => ({ imagemAbre: async () => true }));
 vi.mock("@/lib/supabase", () => {
-  const consulta = () => {
-    const q: Record<string, unknown> = {};
-    q.select = () => q;
-    q.eq = () => q;
-    q.order = () => q;
-    q.then = (ok: (v: unknown) => unknown) =>
-      Promise.resolve({ data: h.linhas, error: null }).then(ok);
-    return q;
-  };
+  const lista = async () => ({ data: h.linhas, error: null });
+  const ordenada = () => ({ order: () => ({ order: lista }) });
   return {
     supabase: {
       from: () => ({
-        ...consulta(),
+        select: () => ({ ...ordenada(), eq: ordenada }),
         delete: () => ({
           eq: (_c: string, id: string) => ({
             select: async () => ({ data: [{ id }], error: null }),
