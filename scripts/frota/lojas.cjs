@@ -245,9 +245,11 @@ function semAcessoDaLoja(l) {
 }
 
 /** A parada do `exigir-segredo` de uma loja OAuth: o token dela só existe no
- * GitHub enquanto a sessão de publicação está aberta (ela grava e apaga). */
+ * GitHub enquanto a sessão de publicação está aberta (ela grava e apaga), e
+ * mora no environment `loja-<projeto>` — não no repositório. */
 function semAcessoDaLojaOAuth(l) {
-  return `${semAcessoDaLoja(l)} — loja OAuth: dispare dentro da sessão de publicação (publicar-release.mjs --sessao)`;
+  const ambiente = `loja-${l.projeto}`;
+  return `${semAcessoDaLoja(l)} — loja OAuth: dispare dentro da sessão de publicação (publicar-release.mjs --sessao); o segredo ${l.segredoDoToken} da loja ${l.projeto} fica no environment ${ambiente} (Settings → Environments → ${ambiente}); o segredo de repositório com o mesmo nome é legado`;
 }
 
 /** `{ projeto: {segredo, semAcesso} }` só das assinantes — o `ALVOS` dos scripts. */

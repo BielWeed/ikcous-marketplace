@@ -789,6 +789,23 @@ dela estiver lá. A **sessão** é um comando que fica aberto numa janela: ao ab
 segredo; enquanto está aberta, você ensaia e publica; ao fechar, apaga o segredo do GitHub. Funciona
 como o cartão de um quarto de hotel: vale enquanto você está hospedado, e o check-out é o fechar.
 
+**Onde o segredo fica: na gaveta da loja, não no repositório.** Cada loja OAuth tem a sua gaveta
+no GitHub, um *environment* (ambiente) chamado `loja-<projeto>`, em que `<projeto>` é o nome da
+loja no `lojas.json` (o campo `projeto`, em minúsculas). O segredo `SUPABASE_ACCESS_TOKEN_<SLUG>`
+da loja fica ali dentro, com esse mesmo nome. **Quem cria a gaveta é a ponte** (a parte da sessão
+que grava o segredo; um workflow que roda para a loja também a cria, vazia): na primeira vez que uma loja entra numa sessão, a gaveta nasce sozinha;
+você não cria nada à mão. Para ver a gaveta no site: **Settings → Environments → loja-<projeto>**.
+Um segredo com esse mesmo nome no nível do **repositório** (Settings → Secrets and variables →
+Actions) é **legado**, do jeito antigo: não é mais onde a loja OAuth procura.
+
+> **Atenção: o repositório precisa continuar PÚBLICO.** No plano grátis do GitHub, segredo de
+> environment só funciona em repositório público. Se o repositório virar privado, o GitHub passa a
+> **ignorar** os segredos das gavetas e nenhuma loja OAuth recebe o token: os workflows dela param
+> em `SEM_ACESSO`. Fonte: documentação oficial do GitHub,
+> [Managing environments for deployment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
+> e [Deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
+> (conferidas em 26/11/2026). **Não mude a visibilidade do repositório sem falar com o agente.**
+
 **Quem roda:** o dono, no Windows PowerShell 5.1, na pasta da release que o agente indicou (veja
 [Abrir o terminal no lugar certo](#abrir-o-terminal-no-lugar-certo)), com o `gh` (o programa do
 GitHub) já logado. O agente te passa o comando com o `<sha>` e o `<dpl_...>` já preenchidos.
@@ -987,23 +1004,54 @@ dessas lojas. Os segredos da IKCOUS e da Savy nunca são tocados. Na prática:
   a loja ainda não estava cadastrada, ela não vê o segredo dela e responde
   `nenhum segredo de loja OAuth no GitHub: nada a apagar` mesmo com o segredo lá.
 - **Loja que saiu do `lojas.json`, ou perdeu a marca `oauth`, depois de uma sessão interrompida:**
-  a faxina não a enxerga mais. Confira os nomes no GitHub (este comando mostra só nomes, nunca
-  valores):
+  a faxina não a enxerga mais. O segredo dela fica na gaveta `loja-<projeto>` (veja
+  [Onde o segredo fica](#publicar-quando-há-loja-oauth-a-sessão)), e a lista de segredos do
+  repositório **não mostra** o que está nas gavetas. Confira assim (estes comandos mostram só
+  nomes, nunca valores):
 
-  ```powershell
-  gh secret list
-  ```
+  1. Veja quais gavetas existem:
 
-  Se aparecer `SUPABASE_ACCESS_TOKEN_<SLUG>` de uma loja OAuth, apague à mão (troque `<SLUG>` pelo
-  nome que apareceu):
+     ```powershell
+     gh api --paginate "repos/{owner}/{repo}/environments" --jq ".environments[].name"
+     ```
 
-  ```powershell
-  gh secret delete SUPABASE_ACCESS_TOKEN_<SLUG> --app actions
-  ```
+     **O que aparece:** um nome por linha (o `--paginate` traz todas as páginas; sem ele, só as 30
+     primeiras). Os `loja-...` de lojas OAuth guardam o segredo delas. Gavetas `loja-...` de lojas
+     que não são OAuth (`loja-ikcous-publicada`, `loja-savy` e as de teste) nascem sozinhas quando um
+     workflow roda para elas e ficam vazias: não mexa. Os outros (hoje, `Preview` e `Production`)
+     não são de loja: não mexa neles.
+
+  2. Para cada gaveta `loja-<projeto>` da loja que saiu, veja o que tem dentro (troque
+     `<projeto>` pelo nome que apareceu depois de `loja-`):
+
+     ```powershell
+     gh secret list --env loja-<projeto>
+     ```
+
+  3. Se aparecer `SUPABASE_ACCESS_TOKEN_<SLUG>`, apague à mão (troque `<SLUG>` e `<projeto>` pelos
+     nomes que apareceram):
+
+     ```powershell
+     gh secret delete SUPABASE_ACCESS_TOKEN_<SLUG> --env loja-<projeto>
+     ```
+
+     **Como saber que deu certo:** rodando de novo o comando do item 2, o nome não aparece mais.
+
+  4. Confira também o nível do repositório, onde fica o segredo **legado** (do jeito antigo):
+
+     ```powershell
+     gh secret list
+     ```
+
+     Se aparecer `SUPABASE_ACCESS_TOKEN_<SLUG>` de uma loja OAuth, apague à mão:
+
+     ```powershell
+     gh secret delete SUPABASE_ACCESS_TOKEN_<SLUG> --app actions
+     ```
 
   Na dúvida se o nome é de loja OAuth, pare e pergunte ao agente: os da IKCOUS e da Savy
   (`SUPABASE_ACCESS_TOKEN_IKCOUS`, `SUPABASE_ACCESS_TOKEN_SAVY`) e o `SUPABASE_ACCESS_TOKEN` sozinho
-  **não se apagam**.
+  **não se apagam**. A gaveta vazia pode ficar: ela não guarda nada e a ponte a reaproveita.
 
 **Ctrl+C na janela da sessão** também fecha e apaga os segredos, mas sem esperar os runs: um run
 que ainda estava na fila fica sem o segredo e para em `SEM_ACESSO`. Depois do Ctrl+C, confira o
@@ -1152,10 +1200,13 @@ O que o código já faz:
   token da lojista que vem do cofre do PC do dono (`scripts/frota/leitor-oauth.mjs`). A IKCOUS e a
   Savy continuam sendo lidas pelo CLI, como antes.
 - **A sessão põe o segredo no GitHub só enquanto está aberta.** O `--sessao` grava
-  `SUPABASE_ACCESS_TOKEN_<SLUG>` ao abrir e apaga ao fechar. A `--faxina` apaga o que sobrou (ver
+  `SUPABASE_ACCESS_TOKEN_<SLUG>` na gaveta `loja-<projeto>` (o environment da loja, que a ponte
+  cria) ao abrir e apaga ao fechar. A `--faxina` apaga o que sobrou (ver
   [a sessão](#publicar-quando-há-loja-oauth-a-sessão)). Os workflows leem esse segredo pelo nome que
   o `cadastro-da-loja.mjs` escreve neles. Fora da sessão, o passo `exigir-segredo` do workflow para
-  com `... — loja OAuth: dispare dentro da sessão de publicação (publicar-release.mjs --sessao)`.
+  com `... — loja OAuth: dispare dentro da sessão de publicação (publicar-release.mjs --sessao); o
+  segredo SUPABASE_ACCESS_TOKEN_<SLUG> da loja <projeto> fica no environment loja-<projeto>
+  (Settings → Environments → loja-<projeto>); o segredo de repositório com o mesmo nome é legado`.
 
 O que ainda falta:
 

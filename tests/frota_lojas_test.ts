@@ -597,6 +597,15 @@ Deno.test("CLI exigir-segredo de loja OAuth sem token: manda disparar dentro da 
     "loja OAuth: dispare dentro da sessão de publicação (publicar-release.mjs --sessao)",
   );
   assertStringIncludes(sem.texto, SEGREDO_OAUTH);
+  // a gaveta: o token da loja OAuth mora no environment dela, não no repositório
+  assertStringIncludes(
+    sem.texto,
+    `o segredo ${SEGREDO_OAUTH} da loja ${NOVA_OAUTH} fica no environment loja-${NOVA_OAUTH} (Settings → Environments → loja-${NOVA_OAUTH})`,
+  );
+  assertStringIncludes(
+    sem.texto,
+    "o segredo de repositório com o mesmo nome é legado",
+  );
   assert(!sem.texto.includes(canario));
   assert(!sem.texto.includes("sbp_"));
   assertEquals(sem.texto.split("\n").length, 1, "uma linha só");
