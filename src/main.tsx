@@ -44,6 +44,7 @@ import { GlobalErrorBoundary } from "@/components/ui/custom/GlobalErrorBoundary"
 import { applyBranding } from "@/config/branding";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import { instalarReceptorDaLojaFechada } from "@/lib/receptor-da-loja-fechada";
 import { instalarCanaisDeErroChunk } from "@/lib/recuperacao-chunk";
 import { initSentinel } from "@/pwa-sentinel";
 import { initHeaderToastInterceptor } from "@/utils/headerToast";
@@ -54,6 +55,11 @@ applyBranding();
 
 // Initialize external PWA health monitor
 initSentinel();
+
+// Loja fora do ar: o SW apagou as páginas guardadas e pede a recarga desta aba
+// (a página da loja fechada aparece). Aqui, no chunk inicial e antes do fim do
+// parse, para o aviso que chegar enquanto a vitrine guardada abre não se perder.
+instalarReceptorDaLojaFechada();
 
 // Issue #92: os canais globais de erro de chunk ('error' +
 // 'unhandledrejection') nascem AQUI, no chunk inicial — nunca num chunk

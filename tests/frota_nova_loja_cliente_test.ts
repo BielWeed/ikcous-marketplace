@@ -11,7 +11,8 @@
  *  - nenhuma mensagem de erro carrega o token nem o corpo cru da resposta;
  *  - prazo estourado (ou rede que cai no meio) vira ESTADO_DESCONHECIDO;
  *  - modelos da loja nova: funcoes (GET), implantarFuncao (POST multipart) e
- *    configAuth (GET/PATCH só com a lista branca), sem DELETE.
+ *    configAuth (GET/PATCH só com a lista branca), sem DELETE;
+ *  - restaurar (acordar projeto pausado): só POST, sem corpo; nenhum /pause.
  *
  * Nenhuma chamada de rede real: todo fetch aqui é falso.
  */
@@ -923,4 +924,103 @@ Deno.test("nenhum dos modelos novos escreve o token (nem o segredo do hook) no c
   });
   assert(!escrito.includes(TOKEN), "o token foi para o console");
   assert(!escrito.includes(SEGREDO_DO_HOOK), "o segredo foi para o console");
+});
+
+// ====================================================================
+// Modelo `restaurar` (acordar projeto pausado, 26/11/2026): POST
+// /v1/projects/{ref}/restore (v1-restore-a-project, projects:write), sem
+// corpo. Conferido na spec oficial (https://api.supabase.com/api/v1-json).
+// O GET do mesmo caminho (lista de versões) e o /pause NÃO entram.
+
+Deno.test("restaurar: caminho FIXO /restore, só POST, sem corpo, congelado", () => {
+  assertEquals(MODELOS.restaurar.caminho, "/v1/projects/{ref}/restore");
+  assertEquals([...MODELOS.restaurar.metodos], ["POST"]);
+  assertEquals(MODELOS.restaurar.semCorpo, true);
+  assert(Object.isFrozen(MODELOS.restaurar));
+  assert(Object.isFrozen(MODELOS.restaurar.metodos));
+});
+
+Deno.test("restaurar: POST sem corpo vai a /v1/projects/{ref}/restore sem body nem content-type", async () => {
+  const f = fetchFalso(resposta(200));
+  const cliente = criarClienteGestao({ token: TOKEN, fetch: f });
+  assertEquals(
+    await cliente.pedir("restaurar", { ref: REF, metodo: "POST" }),
+    null,
+  );
+  assertEquals(f.chamadas.length, 1);
+  assertEquals(f.chamadas[0].url, `${API_GESTAO}/v1/projects/${REF}/restore`);
+  assertEquals(f.chamadas[0].init.method, "POST");
+  assertEquals(f.chamadas[0].init.body, undefined);
+  assertEquals(
+    new Headers(f.chamadas[0].init.headers).get("content-type"),
+    null,
+  );
+});
+
+Deno.test("restaurar: GET, DELETE, PUT, PATCH e POST com corpo são recusados antes do fetch", async () => {
+  const f = fetchFalso();
+  const cliente = criarClienteGestao({ token: TOKEN, fetch: f });
+  for (const metodo of ["GET", "DELETE", "PUT", "PATCH"]) {
+    const e = await pegarErro(() =>
+      cliente.pedir("restaurar", { ref: REF, metodo }),
+    );
+    assert(e instanceof ErroDaGestao, `restaurar ${metodo} passou`);
+    assertEquals(e.codigo, "PEDIDO_INVALIDO");
+  }
+  for (const corpo of [{}, { recover: true }, null, "x", []]) {
+    const e = await pegarErro(() =>
+      cliente.pedir("restaurar", { ref: REF, metodo: "POST", corpo }),
+    );
+    assert(
+      e instanceof ErroDaGestao,
+      `restaurar com corpo ${String(corpo)} passou`,
+    );
+    assertEquals(e.codigo, "PEDIDO_INVALIDO");
+  }
+  // ref inválido também cai antes da rede
+  await assertRejects(
+    () => cliente.pedir("restaurar", { ref: "../pause", metodo: "POST" }),
+    ErroDaGestao,
+  );
+  assertEquals(f.chamadas.length, 0);
+});
+
+Deno.test("nenhum modelo pausa projeto: /pause não existe e não se pede por nome nem caminho cru", async () => {
+  for (const [nome, m] of Object.entries(MODELOS)) {
+    assert(!/\/pause\b/.test(m.caminho), `${nome} chama /pause`);
+  }
+  const f = fetchFalso();
+  const cliente = criarClienteGestao({ token: TOKEN, fetch: f });
+  for (const modelo of [
+    "pausar",
+    "pause",
+    "/v1/projects/{ref}/pause",
+    `/v1/projects/${REF}/pause`,
+  ]) {
+    await assertRejects(
+      () => cliente.pedir(modelo, { ref: REF, metodo: "POST" }),
+      ErroDaGestao,
+    );
+  }
+  assertEquals(f.chamadas.length, 0);
+});
+
+Deno.test("restaurar: 401/403 viram SemAcesso e 402 (plano) vira HTTP 402, sem token na mensagem", async () => {
+  for (const status of [401, 403]) {
+    const f = fetchFalso(resposta(status, `x ${TOKEN}`));
+    const cliente = criarClienteGestao({ token: TOKEN, fetch: f });
+    const e = await pegarErro(() =>
+      cliente.pedir("restaurar", { ref: REF, metodo: "POST" }),
+    );
+    assert(e instanceof SemAcesso);
+    assertSemVazamento(e, [TOKEN]);
+  }
+  const f = fetchFalso(resposta(402, { message: `plano ${TOKEN}` }));
+  const cliente = criarClienteGestao({ token: TOKEN, fetch: f });
+  const e = await pegarErro(() =>
+    cliente.pedir("restaurar", { ref: REF, metodo: "POST" }),
+  );
+  assert(e instanceof ErroDaGestao && !(e instanceof SemAcesso));
+  assertEquals(e.status, 402);
+  assertSemVazamento(e, [TOKEN]);
 });
