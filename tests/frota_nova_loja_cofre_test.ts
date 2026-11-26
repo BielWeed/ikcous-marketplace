@@ -34,6 +34,7 @@ import {
   criarCofreDpapi,
   criarCofreMemoria,
   pastaPadraoDoCofre,
+  pastaPadraoDoCofreDoBanco,
 } from "../scripts/frota/cofre-local.mjs";
 
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
@@ -629,6 +630,18 @@ Deno.test("pasta padrão: %LOCALAPPDATA%\\ikcous\\frota\\acesso; sem a variável
     () => pastaPadraoDoCofre({ LOCALAPPDATA: "relativo" }),
     ErroDoCofre,
   );
+});
+
+Deno.test("pasta padrão do banco: %LOCALAPPDATA%\\ikcous\\frota\\banco (vizinha do acesso); sem a variável, recusa", () => {
+  const base =
+    Deno.build.os === "windows"
+      ? "C:\\Users\\X\\AppData\\Local"
+      : "/home/x/AppData/Local";
+  assertEquals(
+    pastaPadraoDoCofreDoBanco({ LOCALAPPDATA: base }),
+    join(base, "ikcous", "frota", "banco"),
+  );
+  assertThrows(() => pastaPadraoDoCofreDoBanco({}), ErroDoCofre);
 });
 
 // ------------------------------------------- DPAPI de verdade (só Windows) --

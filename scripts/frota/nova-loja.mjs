@@ -104,6 +104,7 @@ import {
   criarCofreDpapi,
   exigirPastaSegura,
   pastaPadraoDoCofre,
+  pastaPadraoDoCofreDoBanco,
 } from "./cofre-local.mjs";
 import {
   executar as executarFunctions,
@@ -2493,7 +2494,7 @@ function completar(deps) {
   d.lojasBrutas ??= () => JSON.parse(readFileSync(CAMINHO_LOJAS, "utf8"));
   d.cofre ??= criarCofreDpapi();
   d.cofreDoBanco ??= criarCofreDpapi({
-    pasta: path.join(path.dirname(pastaPadraoDoCofre()), "banco"),
+    pasta: pastaPadraoDoCofreDoBanco(),
   });
   d.estado ??= criarEstadoEmArquivo();
   d.git ??= gitReal();

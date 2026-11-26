@@ -124,6 +124,13 @@ export function pastaPadraoDoCofre(env = process.env) {
   return path.join(base, "ikcous", "frota", "acesso");
 }
 
+/** %LOCALAPPDATA%\ikcous\frota\banco: o cofre da senha do banco de cada loja
+ * (nova-loja.mjs grava, backup-do-cofre.mjs copia). Uma função só, para os
+ * dois nunca divergirem. */
+export function pastaPadraoDoCofreDoBanco(env = process.env) {
+  return path.join(path.dirname(pastaPadraoDoCofre(env)), "banco");
+}
+
 // ------------------------------------------------------------------ memória --
 
 export function criarCofreMemoria() {
