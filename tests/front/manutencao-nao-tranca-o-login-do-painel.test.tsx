@@ -118,7 +118,7 @@ async function abrirEm(caminho: string) {
   return container.querySelector("main");
 }
 
-const TEXTO_MANUTENCAO = "Servidor em Manutenção";
+const TEXTO_MANUTENCAO = "Loja em manutenção";
 
 async function esperarBotaoDeEntrada(texto: string) {
   await vi.waitFor(async () => {

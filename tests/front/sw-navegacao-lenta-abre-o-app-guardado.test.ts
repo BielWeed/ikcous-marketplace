@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { respostaForaDoAr, respostaManutencao } from "@/hospedagem/porteiro";
+
 /**
  * `src/sw/sw.ts` — rede que conecta e não responde não deixa a cliente olhando
  * tela parada quando o app já está guardado no aparelho (13/11/2026).
@@ -29,6 +31,7 @@ const ORIGEM = "https://loja.exemplo.com";
 const MARCADOR_OFFLINE = "<!-- pagina-offline-de-teste -->";
 // Maior que o prazo do SW (5 s) com folga, menor que qualquer outro relógio.
 const DEPOIS_DO_PRAZO_MS = 6000;
+const REF = "abcdefghijklmnopqrst";
 
 interface EventoDeBusca {
   request: Request;
@@ -338,23 +341,180 @@ describe("src/sw/sw.ts — navegação com rede lenta abre o app guardado", () =
     expect(vi.getTimerCount()).toBe(timersAntes);
   });
 
-  it("rede RESPONDE 503 do porteiro dentro do prazo -> passa como veio (nunca o app guardado)", async () => {
-    const busca = vi.fn<typeof fetch>(() =>
-      Promise.resolve(
-        new Response("manutencao-do-porteiro", {
-          status: 503,
-          headers: { "x-ikcous-porteiro": "sem-ficha" },
-        }),
-      ),
-    );
-    const { resposta } = await navegar(
-      new Map<string, Response | undefined>([["/", htmlComFicha()]]),
-      busca,
+  // 503 do porteiro numa rota NUNCA visitada (26/11/2026). Antes, toda recusa
+  // passava como veio — inclusive a PASSAGEIRA (`banco-indisponivel`,
+  // `html-indisponivel`), embora o app estivesse guardado: a mesma pane numa
+  // rota visitada abria o app (cache primeiro), numa nunca visitada mostrava a
+  // página crua "em manutenção". Agora só a lista PERMITIDA de motivos
+  // passageiros abre o app guardado; loja fechada, adormecida, encerrada,
+  // `sem-loja`, `discorda` e qualquer motivo desconhecido passam como vieram.
+  // As respostas são as REAIS do porteiro (mesmos bytes e cabeçalhos).
+  describe("rede RESPONDE 503 do porteiro numa rota nunca visitada", () => {
+    const guardado = () =>
+      new Map<string, Response | undefined>([
+        ["/index.html", htmlSemFicha()],
+        ["/", htmlComFicha("shell-da-raiz")],
+        ["/offline.html", paginaOffline()],
+      ]);
+
+    it.each(["banco-indisponivel", "html-indisponivel"] as const)(
+      "(a) motivo passageiro (%s) + app guardado -> abre o app guardado",
+      async (motivo) => {
+        const busca = vi.fn<typeof fetch>(() =>
+          Promise.resolve(respostaManutencao(motivo, "erro")),
+        );
+        const { resposta, cacheFalso, timersAntes } = await navegar(
+          guardado(),
+          busca,
+        );
+
+        const final = await resposta;
+        expect(final.status).toBe(200);
+        const corpo = await final.text();
+        expect(corpo).toContain("shell-da-raiz");
+        expect(corpo).not.toContain("em manutenção");
+        // O 503 nunca é guardado no lugar da rota.
+        await vi.advanceTimersByTimeAsync(0);
+        expect(cacheFalso.put).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(timersAntes);
+      },
     );
 
-    const final = await resposta;
-    expect(final.status).toBe(503);
-    expect(await final.text()).toBe("manutencao-do-porteiro");
+    it("(a) motivo passageiro + só o '/index.html' COM ficha -> abre esse app guardado", async () => {
+      const busca = vi.fn<typeof fetch>(() =>
+        Promise.resolve(respostaManutencao("banco-indisponivel", "hit")),
+      );
+      const { resposta } = await navegar(
+        new Map<string, Response | undefined>([
+          ["/index.html", htmlComFicha("index-com-ficha")],
+        ]),
+        busca,
+      );
+
+      expect(await (await resposta).text()).toContain("index-com-ficha");
+    });
+
+    it.each([
+      [
+        "adormecida (503)",
+        () =>
+          respostaForaDoAr(
+            { estado: "adormecida", nome: "Loja Bela", ref: REF },
+            "hit",
+            undefined,
+          ),
+      ],
+      [
+        "encerrada (410)",
+        () =>
+          respostaForaDoAr(
+            { estado: "encerrada", nome: "Loja Bela", ref: REF },
+            "hit",
+            undefined,
+          ),
+      ],
+      ["sem-loja (503)", () => respostaManutencao("sem-loja", "ausente")],
+      ["discorda (503)", () => respostaManutencao("discorda", "hit")],
+    ])(
+      "(b) motivo duradouro %s -> passa como veio, nunca o app guardado",
+      async (_nome, criar) => {
+        const esperada = criar();
+        const corpoEsperado = await esperada.clone().text();
+        const busca = vi.fn<typeof fetch>(() => Promise.resolve(criar()));
+        const { resposta } = await navegar(guardado(), busca);
+
+        const final = await resposta;
+        expect(final.status).toBe(esperada.status);
+        expect(final.headers.get("x-ikcous-porteiro")).toBe(
+          esperada.headers.get("x-ikcous-porteiro"),
+        );
+        const corpo = await final.text();
+        expect(corpo).toBe(corpoEsperado);
+        expect(corpo).not.toContain("shell-da-raiz");
+      },
+    );
+
+    it.each([
+      ["motivo inventado", 503, { "x-ikcous-porteiro": "sem-ficha" }],
+      ["sem o cabeçalho", 503, {}],
+      ["cabeçalho vazio", 503, { "x-ikcous-porteiro": "" }],
+      ["'ok' com 503", 503, { "x-ikcous-porteiro": "ok" }],
+      [
+        "passageiro em MAIÚSCULAS (não é o valor que o porteiro escreve)",
+        503,
+        { "x-ikcous-porteiro": "BANCO-INDISPONIVEL" },
+      ],
+      [
+        "passageiro com status trocado (502)",
+        502,
+        { "x-ikcous-porteiro": "banco-indisponivel" },
+      ],
+      [
+        "passageiro com status trocado (410)",
+        410,
+        { "x-ikcous-porteiro": "html-indisponivel" },
+      ],
+    ] as const)(
+      "(c) %s -> passa como veio (na dúvida, nunca o app guardado)",
+      async (_nome, status, cabecalhos) => {
+        const busca = vi.fn<typeof fetch>(() =>
+          Promise.resolve(
+            new Response("resposta-da-rede", {
+              status,
+              headers: cabecalhos,
+            }),
+          ),
+        );
+        const { resposta } = await navegar(guardado(), busca);
+
+        const final = await resposta;
+        expect(final.status).toBe(status);
+        expect(await final.text()).toBe("resposta-da-rede");
+      },
+    );
+
+    it("(d) motivo passageiro SEM app guardado útil -> passa como veio (nem 'sem internet')", async () => {
+      const busca = vi.fn<typeof fetch>(() =>
+        Promise.resolve(respostaManutencao("html-indisponivel", "miss")),
+      );
+      const { resposta } = await navegar(
+        new Map<string, Response | undefined>([
+          // O `/index.html` do precache SEM ficha não conta como app guardado.
+          ["/index.html", htmlSemFicha()],
+          ["/offline.html", paginaOffline()],
+        ]),
+        busca,
+      );
+
+      const final = await resposta;
+      expect(final.status).toBe(503);
+      expect(final.headers.get("x-ikcous-porteiro")).toBe("html-indisponivel");
+      const corpo = await final.text();
+      expect(corpo).toContain("Esta loja está em manutenção.");
+      expect(corpo).not.toContain(MARCADOR_OFFLINE);
+    });
+
+    it("(d) motivo passageiro e o cache QUEBRA ao procurar o app -> passa como veio (a rede respondeu: nunca 'sem internet')", async () => {
+      class CacheQueQuebra extends Map<string, Response | undefined> {
+        override get(chave: string) {
+          if (chave === "/index.html" || chave === "/")
+            throw new Error("cache ilegível");
+          return super.get(chave);
+        }
+      }
+      const busca = vi.fn<typeof fetch>(() =>
+        Promise.resolve(respostaManutencao("banco-indisponivel", "erro")),
+      );
+      const porCaminho = new CacheQueQuebra([
+        ["/offline.html", paginaOffline()],
+      ]);
+      const { resposta } = await navegar(porCaminho, busca);
+
+      const final = await resposta;
+      expect(final.status).toBe(503);
+      expect(final.headers.get("x-ikcous-porteiro")).toBe("banco-indisponivel");
+      expect(await final.text()).not.toContain(MARCADOR_OFFLINE);
+    });
   });
 
   it("rede REJEITA na hora -> o fallback de sempre: abre a '/' guardada", async () => {

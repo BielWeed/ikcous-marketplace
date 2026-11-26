@@ -46,6 +46,7 @@ const base: AssinaturaDaLoja = {
   inicioEm: null,
   proximaCobrancaEm: null,
   testeAte: null,
+  pausaEm: null,
   recursos: [],
   gerenciarUrl: null,
   suporteWhatsapp: null,
