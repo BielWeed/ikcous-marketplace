@@ -189,6 +189,12 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
          a tabela de functions (nome, versao, data). Essa tabela E o registro oficial do desfazer
          daquela loja naquela release. Se o resumo nao tiver "No ar ANTES", o run nao publicou
          nada naquela loja (o passo vermelho diz por que).
+         **Se o run teve Re-run, use o registro da tentativa 1.** O Re-run grava um "No ar
+         ANTES" NOVO, que ja traz a(s) function(s) que a tentativa 1 publicou antes de falhar:
+         esse registro NAO serve para desfazer. Na pagina do run, use o seletor de tentativa no
+         alto (aparece **"Attempt #N"** quando houve Re-run), escolha **"Attempt #1"** e leia o
+         resumo dali. Pelo terminal: `gh run view <id> --attempt 1 --log` e procure o passo
+         "Lista o que esta no ar ANTES" (o registro fica so no resumo e no log; nao ha artefato).
       2. O registro automatico cobre a **versao e o `updated_at`**. A lista sozinha nao identifica
          o bundle: se a release pedir o conteudo (o que de fato roda), meca a mais, quando o CLI
          deixar, `supabase functions download <nome> --project-ref <ref>` numa pasta temporaria
