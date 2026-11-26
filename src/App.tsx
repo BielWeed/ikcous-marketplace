@@ -2918,14 +2918,27 @@ const AppContent = () => {
     setTentativaDoProduto((n) => n + 1);
   }, [recarregarProdutos]);
 
-  // Catálogo ou sessão que não terminam de carregar (rede pendurada): a
-  // checagem do produto abaixo só roda DEPOIS deles, então sem este relógio a
-  // tela esperaria para sempre. Passado o prazo, vira a mesma tela de "Não
-  // conseguimos carregar" (com "Tentar de novo"); se o carregamento terminar
-  // depois, a checagem roda e o produto aparece normalmente.
-  const produtoDoLinkNaLista = selectedProductId
-    ? getProductById(products, selectedProductId) !== undefined
-    : false;
+  // Produto do link lido SOZINHO enquanto o catálogo ainda carrega (a cliente
+  // do anúncio não espera dezenas de páginas para ver o que clicou). Só serve
+  // à tela do produto: não entra no catálogo (a vitrine e as novas tentativas
+  // do catálogo continuam vendo o estado real dele). Quando o catálogo chega,
+  // a versão dele vence -- a mesma `key` na tela, então nada remonta.
+  const [produtoLidoSozinho, setProdutoLidoSozinho] = useState<Product | null>(
+    null,
+  );
+  const produtoDaTela = selectedProductId
+    ? (getProductById(products, selectedProductId) ??
+      (produtoLidoSozinho
+        ? getProductById([produtoLidoSozinho], selectedProductId)
+        : undefined))
+    : undefined;
+
+  // Catálogo ou sessão que não terminam de carregar (rede pendurada): sem
+  // este relógio a tela esperaria para sempre. Passado o prazo, vira a mesma
+  // tela de "Não conseguimos carregar" (com "Tentar de novo"); se o
+  // carregamento terminar depois, a checagem roda e o produto aparece
+  // normalmente.
+  const produtoDoLinkNaLista = produtoDaTela !== undefined;
   useEffect(() => {
     if (currentView !== "product-detail" || !selectedProductId) return;
     if (produtoDoLinkNaLista) return;
@@ -2957,14 +2970,27 @@ const AppContent = () => {
       "products.length =",
       products.length,
     );
-    if (currentView === "product-detail" && !authLoading && !productsLoading) {
+    // O catálogo AINDA carregando não segura mais a checagem: o produto do
+    // link é lido sozinho (mesma consulta pública da vitrine) e a tela abre
+    // sem esperar as páginas do catálogo.
+    if (currentView === "product-detail" && !authLoading) {
       const product = selectedProductId
         ? getProductById(products, selectedProductId)
         : null;
-      if (!product) {
+      const catalogoAindaCarregando = productsLoading;
+      const jaLidoSozinho =
+        catalogoAindaCarregando &&
+        !!selectedProductId &&
+        !!produtoLidoSozinho &&
+        getProductById([produtoLidoSozinho], selectedProductId) !== undefined;
+      // Já lido sozinho e o catálogo ainda vem: espera o catálogo. Depois que
+      // ele chega, quem decide é ele -- produto fora dele é conferido de novo
+      // abaixo (pode ter sido pausado no meio do caminho).
+      if (!product && !jaLidoSozinho) {
         // Só o caso "o produto de fato não existe" manda para a Home.
         const redirecionarParaHome = (avisar = false) => {
           if (!active) return;
+          setProdutoLidoSozinho(null);
           console.warn(
             "[App] Product detail view requested but product not found on network. Redirecting to home.",
           );
@@ -2986,6 +3012,13 @@ const AppContent = () => {
             );
           }
         };
+        // A consulta é a PÚBLICA (só ativos, sem excluídos) -- a mesma do
+        // catálogo da cliente. O catálogo da lojista é o do painel, que
+        // também traz os pausados: enquanto ele carrega, "a pública não achou"
+        // não prova que o produto não existe para ela, e a tela espera o
+        // catálogo decidir. Sessão ainda sem veredito ("unknown") espera igual.
+        const naoExisteDecideAgora =
+          !catalogoAindaCarregando || adminStatus === "not-admin";
         const verifyProduct = async () => {
           try {
             console.log("[App] verifyProduct checking id =", selectedProductId);
@@ -3025,17 +3058,23 @@ const AppContent = () => {
                   "[App] verifyProduct: produto não existe:",
                   error,
                 );
-                redirecionarParaHome(true);
+                if (naoExisteDecideAgora) redirecionarParaHome(true);
                 return;
               }
               throw error;
             }
             if (!data) {
               console.error("[App] verifyProduct query returned no data");
-              redirecionarParaHome(true);
+              if (naoExisteDecideAgora) redirecionarParaHome(true);
               return;
             }
-            if (active) incluirProduto(mapProductFromDB(data));
+            if (!active) return;
+            // Mesma montagem do catálogo (mapProductFromDB sobre a mesma
+            // linha com as variações). Com o catálogo ainda vindo, fica só na
+            // tela; com ele pronto, entra nele como antes.
+            const produtoLido = mapProductFromDB(data);
+            if (catalogoAindaCarregando) setProdutoLidoSozinho(produtoLido);
+            else incluirProduto(produtoLido);
           } catch (err: any) {
             console.error(
               "[App] verifyProduct caught error:",
@@ -3058,6 +3097,8 @@ const AppContent = () => {
     productsLoading,
     tentativaDoProduto,
     incluirProduto,
+    produtoLidoSozinho,
+    adminStatus,
   ]);
 
   // Unified scroll restoration is handled in the consolidated useLayoutEffect hook above
@@ -3168,9 +3209,8 @@ const AppContent = () => {
   const renderCustomerSecondaryView = () => {
     switch (currentView) {
       case "product-detail": {
-        const product = selectedProductId
-          ? getProductById(products, selectedProductId)
-          : null;
+        // Versão do catálogo; enquanto ele carrega, a lida sozinha.
+        const product = produtoDaTela;
         if (!product) {
           if (produtoSemRede && produtoSemRede === selectedProductId) {
             return (
