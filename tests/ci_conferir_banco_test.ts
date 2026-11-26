@@ -16136,3 +16136,105 @@ Deno.test("182a/182b — registradas no menu do conferir-banco-da-loja, nos dois
     "node tests/banco/rodar-isolado.cjs tests/banco/a-loja-tem-estado-de-vida-viva.cjs",
   );
 });
+
+// 196m (26/11/2026) — MEDICAO de quem cria pedido, ANTES da migration 20261600000000 (a loja pausa o pedido novo por um gatilho
+// BEFORE INSERT em marketplace_orders). Rol ABERTO (sem coluna ok, nunca portao): a pessoa que le decide se para (funcao que
+// insere pedido fora do mapa, outro gatilho de INSERT, loja com manutencao=true hoje). So catalogo e dado da LOJA: nunca linha de
+// pedido, de cliente nem a chave da assinatura.
+const NOME_196M = "196m-medir-quem-cria-pedido";
+
+Deno.test("196m-medir-quem-cria-pedido — no menu e nos dois caminhos do rpc-ci, UM SELECT so leitura de rol aberto, so catalogo e dado da loja, sem chave nem pedido, e nunca portao", async () => {
+  const { contarStatements, listarConsultas, ROL_FECHADO_POR_CONSULTA } =
+    require(SCRIPT);
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
+  );
+  assert(
+    listarConsultas().includes(NOME_196M),
+    `falta a consulta ${NOME_196M}`,
+  );
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_196M}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const estrutura = semLiterais(sql);
+  const yaml = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  assertStringIncludes(yaml, `          - ${NOME_196M}\n`);
+  assertEquals(
+    rpc.split(`"scripts/publicacao/consultas/${NOME_196M}.sql"`).length - 1,
+    2,
+    "nas duas listas de caminhos do rpc-ci",
+  );
+  assertEquals(contarStatements(sql), 1, "exatamente 1 statement");
+  assert(/^\s*WITH\b/i.test(limpo), "comeca por WITH");
+  assert(
+    !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+      estrutura,
+    ),
+    "palavra de escrita fora de comentario/literal",
+  );
+  assert(
+    !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+      estrutura,
+    ),
+    "SQL dinamico (ou leitura de arquivo)",
+  );
+  assert(!/\bAS\s+ok\b/i.test(estrutura), "rol aberto: sem coluna ok");
+  assertEquals(
+    Object.entries(ROL_FECHADO_POR_CONSULTA).find(
+      ([n]) => n === NOME_196M,
+    )?.[1],
+    undefined,
+  );
+  assert(!CONSULTAS_DE_ROL_FECHADO.has(NOME_196M), "medicao nao e portao");
+  // Dado lido: so as 3 tabelas da LOJA (configuracao e cartao da assinatura); nada de pedido, item, cliente ou auth.
+  assertEquals(
+    [
+      ...new Set(
+        [...estrutura.matchAll(/\b(?:FROM|JOIN)\s+public\.(\w+)/gi)].map(
+          (m) => m[1],
+        ),
+      ),
+    ].sort(),
+    ["assinatura_da_loja", "assinatura_da_loja_chave", "store_config"],
+  );
+  assert(!/\bauth\./i.test(estrutura), "le auth");
+  assert(!/chave_hash/i.test(limpo), "toca o hash da chave da assinatura");
+  // Da chave so a contagem; do cartao so status e datas; do store_config so manutencao.
+  assertStringIncludes(limpo, "FROM public.assinatura_da_loja_chave)");
+  assertStringIncludes(limpo, "to_jsonb(s) ->> 'manutencao'");
+  for (const campo of [...limpo.matchAll(/c\.j (?:->>|\?) '(\w+)'/g)].map(
+    (m) => m[1],
+  ))
+    assert(
+      [
+        "status",
+        "teste_ate",
+        "proxima_cobranca_em",
+        "pausa_em",
+        "atualizado_em",
+      ].includes(campo),
+      `le do cartao o campo ${campo}`,
+    );
+  // O que a decisao de parar precisa: quem INSERE em marketplace_orders, os gatilhos dela e as premissas do pre-voo.
+  assertStringIncludes(
+    limpo,
+    String.raw`'insert\s+into\s+(public\.)?marketplace_orders\M'`,
+  );
+  assertStringIncludes(
+    limpo,
+    "g.tgrelid = to_regclass('public.marketplace_orders') AND NOT g.tgisinternal",
+  );
+  for (const premissa of [
+    "'marketplace_orders', 'canal'",
+    "'marketplace_orders', 'idempotency_key'",
+    "'store_config', 'manutencao'",
+    "'assinatura_da_loja', 'pausa_em'",
+    "'public.is_admin_atual()'",
+    "'pausa_de_vendas'",
+  ])
+    assertStringIncludes(limpo, premissa);
+  assert(
+    /ORDER BY ordem, objeto COLLATE "C";\s*$/.test(limpo),
+    "ordem deterministica (collation C)",
+  );
+});
