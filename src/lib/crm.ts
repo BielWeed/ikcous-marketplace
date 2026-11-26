@@ -226,6 +226,7 @@ export function lerAssinaturaDaLoja(json: unknown): AssinaturaDaLoja | null {
     inicioEm: comoTexto(raiz.inicio_em),
     proximaCobrancaEm: comoTexto(raiz.proxima_cobranca_em),
     testeAte: comoTexto(raiz.teste_ate),
+    pausaEm: comoTexto(raiz.pausa_em),
     recursos: comoLista(raiz.recursos)
       .map((recurso) => comoTexto(recurso))
       .filter((recurso): recurso is string => recurso !== null),

@@ -103,6 +103,7 @@ describe("CartaoDaAssinatura em teste", () => {
     inicioEm: "2026-11-26",
     proximaCobrancaEm: null,
     testeAte: "2026-12-03",
+    pausaEm: null,
     recursos: [],
     gerenciarUrl: null,
     suporteWhatsapp: null,

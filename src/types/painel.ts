@@ -81,6 +81,11 @@ export interface AssinaturaDaLoja {
   readonly inicioEm: string | null;
   readonly proximaCobrancaEm: string | null;
   readonly testeAte: string | null;
+  /**
+   * Dia em que os pedidos pela loja pausam se o teste acabou sem pagamento
+   * (`pausa_em`, mandado pela gestão). Banco sem a coluna: `null`.
+   */
+  readonly pausaEm: string | null;
   readonly recursos: readonly string[];
   /** Só `https://` — qualquer outro esquema é descartado no parser. */
   readonly gerenciarUrl: string | null;
