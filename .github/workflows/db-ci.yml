@@ -44,12 +44,16 @@ on:
       - "supabase/migrations/**"
       - "scripts/ci/banco/**"
       - ".github/workflows/db-ci.yml"
+      - "scripts/frota/instalador-banco.mjs"
+      - "tests/banco/instalador-nova-loja-viva.cjs"
   push:
     branches: [develop, claude/app-major-upgrade-wmc8x2]
     paths:
       - "supabase/migrations/**"
       - "scripts/ci/banco/**"
       - ".github/workflows/db-ci.yml"
+      - "scripts/frota/instalador-banco.mjs"
+      - "tests/banco/instalador-nova-loja-viva.cjs"
   workflow_dispatch:
 
 permissions:
@@ -111,3 +115,11 @@ jobs:
         run: node scripts/ci/banco/prova-dupla-aplicacao.cjs supabase/migrations
       - name: Inventário de rollback (informativo)
         run: node scripts/ci/banco/inventario-rollback.cjs supabase/migrations
+      # L4b (T9): o instalador do banco da loja nova (scripts/frota/instalador-banco.mjs)
+      # aplica a fila INTEIRA pelo envelope BEGIN/corpo/ledger/COMMIT em bancos
+      # próprios, criados do template0 e provisionados aqui (não usa o banco
+      # migrado acima: o rodar-isolado só empresta a URL e limpa o clone).
+      # Prova: interrompido no 74º e retomado = igual ao instalado de uma vez;
+      # 2ª rodada não faz nada; banco não vazio é recusado.
+      - name: Instalador da loja nova (fila inteira pelo envelope, retomada, recusa)
+        run: node tests/banco/rodar-isolado.cjs tests/banco/instalador-nova-loja-viva.cjs
