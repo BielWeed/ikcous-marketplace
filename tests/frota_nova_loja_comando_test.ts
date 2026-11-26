@@ -23,7 +23,9 @@
  *  - o limite de 2 projetos grátis vira mensagem em português (é POR PESSOA);
  *  - banco chama o instalador e só diz SIM com a fila inteira no ledger e a
  *    marca concluída; ficha confere store_config id=1 e gera (sem executar)
- *    o SQL de frota_lojas e a entrada de lojas.json.
+ *    o SQL de frota_lojas e a entrada de lojas.json, com acesso "oauth" e
+ *    a mesma do cadastro-da-loja (rodar a ficha depois do cadastro não
+ *    recusa; uma entrada sem a marca recusa).
  *
  * Nenhuma chamada de rede real: todo fetch aqui é falso; os cofres são os de
  * memória; o estado vai para uma pasta temporária.
@@ -37,6 +39,7 @@ import {
   assertStringIncludes,
   assertThrows,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { lojaPedida } from "../scripts/frota/cadastro-da-loja.mjs";
 import { criarCofreMemoria } from "../scripts/frota/cofre-local.mjs";
 import {
   SQL_CONCLUIR,
@@ -162,6 +165,7 @@ const LOJAS_COM_A_NOVA = (() => {
       apelido: "Nova",
       segredoDoToken: "SUPABASE_ACCESS_TOKEN_LOJA_NOVA",
       functionsNomeadas: true,
+      acesso: "oauth",
     },
   };
   return l;
@@ -1046,6 +1050,7 @@ Deno.test("ficha: confere store_config id=1 e gera (sem executar) o SQL de frota
     '"segredoDoToken": "SUPABASE_ACCESS_TOKEN_LOJA_NOVA"',
   );
   assertStringIncludes(texto, '"functionsNomeadas": true');
+  assertStringIncludes(texto, '"acesso": "oauth"');
   // a única escrita da ficha é a LEITURA read_only pelo database/query
   const novas = amb.api.escritas().slice(n);
   assert(
@@ -1059,6 +1064,40 @@ Deno.test("ficha: confere store_config id=1 e gera (sem executar) o SQL de frota
   // nenhuma chave secreta da loja sai
   assert(!texto.includes(SERVICE_ROLE));
   assert(!texto.includes(SECRETA));
+});
+
+Deno.test("ficha depois do cadastro: a entrada que o cadastro-da-loja grava é a mesma da ficha (SIM, já está igual)", async () => {
+  const amb = await ateFicha();
+  // a entrada como o cadastro a grava (o apelido da ficha sem --nome é o slug)
+  const { entrada } = lojaPedida({ loja: SLUG, projeto: REF, nome: SLUG });
+  assertEquals(entrada.acesso, "oauth");
+  const lojas = {
+    lojas: { ...structuredClone(LOJAS_BRUTAS.lojas), [SLUG]: entrada },
+  };
+  // o lojas.json passa pelo disco como texto: a ordem dos campos fica
+  amb.deps.lojasBrutas = () => JSON.parse(JSON.stringify(lojas, null, 2));
+  const r = await executarPasso(pedido("ficha"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertStringIncludes(amb.saida.join("\n"), "já está igual no arquivo");
+});
+
+Deno.test("ficha: loja cadastrada ANTES da marca (sem acesso) recusa e não marca SIM — o cadastro decide", async () => {
+  const amb = await ateFicha();
+  const { entrada } = lojaPedida({ loja: SLUG, projeto: REF, nome: SLUG });
+  const semMarca = Object.fromEntries(
+    Object.entries(entrada).filter(([k]) => k !== "acesso"),
+  );
+  const lojas = {
+    lojas: { ...structuredClone(LOJAS_BRUTAS.lojas), [SLUG]: semMarca },
+  };
+  amb.deps.lojasBrutas = () => structuredClone(lojas);
+  const r = await executarPasso(pedido("ficha"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "outros valores");
+  const e = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+  assert(e.passos.ficha?.veredito !== "SIM", "ficha marcada SIM");
+  // e nenhuma entrada foi impressa como se fosse para gravar
+  assert(!amb.saida.join("\n").includes('"acesso"'));
 });
 
 Deno.test("ficha: sem a linha id=1 é NÃO", async () => {
