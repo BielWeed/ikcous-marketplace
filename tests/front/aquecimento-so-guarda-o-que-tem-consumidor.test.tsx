@@ -154,12 +154,10 @@ describe("useCacheWarmer — aquece só o que tem consumidor (laudo sócio r2, F
     // A gaveta começa vazia (match → undefined): o warmer busca e guarda.
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
     vi.stubGlobal("caches", {
-      open: vi
-        .fn()
-        .mockResolvedValue({
-          match: vi.fn().mockResolvedValue(undefined),
-          put: vi.fn(),
-        }),
+      open: vi.fn().mockResolvedValue({
+        match: vi.fn().mockResolvedValue(undefined),
+        put: vi.fn(),
+      }),
     } as unknown as CacheStorage);
     // jsdom não implementa requestIdleCallback: o hook cairia no
     // setTimeout(2000ms) sem isto. Stub que roda a callback na hora.
