@@ -805,6 +805,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "182b-antes-o-estado-de-vida-da-loja-ausente",
   "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado",
   "183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente",
+  "184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado",
+  "184b-antes-a-caderneta-fecha-para-o-service-role-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
