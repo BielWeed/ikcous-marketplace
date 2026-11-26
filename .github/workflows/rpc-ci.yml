@@ -2374,6 +2374,7 @@ jobs:
       - name: Provisiona o efêmero (fábrica do Supabase, emulada)
         run: node tests/banco/provisionar.cjs
       - name: Aplica as migrations do zero
+        id: aplica
         run: node tests/banco/aplicar-migrations.cjs supabase/migrations
       - name: Prova viva do CRM e do Início
         run: node tests/banco/rodar-isolado.cjs tests/banco/crm-inicio-viva.cjs
@@ -2388,3 +2389,10 @@ jobs:
       # de entradas fictícias -- 0 divergências.
       - name: Prova viva do CPF da janela (migration 20261182000000)
         run: node tests/banco/rodar-isolado.cjs tests/banco/cpf-da-janela-viva.cjs
+      # Plano PLANO-LOJA-GRANDE-BANCO, T11: MEDICAO, nao prova. Semeia 5 mil e depois 50 mil pedidos e imprime o
+      # EXPLAIN (ANALYZE, BUFFERS) e a mediana de 5 chamadas da get_admin_orders_paged por tipo de termo. Nao reprova
+      # por tempo; so por erro de execucao. Roda mesmo se uma prova acima ficar vermelha (!cancelled()).
+      - name: Medicao da busca de pedidos numa loja grande (5 mil e 50 mil pedidos)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 5
+        run: node tests/banco/rodar-isolado.cjs tests/banco/medir-busca-de-pedidos-loja-grande.cjs
