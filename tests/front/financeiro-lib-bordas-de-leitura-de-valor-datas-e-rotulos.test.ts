@@ -51,6 +51,14 @@ describe("parseValorBR: espaço e sinal", () => {
     expect(parseValorBR("9".repeat(400))).toBeNull();
     expect(parseValorBR(`${"9".repeat(400)},50`)).toBeNull();
   });
+
+  // Finito em reais mas Infinity em centavos (×100 estoura): sem a conferência
+  // depois da conversão, a taxa de entrega local era gravada como R$ 0.
+  it("número finito que estoura ao virar centavos também não vira Infinity", () => {
+    expect(parseValorBR(`1${"0".repeat(307)}`)).toBeNull();
+    expect(parseValorBR(`1${"0".repeat(308)}`)).toBeNull();
+    expect(parseValorBR(1e307)).toBeNull();
+  });
 });
 
 describe("período de datas: bordas", () => {
