@@ -242,10 +242,17 @@ Deno.test("com --aplicar: a loja entra em lojas.json, canais e nos 8 workflows, 
           `${nome}: segredo novo sem a guarda da loja`,
         );
     }
+    // Desde o #1923 o mapa do grupo de concorrência guarda só as lojas que
+    // dividem banco com outra; loja de banco próprio usa o próprio nome.
+    const aplicar = ler(raiz, ".github/workflows/aplicar-migrations.yml");
+    assert(
+      !aplicar.includes(`"${NOVA}":`),
+      "grupo de concorrência: loja de banco próprio não entra no mapa",
+    );
     assertStringIncludes(
-      ler(raiz, ".github/workflows/aplicar-migrations.yml"),
-      `"${NOVA}":"${REF_NOVA}"`,
-      "grupo de concorrência por banco",
+      aplicar,
+      "[inputs.projeto] || inputs.projeto }}",
+      "grupo de concorrência por banco cai no próprio nome da loja",
     );
     assertStringIncludes(r.saida, "gravado");
   });
