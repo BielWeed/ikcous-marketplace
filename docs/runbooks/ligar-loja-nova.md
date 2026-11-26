@@ -53,8 +53,8 @@ que existe e o que falta. Os roteiros manuais das lojas antigas **não servem** 
 eles usam token fixo no repositório, chave de serviço ou o painel do projeto, e a IKCOUS não tem
 nada disso na conta da lojista (ver [Lacunas conhecidas](#lacunas-conhecidas-26112026)).
 
-**Antes da 1ª loja REAL:** o passo `trocar-dono` tem de existir (decisão do sócio). Até lá, só
-loja de teste.
+**Troca de dona:** o passo `trocar-dono` existe (uma fase só, pelo acesso da org central). Ele só
+roda depois do procedimento de [Trocar a dona](#trocar-a-dona--trocar-dono-raro-só-com-o-pedido-escrito).
 
 ## Regras que valem em todos os passos
 
@@ -199,8 +199,10 @@ copiar o endereço inteiro da barra do navegador.
    troca a conta do Mercado Pago e o Gmail da loja, e só ela dá ou tira o cargo de administrador.
 3. **Funcionário que vira administrador** cuida de pedidos e produtos, mas **não** muda para onde
    vai o dinheiro.
-4. **Trocar de dona** (venda da loja ou erro no cadastro) é um pedido à IKCOUS, **nunca** pelo
-   painel.
+4. **Trocar de dona** (venda da loja ou erro no cadastro) é um pedido **por escrito** à IKCOUS,
+   **nunca** pelo painel. Quem pede é a **assinante do contrato**: a pessoa que contratou e paga a
+   loja. A IKCOUS confirma o pedido pelo contato que **já estava cadastrado** antes dele, nunca por
+   um contato que veio no próprio pedido.
 
 ### Tela 1 — Criar a conta no Supabase
 
@@ -693,6 +695,71 @@ o projeto é da lojista: a IKCOUS não entra no painel dela. Sem dono cadastrado
 administradora troca as chaves do Mercado Pago e do Gmail, e ninguém consegue dar o cargo de
 administrador.
 
+### Trocar a dona — `trocar-dono` (raro; só com o pedido escrito)
+
+**Quando:** a loja foi vendida, a dona cadastrada saiu do negócio, ou o cadastro saiu com a pessoa
+errada. A troca muda para quem vai o dinheiro: as chaves do Mercado Pago e do Gmail passam a ser da
+nova dona. Por isso ela **nunca** sai de uma mensagem solta.
+
+**Antes do comando, o procedimento (decisão do sócio, 26/11/2026):**
+
+1. **Quem pode pedir é a assinante do contrato:** a pessoa cadastrada na gestão, a que paga a
+   loja. Não é "quem tem o e-mail de administradora". Quase sempre é a mesma pessoa. Quando não é
+   (a funcionária que saiu, a loja vendida), vale a assinante.
+2. **O pedido é por escrito** e diz qual é a loja e o e-mail com que a nova dona entra **na loja**.
+3. **A confirmação vai sempre por um contato que já estava cadastrado antes do pedido:** o
+   WhatsApp da gestão ou o e-mail da administradora. **Nunca** por um telefone ou e-mail que veio
+   no próprio pedido. Quem tenta tomar uma loja controla o canal por onde pede, mas não controla o
+   contato que já estava gravado.
+4. **Se a dona de hoje (a cadastrada na loja) não for a assinante,** avise a dona de hoje pelo
+   contato cadastrado. Ela tem **48 horas** para contestar. Se ela contestar, pare e leve ao dono.
+   O comando só roda depois das 48 horas sem contestação.
+5. **A nova dona já tem de ser administradora da loja**, com o e-mail confirmado. Quem dá o cargo
+   é a dona de hoje, no painel. Se a dona de hoje não der (por exemplo, a funcionária que saiu),
+   pare e leve ao dono: o comando não resolve esse caso.
+6. **Guarde o pedido escrito e a confirmação.** O banco não registra a troca em lugar nenhum: o
+   `cargo_log` só registra mudança de cargo feita pelo painel.
+
+**O comando, no terminal do dono.** Se o e-mail da nova dona tiver acento, primeiro faça o
+PowerShell mandar acentos direito (ver [a armadilha do acento](#e-mail-com-acento-no-powershell-51)).
+Primeiro o ensaio:
+
+```powershell
+node scripts/frota/nova-loja.mjs trocar-dono --loja <slug>
+```
+
+- **Vai aparecer:** uma linha `[trocar-dono] INCERTO: ENSAIO ...` dizendo o que faria. Nada é
+  pedido nem gravado.
+
+Depois, de verdade:
+
+```powershell
+node scripts/frota/nova-loja.mjs trocar-dono --loja <slug> --aplicar
+```
+
+Ele pede três coisas, uma de cada vez. Em cada uma, digite e tecle Enter:
+
+1. **O e-mail da NOVA dona**, o mesmo com que ela entra na loja. O comando confere no banco que a
+   troca é possível. Se não for, ele para aqui com `NÃO` e o motivo, sem pedir mais nada.
+2. **Confirmação 1 de 2: o nome da loja**, igual ao que está no `--loja`.
+3. **Confirmação 2 de 2: as 2 primeiras letras do e-mail da dona de HOJE**, a do cadastro na
+   gestão. O comando confere essas letras no banco sem ler o e-mail dela.
+
+Se o nome ou as letras estiverem errados, o comando diz `NÃO` e **não escreve nada**. Confira e
+rode de novo.
+
+**Deu certo se** a última linha for `[trocar-dono] SIM:` seguida de "agora é a dona da loja". O
+e-mail aparece cortado (2 letras, `•••` e o domínio). Quem estava com o painel aberto recarrega a
+página (F5). A dona antiga continua administradora até a nova tirar o cargo dela.
+
+**Se aparecer diferente:**
+
+- **`NÃO` com uma frase de motivo:** nada foi trocado. A frase diz o que falta (por exemplo, a nova
+  ainda não é administradora, ou o e-mail dela não foi confirmado).
+- **`INCERTO`:** não dá para afirmar se trocou. Não repita no escuro. Rode
+  `node scripts/frota/nova-loja.mjs conferir --loja <slug> --aplicar` (só lê) e leve o resultado ao
+  programador. Repetir o `trocar-dono` é seguro: se a nova já for a dona, ele diz `SIM` sem gravar.
+
 ### Passo 17 — Ligar o gancho de e-mail e subir o limite — lacuna conhecida
 
 **Depois que a lojista ligou o Gmail** (Tela 3, parte B), o gancho de e-mail tem de ser ligado
@@ -812,13 +879,14 @@ Colou o código e deu INCERTO? Não cole o mesmo código de novo. Gere um link n
 | `functions` | Sem comando de desfazer. Numa loja sem venda, uma function errada se corrige publicando de novo (`--aplicar --substituir`). |
 | `login` | Sem comando de desfazer. O gancho nasce desligado, então nada deixa de funcionar. |
 | `primeira-admin` | **Não tem desfazer pelo script.** Se a pessoa errada virou administradora, pare e leve ao dono. |
-| `definir-dono` | **Lacuna conhecida:** numa loja nova, um dono errado **não tem conserto do lado da IKCOUS**. O passo `trocar-dono` ainda não existe. A troca de dono das lojas antigas (seção 4 de [definir-o-dono-da-loja.md](definir-o-dono-da-loja.md)) depende de SQL Editor no projeto, que a IKCOUS não abre na conta da lojista. |
+| `definir-dono` | Dona errada numa loja nova: o conserto é o `trocar-dono`, seguindo o procedimento de [Trocar a dona](#trocar-a-dona--trocar-dono-raro-só-com-o-pedido-escrito). |
+| `trocar-dono` | **Sem comando de desfazer.** Voltar à dona antiga é outra troca, com o mesmo procedimento (pedido escrito da assinante, confirmação pelo contato já cadastrado). |
 
 ## Lacunas conhecidas (26/11/2026)
 
-**Condição antes da 1ª loja REAL (decisão do sócio):** o passo `trocar-dono` tem de existir. Sem
-ele, um dono errado numa loja nova não tem conserto do lado da IKCOUS. Isso não é só uma lacuna:
-nenhuma loja de lojista de verdade abre antes dele.
+**Condição antes da 1ª loja REAL (decisão do sócio):** o passo `trocar-dono` tem de existir. Ele
+existe desde a A15 (uma fase só, pelo acesso da org central, com a dupla confirmação), e só roda
+depois do procedimento de [Trocar a dona](#trocar-a-dona--trocar-dono-raro-só-com-o-pedido-escrito).
 
 **Passos que não dá para usar numa loja nova** (a loja só tem a autorização OAuth da lojista, no
 cofre do PC do dono; a IKCOUS não tem token fixo no repositório, nem chave de serviço, nem entrada
