@@ -47,6 +47,13 @@
  *      também BLOQUEIA, pelo nome.
  *   4. Qualquer falha das etapas 1–3 IMPEDE o promote e diz o alvo e o comando
  *      que resolve. Sem `--promover`, para aqui (ensaio).
+ *   4b. RESERVA DA CADERNETA (politica.json reservaDaCaderneta; `passoDaReserva`):
+ *      sem bloqueio, o ensaio só lê a reserva na Global Config e mostra a
+ *      diferença; o `--promover` grava ANTES do promote se a lista de lojas
+ *      mudou, espera a propagação e só então promove. Gravação que falha (cota
+ *      inclusive) ou endereço indeterminado IMPEDE o promote. Com a reserva
+ *      configurada, o "/" do candidato também tem de dizer
+ *      `x-ikcous-reserva: ligada`. `globalConfigId` null = só avisa.
  *   5. `--promover`: `vercel promote <deployment>` — leva TODOS os domínios de
  *      produção de uma vez, sem rebuild — e roda a conferência da frota com o
  *      SHA: versão, isolamento e destino canônico de cada endereço, e a
@@ -94,6 +101,19 @@ import {
   resolverCliVercel,
   validarVersao,
 } from "./conferir-frota.mjs";
+import {
+  configDaReserva,
+  criarVercelApi,
+  descreverDiferenca,
+  diferenca,
+  enderecosIndeterminados,
+  gravarReserva,
+  lerReservaAtual,
+  mesmaListaDeLojas,
+  montarReserva,
+  problemasDaReserva,
+  problemasDosIndeterminados,
+} from "./reserva-da-caderneta.mjs";
 
 const require = createRequire(import.meta.url);
 const {
@@ -186,13 +206,18 @@ const normalizar = (texto) =>
 
 // ------------------------------------------------------------------ etapa 1
 
-/** Confere o deployment candidato. Devolve { ok, deployment, problemas[] }. */
+/**
+ * Confere o deployment candidato. Devolve { ok, deployment, problemas[] }.
+ * `exigirReserva` (a reserva da caderneta configurada em politica.json): o
+ * "/" do candidato também tem de dizer `x-ikcous-reserva: ligada`.
+ */
 export async function conferirCandidato({
   sha,
   deploymentId,
   politica,
   vercelApi,
   fetchImpl,
+  exigirReserva = false,
 }) {
   const problemas = [];
   let d;
@@ -278,6 +303,7 @@ export async function conferirCandidato({
       await res.text();
       const porteiro = res.headers.get("x-ikcous-porteiro");
       const caderneta = res.headers.get("x-ikcous-caderneta");
+      const reserva = res.headers.get("x-ikcous-reserva");
       if (!porteiro)
         problemas.push(
           `candidato respondeu a "/" (HTTP ${res.status}) sem x-ikcous-porteiro: o middleware (porteiro) não carregou na borda`,
@@ -285,6 +311,13 @@ export async function conferirCandidato({
       else if (caderneta !== "miss" && caderneta !== "hit")
         problemas.push(
           `candidato respondeu a "/" (HTTP ${res.status}, x-ikcous-porteiro ${celula(porteiro)}) ${caderneta === null ? "sem x-ikcous-caderneta" : `com x-ikcous-caderneta=${celula(caderneta)}`}, esperado miss ou hit: a caderneta da frota não respondeu ao candidato (variáveis IKCOUS_FROTA_* erradas ou faltando, ou o banco da caderneta fora do ar); promover este deploy derrubaria todas as lojas`,
+        );
+      // Reserva configurada: o "não achei" do porteiro diz se o deploy novo
+      // enxerga a Global Config (`ligada`). Sem o cabeçalho, ou com outro
+      // valor, as lojas ficariam sem a reserva quando a caderneta cair.
+      else if (exigirReserva && reserva !== "ligada")
+        problemas.push(
+          `candidato respondeu a "/" (HTTP ${res.status}, x-ikcous-caderneta ${celula(caderneta)}) ${reserva === null ? "sem x-ikcous-reserva" : `com x-ikcous-reserva=${celula(reserva)}`}, esperado ligada: o deploy novo não enxerga a reserva da caderneta (variável GLOBAL_CONFIG ausente neste deploy, ou a Global Config não conectada em Production); promover este deploy deixaria as lojas sem a reserva se a caderneta cair`,
         );
     } catch (e) {
       problemas.push(`"/" do candidato não lida: ${e.message}`);
@@ -1973,6 +2006,130 @@ export async function contextoDaRelease({ sha, politica, canais, deps }) {
   };
 }
 
+// ------------------------------------------------------------------ passo 4b: reserva da caderneta
+
+/** Propagação da Global Config (até 10 s, doc da Vercel): grava, espera, promove. */
+export const ESPERA_DA_RESERVA_MS = 10000;
+
+/**
+ * O passo 4b (PLANO-RESERVA-DA-CADERNETA-26-11, T9), a partir do inventário
+ * que o portão JÁ leu. Só roda sem bloqueio nas etapas 1–3. Devolve
+ * { linhas, bloqueios }:
+ *  - desligada (politica.json globalConfigId null ou sem o bloco): só avisa;
+ *  - configuração fora do formato: bloqueia;
+ *  - ensaio: SÓ LÊ a store e mostra a diferença; bloqueia o que faria o
+ *    --promover recusar (endereço indeterminado, reserva recusada, store não
+ *    lida), para o "PRONTO" do ensaio continuar valendo para o --promover;
+ *  - --promover: `gravarReserva` (grava só se a LISTA de lojas mudou, relê e
+ *    confere); gravada = espera a propagação antes do promote; qualquer outro
+ *    desfecho (recusa, falha, cota) bloqueia e o front NÃO é promovido.
+ * `lojasObrigatorias` já vem SEM as lojas fora do ar por decisão: a reserva só
+ * leva loja ativa (D3), e loja adormecida não pode travar a publicação.
+ */
+export async function passoDaReserva({
+  config,
+  inventario,
+  politica,
+  sha,
+  agora,
+  lojasObrigatorias,
+  promover,
+  api,
+  esperar,
+}) {
+  const linhas = ["## 4b. Reserva da caderneta", ""];
+  const bloqueios = [];
+  const alvo = "reserva da caderneta";
+  if (config.globalConfigId === null) {
+    linhas.push(
+      `AVISO: ${config.motivo ?? "a reserva da caderneta não está configurada."} A publicação segue sem a reserva.`,
+      "",
+    );
+    return { linhas, bloqueios };
+  }
+  if (!config.configurada) {
+    bloqueios.push({
+      alvo: "scripts/frota/politica.json",
+      motivo: config.motivo,
+    });
+    linhas.push(`BLOQUEADO: ${config.motivo}`, "");
+    return { linhas, bloqueios };
+  }
+  const nova = montarReserva(inventario, { sha, agora, politica });
+  const indeterminados = enderecosIndeterminados(inventario, politica);
+  linhas.push(
+    `Montada: ${Object.keys(nova.hosts).length} endereços de lojas ativas.`,
+  );
+
+  if (!promover) {
+    for (const p of [
+      ...problemasDosIndeterminados(indeterminados),
+      ...problemasDaReserva(nova, { lojasObrigatorias }),
+    ])
+      bloqueios.push({ alvo, motivo: `o --promover recusaria: ${p}` });
+    let atual;
+    try {
+      atual = await lerReservaAtual(api, config);
+    } catch (e) {
+      bloqueios.push({
+        alvo,
+        motivo: `reserva atual não lida (o --promover também não gravaria): ${e.message}`,
+      });
+      linhas.push("Na store: NÃO LIDA.", "");
+      return { linhas, bloqueios };
+    }
+    linhas.push(
+      atual === null
+        ? "Na store: nenhuma reserva gravada ainda."
+        : "Na store: reserva lida.",
+      mesmaListaDeLojas(atual, nova)
+        ? "Igual à atual (só a lista de lojas conta): o --promover não gravaria nada."
+        : "Diferente da atual: o --promover gravaria a reserva antes de promover.",
+      "",
+      ...descreverDiferenca(diferenca(atual, nova)),
+      "",
+    );
+    return { linhas, bloqueios };
+  }
+
+  const r = await gravarReserva({
+    nova,
+    api,
+    config,
+    lojasObrigatorias,
+    indeterminados,
+  });
+  if (r.diferenca) linhas.push("", ...descreverDiferenca(r.diferenca));
+  if (r.estado === "igual")
+    linhas.push(
+      "",
+      "Igual à atual (só a lista de lojas conta): nada gravado.",
+      "",
+    );
+  else if (r.estado === "gravada") {
+    linhas.push(
+      "",
+      `Gravada e conferida na releitura. Esperando ${ESPERA_DA_RESERVA_MS / 1000} s para a Global Config propagar antes de promover.`,
+      "",
+    );
+    await esperar(ESPERA_DA_RESERVA_MS);
+  } else {
+    // Cota tem mensagem e alvo próprios: nada está quebrado, o plano grátis
+    // só não aceita mais gravações neste mês.
+    const alvoDaFalha =
+      r.estado === "cota"
+        ? "reserva da caderneta (cota de gravações da Vercel)"
+        : alvo;
+    for (const m of r.motivos)
+      bloqueios.push({
+        alvo: alvoDaFalha,
+        motivo: `${m}. O front NÃO foi promovido: sem a reserva em dia, uma loja da lista nova ficaria fora do ar se a caderneta cair`,
+      });
+    linhas.push(`BLOQUEADO (${r.estado}).`, "");
+  }
+  return { linhas, bloqueios };
+}
+
 // ------------------------------------------------------------------ orquestração
 
 export async function publicarRelease(opcoes, deps) {
@@ -1988,6 +2145,10 @@ export async function publicarRelease(opcoes, deps) {
     "",
   ];
 
+  // A reserva da caderneta (passo 4b): desligada = politica.json sem a store
+  // (globalConfigId null, ou sem o bloco); aí nada a exige.
+  const configReserva = configDaReserva(politica);
+
   // 1. candidato
   const cand = await conferirCandidato({
     sha,
@@ -1995,6 +2156,7 @@ export async function publicarRelease(opcoes, deps) {
     politica,
     vercelApi: deps.vercelApi,
     fetchImpl: deps.fetchImpl,
+    exigirReserva: configReserva.globalConfigId !== null,
   });
   linhas.push(
     "## 1. Candidato",
@@ -2224,6 +2386,29 @@ export async function publicarRelease(opcoes, deps) {
       "```",
       "",
     );
+  }
+
+  // 4b. reserva da caderneta: só sem bloqueio (nunca grava para uma release
+  // que não vai ao ar). Ensaio só lê; --promover grava ANTES do promote, e o
+  // que ele recusar entra nos bloqueios abaixo: o front não é promovido.
+  if (!bloqueios.length) {
+    const foraDoArRefs = new Set(foraDoAr.map((l) => l.ref));
+    const passo = await passoDaReserva({
+      config: configReserva,
+      inventario,
+      politica,
+      sha,
+      agora,
+      lojasObrigatorias: lojasObrigatorias.filter(
+        (l) => !foraDoArRefs.has(l.ref),
+      ),
+      promover,
+      api: deps.reservaApi,
+      esperar:
+        deps.esperar ?? ((ms) => new Promise((ok) => setTimeout(ok, ms))),
+    });
+    linhas.push(...passo.linhas);
+    bloqueios.push(...passo.bloqueios);
   }
 
   // 4. portão
@@ -2734,6 +2919,9 @@ export function dependenciasReais({ rodarGh, rodarSupabase } = {}) {
       );
       return rodar(comando, args, { timeout: 400000 });
     },
+    // Passo 4b: a Global Config pela sessão da CLI vercel logada (D2).
+    reservaApi: criarVercelApi(),
+    esperar: (ms) => new Promise((ok) => setTimeout(ok, ms)),
     listarMigrationsNoSha: async (sha) =>
       (await git(["ls-tree", "--name-only", `${sha}:supabase/migrations`]))
         .split("\n")
