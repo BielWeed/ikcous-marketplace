@@ -693,17 +693,21 @@ Deno.test("loja nova só por dado (workflows): o gerador acrescenta SÓ a linha 
     const atual = Deno.readTextFileSync(join(DIR_WF, nome));
     const comNova = gerador.sincronizar(atual, nova);
     assert(comNova !== atual, `${nome}: a loja nova devia gerar uma linha`);
-    // só linhas ACRESCENTADAS (a cadeia de publicar-functions é uma linha reescrita)
+    // só linhas ACRESCENTADAS (a cadeia de publicar-functions e o grupo POR BANCO
+    // de aplicar/ledger são uma linha reescrita, com a loja nova no mapa)
     const a = atual.split("\n");
     const n = comNova.split("\n");
     const novasLinhas = n.filter((l) => !a.includes(l));
+    const GRUPO_DO_BANCO = "group: banco-da-loja-${{ fromJSON('";
     assert(
       novasLinhas.length >= 1 &&
         novasLinhas.every(
           (l) =>
             l.includes(SEGREDO_NOVO) ||
             l.includes("SUPABASE_ACCESS_TOKEN: ${{") ||
-            l === `          - ${NOVA}`,
+            l === `          - ${NOVA}` ||
+            (l.includes(GRUPO_DO_BANCO) &&
+              l.includes(`"${NOVA}":"${REF_NOVA}"`)),
         ),
       `${nome}: linhas novas inesperadas:\n${novasLinhas.join("\n")}`,
     );
@@ -719,13 +723,15 @@ Deno.test("loja nova só por dado (workflows): o gerador acrescenta SÓ a linha 
         l,
         `inputs.projeto == '${NOVA}' && secrets.${SEGREDO_NOVO}`,
       );
-    // nenhuma linha de hoje some, exceto a cadeia única de publicar-functions (reescrita com a nova)
+    // nenhuma linha de hoje some, exceto a cadeia única de publicar-functions e
+    // o grupo por banco (reescritos com a nova)
     const sumiram = a.filter((l) => !n.includes(l));
     assert(
-      sumiram.every((l) =>
-        l.includes(
-          "SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada'",
-        ),
+      sumiram.every(
+        (l) =>
+          l.includes(
+            "SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada'",
+          ) || l.includes(GRUPO_DO_BANCO),
       ),
       `${nome}: linhas sumiram`,
     );

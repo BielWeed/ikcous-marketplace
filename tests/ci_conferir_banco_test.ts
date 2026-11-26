@@ -492,7 +492,9 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
     () => {
       const iLedger = yaml.indexOf("\n  ledger:");
       const blocoLedger = yaml.slice(iLedger);
-      assertStringIncludes(blocoLedger, "group: banco-da-loja");
+      // 26/11/2026: o grupo é POR BANCO (banco-da-loja-<ref>, gerado do
+      // cadastro; ver tests/frota_grupo_do_banco_test.ts).
+      assertStringIncludes(blocoLedger, "group: banco-da-loja-${{ fromJSON(");
       assertStringIncludes(blocoLedger, "cancel-in-progress: false");
       // Sem `queue: max` a fila padrão ("single") CANCELA o run pendente
       // em vez de esperar a vez — a fila padrão nunca deveria ser usada

@@ -50,7 +50,9 @@ para todos os projetos da conta — provado que isso permitia mandar a requisiç
 endpoint (`.../restart`) ou para OUTRO projeto. Por isso `projeto` agora é uma lista fechada
 (`loja`/`sandbox`), resolvida para o ref dentro do script. Os dois workflows (este e
 `aplicar-migrations.yml`) usam `concurrency` com `queue: max`, não o default: sem isso, disparar
-uma segunda vez enquanto a primeira roda CANCELA a pendente em vez de esperar a vez.
+uma segunda vez enquanto a primeira roda CANCELA a pendente em vez de esperar a vez. Desde
+26/11/2026 o grupo é POR BANCO (`banco-da-loja-<ref>`, gerado de `scripts/frota/lojas.json`):
+a fila é de cada banco, e lojas de bancos diferentes não se esperam.
 
 Correspondência com os passos deste runbook:
 

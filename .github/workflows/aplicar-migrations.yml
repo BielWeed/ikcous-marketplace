@@ -96,9 +96,15 @@ jobs:
     name: Aplicar migrations
     runs-on: ubuntu-latest
     # Mesmo grupo de conferir-banco-da-loja.yml (job `ledger`): nunca aplicar
-    # migration enquanto o ledger está sendo gravado, nem o contrário.
+    # migration enquanto o ledger está sendo gravado, nem o contrário, nem dois
+    # applies no mesmo banco. O grupo é POR BANCO (banco-da-loja-<ref>, gerado do
+    # cadastro; `loja` e `ikcous-publicada` são o mesmo banco e dividem a fila):
+    # bancos diferentes andam em paralelo, e cada fila tem o teto de 100 pendentes
+    # do GitHub só para a SUA loja (26/11/2026; ver scripts/frota/lojas-nos-workflows.cjs).
     concurrency:
-      group: banco-da-loja
+      # LOJAS-GRUPO-DO-BANCO-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
+      group: banco-da-loja-${{ fromJSON('{"loja":"cafkrminfnokvgjqtkle","sandbox":"lofznuxcvezrhxsgjqyg","ikcous-publicada":"cafkrminfnokvgjqtkle","savy":"gnjsrucsmjkajijrakzr"}')[inputs.projeto] || 'sem-cadastro' }}
+      # LOJAS-GRUPO-DO-BANCO-FIM
       cancel-in-progress: false
       # queue: max (não o default "single"): sem isto, disparar A (72),
       # depois B (73) e C (74) cancela B e aplica só A e C, fora de ordem —
