@@ -689,6 +689,9 @@ O ensaio de ponta a ponta (C5) inclui um PIX real de R$ 1.
 > Conferido no código de [`scripts/frota/publicar-release.mjs`](../../scripts/frota/publicar-release.mjs)
 > (`--sessao` e `--faxina`) e [`scripts/frota/ponte-oauth.mjs`](../../scripts/frota/ponte-oauth.mjs)
 > em 26/11/2026. **Ainda não foi ensaiada com uma loja de verdade** (é a T12 do plano da ponte A).
+> **E ainda não leva uma release até o fim numa loja OAuth:** enquanto o download do código das
+> functions pela API (T3) não entrar, a loja fica "não lida" e o relatório dá `BLOQUEADO`. O que já
+> funciona e o que falta está em [Lacunas conhecidas](#lacunas-conhecidas-26112026).
 
 **Por que existe.** A loja OAuth não tem segredo fixo no GitHub. Os workflows da frota
 (`gh workflow run ...`) só conseguem mexer nela enquanto o segredo `SUPABASE_ACCESS_TOKEN_<SLUG>`
@@ -850,6 +853,32 @@ node scripts/frota/publicar-release.mjs --faxina
 - **Se aparecer `A faxina falhou: ...`:** copie só essa linha e mande para o agente. Até ele
   responder, não abra outra sessão.
 
+**A faxina só enxerga as lojas marcadas com `acesso: "oauth"` no `lojas.json` da pasta onde você
+roda o comando.** Ela não olha a lista de segredos do GitHub inteira: só tenta apagar os nomes
+dessas lojas. Os segredos da IKCOUS e da Savy nunca são tocados. Na prática:
+
+- **Rode a faxina na mesma pasta em que rodou a sessão.** Numa pasta com código mais antigo, em que
+  a loja ainda não estava cadastrada, ela não vê o segredo dela e responde
+  `nenhum segredo de loja OAuth no GitHub: nada a apagar` mesmo com o segredo lá.
+- **Loja que saiu do `lojas.json`, ou perdeu a marca `oauth`, depois de uma sessão interrompida:**
+  a faxina não a enxerga mais. Confira os nomes no GitHub (este comando mostra só nomes, nunca
+  valores):
+
+  ```powershell
+  gh secret list
+  ```
+
+  Se aparecer `SUPABASE_ACCESS_TOKEN_<SLUG>` de uma loja OAuth, apague à mão (troque `<SLUG>` pelo
+  nome que apareceu):
+
+  ```powershell
+  gh secret delete SUPABASE_ACCESS_TOKEN_<SLUG> --app actions
+  ```
+
+  Na dúvida se o nome é de loja OAuth, pare e pergunte ao agente: os da IKCOUS e da Savy
+  (`SUPABASE_ACCESS_TOKEN_IKCOUS`, `SUPABASE_ACCESS_TOKEN_SAVY`) e o `SUPABASE_ACCESS_TOKEN` sozinho
+  **não se apagam**.
+
 **Ctrl+C na janela da sessão** também fecha e apaga os segredos, mas sem esperar os runs: um run
 que ainda estava na fila fica sem o segredo e para em `SEM_ACESSO`. Depois do Ctrl+C, confira o
 passo 6 do mesmo jeito.
@@ -972,12 +1001,36 @@ no painel do projeto dela):
 - **conferir (passo 18):** não existe; a reconciliação se lê pelo SQL Editor do projeto e a consulta
   88c, pelo SQL Editor ou pelos workflows com segredo fixo. Espere o C3.
 
-**Release para loja só-OAuth ainda não existe.** A release de functions e de migrations para loja
-só-OAuth ainda não existe: o `publicar-functions.yml` só usa segredos fixos do repositório
-(linhas 136 e 211-213), e o mesmo vale para os outros workflows da frota. **Até lá a loja NÃO entra
-em `functionsSoPeloWorkflow`** (`scripts/frota/canais-de-backend.json`), mesmo que o comentário
-dessa lista diga o contrário. Se entrasse, o `functions-da-loja.mjs` passaria a recusá-la e as
-functions de dinheiro ficariam velhas, sem conserto.
+**Release para loja só-OAuth: a sessão cobre uma parte, e ainda não leva uma release até o fim.**
+
+O que o código já faz:
+
+- **O portão lê a loja OAuth.** Para cada loja com `acesso: "oauth"` no `lojas.json`, o
+  `publicar-release.mjs` lê o ledger de migrations e a lista de functions pela Management API, com o
+  token da lojista que vem do cofre do PC do dono (`scripts/frota/leitor-oauth.mjs`). A IKCOUS e a
+  Savy continuam sendo lidas pelo CLI, como antes.
+- **A sessão põe o segredo no GitHub só enquanto está aberta.** O `--sessao` grava
+  `SUPABASE_ACCESS_TOKEN_<SLUG>` ao abrir e apaga ao fechar. A `--faxina` apaga o que sobrou (ver
+  [a sessão](#publicar-quando-há-loja-oauth-a-sessão)). Os workflows leem esse segredo pelo nome que
+  o `cadastro-da-loja.mjs` escreve neles. Fora da sessão, o passo `exigir-segredo` do workflow para
+  com `... — loja OAuth: dispare dentro da sessão de publicação (publicar-release.mjs --sessao)`.
+
+O que ainda falta:
+
+- **O código das functions da loja OAuth ainda não se baixa pela API (T3).** Por isso o portão
+  marca a loja como **não lida**, com o motivo `o código das functions dela ainda não se baixa pela
+  API (T3)`, e isso **bloqueia a publicação da frota inteira**, IKCOUS e Savy inclusive. Na prática,
+  enquanto a T3 não entrar, uma loja com `acesso: "oauth"` no `lojas.json` impede qualquer
+  `promover`.
+- **Ninguém provou que os workflows publicam numa loja OAuth.** Falta a prova P2: o CLI do Supabase
+  que o `publicar-functions.yml` usa aceita o token OAuth? Se não aceitar, entra a T10 (publicar
+  pela API). O `aplicar-migrations.yml` e os outros workflows da frota também nunca rodaram com o
+  token OAuth.
+- **A sessão nunca foi ensaiada com uma loja de verdade** (T12).
+- **Até a publicação de functions por workflow estar provada numa loja OAuth, ela NÃO entra em
+  `functionsSoPeloWorkflow`** (`scripts/frota/canais-de-backend.json`), mesmo que o comentário dessa
+  lista diga o contrário. Se entrasse, o `functions-da-loja.mjs` passaria a recusá-la e as functions
+  de dinheiro ficariam velhas, sem conserto.
 
 **Outras lacunas:**
 
