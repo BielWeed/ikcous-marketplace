@@ -398,20 +398,11 @@ describe("primeira visita leve, em navegador de verdade", () => {
     await semErroGenerico(pagina);
   });
 
-  // LACUNA CONHECIDA (26/11/2026), registrada para decisão: com a rede muda
-  // (onLine true), o app não sabe que está sem internet, e a tela do carrinho
-  // diz "Não conseguimos carregar esta tela. Use o botão Tentar de novo." (o
-  // `LocalErrorBoundary`, que só fala de conexão com onLine false). O sócio
-  // pediu "Você está sem internet" nos dois jeitos. `it.fails`: fica verde
-  // enquanto a lacuna existir e vira vermelho no dia em que ela fechar.
-  it.fails(
-    "LACUNA: com a rede muda, o carrinho diz que está sem internet",
-    async () => {
-      const pagina = await primeiraVisitaComRedeMuda();
-      await abrirCarrinho(pagina);
-      await esperarTexto(pagina, AVISO_SEM_INTERNET, 45_000);
-    },
-  );
+  it("com a rede muda, o carrinho diz que está sem internet", async () => {
+    const pagina = await primeiraVisitaComRedeMuda();
+    await abrirCarrinho(pagina);
+    await esperarTexto(pagina, AVISO_SEM_INTERNET, 45_000);
+  });
 
   it("1 visita e REABRIR sem rede: a vitrine abre do cache", async () => {
     const pagina = await primeiraVisita();

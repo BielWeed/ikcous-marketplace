@@ -158,11 +158,6 @@ const urlsDoNucleo = Array.from(
   ),
 ) as string[];
 
-/** Caminho do registro (no cache de cada versão) com a revisão dos arquivos
- * SEM hash no nome — a atualização seguinte só os copia se a revisão for a
- * mesma. Nome que nenhum arquivo do app usa. */
-const REGISTRO_DE_REVISOES = "/__ikcous/revisoes-do-precache.json";
-
 /** Arquivo cujo nome carrega o hash do conteúdo (o Vite escreve assim tudo em
  * `/assets/`): mesmo nome = mesmo conteúdo, em qualquer versão. */
 function temHashNoNome(caminho: string): boolean {
@@ -171,21 +166,6 @@ function temHashNoNome(caminho: string): boolean {
 
 function ehPagina(caminho: string): boolean {
   return /\.html?$/i.test(caminho);
-}
-
-/** A revisão de cada arquivo sem hash e que não é página, como o manifesto
- * desta versão diz. É o que vai para o `REGISTRO_DE_REVISOES`. */
-const revisoesSemHash = new Map<string, string>();
-for (const entry of precacheManifest as any[]) {
-  if (typeof entry?.url !== "string" || typeof entry.revision !== "string")
-    continue;
-  try {
-    const caminho = caminhoDoPrecache(entry.url);
-    if (temHashNoNome(caminho) || ehPagina(caminho)) continue;
-    revisoesSemHash.set(caminho, entry.revision);
-  } catch {
-    // Endereço que não se resolve: sem registro, a próxima versão o baixa.
-  }
 }
 
 /** Os caches de OUTRA versão do app neste aparelho (numa atualização, o da
@@ -215,31 +195,17 @@ async function listaDestaVersao(): Promise<string[]> {
   return urlsDoNucleo;
 }
 
-/** O registro de revisões que a versão anterior gravou; `null` se não há
- * (versão anterior a este plano) ou não dá para ler. */
-async function lerRegistroDeRevisoes(
-  cache: Cache,
-): Promise<Map<string, unknown> | null> {
-  try {
-    const guardado = await cache.match(REGISTRO_DE_REVISOES);
-    if (!guardado) return null;
-    const lido = await guardado.json();
-    return lido && typeof lido === "object" && !Array.isArray(lido)
-      ? new Map(Object.entries(lido))
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Numa atualização, copia do cache da versão anterior o que não mudou, em vez
- * de baixar de novo: arquivo de `/assets/` com o MESMO nome (o hash no nome
- * garante o mesmo conteúdo) e, fora de `/assets/`, o que tem a MESMA revisão
- * no registro da versão anterior. Nunca página (HTML): a ficha e os arquivos
- * citados mudam de uma versão para outra. Nunca cópia que é HTML no lugar do
- * arquivo (o catch-all da hospedagem). Devolve o que copiou; qualquer falha
- * só faz baixar da rede, como antes.
+ * de baixar de novo: SÓ arquivo de `/assets/` com o MESMO nome (o hash no nome
+ * garante o mesmo conteúdo). Arquivo sem hash no nome (`loading.css`,
+ * `silent-guardian.js`, ícones) vem SEMPRE da rede: a revalidação em segundo
+ * plano do `fetch` regrava no cache da versão em uso a cópia que o servidor
+ * tem agora, sem olhar a revisão — o cache anterior pode guardar, com o mesmo
+ * nome, o conteúdo de uma versão que nunca ativou (revisão Opus do PR #1906).
+ * Nunca página (HTML). Nunca cópia que é HTML no lugar do arquivo (o catch-all
+ * da hospedagem). Devolve o que copiou; qualquer falha só faz baixar da rede,
+ * como antes.
  */
 async function aproveitarDoAppAnterior(
   cache: Cache,
@@ -249,16 +215,10 @@ async function aproveitarDoAppAnterior(
   try {
     for (const nome of (await cachesDoAppAnterior()) ?? []) {
       const anterior = await caches.open(nome);
-      const revisoesAnteriores = await lerRegistroDeRevisoes(anterior);
       for (const url of urls) {
         if (copiados.has(url)) continue;
         const caminho = caminhoDoPrecache(url);
-        if (ehPagina(caminho)) continue;
-        if (!temHashNoNome(caminho)) {
-          const revisao = revisoesSemHash.get(caminho);
-          if (!revisao || revisoesAnteriores?.get(caminho) !== revisao)
-            continue;
-        }
+        if (ehPagina(caminho) || !temHashNoNome(caminho)) continue;
         const guardado = await anterior.match(url);
         if (!guardado?.ok) continue;
         const tipo = guardado.headers?.get("content-type") ?? "";
@@ -271,22 +231,6 @@ async function aproveitarDoAppAnterior(
     console.warn("[SW] Falha ao aproveitar o cache da versão anterior:", e);
   }
   return copiados;
-}
-
-/** Grava o registro de revisões desta versão (só se há o que registrar). Não
- * derruba o install: sem ele, a próxima versão só baixa de novo. */
-async function gravarRegistroDeRevisoes(cache: Cache): Promise<void> {
-  if (revisoesSemHash.size === 0) return;
-  try {
-    await cache.put(
-      REGISTRO_DE_REVISOES,
-      new Response(JSON.stringify(Object.fromEntries(revisoesSemHash)), {
-        headers: { "content-type": "application/json" },
-      }),
-    );
-  } catch (e) {
-    console.warn("[SW] Falha ao gravar o registro de revisões:", e);
-  }
 }
 
 /**
@@ -339,10 +283,7 @@ async function precachearOAppInteiro(urls: string[]): Promise<void> {
   }
   if (faltaram.length === 0)
     faltaram = await arquivosQueVieramComoHtml(cache, urls);
-  if (faltaram.length === 0) {
-    await gravarRegistroDeRevisoes(cache);
-    return;
-  }
+  if (faltaram.length === 0) return;
   // Cache que ESTE install criou e ficou pela metade não pode ficar visível
   // para o `caches.match` do service worker antigo.
   if (!jaExistia) {
@@ -788,6 +729,11 @@ function completarOAppEmSegundoPlano(event: any): void {
     await new Promise((resolve) =>
       setTimeout(resolve, ESPERA_PARA_COMPLETAR_MS),
     );
+    // Uma versão nova pode ter ativado durante a espera e apagado o cache
+    // desta: abri-lo o recriaria vazio e o completar baixaria o app inteiro
+    // para um cache órfão (revisão Opus do PR #1906). Atualização a caminho:
+    // o resto seria de uma versão que vai sair.
+    if (!(await caches.has(CACHE_NAME)) || haAtualizacaoAChegar()) return;
     const faltando = await arquivosFaltando(urlsDoPrecache);
     if (faltando.length === 0) return;
     const cache = await caches.open(CACHE_NAME);

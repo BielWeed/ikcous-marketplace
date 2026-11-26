@@ -12,7 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *  - Atualização (há cache da versão anterior): o app inteiro, como sempre,
  *    mas o que já está guardado com o MESMO nome em /assets/ (o nome leva o
  *    hash do conteúdo) é copiado, não baixado; nunca HTML (T6). Fora de
- *    /assets/, só com a MESMA revisão do manifesto (T7).
+ *    /assets/, nunca: a revalidação do `fetch` regrava o cache da versão em
+ *    uso sem olhar revisão (revisão Opus do PR #1906 desfez a cópia por
+ *    revisão do T7).
  *  - Volta (navegação atendida pelo service worker): completa o resto em 2º
  *    plano — 3 s depois, lotes de 6, parando com atualização a caminho, rede
  *    lenta ou economia de dados; nunca rejeita (T8).
@@ -27,6 +29,9 @@ type Listener = (event: unknown) => void;
 const ORIGEM = "https://loja.exemplo.com";
 const CACHE_VELHO = "app-cache-1.0.0";
 const CACHE_NOVO = "app-cache-2.0.0";
+/** O registro de revisões que um build intermediário deste PR gravava (a
+ * cópia por revisão saiu na revisão Opus do PR #1906): fica no molde para
+ * provar que nem ele faz o install copiar arquivo sem hash no nome. */
 const REVISOES = "/__ikcous/revisoes-do-precache.json";
 
 /** O manifesto de um build com a marca: núcleo = entrada, vitrine, CSS,
@@ -266,9 +271,7 @@ describe("1ª instalação: só o núcleo (T4+T5)", () => {
 
     await rodar("install");
 
-    expect(guardados(armazem, CACHE_NOVO)).toEqual(
-      [...NUCLEO, "/", REVISOES].sort(),
-    );
+    expect(guardados(armazem, CACHE_NOVO)).toEqual([...NUCLEO, "/"].sort());
     for (const fora of FORA_DO_NUCLEO) expect(buscas).not.toContain(fora);
   });
 
@@ -430,7 +433,7 @@ describe("atualização: o app inteiro, copiando o que não mudou (T6+T7)", () =
     ).toBe("// assets/HomeView-H1.js");
   });
 
-  it("fora de /assets/: copia com a MESMA revisão, baixa com revisão diferente", async () => {
+  it("fora de /assets/: baixa da rede mesmo com a MESMA revisão no registro anterior", async () => {
     const { rodar, armazem, buscas } = await montar({
       jaExistem: velhoComNucleo({
         "/icons/heart-96x96.png": "heart-1",
@@ -440,48 +443,15 @@ describe("atualização: o app inteiro, copiando o que não mudou (T6+T7)", () =
 
     await rodar("install");
 
-    expect(buscas).not.toContain("/icons/heart-96x96.png");
+    expect(buscas).toContain("/icons/heart-96x96.png");
     expect(
       await armazem.get(CACHE_NOVO)?.get("/icons/heart-96x96.png")?.text(),
-    ).toBe("png velho heart");
+    ).toBe("png icons/heart-96x96.png");
     expect(buscas).toContain("/icons/badge-96x96.png");
-    expect(
-      await armazem.get(CACHE_NOVO)?.get("/icons/badge-96x96.png")?.text(),
-    ).toBe("png icons/badge-96x96.png");
+    expect(armazem.get(CACHE_NOVO)?.has(REVISOES)).toBe(false);
   });
 
-  it("fora de /assets/ e sem registro de revisão na versão anterior: baixa (como hoje)", async () => {
-    const { rodar, buscas } = await montar({ jaExistem: velhoComNucleo(null) });
-
-    await rodar("install");
-
-    expect(buscas).toContain("/icons/heart-96x96.png");
-    expect(buscas).toContain("/icons/badge-96x96.png");
-  });
-
-  it("registro de revisões ilegível: baixa, não quebra o install", async () => {
-    const jaExistem = velhoComNucleo(null, {
-      [REVISOES]: arquivo("{nao e json", "text/plain"),
-    });
-    const { rodar, buscas } = await montar({ jaExistem });
-
-    await expect(rodar("install")).resolves.toBeDefined();
-    expect(buscas).toContain("/icons/heart-96x96.png");
-  });
-
-  it("o install grava o registro de revisões (só fora de /assets/, sem HTML) para a próxima versão", async () => {
-    const { rodar, armazem } = await montar();
-
-    await rodar("install");
-
-    const registro = await armazem.get(CACHE_NOVO)?.get(REVISOES)?.json();
-    expect(registro).toEqual({
-      "/icons/heart-96x96.png": "heart-1",
-      "/icons/badge-96x96.png": "badge-1",
-    });
-  });
-
-  it("duas versões em sequência: a 2ª só baixa o que mudou (ponta a ponta pelo próprio registro)", async () => {
+  it("duas versões em sequência: a 2ª só baixa o /assets/ que mudou e o que não tem hash no nome", async () => {
     const v1 = await montar({ versao: "1.0.0", manifesto: SEM_MARCA });
     await v1.rodar("install");
     await v1.rodar("activate");
@@ -510,8 +480,52 @@ describe("atualização: o app inteiro, copiando o que não mudou (T6+T7)", () =
       (b) => b !== "/" && b !== "/identidade.json",
     );
     expect(deArquivo.sort()).toEqual(
-      ["/assets/a-6-NOVO.js", "/index.html", "/offline.html"].sort(),
+      [
+        "/assets/a-6-NOVO.js",
+        "/icons/badge-96x96.png",
+        "/icons/heart-96x96.png",
+        "/index.html",
+        "/offline.html",
+      ].sort(),
     );
+  });
+
+  it("arquivo SEM hash no nome nunca é copiado: a N+2 que volta à revisão da N baixa o loading.css, não leva o da N+1 que o cache da N guardou", async () => {
+    // 1. A cliente está na N (loading.css revisão "load-N").
+    // 2. Sai a N+1 com outro loading.css; a revalidação em segundo plano do
+    //    fetch regrava no cache da N (versão em uso) o loading.css da N+1,
+    //    sem olhar revisão — a etiqueta da N continua dizendo "load-N".
+    // 3. A N+1 fica esperando (a cliente não ativa).
+    // 4. Sai a N+2, que reverte: revisão "load-N" de novo.
+    // 5. O install da N+2 NÃO pode copiar o loading.css do cache da N.
+    const manifesto = [
+      ...MANIFESTO,
+      { url: "loading.css", revision: "load-N" },
+    ];
+    const rede = redeDoBuild();
+    rede.set("/loading.css", () => arquivo("/* loading da N */", "text/css"));
+    const { rodar, armazem, buscas } = await montar({
+      manifesto,
+      rede,
+      jaExistem: velhoComNucleo(
+        { "/loading.css": "load-N", "/icons/heart-96x96.png": "heart-1" },
+        { "/loading.css": arquivo("/* loading da N+1 */", "text/css") },
+      ),
+    });
+
+    await rodar("install");
+
+    expect(buscas).toContain("/loading.css");
+    expect(await armazem.get(CACHE_NOVO)?.get("/loading.css")?.text()).toBe(
+      "/* loading da N */",
+    );
+    // O mesmo vale para todo arquivo fora de /assets/ (ícones etc.).
+    expect(buscas).toContain("/icons/heart-96x96.png");
+    // Controle: /assets/ (hash no nome) continua copiado, sem rede.
+    expect(buscas).not.toContain("/assets/HomeView-H1.js");
+    expect(
+      await armazem.get(CACHE_NOVO)?.get("/assets/HomeView-H1.js")?.text(),
+    ).toBe("// velho HomeView");
   });
 
   it("o activate da atualização exige o app INTEIRO antes de apagar o anterior (como hoje)", async () => {
@@ -603,6 +617,21 @@ describe("volta: completa o resto em 2º plano (T8)", () => {
     await vi.runAllTimersAsync();
     await Promise.all(outra.promessas);
     expect(deFora(m.buscas)).toEqual([]);
+  });
+
+  it("versão nova ativou durante a espera e apagou o cache desta: o completar não o recria nem baixa nada", async () => {
+    const m = await primeiraVisitaInstalada();
+    const { promessas } = m.navegar("/");
+    await vi.advanceTimersByTimeAsync(1000);
+    // O activate da versão nova apaga app-cache-<esta> no meio da espera.
+    m.armazem.delete(CACHE_NOVO);
+
+    await vi.runAllTimersAsync();
+    await Promise.all(promessas);
+
+    expect(m.armazem.has(CACHE_NOVO)).toBe(false);
+    // Só a própria navegação foi à rede; nenhum arquivo do precache.
+    expect(m.buscas.filter((b) => b !== "/")).toEqual([]);
   });
 
   it("para com rede lenta (aviso da página) ou sem sinal", async () => {

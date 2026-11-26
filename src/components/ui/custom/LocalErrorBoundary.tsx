@@ -1,7 +1,7 @@
 import { AdminErrorState } from "@/components/admin/AdminErrorState";
 import { Button } from "@/components/ui/button";
 import { tentarDeNovoAbaQueNaoBaixou } from "@/lib/recarga-de-aba-que-falhou";
-import { ehErroDeChunk } from "@/lib/recuperacao-chunk";
+import { ehErroDeChunk, verificarRedeDeVerdade } from "@/lib/recuperacao-chunk";
 import { CircleAlert, RefreshCcw, WifiOff } from "lucide-react";
 import { Component, createRef } from "react";
 import type { ErrorInfo, ReactNode } from "react";
@@ -54,6 +54,42 @@ export class LocalErrorBoundary extends Component<Props, State> {
       error,
       errorInfo,
     );
+    this.testarARedeAoAparecer(error);
+  }
+
+  /** A sonda da rede que esta tela de erro disparou ao aparecer; `null` quando
+   * a resposta dela não vale mais (a cliente tocou, a tela saiu ou o erro foi
+   * zerado). */
+  private sondaAoAparecer: object | null = null;
+
+  /**
+   * Tela que não baixou com `navigator.onLine` dizendo "online": a rede pode
+   * estar MUDA (conectada e sem resposta), e a frase pediria "Tentar de novo"
+   * em vez de falar da conexão. Testa a internet já ao aparecer, sem esperar
+   * toque — a mesma sonda do botão (`/version.json`, que sempre existe no
+   * servidor) — e só troca para "sem-rede" se ninguém mexeu na tela desde
+   * então (decisão do sócio, 26/11/2026). Com `onLine === false` a frase já
+   * fala da conexão: não testa.
+   */
+  private testarARedeAoAparecer(error: Error) {
+    this.sondaAoAparecer = null;
+    if (this.props.fallback || !ehErroDeChunk(error?.message)) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    const sonda = {};
+    this.sondaAoAparecer = sonda;
+    void verificarRedeDeVerdade().then((temRede) => {
+      if (temRede || this.sondaAoAparecer !== sonda) return;
+      this.sondaAoAparecer = null;
+      this.setState((atual) =>
+        atual.hasError && !atual.verificando && atual.chunkAviso === "nenhum"
+          ? { chunkAviso: "sem-rede" }
+          : null,
+      );
+    });
+  }
+
+  public componentWillUnmount() {
+    this.sondaAoAparecer = null;
   }
 
   /** Tela que não baixou: o navegador memoriza a falha do import, então
@@ -61,6 +97,8 @@ export class LocalErrorBoundary extends Component<Props, State> {
    * `recarga-de-aba-que-falhou`. Rede ruim: não recarrega, só avisa. */
   private readonly handleTentarDeNovoChunk = async () => {
     if (this.state.verificando) return;
+    // A cliente tocou: a sonda de quando a tela apareceu não fala mais por ela.
+    this.sondaAoAparecer = null;
     this.setState({ verificando: true });
     const resultado = await tentarDeNovoAbaQueNaoBaixou();
     // "pagina-ficou": a página continua viva depois do prazo (aviso do
@@ -84,6 +122,7 @@ export class LocalErrorBoundary extends Component<Props, State> {
   }
 
   private handleReset = () => {
+    this.sondaAoAparecer = null;
     this.setState({
       hasError: false,
       error: null,
