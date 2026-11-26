@@ -534,6 +534,13 @@ const ALVO_DA_ATIVACAO = Object.freeze({
   hook_send_email_enabled: true,
   rate_limit_email_sent: regras.LIMITE_EMAIL_POR_HORA,
 });
+/** A chave já está no alvo? O limite segue a regra das lojas reais
+ * (regras.planejarPatchUrls): só SOBE quando está abaixo de 30; um limite
+ * maior que a dona já escolheu nunca é baixado. */
+const noAlvo = (k, v) =>
+  k === "rate_limit_email_sent"
+    ? Number.isInteger(v) && v >= regras.LIMITE_EMAIL_POR_HORA
+    : v === Reflect.get(ALVO_DA_ATIVACAO, k);
 const EXPLICACAO_DA_ATIVACAO = Object.freeze({
   SIM: "o gancho de e-mail da loja nova está ligado, com o Gmail da lojista",
   NÃO: "o gancho de e-mail NÃO foi ligado: veja o que FALTA acima",
@@ -657,10 +664,12 @@ function preCondicoes({ config, nomes, funcao, gmail, ref }) {
  * Pré-condições, todas lidas sem gravar: Gmail cadastrado (app_settings),
  * auth-send-email ACTIVE com verify_jwt === false, gancho preparado (endereço
  * desta loja + hash no formato + secret na função). Qualquer uma faltando:
- * NÃO e 0 escritas — e um gancho JÁ ligado não é desligado por aqui.
+ * NÃO e 0 escritas — e um gancho JÁ ligado não é desligado por aqui (a
+ * saída avisa que ele está LIGADO e que o e-mail do login falha).
  *
- * Com `aplicar === true`, e só o que difere do alvo: PATCH de
+ * Com `aplicar === true`, e só o que está fora do alvo: PATCH de
  * hook_send_email_enabled = true, depois PATCH de rate_limit_email_sent = 30
+ * só se o limite está abaixo de 30 (nunca baixa um maior; `noAlvo`)
  * (CHAVES_DA_ATIVACAO, nada além). Relê e confere as duas chaves e que o
  * resto do Auth não mudou. Rodar de novo com tudo no lugar: 0 escritas, SIM.
  *
@@ -681,10 +690,11 @@ export async function ativarGanchoNovo({ cliente, ref, aplicar, cadastro }) {
   const relatarItens = (itens) => {
     for (const i of itens) dizer(`${i.estado} — ${i.nome}: ${i.detalhe}`);
   };
-  const fim = (veredito) => {
-    dizer(
-      `veredito: ${veredito} (${Reflect.get(EXPLICACAO_DA_ATIVACAO, veredito)})`,
-    );
+  const fim = (
+    veredito,
+    explicacao = Reflect.get(EXPLICACAO_DA_ATIVACAO, veredito),
+  ) => {
+    dizer(`veredito: ${veredito} (${explicacao})`);
     return { veredito, linhas };
   };
 
@@ -727,12 +737,17 @@ export async function ativarGanchoNovo({ cliente, ref, aplicar, cadastro }) {
   relatarItens(itens);
   if (itens.some((i) => i.estado !== OK)) {
     dizer("nada foi gravado");
+    if (antes.hook_send_email_enabled === true)
+      return fim(
+        "NÃO",
+        "o gancho de e-mail JÁ está LIGADO, mas falta o que está acima: o e-mail do login falha até isso voltar (não desligo sozinho)",
+      );
     return fim("NÃO");
   }
 
-  // 3. o plano: só o que difere do alvo, uma chave por PATCH
+  // 3. o plano: só o que está fora do alvo, uma chave por PATCH
   const patches = CHAVES_DA_ATIVACAO.filter(
-    (k) => Reflect.get(antes, k) !== Reflect.get(ALVO_DA_ATIVACAO, k),
+    (k) => !noAlvo(k, Reflect.get(antes, k)),
   ).map((k) => ({ [k]: Reflect.get(ALVO_DA_ATIVACAO, k) }));
   for (const p of patches)
     for (const [k, v] of Object.entries(p))
@@ -741,7 +756,7 @@ export async function ativarGanchoNovo({ cliente, ref, aplicar, cadastro }) {
       );
   if (patches.length === 0) {
     dizer(
-      `nada a gravar: o gancho já está ligado e o limite já é ${regras.LIMITE_EMAIL_POR_HORA} e-mails/h`,
+      `nada a gravar: o gancho já está ligado e o limite já é de ${regras.LIMITE_EMAIL_POR_HORA} ou mais e-mails/h`,
     );
     return fim("SIM");
   }
@@ -780,14 +795,14 @@ export async function ativarGanchoNovo({ cliente, ref, aplicar, cadastro }) {
   const restantes = (c) =>
     Object.fromEntries(Object.entries(c).filter(([k]) => !enviadas.has(k)));
   const restoIgual = isDeepStrictEqual(restantes(antes), restantes(depois));
-  const confere = CHAVES_DA_ATIVACAO.every(
-    (k) => Reflect.get(depois, k) === Reflect.get(ALVO_DA_ATIVACAO, k),
+  const confere = CHAVES_DA_ATIVACAO.every((k) =>
+    noAlvo(k, Reflect.get(depois, k)),
   );
   dizer(
     `${depois.hook_send_email_enabled === true ? OK : FALTA} — gancho de e-mail ligado (releitura)`,
   );
   dizer(
-    `${depois.rate_limit_email_sent === regras.LIMITE_EMAIL_POR_HORA ? OK : FALTA} — limite de ${regras.LIMITE_EMAIL_POR_HORA} e-mails/h (releitura)`,
+    `${noAlvo("rate_limit_email_sent", depois.rate_limit_email_sent) ? OK : FALTA} — limite de ${regras.LIMITE_EMAIL_POR_HORA} ou mais e-mails/h (releitura)`,
   );
   if (!restoIgual)
     dizer(

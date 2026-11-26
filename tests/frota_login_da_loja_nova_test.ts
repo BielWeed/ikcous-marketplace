@@ -1114,3 +1114,41 @@ Deno.test("ativar: ref fora do formato é uso errado, sem rede", async () => {
   assert(erro, "aceitou ref inválido");
   assertEquals(api.chamadas.length, 0);
 });
+
+Deno.test("ativar: limite JÁ acima de 30 (60) não baixa: sem PATCH do limite, SIM", async () => {
+  const api = apiDaAtivacao({
+    config: configPreparada({ rate_limit_email_sent: 60 }),
+  });
+  const r = await ativar(api);
+  assertEquals(r.veredito, "SIM", r.linhas.join("\n"));
+  assertEquals(api.corposDoPatch, [{ hook_send_email_enabled: true }]);
+  assertEquals(api.estado.config.rate_limit_email_sent, 60);
+
+  const ligado = apiDaAtivacao({
+    config: configPreparada({
+      hook_send_email_enabled: true,
+      rate_limit_email_sent: 60,
+    }),
+  });
+  const r2 = await ativar(ligado);
+  assertEquals(r2.veredito, "SIM", r2.linhas.join("\n"));
+  assertEquals(ligado.escritas().length, 0);
+});
+
+Deno.test("ativar: gancho JÁ ligado e a pré-condição cai (Gmail apagado): NÃO, 0 escritas, e diz que está LIGADO e o e-mail falha", async () => {
+  const api = apiDaAtivacao({
+    config: configPreparada({ hook_send_email_enabled: true }),
+    gmail: false,
+  });
+  const r = await ativar(api);
+  assertEquals(r.veredito, "NÃO", r.linhas.join("\n"));
+  assertEquals(api.escritas().length, 0);
+  const texto = r.linhas.join("\n");
+  assertMatch(texto, /gancho de e-mail JÁ está LIGADO/);
+  assertMatch(texto, /e-mail do login falha até/);
+  assert(!/NÃO foi ligado/.test(texto), "diz que não foi ligado");
+  assertSemSegredoNaAtivacao(r);
+  // desligado e a pré-condição cai: continua o texto de "não foi ligado"
+  const desligado = await ativar(apiDaAtivacao({ gmail: false }));
+  assertMatch(desligado.linhas.join("\n"), /NÃO foi ligado/);
+});
