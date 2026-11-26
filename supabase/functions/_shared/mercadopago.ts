@@ -861,7 +861,7 @@ export function idempotencyKeyJaUsado(corpoDoErro: unknown): boolean {
  *     (`opcoes.sandbox`: `MP_SANDBOX_PAYER_EMAIL` ligada, o pagador é usuário
  *     de teste): ali a causa provável é a mistura, e fica a frase de hoje.
  *   - uma MESMA frase citando "collector" junto de "payer" ou "customer" E de
- *     uma palavra de identidade (same/equal/different/igual/mism) — formato
+ *     uma palavra de identidade (same/equal/different/igual/mismo/misma) — formato
  *     não confirmado em doc oficial. Sem a identidade ("card token does not
  *     belong to the collector of this payer") não diz "mesma conta"; e
  *     "Collector not allowed to operate" (160), sem pagador, fica de fora.
@@ -881,7 +881,7 @@ export const MENSAGEM_PAGAR_A_SI_MESMA =
 
 const STATUS_FORA_DO_PAGAR_A_SI_MESMA = new Set([401, 403, 408, 409, 423]);
 
-const PALAVRA_DE_IDENTIDADE = /\b(?:same|equal|different|igual|mism)/;
+const PALAVRA_DE_IDENTIDADE = /\b(?:same|equal|different|igual|mism[oa]s?\b)/;
 
 function frasePagarASiMesma(frase: string, sandbox: boolean): boolean {
   const f = frase.toLowerCase();

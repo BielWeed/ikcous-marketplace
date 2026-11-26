@@ -3232,6 +3232,8 @@ for (
     ["Payments: cause[].description com collector + customer", { message: "bad request", cause: [{ code: 2062, description: "customer can't be equal to the collector" }] }],
     ["message de topo com COLLECTOR + PAYER em caixa alta", { message: "PAYER AND COLLECTOR CANNOT BE THE SAME USER" }],
     ["Orders: errors[].details com payer + collector", { errors: [{ code: "property_value", details: ["The payer and the collector must be different users"] }] }],
+    ["message 'payer must be different from collector'", { message: "payer must be different from collector" }],
+    ["message em espanhol com 'mismo'", { message: "el payer y el collector no pueden ser el mismo usuario" }],
   ] as const
 ) {
   Deno.test(`pagar a si mesma: reconhece ${rotulo}`, () => {
@@ -3254,6 +3256,8 @@ for (
     // (same/equal/different/igual/mism) não diz "a mesma conta".
     ["collector + payer sem palavra de identidade", { message: "card token does not belong to the collector of this payer" }],
     ["collector + customer sem palavra de identidade", { errors: [{ code: "x", details: ["customer not found for this collector"] }] }],
+    // Última ressalva da revisão Opus: "mism" casava com "mismatch".
+    ["'mismatch' não é 'mismo/misma'", { message: "collector mismatch for this payer" }],
   ] as const
 ) {
   Deno.test(`pagar a si mesma: NÃO reconhece ${rotulo}`, () => {
