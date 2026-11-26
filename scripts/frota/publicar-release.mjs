@@ -64,7 +64,10 @@
  * Uso:
  *   node scripts/frota/publicar-release.mjs --sha <40hex> --deployment <dpl_…> [--promover] [--json <arquivo>]
  * Saída: 0 = pronto (ensaio) ou publicado e conferido; 1 = bloqueado ou
- * conferência pós-promote falhou; 2 = uso errado.
+ * conferência pós-promote falhou; 2 = uso errado; 3 = publicado, mas a
+ * conferência pós-promote ficou INCERTA: o único problema foi endereço que não
+ * respondeu nem depois das novas tentativas da sonda (sem "FALHOU." e sem o
+ * rollback: conferir aqueles endereços de novo).
  */
 
 import { execFile, execFileSync } from "node:child_process";
@@ -83,6 +86,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   CABECALHOS_DE_PRIMEIRA_ABERTURA,
+  CLASSES_SEM_FALHA,
+  ESPERAS_DA_NOVA_TENTATIVA_MS,
   conferirFrota,
   criarExecutorVercel,
   inventariar,
@@ -118,6 +123,8 @@ const CLASSES_ACEITAS_ANTES = new Set([
 ]);
 /** Achados de loja fora do ar por decisão (L8): não bloqueiam a publicação. */
 const CLASSES_FORA_DO_AR = new Set(["ADORMECIDA", "ENCERRADA"]);
+/** Saída quando o pós-promote só não sabe (endereço sem resposta): nem 0 nem 1. */
+export const CODIGO_INCERTO = 3;
 
 export function lerCanais(caminho = path.join(AQUI, "canais-de-backend.json")) {
   const c = JSON.parse(readFileSync(caminho, "utf8"));
@@ -491,6 +498,52 @@ export function problemasAntesDoPromote(conferencia, sha) {
       );
   }
   return saida;
+}
+
+/**
+ * DEPOIS do promote: o ÚNICO problema da conferência é endereço que não
+ * respondeu (INALCANCAVEL que sobrou das novas tentativas da sonda)? Devolve
+ * esses endereços, em ordem, ou null quando há QUALQUER outro problema (versão
+ * errada, isolamento, canônico, inventário incompleto, endereço que sumiu) ou
+ * quando a conferência não traz o que é preciso para provar isso: na dúvida é
+ * FALHOU, nunca "incerto" no escuro. Decide por ACHADO, nunca pela `classe`:
+ * INALCANCAVEL é mais grave que ENDERECO_ANTIGO e esconderia a versão velha.
+ * `lojasAntes` = [{ ref, dominios }] do inventário antes do promote: loja
+ * cadastrada que não foi sondada só é "não sei" se TODOS os endereços que ela
+ * tinha antes estão entre os que não responderam.
+ */
+export function soEnderecosSemResposta(pos, lojasAntes) {
+  if (pos?.ok === true || !Array.isArray(pos?.resultados)) return null;
+  if (pos.vercel?.ok !== true || pos.inventario?.completo !== true) return null;
+  const cobertura = pos.cobertura;
+  if (
+    !Array.isArray(cobertura?.lojasNaoSondadas) ||
+    !Array.isArray(cobertura?.dominiosNaoSondados) ||
+    cobertura.dominiosNaoSondados.length
+  )
+    return null;
+  const semResposta = new Set();
+  for (const r of pos.resultados) {
+    if (CLASSES_SEM_FALHA.has(r?.classe)) continue;
+    const achados = Array.isArray(r?.achados) ? r.achados : [];
+    if (
+      r.classe !== "INALCANCAVEL" ||
+      !achados.length ||
+      !achados.every((a) => a?.classe === "INALCANCAVEL")
+    )
+      return null;
+    semResposta.add(r.dominio);
+  }
+  if (!semResposta.size) return null;
+  const dominiosDaLoja = new Map(
+    (lojasAntes ?? []).map((l) => [l.ref, l.dominios]),
+  );
+  for (const { ref } of cobertura.lojasNaoSondadas) {
+    const dominios = dominiosDaLoja.get(ref);
+    if (!dominios?.length || !dominios.every((d) => semResposta.has(d)))
+      return null;
+  }
+  return [...semResposta].sort();
 }
 
 // ------------------------------------------------------------------ etapa 3: migrations
@@ -2309,6 +2362,13 @@ export async function publicarRelease(opcoes, deps) {
   });
   const producaoDepois = pos.vercel?.producaoOficial ?? null;
   const ok = pos.ok === true && producaoDepois === deploymentId;
+  // Endereço que só não respondeu não é prova de release errada: sem
+  // "FALHOU." e sem o rollback da frota inteira (que assustava o dono à toa).
+  const semResposta =
+    ok || producaoDepois !== deploymentId
+      ? null
+      : soEnderecosSemResposta(pos, [...lojas, ...foraDoAr]);
+  const incerto = semResposta !== null;
   const acordou = lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario, sha);
   linhas.push(
     "",
@@ -2321,7 +2381,16 @@ export async function publicarRelease(opcoes, deps) {
     linhas.push(
       `Produção oficial depois: \`${producaoDepois}\` (esperado \`${deploymentId}\`).`,
     );
-  if (!ok) {
+  if (incerto) {
+    linhas.push(
+      "",
+      `**INCERTO.** ${semResposta.length} endereço(s) não responderam nem depois de ${ESPERAS_DA_NOVA_TENTATIVA_MS.length + 1} tentativas: ${semResposta.join(", ")}. Nenhum outro problema apareceu e a produção oficial é o deployment promovido. Não é caso de voltar a frota; confira esses endereços de novo com:`,
+      "```",
+      `node scripts/frota/conferir-frota.mjs --sha ${sha} --vercel`,
+      "```",
+      "Se continuarem sem responder, abrir cada um no navegador.",
+    );
+  } else if (!ok) {
     linhas.push(
       "",
       "**FALHOU.** Se houver LOJA_TROCADA (isolamento), voltar AGORA a frota inteira:",
@@ -2331,9 +2400,10 @@ export async function publicarRelease(opcoes, deps) {
       "Depois de um rollback a atribuição automática de domínios fica desligada até o próximo promote.",
     );
   }
-  const bloqueiosDepois = ok
-    ? []
-    : [{ alvo: "frota", motivo: "conferência pós-promote falhou" }];
+  const bloqueiosDepois =
+    ok || incerto
+      ? []
+      : [{ alvo: "frota", motivo: "conferência pós-promote falhou" }];
   if (acordou.erro || acordou.lojas.length) {
     linhas.push(
       "",
@@ -2360,8 +2430,11 @@ export async function publicarRelease(opcoes, deps) {
     if (acordou.erro)
       bloqueiosDepois.push({ alvo: "frota", motivo: acordou.erro });
   }
+  let codigo = 0;
+  if (bloqueiosDepois.length) codigo = 1;
+  else if (incerto) codigo = CODIGO_INCERTO;
   return {
-    codigo: bloqueiosDepois.length ? 1 : 0,
+    codigo,
     relatorio: linhas.join("\n"),
     bloqueios: bloqueiosDepois,
     notasDaVersao,

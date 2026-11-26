@@ -1226,15 +1226,24 @@ Deno.test("conferirFrota: endereço que não responde = INALCANCAVEL; version.js
   const mundo = mundoBase();
   mundo["ickous-marketplace.vercel.app"].falha = "derruba";
   mundo["savycollection.vercel.app"].versaoHttp = 500;
+  const esperas = [];
   const r = await conferirFrota(POLITICA, {
     sha: SHA,
     fetchImpl: fetchFalso(mundo),
+    // as pausas da nova tentativa, anotadas em vez de dormidas
+    esperar: async (ms) => {
+      esperas.push(ms);
+    },
   });
   const por = Object.fromEntries(
     r.resultados.map((x) => [x.dominio, x.classe]),
   );
   assertEquals(por["ickous-marketplace.vercel.app"], "INALCANCAVEL");
   assertEquals(por["savycollection.vercel.app"], "INALCANCAVEL");
+  // só depois de 2 novas tentativas (2 s e 5 s) em cada pedido que tropeçou
+  assert(
+    esperas.length > 0 && esperas.every((ms) => ms === 2000 || ms === 5000),
+  );
 });
 
 Deno.test("conferirFrota: loja mostrando a ficha de OUTRA (ref+título de outra loja) é LOJA_TROCADA nos dois", async () => {

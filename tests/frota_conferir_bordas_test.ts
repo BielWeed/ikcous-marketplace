@@ -160,6 +160,9 @@ function paginaHtml({ titulo = "Loja", ref = REF_A } = {}) {
   return `<html><head><title>${titulo}</title></head><body>https://${ref}.supabase.co</body></html>`;
 }
 
+/** A pausa da nova tentativa da sonda, sem dormir (os testes não esperam 7 s). */
+const semEspera = async () => {};
+
 function resposta({ status = 200, corpo = "", cabecalhos = {} } = {}) {
   return new Response(corpo, { status, headers: cabecalhos });
 }
@@ -213,6 +216,7 @@ Deno.test("sonda: o tipo do erro de rede aparece na mensagem (timeout, causa, se
   for (const [erro, esperado] of casos) {
     const sonda = await sondarEndereco("a.example.app", {
       agora: NOW,
+      esperar: semEspera,
       fetchImpl: fetchFalso({
         versao: () => {
           throw erro;
@@ -228,6 +232,7 @@ Deno.test("sonda: o tipo do erro de rede aparece na mensagem (timeout, causa, se
 Deno.test("sonda: cada amostra de '/' que falha é numerada a partir de 1 e a ficha não existe sem nenhuma amostra", async () => {
   const sonda = await sondarEndereco("a.example.app", {
     agora: NOW,
+    esperar: semEspera,
     fetchImpl: fetchFalso({
       versao: () => resposta({ corpo: JSON.stringify(versaoDe()) }),
       pagina: () => {
@@ -290,6 +295,7 @@ Deno.test("sonda de redirecionamento: guarda status, Location e o pedido feito; 
   const falha = await sondarEndereco("velho.example.app", {
     agora: NOW,
     redirecionamento: true,
+    esperar: semEspera,
     fetchImpl: fetchFalso({
       versao: () => resposta({ corpo: JSON.stringify(versaoDe()) }),
       pagina: (i) => paginaOk(i),
@@ -300,6 +306,258 @@ Deno.test("sonda de redirecionamento: guarda status, Location e o pedido feito; 
   });
   assertEquals(falha.redirecionamento, null);
   assertEquals(falha.errosPagina, ["sonda de redirecionamento: timeout"]);
+});
+
+// ---------------------------------------------- nova tentativa da sonda
+// Com 300-600 endereços x 4 pedidos, um tropeço de rede à toa NÃO pode virar
+// INALCANCAVEL (antes do promote bloqueia o ensaio; depois assusta o dono com
+// um "FALHOU"). Só tropeço (rede, tempo esgotado, 5xx no version.json) se
+// repete; resposta que contradiz (404, não-JSON, versão velha) fica como veio.
+
+/**
+ * fetch com roteiro POR PEDIDO: a n-ésima chamada a "/version.json" usa
+ * roteiro["/version.json"][n] (o último se repete). A amostra i de "/" tem a
+ * chave "/#i" (cai em roteiro["/"] se não houver), e o resto vai em "*".
+ * `contagem[chave]` = quantas vezes aquele pedido foi feito.
+ */
+function fetchComRoteiro(roteiro) {
+  const pedidos = [];
+  const contagem = {};
+  const fetchImpl = async (url) => {
+    const u = new URL(url);
+    const chave =
+      u.pathname === "/"
+        ? `/#${u.searchParams.get("t").split("-")[1]}`
+        : u.pathname;
+    pedidos.push(`${chave}?t=${u.searchParams.get("t")}`);
+    const lista = roteiro[chave] ?? roteiro[u.pathname] ?? roteiro["*"];
+    const n = contagem[chave] ?? 0;
+    contagem[chave] = n + 1;
+    const passo = lista[Math.min(n, lista.length - 1)];
+    const r = passo();
+    if (r instanceof Error || r instanceof DOMException) throw r;
+    return r;
+  };
+  return { fetchImpl, pedidos, contagem };
+}
+
+const rede = () => new TypeError("fetch failed");
+const tempo = () => new DOMException("x", "TimeoutError");
+const versaoOk =
+  (sha = SHA) =>
+  () =>
+    resposta({ corpo: JSON.stringify(versaoDe(sha)) });
+const paginaBoa = () => paginaOk(0);
+
+const CTX_DA_SONDA = {
+  shaEsperado: SHA,
+  identidadeRef: IDENT,
+  codeVersionRef: "1.5.18",
+  cruzado: {},
+  canonicos: new Set(),
+};
+
+function relogio() {
+  const esperas = [];
+  return { esperas, esperar: async (ms) => void esperas.push(ms) };
+}
+
+Deno.test("nova tentativa: tropeço ÚNICO no version.json, numa amostra e no redirecionamento se recupera, com carimbo novo e pausa de 2 s injetada", async () => {
+  const { fetchImpl, pedidos, contagem } = fetchComRoteiro({
+    "/version.json": [() => rede(), versaoOk()],
+    "/#1": [() => tempo(), paginaBoa],
+    "/": [paginaBoa],
+    "*": [
+      () => rede(),
+      () =>
+        resposta({
+          status: 308,
+          cabecalhos: { location: "https://novo.example.app/x" },
+        }),
+    ],
+  });
+  const { esperas, esperar } = relogio();
+  const sonda = await sondarEndereco("a.example.app", {
+    agora: NOW,
+    fetchImpl,
+    esperar,
+    redirecionamento: true,
+  });
+  assertEquals(sonda.erroVersao, null);
+  assertEquals(sonda.versao, versaoDe());
+  assertEquals(sonda.errosPagina, []);
+  assertEquals(sonda.amostras.length, 3);
+  assertEquals(sonda.ficha.estavel, true);
+  assertEquals(sonda.redirecionamento.status, 308);
+  // o Location é conferido contra o pedido QUE RESPONDEU (o da nova tentativa)
+  assertEquals(
+    sonda.redirecionamento.pedido,
+    `/produto/frota-conferencia?y=1&t=${NOW}-n1`,
+  );
+  assertEquals(esperas, [2000, 2000, 2000]);
+  assertEquals(contagem["/version.json"], 2);
+  assertEquals(contagem["/#0"], 1);
+  assertEquals(contagem["/#1"], 2);
+  assertEquals(contagem["/#2"], 1);
+  // a nova tentativa pede com carimbo NOVO (não cai no mesmo cache)
+  assert(pedidos.includes(`/version.json?t=${NOW}-n1`), pedidos.join(" "));
+  assert(pedidos.includes(`/#1?t=${NOW}-1-n1`), pedidos.join(" "));
+  // e quem classifica não vê mais nada de alcance
+  const { achados } = classificar(
+    { dominio: "a.example.app", esperado: null },
+    sonda,
+    CTX_DA_SONDA,
+  );
+  assertEquals(
+    achados.filter((a) => a.classe === "INALCANCAVEL"),
+    [],
+  );
+});
+
+Deno.test("nova tentativa: 3 falhas seguidas (rede ou 5xx no version.json) = INALCANCAVEL, depois de pausas de 2 s e 5 s, e só 3 pedidos", async () => {
+  for (const [falha, motivo] of [
+    [() => rede(), "version.json: erro de rede"],
+    [() => tempo(), "version.json: timeout"],
+    [() => resposta({ status: 503 }), "version.json respondeu HTTP 503"],
+    [() => resposta({ status: 500 }), "version.json respondeu HTTP 500"],
+  ]) {
+    const { fetchImpl, contagem } = fetchComRoteiro({
+      "/version.json": [falha],
+      "/": [paginaBoa],
+    });
+    const { esperas, esperar } = relogio();
+    const sonda = await sondarEndereco("a.example.app", {
+      agora: NOW,
+      fetchImpl,
+      esperar,
+    });
+    assertEquals(sonda.erroVersao, motivo);
+    assertEquals(sonda.versao, null);
+    assertEquals(contagem["/version.json"], 3, motivo);
+    assertEquals(esperas, [2000, 5000], motivo);
+    const { classe } = classificar(
+      { dominio: "a.example.app", esperado: null },
+      sonda,
+      CTX_DA_SONDA,
+    );
+    assertEquals(classe, "INALCANCAVEL", motivo);
+  }
+  // as 3 amostras de "/" caídas nas 3 tentativas: ficha nenhuma, erro numerado
+  const { fetchImpl, contagem } = fetchComRoteiro({
+    "/version.json": [versaoOk()],
+    "/": [() => rede()],
+  });
+  const { esperas, esperar } = relogio();
+  const sonda = await sondarEndereco("a.example.app", {
+    agora: NOW,
+    fetchImpl,
+    esperar,
+  });
+  assertEquals(sonda.ficha, null);
+  assertEquals(sonda.errosPagina, [
+    "amostra 1 da página: erro de rede",
+    "amostra 2 da página: erro de rede",
+    "amostra 3 da página: erro de rede",
+  ]);
+  assertEquals([contagem["/#0"], contagem["/#1"], contagem["/#2"]], [3, 3, 3]);
+  assertEquals(esperas, [2000, 2000, 2000, 5000, 5000, 5000]);
+});
+
+Deno.test("nova tentativa: o 5xx que tropeçou uma vez e depois respondeu certo se recupera", async () => {
+  const { fetchImpl } = fetchComRoteiro({
+    "/version.json": [() => resposta({ status: 502 }), versaoOk()],
+    "/": [paginaBoa],
+  });
+  const { esperar } = relogio();
+  const sonda = await sondarEndereco("a.example.app", {
+    agora: NOW,
+    fetchImpl,
+    esperar,
+  });
+  assertEquals(sonda.erroVersao, null);
+  assertEquals(sonda.versao, versaoDe());
+});
+
+Deno.test("nova tentativa: resposta que CONTRADIZ não é re-sondada para virar ok (404, não-JSON, versão velha); tropeço seguido de versão velha fica com a velha", async () => {
+  for (const [primeira, esperado] of [
+    [
+      () => resposta({ status: 404 }),
+      { erroVersao: "version.json respondeu HTTP 404" },
+    ],
+    [
+      () => resposta({ corpo: "{quebrado" }),
+      { erroVersao: "version.json não é JSON" },
+    ],
+    [versaoOk(VELHO), { versao: versaoDe(VELHO) }],
+  ]) {
+    const { fetchImpl, contagem } = fetchComRoteiro({
+      // a 2ª resposta seria a "boa": se alguém repetir, o teste vê
+      "/version.json": [primeira, versaoOk()],
+      "/": [paginaBoa],
+    });
+    const { esperas, esperar } = relogio();
+    const sonda = await sondarEndereco("a.example.app", {
+      agora: NOW,
+      fetchImpl,
+      esperar,
+    });
+    assertEquals(contagem["/version.json"], 1, JSON.stringify(esperado));
+    assertEquals(esperas, []);
+    assertEquals(sonda.erroVersao, esperado.erroVersao ?? null);
+    assertEquals(sonda.versao, esperado.versao ?? null);
+  }
+  // tropeço e depois versão velha: vale a velha (o pior), sem 3ª tentativa
+  const { fetchImpl, contagem } = fetchComRoteiro({
+    "/version.json": [() => tempo(), versaoOk(VELHO), versaoOk()],
+    "/": [paginaBoa],
+  });
+  const { esperas, esperar } = relogio();
+  const sonda = await sondarEndereco("a.example.app", {
+    agora: NOW,
+    fetchImpl,
+    esperar,
+  });
+  assertEquals(sonda.versao, versaoDe(VELHO));
+  assertEquals(contagem["/version.json"], 2);
+  assertEquals(esperas, [2000]);
+  const { classe } = classificar(
+    { dominio: "a.example.app", esperado: null },
+    sonda,
+    CTX_DA_SONDA,
+  );
+  assertEquals(classe, "ENDERECO_ANTIGO");
+});
+
+Deno.test("nova tentativa: página que RESPONDE com 5xx (503 de loja adormecida/manutenção) é estado, não tropeço: não se repete", async () => {
+  const { fetchImpl, contagem } = fetchComRoteiro({
+    "/version.json": [versaoOk()],
+    "/": [() => resposta({ status: 503 }), paginaBoa],
+  });
+  const { esperas, esperar } = relogio();
+  const sonda = await sondarEndereco("a.example.app", {
+    agora: NOW,
+    fetchImpl,
+    esperar,
+  });
+  assertEquals([contagem["/#0"], contagem["/#1"], contagem["/#2"]], [1, 1, 1]);
+  assertEquals(esperas, []);
+  assertEquals(sonda.ficha.status, 503);
+});
+
+Deno.test("nova tentativa: inventariar e conferirFrota repassam a espera injetada (nenhum teste dorme de verdade)", async () => {
+  const { fetchImpl, contagem } = fetchComRoteiro({
+    "/version.json": [() => rede(), versaoOk()],
+    "/": [paginaBoa],
+  });
+  const { esperas, esperar } = relogio();
+  const inv = await inventariar(
+    { enderecosEsperados: [], enderecosDeReserva: ["a.example.app"] },
+    { fetchImpl, esperar, agora: NOW },
+  );
+  assertEquals(inv.sondas[0].versao, versaoDe());
+  assertEquals(inv.sondas[0].erroVersao, null);
+  assertEquals(contagem["/version.json"], 2);
+  assertEquals(esperas, [2000]);
 });
 
 // ------------------------------------------------- maioria e agrupamento
@@ -1591,7 +1849,7 @@ Deno.test("main: frota que não responde sai com 1 (nunca 0), escreve o JSON ped
       main(
         ["--sha", SHA, "--json", json],
         { GITHUB_STEP_SUMMARY: resumo },
-        { fetchImpl },
+        { fetchImpl, esperar: semEspera },
       ),
     );
     assertEquals(r.codigo, 1);
@@ -1618,7 +1876,7 @@ Deno.test("main: FROTA_URL_MODELO troca o endereço sondado; FROTA_TIMEOUT_MS va
     main(
       ["--sha", SHA],
       { FROTA_URL_MODELO: "http://127.0.0.1:9/{dominio}" },
-      { fetchImpl: modelo.fetchImpl },
+      { fetchImpl: modelo.fetchImpl, esperar: semEspera },
     ),
   );
   assert(modelo.visto.urls.length > 0);
@@ -1633,7 +1891,7 @@ Deno.test("main: FROTA_URL_MODELO troca o endereço sondado; FROTA_TIMEOUT_MS va
     main(
       ["--sha", SHA],
       { FROTA_TIMEOUT_MS: "1" },
-      { fetchImpl: curto.fetchImpl },
+      { fetchImpl: curto.fetchImpl, esperar: semEspera },
     ),
   );
   assert(
@@ -1648,7 +1906,7 @@ Deno.test("main: FROTA_URL_MODELO troca o endereço sondado; FROTA_TIMEOUT_MS va
       main(
         ["--sha", SHA],
         { FROTA_TIMEOUT_MS: valor },
-        { fetchImpl: longo.fetchImpl },
+        { fetchImpl: longo.fetchImpl, esperar: semEspera },
       ),
     );
     assert(longo.visto.abortadoDepois.length > 0, valor);
