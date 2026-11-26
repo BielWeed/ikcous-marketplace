@@ -2310,6 +2310,13 @@ jobs:
       - name: Prova viva do total conferido do balcao (20261280000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/pdv-total-conferido-viva.cjs
+      # MEDICAO (nao e portao de tempo): o Financeiro e o Inicio numa loja de 5 anos (50.000 pedidos, semente em
+      # SQL so no CLONE). Mede o corpo vigente de fin__movimentos e as variantes B/C (transacao desfeita). So sai
+      # vermelha se uma consulta passar de 60 s ou se uma variante devolver outras linhas. Para ler:
+      # `gh run view <id> --log` e procurar `ESCALA` e `PORTAO:`.
+      - name: Medicao do Financeiro em escala (nao e portao de tempo)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-financeiro-em-escala-medida.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

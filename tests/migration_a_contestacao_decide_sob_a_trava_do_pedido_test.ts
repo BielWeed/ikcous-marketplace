@@ -948,6 +948,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/pdv-motivo-privado-viva.cjs",
     // 20261280000000: total conferido do balcão pelo servidor, com a assinatura nova e a anterior.
     "tests/banco/pdv-total-conferido-viva.cjs",
+    // Medicao (nao e portao de tempo): o Financeiro e o Inicio com 50.000 pedidos em 5 anos; corpo vigente x variantes B/C.
+    "tests/banco/o-financeiro-em-escala-medida.cjs",
     "tests/banco/invariantes-dinheiro.cjs",
     // send-order-whatsapp: cada select da edge executa no schema real.
     "tests/banco/whatsapp-edge-consultas-viva.cjs",
