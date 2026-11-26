@@ -304,6 +304,93 @@ Deno.test("validarCadastro recusa cadastro torto (fecha em falha, nunca vira lis
   Deno.removeSync(dir, { recursive: true });
 });
 
+// ---------------------------------------------------------------------------
+// O segredo da ORG CENTRAL (scripts/frota/org-central.json) é o único que pode
+// se repetir entre lojas assinantes: no modelo de 01/12/2026 toda loja nova da
+// org "IKCOUS Lojas" usa o mesmo token com escopo na org.
+// ---------------------------------------------------------------------------
+const SEGREDO_DA_ORG = require(
+  join(RAIZ, "scripts/frota/org-central.cjs"),
+).carregarOrgCentral().segredoDoGitHub;
+const OUTRA_NOVA = "loja-teste-abc";
+function jsonComDuasNovas(segredo: string) {
+  const j = jsonComLojaNova();
+  j.lojas[NOVA].segredoDoToken = segredo;
+  j.lojas[OUTRA_NOVA] = {
+    ref: "bcdefghijklmnopqrstu",
+    classe: "assinante",
+    apelido: "Outra Teste",
+    segredoDoToken: segredo,
+    functionsNomeadas: true,
+  };
+  return j;
+}
+const recusaDe = (j: any): string => {
+  try {
+    lojasMod.validarCadastro(j);
+  } catch (e) {
+    return e.message;
+  }
+  return "";
+};
+
+Deno.test("segredo da org central: duas (ou três) assinantes com ele passam; qualquer outro segredo repetido continua recusado", () => {
+  assertEquals(SEGREDO_DA_ORG, "SUPABASE_ACCESS_TOKEN_LOJAS");
+  const cad = lojasMod.validarCadastro(jsonComDuasNovas(SEGREDO_DA_ORG));
+  assertEquals(cad.lojas[NOVA].segredoDoToken, SEGREDO_DA_ORG);
+  assertEquals(cad.lojas[OUTRA_NOVA].segredoDoToken, SEGREDO_DA_ORG);
+  // uma terceira no mesmo segredo também (o segredo é da org, não de um par)
+  const tres = jsonComDuasNovas(SEGREDO_DA_ORG);
+  tres.lojas["loja-teste-def"] = {
+    ...tres.lojas[OUTRA_NOVA],
+    ref: "cdefghijklmnopqrstuv",
+  };
+  assertEquals(
+    Object.keys(lojasMod.validarCadastro(tres).lojas).length,
+    AS_QUATRO_DE_SEMPRE.length + 3,
+  );
+  // qualquer OUTRO nome repetido: "um segredo por loja", como sempre
+  for (const outro of [
+    SEGREDO_NOVO,
+    "SUPABASE_ACCESS_TOKEN_LOJAS2",
+    "SUPABASE_ACCESS_TOKEN_LOJA",
+    "SUPABASE_ACCESS_TOKEN_ORG",
+  ]) {
+    const msg = recusaDe(jsonComDuasNovas(outro));
+    assertStringIncludes(msg, "um segredo por loja", outro);
+    assertStringIncludes(msg, `já é de ${NOVA}`, outro);
+  }
+  // as lojas de hoje continuam com o segredo próprio delas exclusivo
+  const comIkcous = jsonComLojaNova();
+  comIkcous.lojas[NOVA].segredoDoToken = "SUPABASE_ACCESS_TOKEN_IKCOUS";
+  assertStringIncludes(recusaDe(comIkcous), "já é de ikcous-publicada");
+  // o segredo da org não abre o banco: dois cadastros no mesmo ref continuam recusados
+  const mesmoRef = jsonComDuasNovas(SEGREDO_DA_ORG);
+  mesmoRef.lojas[OUTRA_NOVA].ref = REF_NOVA;
+  assertStringIncludes(recusaDe(mesmoRef), "um banco, uma loja");
+});
+
+Deno.test("segredo da org central: loja legado com ele é recusada, e o lojas.json de hoje continua válido", () => {
+  const leg = jsonDeHoje();
+  leg.lojas.sandbox.segredoDoToken = SEGREDO_DA_ORG;
+  assertStringIncludes(recusaDe(leg), "classe legado usa só o segredo");
+  // legado novo com o segredo da org, ao lado de uma assinante com ele
+  const j = jsonComDuasNovas(SEGREDO_DA_ORG);
+  j.lojas[OUTRA_NOVA] = {
+    ref: "bcdefghijklmnopqrstu",
+    classe: "legado",
+    apelido: "Outra Teste",
+    segredoDoToken: SEGREDO_DA_ORG,
+  };
+  assertStringIncludes(recusaDe(j), "classe legado usa só o segredo");
+  // o cadastro de hoje (sem nenhuma loja no segredo da org) passa igual
+  assertEquals(recusaDe(jsonDeHoje()), "");
+  assertEquals(
+    Object.keys(lojasMod.carregarLojas().lojas),
+    AS_QUATRO_DE_SEMPRE,
+  );
+});
+
 Deno.test("lojaDoProjeto: só chaves do cadastro (nada de __proto__, constructor, maiúsculas, espaço, vazio, não texto)", () => {
   for (const ok of ["loja", "sandbox", "ikcous-publicada", "savy"])
     assert(lojasMod.lojaDoProjeto(ok, CADASTRO_REAL), ok);
