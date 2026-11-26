@@ -342,6 +342,9 @@ on:
       - "scripts/publicacao/consultas/190b-antes-a-loja-grande-nao-trava-o-balcao-ausente.sql"
       - "scripts/publicacao/consultas/192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado.sql"
       - "scripts/publicacao/consultas/192b-antes-o-admin-copia-e-apaga-as-fotos-ausente.sql"
+      - "scripts/publicacao/consultas/193a-conferir-o-infinito-nao-entra-no-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/193b-antes-o-infinito-nao-entra-no-banco-ausente.sql"
+      - "scripts/publicacao/consultas/193m-medir-infinitos-guardados.sql"
       - "scripts/publicacao/consultas/195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado.sql"
       - "scripts/publicacao/consultas/195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -660,6 +663,9 @@ on:
       - "scripts/publicacao/consultas/190b-antes-a-loja-grande-nao-trava-o-balcao-ausente.sql"
       - "scripts/publicacao/consultas/192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado.sql"
       - "scripts/publicacao/consultas/192b-antes-o-admin-copia-e-apaga-as-fotos-ausente.sql"
+      - "scripts/publicacao/consultas/193a-conferir-o-infinito-nao-entra-no-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/193b-antes-o-infinito-nao-entra-no-banco-ausente.sql"
+      - "scripts/publicacao/consultas/193m-medir-infinitos-guardados.sql"
       - "scripts/publicacao/consultas/195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado.sql"
       - "scripts/publicacao/consultas/195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1697,6 +1703,16 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         timeout-minutes: 3
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-admin-copia-e-apaga-as-fotos-viva.cjs
+      # Migration 20261560000000 (o infinito nao entra no banco): taxa de entrega local, preco proprio da variacao e valor do cupom
+      # ganham um CHECK NOVO (separado dos da 20261400000000) contra Infinity e -Infinity, criado JA VALIDADO. Infinito (qualquer
+      # grafia) recusa com 23514 pela restricao nova em todas as portas (RLS, upsert_store_config, salvar_produto_com_grade, sessao
+      # direta), tambem sem a 400; finitos, enorme e NULL de variacao seguem; NaN segue recusado pela 400; preco_venda recusa pelo
+      # tipo (numeric(10,2)). Linha antiga infinita IMPEDE a migration (guarda B1_BASELINE_DIVERGENT; corrida pega pelo ADD
+      # validado). Mutantes da regra e da guarda, NOT VALID de volta, reaplicar, rollback, pre-voo, falha no meio, lock_timeout e
+      # consultas 193a/193b/193m EXECUTADAS (a 193m conta o infinito ja guardado). CLONE proprio.
+      - name: Prova viva de que o infinito nao entra no banco (migration 20261560000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-infinito-nao-entra-no-banco-viva.cjs
       # Migration 20261590000000 (a loja guarda o dia da pausa do teste): a coluna assinatura_da_loja.pausa_em (date, anulavel, sem padrao) e a porta
       # assinatura_da_loja_gravar com a 11a chave OPCIONAL pausa_em. Gestao velha (10 chaves) grava e apaga o dia; gestao nova grava; null grava NULL;
       # pausa_em torta = valor_invalido citando o campo; chave errada continua nao_autorizado antes de olhar os dados; o leitor devolve a coluna so ao admin;

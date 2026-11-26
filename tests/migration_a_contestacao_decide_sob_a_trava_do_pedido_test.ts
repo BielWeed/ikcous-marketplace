@@ -801,6 +801,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-loja-grande-nao-trava-o-balcao-viva.cjs",
     // 20261550: o admin copia e apaga as fotos da loja (politicas SELECT so do admin de agora em products/banners; DELETE RETURNING 1/0; cliente e visitante 0; Public Display convive; reaplicar; rollback; consultas 192a/192b).
     "tests/banco/o-admin-copia-e-apaga-as-fotos-viva.cjs",
+    // 20261560: o infinito nao entra no banco (CHECKs novos contra Infinity e -Infinity na taxa local, na variacao e no cupom; todas as portas; sem a 400; NaN segue da 400; linha antiga recusa; mutantes; rollback; consultas 193a/193b).
+    "tests/banco/o-infinito-nao-entra-no-banco-viva.cjs",
     // 20261590: a loja guarda o dia da pausa do teste (pausa_em opcional na porta do cartao; gestao velha e nova; recuo da porta velha; mutantes; rollback comum e destrutivo; consultas 150c/195a/195b).
     "tests/banco/a-loja-guarda-o-dia-da-pausa-do-teste-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
