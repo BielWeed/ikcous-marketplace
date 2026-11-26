@@ -2,9 +2,13 @@
 
 > Escrito em 26/11/2026 (plano nova-loja, tarefa C4), conferido no código de
 > [`scripts/frota/nova-loja.mjs`](../../scripts/frota/nova-loja.mjs),
-> [`scripts/frota/primeira-admin.mjs`](../../scripts/frota/primeira-admin.mjs) e
-> [`scripts/frota/segredos-da-loja.mjs`](../../scripts/frota/segredos-da-loja.mjs). Os passos que
-> ainda não estão no comando aparecem marcados como **ainda não automático** ou **em construção**.
+> [`scripts/frota/primeira-admin.mjs`](../../scripts/frota/primeira-admin.mjs),
+> [`scripts/frota/segredos-da-loja.mjs`](../../scripts/frota/segredos-da-loja.mjs),
+> [`scripts/frota/functions-da-loja.mjs`](../../scripts/frota/functions-da-loja.mjs),
+> [`scripts/frota/login-da-loja-nova.mjs`](../../scripts/frota/login-da-loja-nova.mjs) e
+> [`scripts/frota/cadastro-da-loja.mjs`](../../scripts/frota/cadastro-da-loja.mjs). Os passos que o
+> comando ainda recusa, ou que ainda não têm caminho, aparecem marcados como **pendente** ou
+> **lacuna conhecida**.
 > **Este roteiro ainda não foi ensaiado de ponta a ponta.** O ensaio com uma lojista de teste é a
 > tarefa C5 do plano.
 
@@ -35,20 +39,22 @@ autorização.
 | 5 | Agente | `criar-projeto`: cria o projeto da loja na conta dela | comando pronto |
 | 6 | Agente | `banco`: instala o banco inteiro | comando pronto |
 | 7 | Agente | `ficha`: confere a ficha da loja e gera o texto do cadastro | comando pronto |
-| 8 | Agente | segredos da loja | **ainda não automático**: espere o C2 |
-| 9 | Agente | cadastro na frota (`lojas.json`, canais, caderneta) | **em construção**: espere o B5/C2 |
-| 10 | Agente | publicar as functions | **ainda não automático** (script avulso; depende do passo 9) |
-| 11 | Agente | login da loja (endereços e gancho de e-mail desligado) | **ainda não automático** (script avulso) |
-| 12 | Agente | domínio, marca e chave do plano | **ainda não automático**: espere o C2 |
+| 8 | Agente | `segredos`: segredos da loja | comando pronto |
+| 9 | Agente | cadastro na frota (`lojas.json`, canais, caderneta) | **pendente**: o passo `cadastro` recusa de propósito (cadastrar hoje bloqueia a publicação de todas as lojas) |
+| 10 | Agente | `functions`: publicar as functions | comando pronto, mas recusa até a loja estar no `lojas.json` (passo 9) |
+| 11 | Agente | `login`: endereços do login e gancho de e-mail desligado | comando pronto |
+| 12 | Agente | domínio, marca e chave do plano | **pendente**: `marca` e `chave-do-plano` recusam; o domínio da ficha não tem caminho |
 | 13 | Lojista | **Tela 3, parte A**: se cadastra NA LOJA com o mesmo e-mail | — |
-| 14 | Dono | `primeira-admin`: ela vira administradora | script pronto |
-| 15 | Agente | `definir-dono`: ela vira a dona da loja | **em construção**: espere o C3 |
+| 14 | Dono | `primeira-admin`: ela vira administradora | comando pronto (também roda como script avulso) |
+| 15 | Agente | `definir-dono`: ela vira a dona da loja | comando pronto |
 | 16 | Lojista | **Tela 3, parte B**: liga o Gmail e o Mercado Pago no painel | — |
 | 17 | Agente | ligar o gancho de e-mail e subir o limite de e-mails | **lacuna conhecida** |
-| 18 | Agente | `conferir`: a loja está pronta para vender? | **em construção**: espere o C3 |
+| 18 | Agente | `conferir`: a loja está pronta para vender? | comando pronto (só leitura) |
 
-**Hoje (26/11/2026) o caminho só anda sozinho até o passo 7.** Do 8 em diante, cada passo diz o
-que existe e o que falta. Os roteiros manuais das lojas antigas **não servem** para a loja nova:
+**Hoje (26/11/2026) o comando cobre os passos 1 a 8, 11, 14, 15 e 18.** Os passos 9, 10, 12 e 17
+dependem de uma peça que ainda falta; cada um diz o que existe e o que falta. Por causa deles, o
+`conferir` ainda não dá SIM numa loja nova: ele lista `cadastro`, `marca` e `chave-do-plano` como
+pendentes. Os roteiros manuais das lojas antigas **não servem** para a loja nova:
 eles usam token fixo no repositório, chave de serviço ou o painel do projeto, e a IKCOUS não tem
 nada disso na conta da lojista (ver [Lacunas conhecidas](#lacunas-conhecidas-26112026)).
 
@@ -448,9 +454,10 @@ começando por letra).
 
 ### Passo 14 — `primeira-admin` (no terminal do dono)
 
-Este script **já existe** e roda sozinho (fora do comando `nova-loja.mjs`). Ele vem **depois** que
-a lojista se cadastrou na loja e confirmou o e-mail (Tela 3, parte A), e por isso depende dos
-passos 8 a 12.
+Ele roda de dois jeitos: como passo do comando (`nova-loja.mjs primeira-admin`, logo abaixo) ou
+como o script avulso `primeira-admin.mjs`. Os dois fazem a mesma coisa, porque o comando chama o
+script. Ele vem **depois** que a lojista se cadastrou na loja e confirmou o e-mail (Tela 3, parte
+A), e por isso depende dos passos 8 a 12.
 
 **O que faz:** transforma a conta da lojista na **primeira** administradora da loja. Ele só age se:
 - existe exatamente 1 conta com esse e-mail na loja;
@@ -467,6 +474,16 @@ Primeiro, na mesma janela, faça o PowerShell mandar acentos direito para o Node
 ```powershell
 $OutputEncoding = New-Object System.Text.UTF8Encoding $false
 ```
+
+**Pelo comando** (precisa de `criar-projeto` e `banco` com SIM). Sem `--aplicar`, ele não pede o
+e-mail e não lê nada: só diz o que faria. Com `--aplicar`, pergunta
+`Digite o e-mail da administradora (o mesmo com que ela se cadastrou NA LOJA) e tecle Enter:`:
+
+```powershell
+node scripts/frota/nova-loja.mjs primeira-admin --loja <slug> --aplicar
+```
+
+**Pelo script avulso**, que no ensaio já lê o banco e diz o que faria com aquele e-mail:
 
 Ensaio (só lê):
 
@@ -499,17 +516,22 @@ Read-Host "e-mail" | node scripts/frota/primeira-admin.mjs --projeto <ref> --loj
   - `o banco recusou a transação (SQLSTATE ...)`: nada foi gravado. Não improvise outro caminho.
   - `outra rodada deste comando segurava a trava`: espere e rode de novo.
 - **INCERTO:** rode de novo **sem** `--aplicar` para ler o estado. Repetir é seguro: se ela já
-  virou administradora, o script diz SIM sem gravar.
+  virou administradora, o script diz SIM sem gravar. Pelo comando, quem lê sem gravar é o
+  `conferir` (passo 18), não o ensaio: o próprio comando troca essa instrução pela linha do
+  `conferir --aplicar`.
 
 ---
 
-## Parte 3 — Ainda não automático
+## Parte 3 — Do passo 8 em diante: o que já está no comando e o que falta
 
-Estes passos ainda não estão no comando `nova-loja.mjs`. Os passos `segredos`, `functions`,
-`login`, `marca` e `chave-do-plano` entram na tarefa C2 do plano. `primeira-admin`,
-`definir-dono` e `conferir` entram na C3.
+`segredos`, `functions`, `login`, `definir-dono` e `conferir` já são passos do `nova-loja.mjs`
+(tarefas C2 e C3). Eles usam o acesso OAuth da lojista renovado do cofre naquela rodada, nunca um
+`SUPABASE_ACCESS_TOKEN` do ambiente. `cadastro`, `marca` e `chave-do-plano` têm o nome guardado,
+mas **recusam** com NÃO antes de qualquer pedido pela internet: dependem de a release alcançar a
+loja só-OAuth. Valem as mesmas regras da Parte 2: ensaio primeiro, depois `--aplicar`; `0` = SIM,
+`1` = NÃO, `2` = INCERTO.
 
-### Passo 8 — Segredos da loja — ainda não automático
+### Passo 8 — `segredos`
 
 **O que precisa ser feito:**
 - a chave que cifra as credenciais do Mercado Pago e do Gmail (`MP_CHAVES_ENCRYPTION_KEY`);
@@ -517,32 +539,58 @@ Estes passos ainda não estão no comando `nova-loja.mjs`. Os passos `segredos`,
   mesmo valor, mais o endereço da function `reconciliar-pagamentos`;
 - o par de chaves das notificações (VAPID), com a pública também na ficha da loja.
 
-**O que existe:** o script
-[`scripts/frota/segredos-da-loja.mjs`](../../scripts/frota/segredos-da-loja.mjs). Ele nunca
-substitui o que já existe e nunca imprime valor.
-
-**Por que ainda não dá para usar numa loja nova:** rodado sozinho, ele pede o token na variável
-`SUPABASE_ACCESS_TOKEN`. O token da lojista nunca sai do cofre (de propósito), então não há
-caminho seguro para entregar esse token ao script avulso. Ele foi feito para ser chamado pelo
-`nova-loja.mjs`, que ainda não tem o passo `segredos`. **Espere o C2.** Não copie o token para
-uma variável à mão.
-
-Para referência, o uso dele é este:
+**Como:** o passo `segredos` do comando chama o
+[`scripts/frota/segredos-da-loja.mjs`](../../scripts/frota/segredos-da-loja.mjs) com o acesso da
+rodada. Ele lê só os **nomes** do que já existe, grava só o que falta, nunca substitui e nunca
+imprime valor. Precisa de `banco` com SIM.
 
 ```powershell
-node scripts/frota/segredos-da-loja.mjs --projeto <ref>
+node scripts/frota/nova-loja.mjs segredos --loja <slug>
 ```
 
-A última linha é `VEREDITO-SEGREDOS-DA-LOJA projeto=<ref> veredito=SIM|NAO|INCERTO aplicar=...`.
+```powershell
+node scripts/frota/nova-loja.mjs segredos --loja <slug> --aplicar
+```
+
+- **SIM / NÃO / INCERTO:** a mensagem traz as linhas que importam do relatório do script.
+  INCERTO quer dizer que uma escrita pode ter acontecido: rode `segredos --aplicar` de novo, porque
+  ele relê antes e não substitui o que já existe.
+
+**Não rode o script avulso numa loja nova.** Sozinho, ele pede o token na variável
+`SUPABASE_ACCESS_TOKEN`, e o token da lojista nunca sai do cofre, de propósito. Não copie o token
+para uma variável à mão.
 
 **Sem este passo:** o Gmail e o Mercado Pago no painel ficam "indisponível", e o PIX cujo aviso se
 perdeu nunca vira pedido pago.
 
-### Passo 9 — Cadastro na frota — em construção
+### Passo 9 — Cadastro na frota — pendente
 
-O script `scripts/frota/cadastro-da-loja.mjs` já existe (tarefa B5, branch
-`claude/nova-loja-integrada`), mas o passo ainda não está no `nova-loja.mjs` (C2). O estado real
-dele está em [Lacunas conhecidas](#lacunas-conhecidas-26112026), no item "cadastro (passo 9)".
+**O passo `cadastro` do comando recusa de propósito.** Ele responde NÃO com
+`cadastrar a loja agora trava a publicação de todas as lojas: aguarda o portão ler loja OAuth (CACA-PORTAO-LE-LOJA-NOVA). Nada foi feito.`
+O motivo está em [Lacunas conhecidas](#lacunas-conhecidas-26112026): uma loja com
+`acesso: "oauth"` no `lojas.json` hoje bloqueia a publicação da frota inteira.
+
+**O script avulso existe:** [`scripts/frota/cadastro-da-loja.mjs`](../../scripts/frota/cadastro-da-loja.mjs)
+(tarefa B5). O que ele grava e o que não faz está no item "cadastro (passo 9)" das
+[Lacunas conhecidas](#lacunas-conhecidas-26112026). **Não rode com `--aplicar` numa loja real
+enquanto a lacuna da release não fechar.** Quando for a hora, os valores vêm da saída do passo
+`ficha` (passo 7), que imprime a entrada de `lojas.json` e o SQL da caderneta. Guarde essa saída:
+
+| Argumento | De onde vem |
+|---|---|
+| `--loja <slug>` | o mesmo apelido usado em todos os passos do `nova-loja.mjs` (a chave da entrada de `lojas.json` que a `ficha` imprimiu) |
+| `--projeto <ref>` | o `ref` da entrada que a `ficha` imprimiu (é o projeto que o `criar-projeto` criou) |
+| `--nome "<apelido>"` | o `apelido` da mesma entrada: o `--nome` que você passou na `ficha`, ou o próprio `<slug>` se não passou |
+| `--chave-publica sb_publishable_...` (opcional) | a chave `sb_publishable_…` que aparece no SQL da caderneta impresso pela `ficha`. Sem ela, o cadastro não imprime o `INSERT` da caderneta (diz `PENDENTE — falta --chave-publica`) |
+| `--dominio https://<host>` (opcional) | sem ele, vale `https://<slug>.vercel.app`, o mesmo domínio que o passo `login` usa |
+
+```powershell
+node scripts/frota/cadastro-da-loja.mjs --loja <slug> --projeto <ref> --nome "<apelido>" --chave-publica <sb_publishable_...>
+```
+
+Sem `--aplicar` é ensaio: mostra o que mudaria em cada arquivo e o SQL, sem gravar nada. Se a
+entrada já existir no `lojas.json` com outros valores, ele recusa (saída 1) e não altera nada.
+
 **Não dá para usar numa loja nova o roteiro manual** (passos 1 a 3 da seção "Loja assinante nova"
 de [producao-unica-fonte.md](producao-unica-fonte.md)). Ele foi escrito para loja com **token fixo
 no repositório**:
@@ -553,37 +601,41 @@ no repositório**:
 
 A loja nova não tem token fixo: só a autorização OAuth da lojista, no cofre do PC do dono. Fora
 da [sessão de publicação](#publicar-quando-há-loja-oauth-a-sessão), o segredo dela não existe no
-GitHub e os workflows da loja param. **Espere o C2.** Guarde o SQL da caderneta e a entrada de
-`lojas.json` que o passo `ficha` imprimiu; o cadastro vai usá-los.
+GitHub e os workflows da loja param.
 
-### Passo 10 — Publicar as functions — ainda não automático (script avulso)
+### Passo 10 — `functions` — recusa até o passo 9
 
-**O que existe:** `scripts/frota/functions-da-loja.mjs`. Ele está na branch
-`claude/nova-loja-functions` e ainda não foi juntado nesta base.
-
-**O que faz:** publica uma por uma as functions do canal da loja (13 numa loja assinante), cada uma
+**O que faz:** o passo `functions` do comando chama o
+[`scripts/frota/functions-da-loja.mjs`](../../scripts/frota/functions-da-loja.mjs) com o acesso da
+rodada. Ele publica uma por uma as functions do canal da loja (13 numa loja assinante), cada uma
 com o `verify_jwt` do `supabase/config.toml`, e confere cada uma antes da próxima. Pula a que já
-está no ar igual. Usa o token da lojista direto do cofre.
+está no ar igual.
 
-**Antes de rodar:**
-- o passo 9 (a loja tem de estar em `lojas.json` e em `canais-de-backend.json`). Como o passo 9
-  espera o B5/C2, **na prática este passo também espera**;
-- o checkout tem de estar **exatamente** no topo de `origin/claude/app-major-upgrade-wmc8x2`, o
-  commit aprovado. Fora dele, o script diz NÃO antes de qualquer pedido.
+**Por que, na prática, ainda espera:**
+- a loja tem de estar em `lojas.json` e em `canais-de-backend.json`. Sem isso o script recusa com
+  `a loja <slug> não está em .../lojas.json`. Como o passo 9 está pendente, **este passo também
+  espera**;
+- o checkout tem de estar **exatamente** no topo de `origin/claude/app-major-upgrade-wmc8x2` (o
+  `ramoDaRelease` de `scripts/frota/canais-de-backend.json`), o commit aprovado. Fora dele, o
+  script diz NÃO antes de qualquer pedido.
 
 ```powershell
-node scripts/frota/functions-da-loja.mjs --projeto <ref> --canal <slug>
+node scripts/frota/nova-loja.mjs functions --loja <slug>
 ```
 
 ```powershell
-node scripts/frota/functions-da-loja.mjs --projeto <ref> --canal <slug> --aplicar
+node scripts/frota/nova-loja.mjs functions --loja <slug> --aplicar
 ```
 
 - **SIM (0):** todas no ar, ativas, com o `verify_jwt` certo.
-- **NÃO (1):** falta alguma, há conflito, ou as fontes divergem. A mensagem diz qual.
-- **Uso errado (2):** argumento faltando ou inválido.
-- **INCERTO (3):** uma publicação pode ter acontecido sem confirmação. Rode o ensaio para ler o
-  estado e depois rode de novo: o que já subiu igual é pulado.
+- **NÃO (1):** falta alguma, há conflito, as fontes divergem ou o script recusou (loja fora do
+  cadastro, checkout fora do topo). A mensagem diz qual.
+- **INCERTO (2):** uma publicação pode ter acontecido sem confirmação. Rode
+  `node scripts/frota/nova-loja.mjs conferir --loja <slug> --aplicar` (só leitura) e depois
+  `functions --aplicar` de novo: o que já subiu igual é pulado.
+
+O script avulso (`functions-da-loja.mjs --projeto <ref> --canal <slug> [--aplicar]`) também pega o
+acesso no cofre e faz o mesmo, mas nele os códigos são outros: `2` = uso errado, `3` = INCERTO.
 
 **Depois que deu SIM: a loja NÃO entra em `functionsSoPeloWorkflow`.** O comentário dessa lista
 em `scripts/frota/canais-de-backend.json` diz que a loja nova entra nela depois que as functions
@@ -597,94 +649,125 @@ ficar velhas, sem conserto. **Até existir uma release de functions e
 migrations para loja só-OAuth, a loja fica fora dessa lista** (ver
 [Lacunas conhecidas](#lacunas-conhecidas-26112026)).
 
-### Passo 11 — Login da loja — ainda não automático (script avulso)
+### Passo 11 — `login`
 
-**O que existe:** `scripts/frota/login-da-loja-nova.mjs`. Ele está na branch
-`claude/nova-loja-login` e ainda não foi juntado nesta base.
-
-**O que faz:**
+**O que faz:** o passo `login` do comando chama o
+[`scripts/frota/login-da-loja-nova.mjs`](../../scripts/frota/login-da-loja-nova.mjs) com o acesso
+da rodada e o domínio `https://<slug>.vercel.app`:
 - acerta os endereços do login (`site_url` e a lista de endereços de volta), para o link do e-mail
   de confirmação não cair numa página morta;
 - prepara o gancho de e-mail (Send Email Hook) **desligado**, com o segredo gravado nas duas
   pontas.
 
 Não liga o Google, não mexe em SMTP. O limite de 30 e-mails por hora só é gravado quando a loja
-tem remetente próprio (Gmail ligado no gancho, ou SMTP).
+tem remetente próprio (Gmail ligado no gancho, ou SMTP). Precisa de `criar-projeto` com SIM.
 
 ```powershell
-node scripts/frota/login-da-loja-nova.mjs --projeto <ref> --loja <slug> --dominio "https://<domínio da loja>"
+node scripts/frota/nova-loja.mjs login --loja <slug>
 ```
 
 ```powershell
-node scripts/frota/login-da-loja-nova.mjs --projeto <ref> --loja <slug> --dominio "https://<domínio da loja>" --aplicar
+node scripts/frota/nova-loja.mjs login --loja <slug> --aplicar
 ```
 
 - **SIM (0):** tudo conferido por releitura.
 - **NÃO (1):** falta algo, ou há "meia configuração" do gancho. Nesse caso o script não grava
   nada, e quem decide a recuperação é uma pessoa.
-- **Uso errado (2):** argumento faltando ou inválido.
-- **INCERTO (3):** rode de novo **sem** `--aplicar` antes de qualquer outra coisa.
+- **INCERTO (2):** rode `node scripts/frota/nova-loja.mjs conferir --loja <slug> --aplicar` (só
+  leitura) e veja o item `login` antes de repetir.
+
+O script avulso (`login-da-loja-nova.mjs --projeto <ref> --loja <slug> --dominio "https://<host>"
+[--aplicar]`) faz o mesmo para outro domínio; nele, `2` = uso errado e `3` = INCERTO.
 
 **Por que o gancho nasce desligado:** ligado antes do Gmail, todo e-mail de login falharia,
 inclusive a confirmação da conta da lojista.
 
-### Passo 12 — Domínio, marca e chave do plano — ainda não automático
+### Passo 12 — Domínio, marca e chave do plano — pendente
 
-**Não dá para usar numa loja nova o roteiro manual** dos passos 6 e 6A da seção "Loja assinante
-nova" de [producao-unica-fonte.md](producao-unica-fonte.md). Cada pedaço dele pede um acesso que a
-IKCOUS não tem na conta da lojista:
-- **chave do plano:** vai pelo `instalar-chave-da-loja.yml`, que usa o segredo fixo
-  `SUPABASE_ACCESS_TOKEN_<LOJA>` do repositório (`instalar-chave-da-loja.yml`, linhas 174-175). A
-  loja nova não tem esse segredo;
-- **domínio da ficha (`dominio_publico`):** o roteiro manda gravar pelo SQL Editor do projeto da
-  loja. O projeto é da lojista, e a IKCOUS não entra no painel dela;
+Os passos `marca` e `chave-do-plano` do comando têm o nome guardado e **recusam** com NÃO, sem
+pedido nenhum pela internet. O domínio da ficha não tem passo. **Não dá para usar numa loja nova o
+roteiro manual** dos passos 6 e 6A da seção "Loja assinante nova" de
+[producao-unica-fonte.md](producao-unica-fonte.md). Cada pedaço dele pede um acesso que a IKCOUS
+não tem na conta da lojista:
+- **chave do plano:** vai pelo `instalar-chave-da-loja.yml`. Ele lê o segredo da loja pelo bloco
+  gerado `LOJAS-SEGREDOS` (`instalar-chave-da-loja.yml`, linhas 173-176), e a loja nova só entra
+  nesse bloco depois do cadastro (passo 9, pendente). Mesmo depois, o segredo dela só existe com a
+  [sessão de publicação](#publicar-quando-há-loja-oauth-a-sessão) aberta, e esse workflow nunca
+  rodou com o token OAuth. O comando recusa com
+  `pendente: a chave do plano vai pelo instalar-chave-da-loja.yml, que só usa o segredo fixo do repositório e não alcança loja só-OAuth; ...`;
+- **domínio da ficha (`dominio_publico` em `store_config`):** o roteiro manda gravar pelo SQL
+  Editor do projeto da loja. O projeto é da lojista, e a IKCOUS não entra no painel dela. O
+  `cadastro-da-loja.mjs` não grava esse campo: ele só imprime o SQL da caderneta da frota;
 - **marca (passo 6A):** o `scripts/identidade-bootstrap.mjs` exige a chave de serviço da loja
   (`SUPABASE_SERVICE_ROLE_KEY`, linha 471), que a IKCOUS não tem.
 
-**Espere o C2** (passos `marca` e `chave-do-plano` no comando). Sem a marca, a vitrine mostra "Esta
-loja está em manutenção" e a lojista não consegue se cadastrar (Tela 3, parte A).
+Sem a marca, a vitrine mostra "Esta loja está em manutenção" e a lojista não consegue se cadastrar
+(Tela 3, parte A).
 
-### Passo 15 — `definir-dono` — em construção
+### Passo 15 — `definir-dono`
 
 **A regra, decidida pelo sócio:**
 - a **única** administradora da loja vira a dona automaticamente, lida do banco, **sem pedir
   e-mail**;
 - com um dono diferente já cadastrado, ou com 2 ou mais administradoras, o passo dá **NÃO** e não
   escolhe ninguém;
-- ele só roda em loja aberta pelo `nova-loja.mjs`.
+- ele só roda em loja aberta pelo `nova-loja.mjs` (precisa de `criar-projeto` e `banco` com SIM no
+  estado local) e recusa a IKCOUS, a Savy e os alvos legados de teste.
 
-**Enquanto não existe, não há caminho numa loja nova. Espere o C3.** A receita da seção 3.3 de
-[definir-o-dono-da-loja.md](definir-o-dono-da-loja.md) é feita no SQL Editor do projeto da loja, e
-o projeto é da lojista: a IKCOUS não entra no painel dela. Sem dono cadastrado, qualquer
-administradora troca as chaves do Mercado Pago e do Gmail, e ninguém consegue dar o cargo de
-administrador.
+```powershell
+node scripts/frota/nova-loja.mjs definir-dono --loja <slug>
+```
+
+```powershell
+node scripts/frota/nova-loja.mjs definir-dono --loja <slug> --aplicar
+```
+
+- **SIM:** a dona foi gravada e conferida, ou ela já era a dona (aí nada é gravado).
+- **NÃO:** dono diferente, 0 ou 2+ administradoras, ou a loja não é do `nova-loja.mjs`. A mensagem
+  diz qual. Não troca nem escolhe ninguém.
+- **INCERTO:** a leitura ou a escrita não se confirmou. Repetir `definir-dono --aplicar` é seguro:
+  ele lê antes, e a dona já cadastrada dá SIM sem gravar.
+
+A receita da seção 3.3 de [definir-o-dono-da-loja.md](definir-o-dono-da-loja.md) **não serve**
+para a loja nova: é feita no SQL Editor do projeto, e o projeto é da lojista. Sem dono cadastrado,
+qualquer administradora troca as chaves do Mercado Pago e do Gmail, e ninguém consegue dar o cargo
+de administrador.
 
 ### Passo 17 — Ligar o gancho de e-mail e subir o limite — lacuna conhecida
 
 **Depois que a lojista ligou o Gmail** (Tela 3, parte B), o gancho de e-mail tem de ser ligado
-(`acao=ativar`). Depois disso, **rode `login-da-loja-nova.mjs --aplicar` de novo**: com o gancho
-ligado a loja tem remetente próprio, e só então o limite de e-mails sobe para 30 por hora.
+(`acao=ativar`). Depois disso, **rode o passo `login` de novo** (`nova-loja.mjs login --loja
+<slug> --aplicar`): com o gancho ligado a loja tem remetente próprio, e só então o limite de
+e-mails sobe para 30 por hora.
 
-**A lacuna:** hoje quem liga o gancho é o workflow `ativar-email-do-login.yml`, e ele **não alcança
-loja nova**. Ele só aceita lojas de `scripts/frota/lojas.json` que têm um token fixo guardado como
-segredo do repositório. A loja nova tem só a autorização OAuth da lojista, que vive no cofre do
-PC do dono. Enquanto não houver outro caminho, a loja nova fica com o gancho desligado: o e-mail de
-login sai pelo e-mail padrão do Supabase (2 por hora, só para o time do projeto) e o cliente comum
-**não recebe** o e-mail de confirmação.
+**A lacuna:** hoje quem liga o gancho é o workflow `ativar-email-do-login.yml`, e ele **ainda não
+alcança a loja nova**. Ele lê o segredo da loja pelo bloco gerado `LOJAS-SEGREDOS` (linhas 86-89),
+e a loja nova só entra nesse bloco depois do cadastro (passo 9, pendente). Mesmo depois, o segredo
+dela só existe com a [sessão de publicação](#publicar-quando-há-loja-oauth-a-sessão) aberta, e esse
+workflow nunca rodou com o token OAuth. Enquanto não houver caminho provado, a loja nova fica com o
+gancho desligado: o e-mail de login sai pelo e-mail padrão do Supabase (2 por hora, só para o time
+do projeto) e o cliente comum **não recebe** o e-mail de confirmação.
 
-### Passo 18 — `conferir` — em construção
+### Passo 18 — `conferir`
 
-Vai responder SIM, NÃO ou INCERTO para "a loja pode vender?". **Enquanto não existe, a
-conferência à mão não fecha numa loja nova. Espere o C3.** As conferências que os outros roteiros
-usam pedem acessos que a IKCOUS não tem na conta da lojista:
-- **reconciliação:** o passo 4 da seção "Loja assinante nova" de
-  [producao-unica-fonte.md](producao-unica-fonte.md) lê `saude_da_loja()` pelo SQL Editor do
-  projeto, que é da lojista. Além disso, a leitura só faz sentido depois dos segredos (passo 8, que
-  espera o C2);
-- **dono:** a consulta 88c ([definir-o-dono-da-loja.md](definir-o-dono-da-loja.md), seção 3.4) roda
-  pelo SQL Editor ou pelos workflows da frota, que usam o segredo fixo da loja;
-- **login:** `login-da-loja-nova.mjs` sem `--aplicar` é o único que já funciona (usa o cofre). Ele
-  sozinho não diz que a loja pode vender.
+Responde SIM, NÃO ou INCERTO para "a loja pode vender?". É **só leitura**: não grava nada, nem o
+estado local. Por isso, ao contrário dos outros passos, a leitura de verdade é com `--aplicar`
+(sem ele, só diz o que leria).
+
+```powershell
+node scripts/frota/nova-loja.mjs conferir --loja <slug> --aplicar
+```
+
+- **O que aparece:** `Conferência da loja <slug> (só leitura; nada foi gravado):` e uma linha por
+  item, `[SIM]`, `[NÃO]` ou `[INCERTO]`: `banco`, `ficha`, `segredos`, `reconciliação`,
+  `functions`, `login`, `admin`, `definir-dono` e, como pendentes, `cadastro`, `marca` e
+  `chave-do-plano`.
+- **SIM** só se **todos** os itens derem SIM. **Hoje ele não dá SIM numa loja nova**, porque
+  `cadastro`, `marca` e `chave-do-plano` aparecem como `[NÃO] ... pendente` (passos 9 e 12).
+
+As conferências que os roteiros das lojas antigas usam (o `saude_da_loja()` e a consulta 88c pelo
+SQL Editor) **não servem** para a loja nova: pedem o painel do projeto, que é da lojista. O
+`conferir` faz essas leituras pelo acesso OAuth.
 
 O ensaio de ponta a ponta (C5) inclui um PIX real de R$ 1.
 
@@ -933,8 +1016,8 @@ limite.
 ### Depois de ligar o gancho, rode o login de novo
 
 O limite de 30 e-mails por hora só é gravado com remetente próprio. Ligou o gancho (`ativar`)?
-Rode `login-da-loja-nova.mjs --aplicar` **de novo**. Hoje o `ativar` não alcança loja nova (ver o
-[passo 17](#passo-17--ligar-o-gancho-de-e-mail-e-subir-o-limite--lacuna-conhecida)).
+Rode o passo `login` com `--aplicar` **de novo**. Hoje o `ativar` ainda não alcança a loja nova
+(ver o [passo 17](#passo-17--ligar-o-gancho-de-e-mail-e-subir-o-limite--lacuna-conhecida)).
 
 ### Depois das functions, a loja vira "existente"
 
@@ -946,7 +1029,7 @@ o workflow o lê pelo bloco `LOJAS-SEGREDO-UNICO` que o cadastro gera. Falta a p
 Supabase que o workflow usa (versão 3.0.0) aceita o token OAuth? Se não aceitar, entra a T10, que
 publica pela API. Enquanto isso, se a loja entrasse na lista, o `functions-da-loja.mjs` passaria a
 recusá-la, e as functions de dinheiro poderiam ficar velhas sem conserto. Detalhes no
-[passo 10](#passo-10--publicar-as-functions--ainda-não-automático-script-avulso).
+[passo 10](#passo-10--functions--recusa-até-o-passo-9).
 
 ### A instalação do banco bate no limite de pedidos por minuto
 
@@ -978,8 +1061,8 @@ Colou o código e deu INCERTO? Não cole o mesmo código de novo. Gere um link n
 | `criar-projeto` | O comando **nunca apaga projeto**. Apagar ou pausar é feito pela lojista, no painel dela, e é decisão do dono. |
 | `banco` | **Não tem desfazer.** 115 das migrations não se repetem, e não existe "desinstalar". Numa loja sem venda, o caminho é apagar o projeto e começar de novo (decisão do dono). |
 | `ficha` | Não tem o que desfazer: só lê e imprime. |
-| `segredos` | Não se aplica hoje: o passo 8 espera o C2. O script nunca substitui. Se gravar só metade, o relatório dele manda apagar os segredos no painel do projeto (Edge Functions > Secrets), e esse painel é da lojista: a IKCOUS não entra nele. O C2 tem de trazer esse conserto por outro caminho. |
-| `functions` | Sem comando de desfazer. Numa loja sem venda, uma function errada se corrige publicando de novo (`--aplicar --substituir`). |
+| `segredos` | Sem comando de desfazer. O passo nunca substitui. Se gravar só metade de um par, o relatório do script manda apagar os segredos no painel do projeto (Edge Functions > Secrets), e esse painel é da lojista: a IKCOUS não entra nele. **Ainda não há conserto desse caso do lado da IKCOUS.** |
+| `functions` | Sem comando de desfazer. Numa loja sem venda, uma function errada se corrige publicando de novo pelo script avulso `functions-da-loja.mjs` com `--aplicar --substituir` (o passo do comando nunca substitui). |
 | `login` | Sem comando de desfazer. O gancho nasce desligado, então nada deixa de funcionar. |
 | `primeira-admin` | **Não tem desfazer pelo script.** Se a pessoa errada virou administradora, pare e leve ao dono. |
 | `definir-dono` | **Lacuna conhecida:** numa loja nova, um dono errado **não tem conserto do lado da IKCOUS**. O passo `trocar-dono` ainda não existe. A troca de dono das lojas antigas (seção 4 de [definir-o-dono-da-loja.md](definir-o-dono-da-loja.md)) depende de SQL Editor no projeto, que a IKCOUS não abre na conta da lojista. |
@@ -990,33 +1073,35 @@ Colou o código e deu INCERTO? Não cole o mesmo código de novo. Gere um link n
 ele, um dono errado numa loja nova não tem conserto do lado da IKCOUS. Isso não é só uma lacuna:
 nenhuma loja de lojista de verdade abre antes dele.
 
-**Passos que não dá para usar numa loja nova** (a loja só tem a autorização OAuth da lojista, no
+**Passos que ainda não fecham numa loja nova** (a loja só tem a autorização OAuth da lojista, no
 cofre do PC do dono; a IKCOUS não tem token fixo no repositório, nem chave de serviço, nem entrada
 no painel do projeto dela):
 
-- **segredos (passo 8):** `scripts/frota/segredos-da-loja.mjs` pede `SUPABASE_ACCESS_TOKEN` quando
-  roda sozinho, e o token da lojista não sai do cofre. O conserto de "metade gravada" é no painel
-  do projeto, que é da lojista. Espere o C2.
-- **cadastro (passo 9):** o script `scripts/frota/cadastro-da-loja.mjs` existe (veio da branch
-  `claude/nova-loja-integrada`), mas ainda não é um passo do `nova-loja.mjs` (C2). Com `--aplicar`,
-  ele grava a loja no `lojas.json` (já com `acesso: "oauth"` e o segredo
-  `SUPABASE_ACCESS_TOKEN_<SLUG>`), nos blocos gerados dos workflows e no `canais-de-backend.json`. O
-  SQL da caderneta ele só imprime: quem roda é a sessão do agente. Ele **não** cria o segredo no
+- **cadastro (passo 9):** o passo `cadastro` do `nova-loja.mjs` recusa de propósito. O script
+  avulso `scripts/frota/cadastro-da-loja.mjs` existe (veio da branch `claude/nova-loja-integrada`).
+  Com `--aplicar`, ele grava a loja no `lojas.json` (já com `acesso: "oauth"` e o segredo
+  `SUPABASE_ACCESS_TOKEN_<SLUG>`), nos blocos gerados dos workflows e no `canais-de-backend.json`.
+  O SQL da caderneta ele só imprime: quem roda é a sessão do agente. Ele **não** cria o segredo no
   GitHub, porque o segredo da loja OAuth só existe enquanto a
   [sessão de publicação](#publicar-quando-há-loja-oauth-a-sessão) está aberta. O roteiro manual
   (`producao-unica-fonte.md`, "Loja assinante nova", passos 1 a 3) continua **não servindo** para a
   loja nova, porque pede um segredo fixo no repositório. Antes de rodar o script numa loja de
   verdade, leia a lacuna da release logo abaixo: uma loja `oauth` no `lojas.json` hoje bloqueia a
   publicação da frota inteira.
-- **functions (passo 10):** depende do cadastro. Espere o B5/C2.
-- **domínio, marca e chave do plano (passo 12):** a chave do plano vai pelo
-  `instalar-chave-da-loja.yml` (segredo fixo, linhas 174-175); o domínio, pelo SQL Editor do projeto;
-  a marca, pelo `scripts/identidade-bootstrap.mjs`, que exige a chave de serviço da loja (linha
-  471). Espere o C2.
-- **definir-dono (passo 15):** não existe; a receita manual (seção 3.3 de `definir-o-dono-da-loja.md`)
-  é no SQL Editor do projeto. Espere o C3.
-- **conferir (passo 18):** não existe; a reconciliação se lê pelo SQL Editor do projeto e a consulta
-  88c, pelo SQL Editor ou pelos workflows com segredo fixo. Espere o C3.
+- **functions (passo 10):** o passo existe, mas o `functions-da-loja.mjs` recusa a loja que não
+  está no `lojas.json`. Espera o cadastro.
+- **domínio, marca e chave do plano (passo 12):** `marca` e `chave-do-plano` recusam no comando. A
+  chave do plano vai pelo `instalar-chave-da-loja.yml`, que só enxerga a loja depois do cadastro e
+  com a sessão aberta, e nunca rodou com o token OAuth. O domínio da ficha (`store_config`) só se
+  grava pelo SQL Editor do projeto. A marca exige a chave de serviço da loja
+  (`scripts/identidade-bootstrap.mjs`, linha 471).
+- **gancho de e-mail (passo 17):** o `ativar-email-do-login.yml` tem o mesmo limite da chave do
+  plano: só enxerga a loja depois do cadastro e com a sessão aberta, e nunca rodou com o token
+  OAuth.
+- **conferir (passo 18):** o passo existe e lê tudo pelo acesso OAuth, mas não dá SIM numa loja
+  nova enquanto `cadastro`, `marca` e `chave-do-plano` estiverem pendentes.
+- **segredos (passo 8), metade gravada:** o passo nunca substitui. Se um par ficar pela metade, o
+  conserto é apagar no painel do projeto, que é da lojista.
 
 **Release para loja só-OAuth: a sessão cobre uma parte, e ainda não leva uma release até o fim.**
 
@@ -1051,9 +1136,7 @@ O que ainda falta:
 
 **Outras lacunas:**
 
-- `segredos`, `functions`, `login`, `marca` e `chave-do-plano` ainda não estão no `nova-loja.mjs`.
-- `ativar-email-do-login.yml` não alcança loja nova, porque só aceita lojas com token fixo no
-  repositório.
+- `cadastro`, `marca` e `chave-do-plano` têm o nome guardado no `nova-loja.mjs`, mas recusam.
 - Não há comando para revogar a autorização da lojista (a peça `revogar` existe em
   `acesso-oauth.mjs`, sem passo no comando).
 - A página `/autorizado` do app de gestão ainda não foi confirmada no ar.
