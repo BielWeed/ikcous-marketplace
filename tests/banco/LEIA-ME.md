@@ -901,6 +901,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `is_admin_atual()`/`rls_admin_atual()`, e o rollback da 97 recusa enquanto qualquer uma ficar), pela entrada `CADASTRO_FISCAL` no FIM de
   `POSTERIORES_A_97`, definida uma vez em `o-cadastro-fiscal-posterior.cjs` (só se no ar; roda o rollback COMUM, que deixa as tabelas e as linhas).
 - **o mesmo para a `20261450000000` (os fornecedores)**: as 4 políticas de `public.fornecedores` citam `rls_admin_atual()`, então a entrada `FORNECEDORES` (definida uma vez em `os-fornecedores-posterior.cjs`, só se no ar; roda o rollback COMUM, que sela a tabela e deixa as linhas) fica DEPOIS de `CADASTRO_FISCAL`, no fim de `POSTERIORES_A_97`.
+- **o mesmo para a `20261530000000` (a loja grande nao trava o balcao)**: a porta `buscar_clientes_do_balcao` chama `is_admin_atual()`, então a entrada `A_LOJA_GRANDE` (definida uma vez em `a-loja-grande-nao-trava-o-balcao-posterior.cjs`, só se a porta estiver no ar; o rollback-manual derruba só a porta e os dois índices, nenhum dado) fica DEPOIS de `FORNECEDORES`, no fim de `POSTERIORES_A_97`.
 - **o sino do pedido de retirada (`o-sino-do-pedido-de-retirada-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261233000000` (`notifica_cliente_de_mudanca_de_status`, a trigger `tr_pedido_avisa_o_cliente`): o pedido de
   RETIRADA na loja (`customer_data->>'shipping_option_id' = 'store-pickup'`) avisa "Pedido pronto para retirar" e

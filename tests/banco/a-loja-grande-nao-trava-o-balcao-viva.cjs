@@ -120,7 +120,8 @@ async function entrar(c, quem) {
     [q.uid, q.jwt],
   );
 }
-/** Roda `sql` como `quem` dentro de um SAVEPOINT sempre desfeito (vale dentro ou fora de uma transacao aberta pela prova). */
+/** Roda `sql` como `quem` dentro de um SAVEPOINT sempre desfeito. SAVEPOINT so existe dentro de BEGIN: quem chama abre a
+ * transacao (emTransacao); fora dela o Postgres recusa ("SAVEPOINT can only be used in transaction blocks"). */
 async function comoQuem(c, quem, sql, params = []) {
   await c.query("SAVEPOINT quem530");
   try {
@@ -1232,25 +1233,27 @@ async function plano(c, sql, { forcar = false } = {}) {
 provar(
   "(d) com 20 mil perfis e 50 mil pedidos: diferencial e zero pedido no volume; tempos da porta nova contra a antiga (impressos)",
   async (c) => {
+    // O volume fica gravado (as duas etapas (d) o usam); o que vem depois roda em transacao desfeita, como em (a) e (b):
+    // comoQuem abre SAVEPOINT, e SAVEPOINT so existe dentro de BEGIN.
     await semearVolume(c);
-    await diferencial(
-      c,
-      ["Volume530 1999", "9912", "Uberlândia", "", null],
-      [8],
+    await emTransacao(c, () =>
+      diferencial(c, ["Volume530 1999", "9912", "Uberlândia", "", null], [8]),
     );
-    await semPedidos(c, ["Volume530 1999", ""]);
+    await emTransacao(c, () => semPedidos(c, ["Volume530 1999", ""]));
     const linhas = [];
-    for (const termo of ["Volume530 1999", "volume530", "9912", "ma"]) {
-      const tAntiga = await cronometrar(3, async () =>
-        resposta(await antiga(c, termo, 8), "antiga"),
-      );
-      const tNova = await cronometrar(3, async () =>
-        resposta(await nova(c, termo, 8), "nova"),
-      );
-      linhas.push(
-        `   termo ${JSON.stringify(termo).padEnd(18)} antiga ${fmt(tAntiga).padStart(10)}   nova ${fmt(tNova).padStart(10)}`,
-      );
-    }
+    await emTransacao(c, async () => {
+      for (const termo of ["Volume530 1999", "volume530", "9912", "ma"]) {
+        const tAntiga = await cronometrar(3, async () =>
+          resposta(await antiga(c, termo, 8), "antiga"),
+        );
+        const tNova = await cronometrar(3, async () =>
+          resposta(await nova(c, termo, 8), "nova"),
+        );
+        linhas.push(
+          `   termo ${JSON.stringify(termo).padEnd(18)} antiga ${fmt(tAntiga).padStart(10)}   nova ${fmt(tNova).padStart(10)}`,
+        );
+      }
+    });
     console.log(
       "   TEMPO DA BUSCA DO BALCAO (mediana de 3, 8 por pagina; impresso, nao reprova):",
     );
@@ -1261,23 +1264,27 @@ provar(
 provar(
   "(d) EXPLAIN do sino/cron e da lista de produtos citam o indice novo e, antes dele, nao citavam; vitrine pagina 1 e 50 antes e depois (impressos)",
   async (c) => {
-    const depois = {
-      sino: await plano(c, SQL_SINO, { forcar: true }),
-      produtos: await plano(c, SQL_LISTA_DE_PRODUTOS, { forcar: true }),
-    };
-    assert.match(depois.sino, /idx_order_history_status_criado/, depois.sino);
-    assert.match(
-      depois.produtos,
-      /idx_produtos_data_cadastro_id/,
-      depois.produtos,
-    );
-    const natural = {
-      sino: (await plano(c, SQL_SINO)).split("\n").slice(0, 3).join(" | "),
-      produtos: (await plano(c, SQL_LISTA_DE_PRODUTOS))
-        .split("\n")
-        .slice(0, 3)
-        .join(" | "),
-    };
+    // plano() abre SAVEPOINT: roda dentro de uma transacao desfeita (nada aqui escreve).
+    let natural;
+    await emTransacao(c, async () => {
+      const depois = {
+        sino: await plano(c, SQL_SINO, { forcar: true }),
+        produtos: await plano(c, SQL_LISTA_DE_PRODUTOS, { forcar: true }),
+      };
+      assert.match(depois.sino, /idx_order_history_status_criado/, depois.sino);
+      assert.match(
+        depois.produtos,
+        /idx_produtos_data_cadastro_id/,
+        depois.produtos,
+      );
+      natural = {
+        sino: (await plano(c, SQL_SINO)).split("\n").slice(0, 3).join(" | "),
+        produtos: (await plano(c, SQL_LISTA_DE_PRODUTOS))
+          .split("\n")
+          .slice(0, 3)
+          .join(" | "),
+      };
+    });
     const vitrineDepois = {
       p1: await cronometrar(5, () => c.query(SQL_VITRINE, [0])),
       p50: await cronometrar(5, () => c.query(SQL_VITRINE, [9800])),

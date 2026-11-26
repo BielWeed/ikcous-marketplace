@@ -299,7 +299,7 @@ Deno.test("1381: inventario do aplicador, rol das consultas, canais, workflows e
         .every((l: string) => l.trim() === "" || l.trim().startsWith("//")),
       `${arq}: EX_ADMIN_RESTO_DO_PAINEL seguido so de DEFINIR_CARGO no fim da lista`,
     );
-    // Depois de DEFINIR_CARGO so comentario, a PRECO_HISTORICO (20261386), os LIMITES_DE_ABUSO (20261396) o CADASTRO_FISCAL (20261440000000) e os FORNECEDORES (20261450000000, ultimo da lista) antes do fecho.
+    // Depois de DEFINIR_CARGO so comentario, a PRECO_HISTORICO (20261386), os LIMITES_DE_ABUSO (20261396) o CADASTRO_FISCAL (20261440000000), os FORNECEDORES (20261450000000) e a A_LOJA_GRANDE (20261530000000, ultima da lista) antes do fecho.
     const aposCargo = t
       .slice(
         t.indexOf("DEFINIR_CARGO,\n") + "DEFINIR_CARGO,\n".length,
@@ -317,8 +317,9 @@ Deno.test("1381: inventario do aplicador, rol das consultas, canais, workflows e
         "REPETIR_A_DEVOLUCAO,",
         "CADASTRO_FISCAL,",
         "FORNECEDORES,",
+        "A_LOJA_GRANDE,",
       ],
-      `${arq}: so a PRECO_HISTORICO (20261386), os LIMITES_DE_ABUSO (20261396), as AS_VISITAS (20261399), a REPETIR_A_DEVOLUCAO (20261399991000), o CADASTRO_FISCAL (20261440000000) e os FORNECEDORES (20261450000000) vem depois de DEFINIR_CARGO e fecham a lista`,
+      `${arq}: so a PRECO_HISTORICO (20261386), os LIMITES_DE_ABUSO (20261396), as AS_VISITAS (20261399), a REPETIR_A_DEVOLUCAO (20261399991000), o CADASTRO_FISCAL (20261440000000), os FORNECEDORES (20261450000000) e a A_LOJA_GRANDE (20261530000000) vem depois de DEFINIR_CARGO e fecham a lista`,
     );
     assertStringIncludes(
       t,

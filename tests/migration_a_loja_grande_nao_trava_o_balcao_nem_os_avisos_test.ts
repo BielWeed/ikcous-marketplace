@@ -396,6 +396,42 @@ Deno.test("inventario das portas: a porta nova e do LOGADO (so authenticated exe
   assertEquals(linhas[0].situacao, "logado");
 });
 
+Deno.test("a porta chama is_admin_atual(): as provas que desfazem a 20261197000000 a desfazem ANTES (A_LOJA_GRANDE no fim de POSTERIORES_A_97)", async () => {
+  // Sem isto o rollback-manual da 97 recusa (B1_BASELINE_DIVERGENT: "funcoes fora da 20261197000000 ainda usam ...") e as
+  // provas do admin atual e dos pagamentos reprovam no CI (PR #1908, 26/11/2026). A guarda da 97 e' a certa e nao se afrouxa.
+  assertStringIncludes(LER(NOME), "public.is_admin_atual()");
+  const {
+    A_LOJA_GRANDE,
+  } = require("./banco/a-loja-grande-nao-trava-o-balcao-posterior.cjs");
+  assertEquals(A_LOJA_GRANDE.nome, NOME);
+  assertStringIncludes(
+    A_LOJA_GRANDE.noAr,
+    "to_regprocedure('public.buscar_clientes_do_balcao(text,integer)') IS NOT NULL AS sim",
+  );
+  assert(LER(`rollback-manual-${NOME}`).length > 0);
+  for (const arq of [
+    "tests/banco/admin-atual-viva.cjs",
+    "tests/banco/pagamentos-rpc-viva.cjs",
+  ]) {
+    const t = (await Deno.readTextFile(`${RAIZ}/${arq}`)).replace(/\r/g, "");
+    assertStringIncludes(
+      t,
+      '  A_LOJA_GRANDE,\n} = require("./a-loja-grande-nao-trava-o-balcao-posterior.cjs");',
+      arq,
+    );
+    const ini = t.indexOf("const POSTERIORES_A_97 = [");
+    assert(ini >= 0, `${arq}: sem POSTERIORES_A_97`);
+    const fim = t.indexOf("\n];", ini);
+    const itens = t
+      .slice(ini, fim)
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l !== "" && !l.startsWith("//"));
+    assertEquals(itens.at(-2), "FORNECEDORES,", arq);
+    assertEquals(itens.at(-1), "A_LOJA_GRANDE,", arq);
+  }
+});
+
 Deno.test("tipos do front: a porta nova esta em database.types.ts com os dois argumentos e devolve Json", async () => {
   const tipos = (
     await Deno.readTextFile(`${RAIZ}/src/types/database.types.ts`)
