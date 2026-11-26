@@ -20,8 +20,9 @@
  *    preparado DESLIGADO — igual ao `preparar` de ativar-email-do-login.cjs:
  *    ligar antes do Gmail da loja faria todo e-mail de login falhar (a function
  *    responde 500 sem remetente), inclusive a confirmação da conta da lojista
- *    (plano, L2). Quem liga é o ativar-email-do-login.yml (acao=ativar),
- *    depois que a lojista cadastra o Gmail no painel.
+ *    (plano, L2). Quem liga, depois que a lojista cadastra o Gmail no painel,
+ *    é o `ativarGanchoNovo` deste arquivo (pelo OAuth da lojista; as lojas
+ *    com token fixo seguem no ativar-email-do-login.yml, acao=ativar).
  *  Nunca liga o Google (passo da lojista), nunca mexe em SMTP nem em mailer.
  *
  * O SEGREDO DO GANCHO: `v1,whsec_<base64 de 32 bytes aleatórios>` (doc
@@ -64,7 +65,7 @@ import { ErroDaGestao, criarClienteGestao } from "./supabase-gestao.mjs";
 
 const require = createRequire(import.meta.url);
 const regras = require("../publicacao/login-da-loja-regras.cjs");
-const { RE_PROJETO, RE_REF } = require("./lojas.cjs");
+const { RE_PROJETO, RE_REF, carregarLojas } = require("./lojas.cjs");
 
 const { Parada, parar } = regras;
 
@@ -512,6 +513,301 @@ export async function configurarLoginNovo({ cliente, ref, dominio, aplicar }) {
       "estado: gravação parcial. Rode de novo sem --aplicar para ver o estado; não repita --aplicar antes disso",
     );
   return fim(veredito);
+}
+
+// ---------------------------------------------------------------------------
+// ligar o gancho (plano nova-loja-fechar, T6)
+// ---------------------------------------------------------------------------
+
+const FUNCAO_DO_GANCHO = "auth-send-email";
+/** Os status de function que a API documenta (os mesmos do
+ * ativar-email-do-login.cjs); qualquer outro é leitura inesperada. */
+const STATUS_DE_FUNCAO = Object.freeze(["ACTIVE", "REMOVED", "THROTTLED"]);
+/** As ÚNICAS chaves que o ativarGanchoNovo manda, UMA por PATCH, nesta
+ * ordem: o gancho primeiro, porque o limite só sobe com remetente próprio
+ * (regras.remetenteProprio) e o Supabase pode recusá-lo antes disso. */
+export const CHAVES_DA_ATIVACAO = Object.freeze([
+  "hook_send_email_enabled",
+  "rate_limit_email_sent",
+]);
+const ALVO_DA_ATIVACAO = Object.freeze({
+  hook_send_email_enabled: true,
+  rate_limit_email_sent: regras.LIMITE_EMAIL_POR_HORA,
+});
+const EXPLICACAO_DA_ATIVACAO = Object.freeze({
+  SIM: "o gancho de e-mail da loja nova está ligado, com o Gmail da lojista",
+  NÃO: "o gancho de e-mail NÃO foi ligado: veja o que FALTA acima",
+  INCERTO:
+    "não deu para confirmar: rode de novo sem aplicar antes de qualquer outra coisa",
+});
+
+/** Por que este projeto nunca recebe o ativarGanchoNovo (null = pode): as
+ * lojas que já vendem (IKCOUS e Savy) e os alvos legados de teste, pela MESMA
+ * lista do nova-loja.mjs (refs fixos + nomes no lojas.json + classe legado).
+ * Essas lojas ligam o gancho pelo ativar-email-do-login.yml, com token fixo.
+ * PARA (vira INCERTO) se o cadastro não deixa conferir. */
+async function porQueNaoAtivar(ref, cadastro) {
+  // import adiado: o nova-loja.mjs importa este arquivo (ciclo só na chamada)
+  const { LOJAS_LEGADAS, LOJAS_PROTEGIDAS, REFS_PROTEGIDOS } = await import(
+    "./nova-loja.mjs"
+  );
+  const recusa = `o projeto ${ref} é de uma loja que já vende (IKCOUS/Savy) ou de um alvo legado de teste: este caminho só liga o gancho de loja aberta pelo nova-loja (as outras usam o ativar-email-do-login.yml)`;
+  if (REFS_PROTEGIDOS.includes(ref)) return recusa;
+  const lojas = (cadastro === undefined ? carregarLojas() : cadastro)?.lojas;
+  if (
+    !objeto(lojas) ||
+    !LOJAS_PROTEGIDAS.every(
+      (n) =>
+        Object.hasOwn(lojas, n) &&
+        RE_REF.test(String(Reflect.get(lojas, n)?.ref)),
+    )
+  )
+    parar(
+      "scripts/frota/lojas.json ilegível ou sem a IKCOUS e a Savy: não dá para conferir que este projeto não é de uma delas",
+    );
+  for (const [nome, l] of Object.entries(lojas)) {
+    const protegida =
+      LOJAS_PROTEGIDAS.includes(nome) ||
+      LOJAS_LEGADAS.includes(nome) ||
+      l?.classe === "legado";
+    if (protegida && (ref === l?.ref || ref === l?.refDasFunctions))
+      return recusa;
+  }
+  return null;
+}
+
+/** A auth-send-email da lista de functions (null se não existe). */
+async function lerFuncaoDoGancho(cliente, ref) {
+  const lista = await cliente.pedir("funcoes", { ref });
+  if (
+    !Array.isArray(lista) ||
+    !lista.every((f) => objeto(f) && typeof f.slug === "string" && f.slug)
+  )
+    parar("lista de functions inesperada (não impressa)");
+  const slugs = lista.map((f) => f.slug);
+  if (new Set(slugs).size !== slugs.length)
+    parar("lista de functions com nomes repetidos");
+  if (!lista.every((f) => STATUS_DE_FUNCAO.includes(f.status)))
+    parar("estado de function inesperado (não impresso)");
+  return lista.find((f) => f.slug === FUNCAO_DO_GANCHO) ?? null;
+}
+
+/** Gmail cadastrado? A CONSULTA_GMAIL das regras (a mesma do
+ * login-da-loja.cjs, só leitura): volta o domínio público e um sim/não,
+ * nunca credencial. Forma diferente disso PARA sem imprimir nada. */
+async function lerGmail(cliente, ref) {
+  const linhas = await cliente.consultarBanco(ref, regras.CONSULTA_GMAIL, {
+    somenteLeitura: true,
+  });
+  const l = Array.isArray(linhas) && linhas.length === 1 ? linhas[0] : null;
+  if (
+    !objeto(l) ||
+    !isDeepStrictEqual(Object.keys(l), [
+      "dominio_publico",
+      "gmail_cadastrado",
+    ]) ||
+    (l.dominio_publico !== null && typeof l.dominio_publico !== "string") ||
+    typeof l.gmail_cadastrado !== "boolean"
+  )
+    parar("resposta da consulta do Gmail inesperada (não impressa)");
+  return l.gmail_cadastrado;
+}
+
+/** As três pré-condições, só lidas. Nenhum detalhe leva valor remoto além
+ * do status (já conferido contra STATUS_DE_FUNCAO). */
+function preCondicoes({ config, nomes, funcao, gmail, ref }) {
+  const itens = [];
+  const item = (nome, estado, detalhe) => itens.push({ nome, estado, detalhe });
+  item(
+    "Gmail da loja cadastrado no painel",
+    gmail ? OK : FALTA,
+    gmail ? "sim" : "a lojista ainda não cadastrou o Gmail no painel",
+  );
+  const ativa = funcao?.status === "ACTIVE";
+  item(
+    `function ${FUNCAO_DO_GANCHO} publicada e ativa`,
+    ativa ? OK : FALTA,
+    funcao === null ? "ausente" : ativa ? "ACTIVE" : `${funcao.status}`,
+  );
+  const jwt = funcao?.verify_jwt;
+  item(
+    `verify_jwt da ${FUNCAO_DO_GANCHO}`,
+    jwt === false ? OK : FALTA,
+    jwt === false
+      ? "desligado"
+      : jwt === true
+        ? "LIGADO: precisa ser false (o Auth chama com assinatura de webhook, não com login)"
+        : "desconhecido",
+  );
+  const pronto = estadoDoGancho(config, nomes, ref).estado === "pronto";
+  item(
+    "gancho de e-mail preparado",
+    pronto ? OK : FALTA,
+    pronto
+      ? "endereço desta loja, hash no Auth e secret na função"
+      : "não preparado ou meia configuração: rode o login-da-loja-nova.mjs sem --aplicar e veja o que falta",
+  );
+  return itens;
+}
+
+/**
+ * Liga o Send Email Hook da loja NOVA (o login-da-loja-nova o deixou
+ * preparado DESLIGADO), pelo cliente da gestão com o OAuth da lojista.
+ *
+ * Pré-condições, todas lidas sem gravar: Gmail cadastrado (app_settings),
+ * auth-send-email ACTIVE com verify_jwt === false, gancho preparado (endereço
+ * desta loja + hash no formato + secret na função). Qualquer uma faltando:
+ * NÃO e 0 escritas — e um gancho JÁ ligado não é desligado por aqui.
+ *
+ * Com `aplicar === true`, e só o que difere do alvo: PATCH de
+ * hook_send_email_enabled = true, depois PATCH de rate_limit_email_sent = 30
+ * (CHAVES_DA_ATIVACAO, nada além). Relê e confere as duas chaves e que o
+ * resto do Auth não mudou. Rodar de novo com tudo no lugar: 0 escritas, SIM.
+ *
+ * SIM só com releitura confirmando e nenhuma escrita com erro; releitura que
+ * diverge é INCERTO; escrita com erro nunca dá SIM (NÃO se a releitura mostra
+ * o Auth idêntico ao de antes, INCERTO senão). Devolve { veredito, linhas };
+ * nenhuma linha leva segredo, hash do gancho, senha de app nem token.
+ *
+ * @param {{ cliente: ReturnType<typeof criarClienteGestao>, ref: string,
+ *   aplicar?: boolean, cadastro?: object }} p   cadastro = o de lojas.json
+ *   (padrão: carregarLojas(); os testes passam um inventado)
+ */
+export async function ativarGanchoNovo({ cliente, ref, aplicar, cadastro }) {
+  if (typeof ref !== "string" || !RE_REF.test(ref))
+    throw new UsoErrado("ref inválido (20 letras minúsculas)");
+  const linhas = [];
+  const dizer = (l) => linhas.push(l);
+  const relatarItens = (itens) => {
+    for (const i of itens) dizer(`${i.estado} — ${i.nome}: ${i.detalhe}`);
+  };
+  const fim = (veredito) => {
+    dizer(
+      `veredito: ${veredito} (${Reflect.get(EXPLICACAO_DA_ATIVACAO, veredito)})`,
+    );
+    return { veredito, linhas };
+  };
+
+  // 0. nunca numa loja que já vende nem num alvo legado (antes da rede)
+  let recusa;
+  try {
+    recusa = await porQueNaoAtivar(ref, cadastro);
+  } catch (e) {
+    dizer(`não consegui conferir o alvo: ${mensagemSegura(e)}`);
+    dizer("nada foi lido nem gravado");
+    return fim("INCERTO");
+  }
+  if (recusa !== null) {
+    dizer(`FALTA — alvo: ${recusa}`);
+    dizer("nada foi lido nem gravado");
+    return fim("NÃO");
+  }
+
+  // 1. o estado de agora (só leitura)
+  let antes;
+  let nomes;
+  let funcao;
+  let gmail;
+  try {
+    antes = await lerConfig(cliente, ref);
+    const limite = antes.rate_limit_email_sent;
+    if (limite !== null && limite !== undefined && !Number.isInteger(limite))
+      parar("rate_limit_email_sent do Auth em formato inesperado");
+    nomes = await lerSegredos(cliente, ref);
+    funcao = await lerFuncaoDoGancho(cliente, ref);
+    gmail = await lerGmail(cliente, ref);
+  } catch (e) {
+    dizer(`não consegui ler o estado atual: ${mensagemSegura(e)}`);
+    dizer("nada foi gravado");
+    return fim("INCERTO");
+  }
+
+  // 2. as pré-condições
+  const itens = preCondicoes({ config: antes, nomes, funcao, gmail, ref });
+  relatarItens(itens);
+  if (itens.some((i) => i.estado !== OK)) {
+    dizer("nada foi gravado");
+    return fim("NÃO");
+  }
+
+  // 3. o plano: só o que difere do alvo, uma chave por PATCH
+  const patches = CHAVES_DA_ATIVACAO.filter(
+    (k) => Reflect.get(antes, k) !== Reflect.get(ALVO_DA_ATIVACAO, k),
+  ).map((k) => ({ [k]: Reflect.get(ALVO_DA_ATIVACAO, k) }));
+  for (const p of patches)
+    for (const [k, v] of Object.entries(p))
+      dizer(
+        `plano — ${k}: ${String(Reflect.get(antes, k) ?? "(vazio)")} -> ${v}`,
+      );
+  if (patches.length === 0) {
+    dizer(
+      `nada a gravar: o gancho já está ligado e o limite já é ${regras.LIMITE_EMAIL_POR_HORA} e-mails/h`,
+    );
+    return fim("SIM");
+  }
+  if (aplicar !== true) {
+    dizer("ENSAIO: nada foi gravado. Rode de novo com aplicar para gravar.");
+    return fim("NÃO");
+  }
+
+  // 4. gravar
+  let falha = null;
+  const enviadas = new Set();
+  try {
+    for (const corpo of patches) {
+      const chaves = Object.keys(corpo);
+      if (!chaves.every((k) => CHAVES_DA_ATIVACAO.includes(k)))
+        parar("PATCH fora da lista branca da ativação");
+      for (const k of chaves) enviadas.add(k);
+      await cliente.pedir("configAuth", { ref, metodo: "PATCH", corpo });
+    }
+  } catch (e) {
+    falha = mensagemSegura(e);
+    dizer(`FALHOU ao fazer o PATCH do Auth: ${falha}`);
+  }
+
+  // 5. reler e conferir
+  let depois;
+  try {
+    depois = await lerConfig(cliente, ref);
+  } catch (e) {
+    dizer(`não consegui reler o Auth depois de gravar: ${mensagemSegura(e)}`);
+    dizer(
+      "estado DESCONHECIDO: rode de novo sem aplicar para ver o que ficou gravado",
+    );
+    return fim("INCERTO");
+  }
+  const restantes = (c) =>
+    Object.fromEntries(Object.entries(c).filter(([k]) => !enviadas.has(k)));
+  const restoIgual = isDeepStrictEqual(restantes(antes), restantes(depois));
+  const confere = CHAVES_DA_ATIVACAO.every(
+    (k) => Reflect.get(depois, k) === Reflect.get(ALVO_DA_ATIVACAO, k),
+  );
+  dizer(
+    `${depois.hook_send_email_enabled === true ? OK : FALTA} — gancho de e-mail ligado (releitura)`,
+  );
+  dizer(
+    `${depois.rate_limit_email_sent === regras.LIMITE_EMAIL_POR_HORA ? OK : FALTA} — limite de ${regras.LIMITE_EMAIL_POR_HORA} e-mails/h (releitura)`,
+  );
+  if (!restoIgual)
+    dizer(
+      `${NAO_MEDIDO} — resto da configuração do Auth: outro campo mudou durante a operação (não impresso)`,
+    );
+  if (falha === null) {
+    if (confere && restoIgual) return fim("SIM");
+    dizer(
+      "o PATCH respondeu OK, mas a releitura não confirma: rode de novo sem aplicar para ver o estado",
+    );
+    return fim("INCERTO");
+  }
+  if (isDeepStrictEqual(antes, depois)) {
+    dizer("estado: nada mudou no Auth; pode rodar de novo com aplicar");
+    return fim("NÃO");
+  }
+  dizer(
+    "estado: gravação parcial ou não confirmada. Rode de novo sem aplicar para ver o estado; não repita aplicar antes disso",
+  );
+  return fim("INCERTO");
 }
 
 // ---------------------------------------------------------------------------

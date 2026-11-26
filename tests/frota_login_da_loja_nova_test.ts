@@ -19,6 +19,15 @@
  *  - sem --aplicar, 0 escritas;
  *  - segredo, HMAC e token nunca aparecem na saída;
  *  - domínio inválido ou com vírgula é recusado antes de qualquer rede.
+ *
+ * E o `ativarGanchoNovo` (plano nova-loja-fechar, T6), no fim do arquivo:
+ *  - pré-condições só lidas (Gmail cadastrado, auth-send-email ACTIVE com
+ *    verify_jwt desligado, gancho preparado): qualquer uma faltando é NÃO e
+ *    0 escritas;
+ *  - os PATCHes só levam hook_send_email_enabled=true e o limite de 30/h;
+ *  - releitura que não confirma é INCERTO (nunca SIM);
+ *  - sem `aplicar`, 0 escritas; IKCOUS/Savy e alvo legado recusados antes de
+ *    qualquer rede; nenhum segredo (senha de app, gancho, token) na saída.
  */
 import { createHash, createHmac } from "node:crypto";
 import {
@@ -29,12 +38,19 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  CHAVES_DA_ATIVACAO,
   CHAVES_DO_PATCH,
   NOME_SEGREDO,
+  ativarGanchoNovo,
   configurarLoginNovo,
   lerArgumentos,
   main,
 } from "../scripts/frota/login-da-loja-nova.mjs";
+import {
+  LOJAS_LEGADAS,
+  LOJAS_PROTEGIDAS,
+  REFS_PROTEGIDOS,
+} from "../scripts/frota/nova-loja.mjs";
 import { criarClienteGestao } from "../scripts/frota/supabase-gestao.mjs";
 
 const REF = "abcdefghijklmnopqrst";
@@ -689,4 +705,412 @@ Deno.test("main: 401 vira mensagem de acesso, sem token", async () => {
   const texto = saida.linhas.join("\n");
   assert(!texto.includes(TOKEN));
   assertMatch(texto, /INCERTO/);
+});
+
+// ---------------------------------------------------------------------------
+// ativarGanchoNovo: ligar o gancho da loja nova (plano nova-loja-fechar, T6)
+// ---------------------------------------------------------------------------
+
+/** Texto inventado no lugar da senha de app do Gmail: nunca pode sair. */
+const SENHA_DE_APP = "senha-de-app-inventada-wxyz";
+const CAMINHO_CONSULTA = `/v1/projects/${REF}/database/query`;
+const ALVO = { hook_send_email_enabled: true, rate_limit_email_sent: 30 };
+
+const funcaoDoGancho = (extra = {}) => ({
+  id: "id-inventado",
+  slug: "auth-send-email",
+  name: "auth-send-email",
+  status: "ACTIVE",
+  version: 3,
+  verify_jwt: false,
+  ...extra,
+});
+
+/** O estado que o login-da-loja-nova deixa: gancho preparado DESLIGADO. */
+const configPreparada = (extra = {}) =>
+  configPronta({ rate_limit_email_sent: 2, ...extra });
+
+/**
+ * Dublê da Management API para a ativação: /config/auth (GET e PATCH),
+ * /secrets (GET), /functions (GET) e /database/query (a consulta do Gmail).
+ * `falhar`: { lerConfig?: status, patch?: status | "rede",
+ *   patchSemEfeito?: true (responde 200 e não grava), consulta?: status }.
+ * Os corpos de erro carregam texto secreto de propósito: não pode vazar.
+ */
+function apiDaAtivacao({
+  config = configPreparada(),
+  secrets = [secretDaFuncao()],
+  funcoes = [funcaoDoGancho()],
+  gmail = true,
+  linhasDoGmail,
+  falhar = {},
+} = {}) {
+  const estado = { config: structuredClone(config) };
+  const chamadas = [];
+  const corposDoPatch = [];
+  const fetch = async (url, init = {}) => {
+    const u = new URL(String(url));
+    const metodo = init.method ?? "GET";
+    const caminho = u.pathname;
+    const chamada = { metodo, caminho, leitura: metodo === "GET" };
+    chamadas.push(chamada);
+    if (caminho === `/v1/projects/${REF}/config/auth`) {
+      if (metodo === "GET") {
+        if (typeof falhar.lerConfig === "number")
+          return json(falhar.lerConfig, { message: TOKEN });
+        return json(200, estado.config);
+      }
+      if (metodo === "PATCH") {
+        const corpo = JSON.parse(init.body);
+        corposDoPatch.push(corpo);
+        if (falhar.patch === "rede") throw new TypeError(`rede caiu ${TOKEN}`);
+        if (typeof falhar.patch === "number")
+          return json(falhar.patch, { message: SEGREDO_ANTIGO });
+        if (!falhar.patchSemEfeito)
+          for (const [k, v] of Object.entries(corpo))
+            Reflect.set(estado.config, k, v);
+        return json(200, estado.config);
+      }
+    }
+    if (caminho === `/v1/projects/${REF}/secrets` && metodo === "GET")
+      return json(200, secrets);
+    if (caminho === `/v1/projects/${REF}/functions` && metodo === "GET")
+      return json(200, funcoes);
+    if (caminho === CAMINHO_CONSULTA && metodo === "POST") {
+      const corpo = JSON.parse(init.body);
+      // só conta como leitura se pediu read_only E é a consulta do Gmail
+      chamada.leitura =
+        corpo.read_only === true && /gmail_cadastrado/.test(corpo.query);
+      if (typeof falhar.consulta === "number")
+        return json(falhar.consulta, { message: SENHA_DE_APP });
+      return json(
+        201,
+        linhasDoGmail ?? [
+          { dominio_publico: DOMINIO, gmail_cadastrado: gmail },
+        ],
+      );
+    }
+    return json(404, { message: "rota que o dublê não conhece" });
+  };
+  const escritas = () => chamadas.filter((c) => !c.leitura);
+  return { fetch, estado, chamadas, escritas, corposDoPatch };
+}
+
+async function ativar(api, { aplicar = true, ref = REF, cadastro } = {}) {
+  return await ativarGanchoNovo({
+    cliente: cliente(api),
+    ref,
+    aplicar,
+    ...(cadastro === undefined ? {} : { cadastro }),
+  });
+}
+
+function assertSemSegredoNaAtivacao(r) {
+  const tudo = `${r.linhas.join("\n")}\n${JSON.stringify(r)}`;
+  const proibidos = [
+    TOKEN,
+    SEGREDO_ANTIGO,
+    hmac(SEGREDO_ANTIGO),
+    createHash("sha256").update(SEGREDO_ANTIGO).digest("hex"),
+    SENHA_DE_APP,
+  ];
+  for (const p of proibidos)
+    assert(!tudo.includes(p), "a saída vazou um trecho secreto (não impresso)");
+}
+
+Deno.test("ativar: tudo pronto e Gmail cadastrado liga o gancho, sobe o limite para 30, relê e dá SIM", async () => {
+  const api = apiDaAtivacao();
+  const antes = structuredClone(api.estado.config);
+  const r = await ativar(api);
+  assertEquals(r.veredito, "SIM", r.linhas.join("\n"));
+  const c = api.estado.config;
+  assertEquals(c.hook_send_email_enabled, true);
+  assertEquals(c.rate_limit_email_sent, 30);
+  // o resto do Auth (inclusive endereço e segredo do gancho) ficou igual
+  for (const k of Object.keys(antes))
+    if (!CHAVES_DA_ATIVACAO.includes(k))
+      assertEquals(Reflect.get(c, k), Reflect.get(antes, k), k);
+  // releu depois do último PATCH
+  const ultimoPatch = api.chamadas.findLastIndex((x) => x.metodo === "PATCH");
+  assert(
+    api.chamadas
+      .slice(ultimoPatch + 1)
+      .some(
+        (x) =>
+          x.metodo === "GET" && x.caminho === `/v1/projects/${REF}/config/auth`,
+      ),
+    "não releu o Auth depois de gravar",
+  );
+  assertSemSegredoNaAtivacao(r);
+});
+
+Deno.test("ativar: os PATCHes só levam as duas chaves permitidas (gancho primeiro, depois o limite)", async () => {
+  assertEquals([...CHAVES_DA_ATIVACAO].sort(), Object.keys(ALVO).sort());
+  const api = apiDaAtivacao();
+  await ativar(api);
+  assertEquals(api.corposDoPatch, [
+    { hook_send_email_enabled: true },
+    { rate_limit_email_sent: 30 },
+  ]);
+  // e nenhuma outra escrita (nem secret, nem consulta que grava)
+  assertEquals(
+    api.escritas().map((x) => `${x.metodo} ${x.caminho}`),
+    [
+      `PATCH /v1/projects/${REF}/config/auth`,
+      `PATCH /v1/projects/${REF}/config/auth`,
+    ],
+  );
+});
+
+Deno.test("ativar: já ligado e com o limite de 30: 0 escritas e SIM (rodar duas vezes não grava de novo)", async () => {
+  const api = apiDaAtivacao({ config: configPreparada(ALVO) });
+  const r = await ativar(api);
+  assertEquals(r.veredito, "SIM", r.linhas.join("\n"));
+  assertEquals(api.escritas().length, 0);
+  const segunda = apiDaAtivacao();
+  await ativar(segunda);
+  const r2 = await ativar(segunda);
+  assertEquals(r2.veredito, "SIM", r2.linhas.join("\n"));
+  assertEquals(segunda.corposDoPatch.length, 2, "a segunda rodada gravou");
+});
+
+Deno.test("ativar: ligado com limite baixo: só o PATCH do limite", async () => {
+  const api = apiDaAtivacao({
+    config: configPreparada({ hook_send_email_enabled: true }),
+  });
+  const r = await ativar(api);
+  assertEquals(r.veredito, "SIM", r.linhas.join("\n"));
+  assertEquals(api.corposDoPatch, [{ rate_limit_email_sent: 30 }]);
+});
+
+Deno.test("ativar: sem Gmail cadastrado: NÃO e 0 escritas", async () => {
+  const api = apiDaAtivacao({ gmail: false });
+  const antes = structuredClone(api.estado);
+  const r = await ativar(api);
+  assertEquals(r.veredito, "NÃO", r.linhas.join("\n"));
+  assertEquals(api.escritas().length, 0);
+  assertEquals(api.estado, antes);
+  assertMatch(r.linhas.join("\n"), /FALTA — Gmail/);
+  assertSemSegredoNaAtivacao(r);
+});
+
+const FUNCOES_RUINS = [
+  ["function ausente", []],
+  [
+    "function de outro nome só",
+    [funcaoDoGancho({ slug: "outra", name: "outra" })],
+  ],
+  ["function REMOVED", [funcaoDoGancho({ status: "REMOVED" })]],
+  ["function THROTTLED", [funcaoDoGancho({ status: "THROTTLED" })]],
+  ["verify_jwt ligado", [funcaoDoGancho({ verify_jwt: true })]],
+  ["verify_jwt ausente", [funcaoDoGancho({ verify_jwt: undefined })]],
+];
+
+for (const [nome, funcoes] of FUNCOES_RUINS) {
+  Deno.test(`ativar: ${nome}: NÃO e 0 escritas`, async () => {
+    const api = apiDaAtivacao({ funcoes });
+    const r = await ativar(api);
+    assertEquals(r.veredito, "NÃO", r.linhas.join("\n"));
+    assertEquals(api.escritas().length, 0);
+    assertMatch(r.linhas.join("\n"), /FALTA — (function|verify_jwt)/);
+  });
+}
+
+const GANCHOS_MEIO_CONFIGURADOS = [
+  ["sem o secret na função", configPreparada(), []],
+  [
+    "secret com outro nome",
+    configPreparada(),
+    [secretDaFuncao("OUTRO_SEGREDO")],
+  ],
+  [
+    "endereço de outro projeto",
+    configPreparada({
+      hook_send_email_uri:
+        "https://zzzzzzzzzzzzzzzzzzzz.supabase.co/functions/v1/auth-send-email",
+    }),
+    [secretDaFuncao()],
+  ],
+  [
+    "sem endereço",
+    configPreparada({ hook_send_email_uri: null }),
+    [secretDaFuncao()],
+  ],
+  [
+    "sem hash no Auth",
+    configPreparada({ hook_send_email_secrets: null }),
+    [secretDaFuncao()],
+  ],
+  [
+    "hash fora do formato",
+    configPreparada({ hook_send_email_secrets: "v1,whsec_textoPuroNaoEHash" }),
+    [secretDaFuncao()],
+  ],
+];
+
+for (const [nome, config, secrets] of GANCHOS_MEIO_CONFIGURADOS) {
+  Deno.test(`ativar: gancho meio configurado (${nome}): NÃO e 0 escritas`, async () => {
+    const api = apiDaAtivacao({ config, secrets });
+    const antes = structuredClone(api.estado);
+    const r = await ativar(api);
+    assertEquals(r.veredito, "NÃO", r.linhas.join("\n"));
+    assertEquals(api.escritas().length, 0);
+    assertEquals(api.estado, antes);
+    assertMatch(r.linhas.join("\n"), /FALTA — gancho de e-mail preparado/);
+    assertSemSegredoNaAtivacao(r);
+  });
+}
+
+Deno.test("ativar: sem aplicar: 0 escritas, mostra o plano e dá NÃO", async () => {
+  for (const aplicar of [false, undefined, "sim"]) {
+    const api = apiDaAtivacao();
+    const r = await ativarGanchoNovo({
+      cliente: cliente(api),
+      ref: REF,
+      aplicar,
+    });
+    assertEquals(r.veredito, "NÃO", r.linhas.join("\n"));
+    assertEquals(api.escritas().length, 0);
+    assertMatch(r.linhas.join("\n"), /plano — hook_send_email_enabled/);
+    assertMatch(r.linhas.join("\n"), /ENSAIO/);
+  }
+});
+
+Deno.test("ativar: PATCH responde OK mas a releitura diverge: INCERTO (nunca SIM)", async () => {
+  const api = apiDaAtivacao({ falhar: { patchSemEfeito: true } });
+  const r = await ativar(api);
+  assertEquals(r.veredito, "INCERTO", r.linhas.join("\n"));
+  assertSemSegredoNaAtivacao(r);
+});
+
+Deno.test("ativar: outro campo do Auth muda durante a operação: INCERTO", async () => {
+  const api = apiDaAtivacao();
+  const fetchOriginal = api.fetch;
+  let patches = 0;
+  const fetch = async (url, init = {}) => {
+    const resposta = await fetchOriginal(url, init);
+    if ((init.method ?? "GET") === "PATCH" && ++patches === 2)
+      api.estado.config.site_url = "https://outra.exemplo.com.br";
+    return resposta;
+  };
+  const r = await ativarGanchoNovo({
+    cliente: criarClienteGestao({ token: TOKEN, fetch, prazoMs: 2000 }),
+    ref: REF,
+    aplicar: true,
+  });
+  assertEquals(r.veredito, "INCERTO", r.linhas.join("\n"));
+});
+
+Deno.test("ativar: PATCH recusado: nunca SIM, não manda o limite, e diz que nada mudou", async () => {
+  const api = apiDaAtivacao({ falhar: { patch: 500 } });
+  const r = await ativar(api);
+  assertEquals(r.veredito, "NÃO", r.linhas.join("\n"));
+  assertEquals(api.corposDoPatch, [{ hook_send_email_enabled: true }]);
+  assertMatch(r.linhas.join("\n"), /nada mudou/);
+  assertSemSegredoNaAtivacao(r);
+});
+
+Deno.test("ativar: rede cai no PATCH: nunca SIM e nada secreto na saída", async () => {
+  const api = apiDaAtivacao({ falhar: { patch: "rede" } });
+  const r = await ativar(api);
+  assert(r.veredito !== "SIM", r.linhas.join("\n"));
+  assertSemSegredoNaAtivacao(r);
+});
+
+Deno.test("ativar: leitura falha (Auth, consulta do Gmail): INCERTO e 0 escritas, sem segredo", async () => {
+  for (const falhar of [{ lerConfig: 500 }, { consulta: 500 }]) {
+    const api = apiDaAtivacao({ falhar });
+    const r = await ativar(api);
+    assertEquals(r.veredito, "INCERTO", r.linhas.join("\n"));
+    assertEquals(api.escritas().length, 0);
+    assertSemSegredoNaAtivacao(r);
+  }
+});
+
+Deno.test("ativar: consulta do Gmail com coluna a mais (até a senha de app): INCERTO, 0 escritas e a senha não sai", async () => {
+  const api = apiDaAtivacao({
+    linhasDoGmail: [
+      {
+        dominio_publico: DOMINIO,
+        gmail_cadastrado: true,
+        senha_cifrada: SENHA_DE_APP,
+      },
+    ],
+  });
+  const r = await ativar(api);
+  assertEquals(r.veredito, "INCERTO", r.linhas.join("\n"));
+  assertEquals(api.escritas().length, 0);
+  assertSemSegredoNaAtivacao(r);
+});
+
+Deno.test("ativar: a consulta do Gmail vai como read_only", async () => {
+  const api = apiDaAtivacao();
+  await ativar(api);
+  const consultas = api.chamadas.filter((c) => c.caminho === CAMINHO_CONSULTA);
+  assertEquals(consultas.length, 1);
+  assert(consultas[0].leitura, "a consulta do Gmail não foi read_only");
+});
+
+Deno.test("ativar: IKCOUS e Savy (refs fixos do nova-loja) recusados antes de qualquer rede", async () => {
+  assert(REFS_PROTEGIDOS.length >= 2);
+  for (const ref of REFS_PROTEGIDOS) {
+    const api = apiDaAtivacao();
+    const r = await ativar(api, { ref });
+    assertEquals(r.veredito, "NÃO", r.linhas.join("\n"));
+    assertEquals(api.chamadas.length, 0);
+  }
+});
+
+/** Cadastro inventado no formato de lojas.json (refs inventados). */
+const cadastroInventado = () => ({
+  lojas: {
+    [LOJAS_PROTEGIDAS[0]]: { classe: "assinante", ref: "pppppppppppppppppppa" },
+    [LOJAS_PROTEGIDAS[1]]: { classe: "assinante", ref: "pppppppppppppppppppb" },
+    [LOJAS_LEGADAS[0]]: {
+      classe: "legado",
+      ref: "pppppppppppppppppppa",
+      refDasFunctions: "llllllllllllllllllla",
+    },
+    "outro-legado": { classe: "legado", ref: "llllllllllllllllllld" },
+    "loja-de-cliente": { classe: "assinante", ref: REF },
+  },
+});
+
+Deno.test("ativar: alvo legado e loja que já vende pela lista do lojas.json: recusados antes de qualquer rede", async () => {
+  for (const ref of [
+    "pppppppppppppppppppa",
+    "pppppppppppppppppppb",
+    "llllllllllllllllllla",
+    "llllllllllllllllllld",
+  ]) {
+    const api = apiDaAtivacao();
+    const r = await ativar(api, { ref, cadastro: cadastroInventado() });
+    assertEquals(r.veredito, "NÃO", `${ref}: ${r.linhas.join("\n")}`);
+    assertEquals(api.chamadas.length, 0);
+  }
+  // uma loja nova que já entrou no cadastro como assinante segue
+  const api = apiDaAtivacao();
+  const r = await ativar(api, { cadastro: cadastroInventado() });
+  assertEquals(r.veredito, "SIM", r.linhas.join("\n"));
+});
+
+Deno.test("ativar: lojas.json ilegível (sem IKCOUS/Savy): INCERTO antes de qualquer rede", async () => {
+  for (const cadastro of [null, {}, { lojas: {} }, { lojas: { savy: {} } }]) {
+    const api = apiDaAtivacao();
+    const r = await ativar(api, { cadastro });
+    assertEquals(r.veredito, "INCERTO", r.linhas.join("\n"));
+    assertEquals(api.chamadas.length, 0);
+  }
+});
+
+Deno.test("ativar: ref fora do formato é uso errado, sem rede", async () => {
+  const api = apiDaAtivacao();
+  let erro;
+  try {
+    await ativar(api, { ref: "Ref-Invalido" });
+  } catch (e) {
+    erro = e;
+  }
+  assert(erro, "aceitou ref inválido");
+  assertEquals(api.chamadas.length, 0);
 });

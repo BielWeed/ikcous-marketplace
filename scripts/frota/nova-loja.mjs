@@ -175,7 +175,7 @@ export const AGUARDANDO = Object.freeze({
  * comando. Recusadas pelo nome e pelo ref (de lojas.json e, de reserva, os
  * fixos abaixo: um lojas.json adulterado não tira a proteção). */
 export const LOJAS_PROTEGIDAS = Object.freeze(["ikcous-publicada", "savy"]);
-const REFS_PROTEGIDOS = Object.freeze([
+export const REFS_PROTEGIDOS = Object.freeze([
   "cafkrminfnokvgjqtkle", // ikcous-publicada (e o legado "loja")
   "gnjsrucsmjkajijrakzr", // savy
 ]);
