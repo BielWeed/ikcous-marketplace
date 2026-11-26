@@ -1048,6 +1048,85 @@ prova(
   },
 );
 
+// ---- AS CONFERENCIAS NOVAS: 195a (depois) e 195b (antes), nos dois sentidos, com o rol fechado do conferir-banco ----------------------
+const A195A = "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado";
+const B195B = "195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente";
+prova(
+  "CONSULTAS 195a/195b: a 195a fecha 6 de 6 com a migration e a 195b reprova so o que ela muda; depois dos dois rollbacks e' o contrario; cada estrago reprova o item certo",
+  async () => {
+    await P.emTransacao(async () => {
+      assert.deepEqual(await P.consulta(A195A), []);
+      assert.deepEqual(await P.consulta(B195B), [
+        "assinatura_da_loja.pausa_em: ainda NAO existe (o cartao tem as 13 colunas da 20261177000000)",
+        "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 (md5; a premissa do pre-voo)",
+      ]);
+      // so o comum: a porta voltou, a coluna ficou
+      await C().query(ROLLBACK_SQL);
+      assert.deepEqual(await P.consulta(A195A), [
+        "assinatura_da_loja_gravar: uma so, com o corpo da 20261590000000 (md5)",
+      ]);
+      assert.deepEqual(await P.consulta(B195B), [
+        "assinatura_da_loja.pausa_em: ainda NAO existe (o cartao tem as 13 colunas da 20261177000000)",
+      ]);
+      // os dois degraus: o estado "antes"; a 195a responde "nao" (nunca erro)
+      await C().query(DESTRUTIVO_CONFIRMADO);
+      assert.deepEqual(await P.consulta(A195A), [
+        "assinatura_da_loja.pausa_em: date, anulavel e sem padrao",
+        "assinatura_da_loja_gravar: uma so, com o corpo da 20261590000000 (md5)",
+      ]);
+      assert.deepEqual(await P.consulta(B195B), []);
+    });
+    const estragos = [
+      [
+        "padrao na coluna",
+        "ALTER TABLE public.assinatura_da_loja ALTER COLUMN pausa_em SET DEFAULT current_date",
+        /pausa_em: date, anulavel e sem padrao/,
+      ],
+      [
+        "a porta ao service_role",
+        `GRANT EXECUTE ON FUNCTION ${GRAVAR} TO service_role`,
+        /gravar: atributos/,
+      ],
+      [
+        "a porta a PUBLIC",
+        `GRANT EXECUTE ON FUNCTION ${GRAVAR} TO PUBLIC`,
+        /gravar: atributos/,
+      ],
+      [
+        "porta como SECURITY INVOKER",
+        `ALTER FUNCTION ${GRAVAR} SECURITY INVOKER`,
+        /gravar: atributos/,
+      ],
+      [
+        "definir_chave trocada",
+        "CREATE OR REPLACE FUNCTION public.assinatura_da_loja_definir_chave(p_hash text, p_substituir boolean DEFAULT false) RETURNS void LANGUAGE sql AS $f$ SELECT $f$",
+        /definir_chave: intacta/,
+      ],
+      [
+        "leitor trocado",
+        "CREATE OR REPLACE FUNCTION public.assinatura_da_loja_ler() RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$ BEGIN RETURN NULL; END; $f$",
+        /assinatura_da_loja_ler: intacto/,
+      ],
+      [
+        "sobrecarga da porta",
+        "CREATE FUNCTION public.assinatura_da_loja_gravar(p_x text) RETURNS void LANGUAGE sql AS $f$ SELECT $f$",
+        /gravar: uma so/,
+      ],
+    ];
+    for (const [nome, sql, padrao] of estragos) {
+      await P.emTransacao(async () => {
+        await C().query(sql);
+        const f = await P.consulta(A195A);
+        assert.equal(
+          f.length >= 1 && f.every((x) => padrao.test(x)),
+          true,
+          `${nome}: reprovou ${JSON.stringify(f)}`,
+        );
+      });
+    }
+  },
+);
+
 (async () => {
   await P.conectar();
   try {
