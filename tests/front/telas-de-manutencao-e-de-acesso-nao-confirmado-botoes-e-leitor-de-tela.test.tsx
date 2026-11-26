@@ -55,7 +55,7 @@ describe("MaintenanceView — o botão 'Tentar de novo'", () => {
 
   it("a tela avisa: se já pagou, não pague de novo, e confira em Meus pedidos", () => {
     montar();
-    expect(texto()).toContain("Servidor em Manutenção");
+    expect(texto()).toContain("Loja em manutenção");
     expect(texto()).toContain("Se você já pagou, não pague de novo.");
     expect(texto()).toContain("confira em Meus pedidos");
   });

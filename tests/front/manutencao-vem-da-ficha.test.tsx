@@ -348,7 +348,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const TEXTO_MANUTENCAO = "Servidor em Manutenção";
+const TEXTO_MANUTENCAO = "Loja em manutenção";
 
 /** Importa `@/App` do ZERO — ver o comentário grande no topo do arquivo
  * sobre por que isto não pode ser um `import` estático. */

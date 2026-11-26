@@ -105,7 +105,9 @@ afterEach(async () => {
 describe("tela de manutenção — o que a pessoa vê", () => {
   it("mostra o aviso e o botão 'Tentar de novo'", async () => {
     await montar();
-    expect(hospedeiro.textContent).toContain("Servidor em Manutenção");
+    expect(hospedeiro.textContent).toContain("Loja em manutenção");
+    // A cliente não conhece "servidor": o título fala da loja.
+    expect(hospedeiro.textContent).not.toMatch(/servidor/i);
     expect(hospedeiro.textContent).not.toMatch(
       /alguns minutos|otimizando nossa infraestrutura|atualizando banco de dados/i,
     );

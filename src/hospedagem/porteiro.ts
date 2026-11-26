@@ -656,15 +656,29 @@ export function respostaForaDoAr(
       ? escapeHtml(chamada)
       : `<a href="${escapeHtml(link)}">${escapeHtml(chamada)}</a>`
   }`;
-  // Mesmo molde visual da página de manutenção (sem marca de ninguém), sem
-  // recarga automática: a loja não volta em instantes.
-  const corpo = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(frase)}</title><style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;box-sizing:border-box;text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:#fafafa;color:#18181b}p{margin:0;max-width:320px;font-size:16px;line-height:1.5}small{max-width:320px;font-size:13px;line-height:1.5;color:#52525b}a{color:#18181b;font-weight:700}</style></head><body><p>${escapeHtml(frase)}</p><small>${linhaDaDona}</small></body></html>`;
+  // Mesmo molde visual da página de manutenção (sem marca de ninguém). A
+  // ADORMECIDA volta quando a conta acerta: no iPhone com o app instalado não
+  // há barra nem "puxar para atualizar", então ela ganha o mesmo par da
+  // manutenção — um link para a própria página como botão e a recarga por
+  // <meta http-equiv="refresh">, SEM script (a CSP de produção só libera 1
+  // hash em script-src). Recarga lenta, 15 min: a loja não volta em
+  // instantes, e é mais cedo que o `retry-after` de 1 h sem martelar o
+  // porteiro. A ENCERRADA não volta: nem botão, nem recarga.
+  const adormecida = loja.estado === "adormecida";
+  const recarga = adormecida ? '<meta http-equiv="refresh" content="900">' : "";
+  const estiloDoBotao = adormecida
+    ? "a.botao{padding:14px 28px;border-radius:14px;background:#18181b;color:#fafafa;font-size:15px;text-decoration:none}"
+    : "";
+  const botao = adormecida
+    ? `<a class="botao" href="">${escapeHtml("Tentar de novo")}</a>`
+    : "";
+  const corpo = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">${recarga}<title>${escapeHtml(frase)}</title><style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;box-sizing:border-box;text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:#fafafa;color:#18181b}p{margin:0;max-width:320px;font-size:16px;line-height:1.5}small{max-width:320px;font-size:13px;line-height:1.5;color:#52525b}a{color:#18181b;font-weight:700}${estiloDoBotao}</style></head><body><p>${escapeHtml(frase)}</p>${botao}<small>${linhaDaDona}</small></body></html>`;
   return new Response(corpo, {
-    status: loja.estado === "adormecida" ? 503 : 410,
+    status: adormecida ? 503 : 410,
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
-      ...(loja.estado === "adormecida" ? { "retry-after": "3600" } : {}),
+      ...(adormecida ? { "retry-after": "3600" } : {}),
       "x-ikcous-porteiro": loja.estado,
       "x-ikcous-caderneta": caderneta,
       "x-ikcous-estado": loja.estado,
