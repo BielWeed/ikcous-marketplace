@@ -1217,15 +1217,11 @@ export async function mapearEmParalelo(itens, limite, fn) {
 // é inequivocamente transitório; 401/403/404, "token inválido", projeto sem
 // acesso e qualquer erro que não reconheço ficam FORA (repetir não resolve e
 // só atrasa o bloqueio).
-const RE_FALHA_DE_REDE = new RegExp(
-  [
-    String.raw`\b(?:ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|EPIPE)\b`,
-    String.raw`\b(?:socket hang up|connection reset|unexpected EOF|no such host|temporary failure in name resolution|TLS handshake timeout|deadline exceeded)\b`,
-    String.raw`\b(?:timed out|timeout)\b`,
-    String.raw`\b(?:HTTP|status)(?: code)?:?\s+(?:429|50[234])\b`,
-  ].join("|"),
-  "i",
-);
+// Regex LITERAL de propósito (a forma `new RegExp([...].join("|"))` acende
+// `security/detect-non-literal-regexp` e a catraca de lint reprova). Quatro grupos:
+// códigos de socket, mensagens de rede, tempo esgotado e HTTP 429/502/503/504.
+const RE_FALHA_DE_REDE =
+  /\b(?:ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|EPIPE)\b|\b(?:socket hang up|connection reset|unexpected EOF|no such host|temporary failure in name resolution|TLS handshake timeout|deadline exceeded)\b|\b(?:timed out|timeout)\b|\b(?:HTTP|status)(?: code)?:?\s+(?:429|50[234])\b/i;
 
 /**
  * O comando que falhou foi por TEMPO ESGOTADO ou por rede/API passageira?
