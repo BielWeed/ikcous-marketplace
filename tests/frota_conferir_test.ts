@@ -8,7 +8,8 @@
  *  - isolamento SEM manifesto de lojas: a loja de cada endereço é o ref da
  *    ficha que o porteiro serve; 3 amostras divergentes = falha; mesmo ref com
  *    títulos diferentes = LOJA_TROCADA; refs diferentes com o mesmo título =
- *    SUSPEITA_ISOLAMENTO;
+ *    SUSPEITA_ISOLAMENTO, salvo quando o cadastro (publicUrl da ficha) ancora
+ *    o ref de cada endereço: lojistas diferentes com o mesmo nome = AVISO;
  *  - inventário: endereço novo que aparece na Vercel entra sozinho; alias de
  *    preview não entra; sem --vercel o inventário é PARCIAL (nunca verde
  *    completo); --vercel que falha reprova;
@@ -39,9 +40,11 @@ import {
   montarContexto,
   problemasDoContrato,
   sondarEndereco,
+  titulosRepetidos,
   verificarCanonico,
   verificarIsolamentoCruzado,
 } from "../scripts/frota/conferir-frota.mjs";
+import { problemasAntesDoPromote } from "../scripts/frota/publicar-release.mjs";
 
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
 const SCRIPT = join(RAIZ, "scripts/frota/conferir-frota.mjs");
@@ -728,6 +731,78 @@ Deno.test("verificarIsolamentoCruzado: refs diferentes com o MESMO título -> SU
   );
 });
 
+Deno.test("titulosRepetidos: mesmo título com cada ref ancorado no próprio cadastro (publicUrl provado) vira AVISO, não achado", () => {
+  const bella = (ref, publicUrl) =>
+    fichaDe(ref, publicUrl, { titulo: "Bella Modas" });
+  const sondas = [
+    sondaFicha("a.vercel.app", bella(REF.savy, "https://a.vercel.app")),
+    // endereço extra da mesma loja, apontando para o canônico dela
+    sondaFicha("a2.vercel.app", bella(REF.savy, "https://a.vercel.app")),
+    sondaFicha("b.vercel.app", bella(REF.ikcous, "https://b.vercel.app")),
+  ];
+  assertEquals(verificarIsolamentoCruzado(sondas), {});
+  const { suspeitas, avisos } = titulosRepetidos(sondas);
+  assertEquals(suspeitas, {});
+  assertEquals(Object.keys(avisos).sort(), [
+    "a.vercel.app",
+    "a2.vercel.app",
+    "b.vercel.app",
+  ]);
+  assertStringIncludes(avisos["b.vercel.app"][0], "Bella Modas");
+  assertStringIncludes(avisos["b.vercel.app"][0], REF.savy);
+  assertStringIncludes(avisos["b.vercel.app"][0], REF.ikcous);
+  // quem ancorou: só os endereços cujo canônico serve o mesmo ref
+  assertEquals([...verificarCanonico(sondas).ancorados].sort(), [
+    "a.vercel.app",
+    "a2.vercel.app",
+    "b.vercel.app",
+  ]);
+});
+
+Deno.test("titulosRepetidos: basta UM endereço do grupo sem âncora no cadastro para o grupo inteiro seguir SUSPEITA_ISOLAMENTO", () => {
+  const bella = (ref, publicUrl) =>
+    fichaDe(ref, publicUrl, { titulo: "Bella Modas" });
+  const casos = {
+    // o canônico declarado serve OUTRO ref
+    "canônico de outra loja": [
+      sondaFicha("a.vercel.app", bella(REF.savy, "https://a.vercel.app")),
+      sondaFicha("b.vercel.app", bella(REF.ikcous, "https://a.vercel.app")),
+    ],
+    "ficha sem publicUrl": [
+      sondaFicha("a.vercel.app", bella(REF.savy, "https://a.vercel.app")),
+      sondaFicha("b.vercel.app", bella(REF.ikcous, null)),
+    ],
+    "canônico fora do inventário": [
+      sondaFicha("a.vercel.app", bella(REF.savy, "https://a.vercel.app")),
+      sondaFicha("b.vercel.app", bella(REF.ikcous, "https://x.vercel.app")),
+    ],
+    "canônico que não responde 200": [
+      sondaFicha("a.vercel.app", bella(REF.savy, "https://a.vercel.app")),
+      sondaFicha("b.vercel.app", bella(REF.ikcous, "https://b.vercel.app")),
+    ].map((s) =>
+      s.dominio === "b.vercel.app"
+        ? sondaFicha("b.vercel.app", { ...s.ficha, status: 500 })
+        : s,
+    ),
+  };
+  for (const [nome, sondas] of Object.entries(casos)) {
+    const r = verificarIsolamentoCruzado(sondas);
+    for (const d of ["a.vercel.app", "b.vercel.app"])
+      assertEquals(r[d]?.[0]?.classe, "SUSPEITA_ISOLAMENTO", `${nome}: ${d}`);
+    assertEquals(titulosRepetidos(sondas).avisos, {}, nome);
+  }
+  // sem publicUrl nenhum (sondas cruas): nada ancora, nada vira aviso
+  const s = (d, ref) =>
+    sonda(d, { pagina: { refs: [ref], titulo: "Bella Modas" } });
+  assertEquals(
+    titulosRepetidos([
+      s("a.vercel.app", REF.savy),
+      s("b.vercel.app", REF.ikcous),
+    ]).avisos,
+    {},
+  );
+});
+
 Deno.test("montarContexto exige --sha de 40 hex (sem referência por maioria)", () => {
   let erro = null;
   try {
@@ -1005,9 +1080,40 @@ Deno.test("conferirFrota: loja mostrando a ficha de OUTRA (ref+título de outra 
   assertEquals(por["savycollection.vercel.app"], "LOJA_TROCADA");
 });
 
-Deno.test("conferirFrota: dois refs diferentes com o mesmo título = SUSPEITA_ISOLAMENTO", async () => {
+// Com 30, 300 lojas, duas lojistas reais com o mesmo nome é normal. Cada
+// endereço serve o ref que o CADASTRO diz ser dele (publicUrl da ficha provado
+// por verificarCanonico): o título repetido sozinho não prova ficha trocada, vira
+// AVISO no relatório e não barra a publicação da frota.
+Deno.test("conferirFrota: duas lojas com o MESMO nome, cada endereço com o ref do próprio cadastro, não barram a publicação (AVISO)", async () => {
+  const mundo = mundoBase();
+  mundo["ickous-marketplace.vercel.app"].titulo = "Bella Modas";
+  mundo["savycollection.vercel.app"].titulo = "Bella Modas";
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundo),
+  });
+  const lojas = ["ickous-marketplace.vercel.app", "savycollection.vercel.app"];
+  for (const d of lojas) {
+    const x = r.resultados.find((y) => y.dominio === d);
+    assertEquals(x.classe, "OK", d);
+    assertEquals(x.achados, [], d);
+    assertEquals(x.avisos.length, 1, d);
+    assertStringIncludes(x.avisos[0], "Bella Modas");
+  }
+  assertEquals(r.ok, true);
+  assertStringIncludes(r.relatorio, "AVISO");
+  assertStringIncludes(r.relatorio, "Bella Modas");
+  // e o portão de antes do promote (publicar-release) não acha o que barrar
+  assertEquals(problemasAntesDoPromote(r, SHA), []);
+});
+
+Deno.test("conferirFrota: mesmo título com um endereço SEM o ref do próprio cadastro continua SUSPEITA_ISOLAMENTO (barra)", async () => {
   const mundo = mundoBase();
   mundo["ickous-marketplace.vercel.app"].titulo = "Savy";
+  // a ficha da IKCOUS diz que o endereço dela é o da savy, que serve outro ref:
+  // o cadastro não ancora o ref servido, e o título repetido volta a ser suspeita
+  mundo["ickous-marketplace.vercel.app"].publicUrl =
+    "https://savycollection.vercel.app";
   const r = await conferirFrota(POLITICA, {
     sha: SHA,
     fetchImpl: fetchFalso(mundo),
@@ -1017,6 +1123,42 @@ Deno.test("conferirFrota: dois refs diferentes com o mesmo título = SUSPEITA_IS
   );
   assertEquals(por["ickous-marketplace.vercel.app"], "SUSPEITA_ISOLAMENTO");
   assertEquals(por["savycollection.vercel.app"], "SUSPEITA_ISOLAMENTO");
+  assertEquals(r.ok, false);
+  assert(problemasAntesDoPromote(r, SHA).length > 0);
+});
+
+Deno.test("conferirFrota: endereço servindo o ref de OUTRA loja com o mesmo nome continua barrando (SUSPEITA_ISOLAMENTO)", async () => {
+  const mundo = mundoBase();
+  mundo["ickous-marketplace.vercel.app"].titulo = "Bella Modas";
+  mundo["savycollection.vercel.app"].titulo = "Bella Modas";
+  // um terceiro endereço, da IKCOUS pelo cadastro, serve o ref da savy
+  mundo["ikcous-alias.vercel.app"] = {
+    ...mundo["ickous-marketplace.vercel.app"],
+    ref: REF.savy,
+    publicUrl: "https://ickous-marketplace.vercel.app",
+  };
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    enderecosExtras: ["ikcous-alias.vercel.app"],
+    fetchImpl: fetchFalso(mundo),
+  });
+  const x = r.resultados.find((y) => y.dominio === "ikcous-alias.vercel.app");
+  const classes = x.achados.map((a) => a.classe);
+  assert(classes.includes("SUSPEITA_ISOLAMENTO"), JSON.stringify(x.achados));
+  assert(classes.includes("CANONICO_INVALIDO"), JSON.stringify(x.achados));
+  assertEquals(x.classe, "SUSPEITA_ISOLAMENTO");
+  // sem âncora num endereço, o grupo inteiro do título volta a ser suspeita
+  for (const d of [
+    "ickous-marketplace.vercel.app",
+    "savycollection.vercel.app",
+  ])
+    assertEquals(
+      r.resultados.find((y) => y.dominio === d).classe,
+      "SUSPEITA_ISOLAMENTO",
+      d,
+    );
+  assertEquals(r.ok, false);
+  assert(problemasAntesDoPromote(r, SHA).length > 0);
 });
 
 // ---- A) contrato do version.json, de ponta a ponta (sonda -> classificação)

@@ -39,7 +39,9 @@
 // ISOLAMENTO (sem manifesto): 3 amostras de "/" por endereço (o porteiro tem
 // cache em memória por instância) com ref e título IGUAIS nas 3; endereço com
 // caderneta hit tem UM só ref no HTML; mesmo ref => mesmo título; refs
-// diferentes com o MESMO título => SUSPEITA_ISOLAMENTO (falha).
+// diferentes com o MESMO título => SUSPEITA_ISOLAMENTO (falha), a não ser que
+// o cadastro ancore o ref de cada endereço (o publicUrl da ficha serve o mesmo
+// ref): aí são lojistas diferentes com o mesmo nome e vira só AVISO.
 //
 // CANÔNICO: o publicUrl da ficha (dominio_publico do cadastro frota_lojas) de
 // cada loja tem de ser um endereço do inventário que responde 200 hit e serve
@@ -144,7 +146,7 @@ export const COMO_RECUPERAR = {
   LOJA_TROCADA:
     "PARAR a publicação e voltar com `vercel rollback <deployment anterior>` (um endereço serviu a ficha de OUTRA loja, ou a ficha mudou entre amostras: falha de isolamento).",
   SUSPEITA_ISOLAMENTO:
-    "PARAR a publicação e abrir os endereços citados: refs diferentes mostrando o mesmo título indicam ficha trocada; se for legítimo, o título da loja precisa ser distinto.",
+    "PARAR a publicação e abrir os endereços citados: refs diferentes mostrando o mesmo título, com algum endereço sem o ref que o próprio cadastro (publicUrl da ficha) diz ser dele, indicam ficha trocada. Lojas diferentes com o mesmo nome só passam quando cada endereço serve o ref do próprio cadastro (aí vira aviso): conferir dominio_publico de cada loja em frota_lojas.",
   ENDERECO_ANTIGO:
     "promover o deployment da release com `vercel promote <deployment>` (leva TODOS os domínios de produção de uma vez; não mover endereço por endereço).",
   CANONICO_INVALIDO:
@@ -504,18 +506,9 @@ const norm = (s) =>
     .trim()
     .toLowerCase();
 
-/**
- * Isolamento ENTRE endereços, só com o que o porteiro serviu: devolve
- * { [dominio]: [{classe, motivo}] }. `ignorar` = endereços que não são loja.
- *  - mesmo ref com títulos diferentes -> LOJA_TROCADA (quem destoa da maioria);
- *  - refs diferentes com o MESMO título -> SUSPEITA_ISOLAMENTO (todos os envolvidos).
- */
-export function verificarIsolamentoCruzado(sondas, ignorar = new Set()) {
-  const achados = {};
-  const add = (dominio, classe, motivo) => {
-    (achados[dominio] ??= []).push({ classe, motivo });
-  };
-  const fichas = sondas
+// Fichas comparáveis entre endereços: estáveis, caderneta hit, UM ref e título.
+function fichasComparaveis(sondas, ignorar) {
+  return sondas
     .filter(
       (s) =>
         !ignorar.has(s.dominio) &&
@@ -530,6 +523,22 @@ export function verificarIsolamentoCruzado(sondas, ignorar = new Set()) {
       titulo: norm(s.ficha.titulo),
       tituloOriginal: s.ficha.titulo,
     }));
+}
+
+/**
+ * Isolamento ENTRE endereços, só com o que o porteiro serviu: devolve
+ * { [dominio]: [{classe, motivo}] }. `ignorar` = endereços que não são loja.
+ *  - mesmo ref com títulos diferentes -> LOJA_TROCADA (quem destoa da maioria);
+ *  - refs diferentes com o MESMO título -> SUSPEITA_ISOLAMENTO (todos os
+ *    envolvidos), SALVO quando o cadastro ancora o ref de cada um (ver
+ *    `titulosRepetidos`: aí é aviso, não achado).
+ */
+export function verificarIsolamentoCruzado(sondas, ignorar = new Set()) {
+  const achados = {};
+  const add = (dominio, classe, motivo) => {
+    (achados[dominio] ??= []).push({ classe, motivo });
+  };
+  const fichas = fichasComparaveis(sondas, ignorar);
 
   const porRef = new Map();
   for (const f of fichas) porRef.set(f.ref, [...(porRef.get(f.ref) ?? []), f]);
@@ -548,21 +557,49 @@ export function verificarIsolamentoCruzado(sondas, ignorar = new Set()) {
     }
   }
 
+  for (const [dominio, lista] of Object.entries(
+    titulosRepetidos(sondas, ignorar).suspeitas,
+  ))
+    for (const a of lista) add(dominio, a.classe, a.motivo);
+  return achados;
+}
+
+/**
+ * Refs DIFERENTES com o MESMO título. Com dezenas de lojas, duas lojistas reais
+ * com o mesmo nome ("Bella Modas") é normal: o título sozinho não prova ficha
+ * trocada. O que diz de QUEM é o ref servido num endereço é o CADASTRO: o
+ * publicUrl da ficha (dominio_publico de frota_lojas) leva a um endereço do
+ * inventário que serve o MESMO ref (`verificarCanonico`, campo `ancorados`).
+ *  - TODOS os endereços do grupo ancorados -> AVISO (não reprova): cada um serve
+ *    a loja que o cadastro diz ser dele, e a única coincidência é o nome;
+ *  - basta UM sem âncora -> SUSPEITA_ISOLAMENTO em todos (como sempre foi).
+ * Devolve { suspeitas: { [dominio]: [{classe, motivo}] }, avisos: { [dominio]: [motivo] } }.
+ */
+export function titulosRepetidos(sondas, ignorar = new Set()) {
+  const suspeitas = {};
+  const avisos = {};
+  const { ancorados } = verificarCanonico(sondas, ignorar);
   const porTitulo = new Map();
-  for (const f of fichas)
+  for (const f of fichasComparaveis(sondas, ignorar))
     porTitulo.set(f.titulo, [...(porTitulo.get(f.titulo) ?? []), f]);
   for (const [, lista] of porTitulo) {
     const refs = [...new Set(lista.map((f) => f.ref))].sort();
     if (refs.length < 2) continue;
+    const todosAncorados = lista.every((f) => ancorados.has(f.dominio));
     for (const f of lista) {
-      add(
-        f.dominio,
-        "SUSPEITA_ISOLAMENTO",
-        `o título "${f.tituloOriginal}" aparece em refs Supabase diferentes (${refs.join(", ")})`,
-      );
+      if (todosAncorados) {
+        (avisos[f.dominio] ??= []).push(
+          `o título "${f.tituloOriginal}" se repete em lojas diferentes (refs ${refs.join(", ")}); cada endereço serve o ref que o próprio cadastro (publicUrl da ficha) diz ser dele, então não barra — conferir se o nome é mesmo o da loja`,
+        );
+      } else {
+        (suspeitas[f.dominio] ??= []).push({
+          classe: "SUSPEITA_ISOLAMENTO",
+          motivo: `o título "${f.tituloOriginal}" aparece em refs Supabase diferentes (${refs.join(", ")}) e nem todo endereço serve o ref que o próprio cadastro (publicUrl da ficha) diz ser dele`,
+        });
+      }
     }
   }
-  return achados;
+  return { suspeitas, avisos };
 }
 
 /**
@@ -572,8 +609,11 @@ export function verificarIsolamentoCruzado(sondas, ignorar = new Set()) {
  *  - o host dele tem de ser um endereço do inventário que responde 200 hit
  *    (senão o cliente cai num endereço que não serve a loja);
  *  - e esse endereço tem de servir a MESMA loja (mesmo ref Supabase).
- * Devolve { achados: { [dominio]: [{classe, motivo}] }, canonicos: Set<host> }
- * — `canonicos` são os hosts provados pelo cadastro, que o redirecionamento usa.
+ * Devolve { achados: { [dominio]: [{classe, motivo}] }, canonicos: Set<host>,
+ * ancorados: Set<dominio> } — `canonicos` são os hosts provados pelo cadastro,
+ * que o redirecionamento usa; `ancorados` são os endereços cujo ref servido o
+ * cadastro confirma (o canônico da ficha serve o mesmo ref), que
+ * `titulosRepetidos` usa para separar nome repetido de ficha trocada.
  */
 export function verificarCanonico(sondas, ignorar = new Set()) {
   const achados = {};
@@ -582,6 +622,7 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
   };
   const porDominio = new Map(sondas.map((s) => [s.dominio, s]));
   const canonicos = new Set();
+  const ancorados = new Set();
   for (const s of sondas) {
     const f = s.ficha;
     if (ignorar.has(s.dominio) || !f?.estavel || f.caderneta !== "hit")
@@ -634,9 +675,10 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
       );
     } else {
       canonicos.add(u.host);
+      ancorados.add(s.dominio);
     }
   }
-  return { achados, canonicos };
+  return { achados, canonicos, ancorados };
 }
 
 // Monta o contexto compartilhado (SHA esperado, identidade da maioria, mapa de deployments).
@@ -675,6 +717,10 @@ export function montarContexto(
         ? doGrupo[0].versao.codeVersion
         : maioriaEstrita(doGrupo.map((s) => s.versao.codeVersion)),
     cruzado,
+    // Não reprovam: só aparecem no relatório (título repetido entre lojas
+    // ancoradas no próprio cadastro). Fora de `cruzado` de propósito: tudo que
+    // está lá vira achado, e achado barra a publicação.
+    avisos: titulosRepetidos(sondas, ignorarNoCruzamento).avisos,
     canonicos: canonico.canonicos,
     lojasQueNuncaDormem,
   };
@@ -1402,6 +1448,13 @@ export function montarRelatorio({
     linhas.push(
       `- AVISO: o porteiro respondeu pela caderneta antiga (x-ikcous-caderneta-versao: 1) em ${antigas.map((r) => celula(r.dominio)).join(", ")}: ali uma loja adormecida ou encerrada aparece como endereço desconhecido, não como fora do ar. Aplicar a migration do estado de vida no banco onde a caderneta mora.`,
     );
+  const comAviso = resultados.filter((r) => r.avisos?.length);
+  if (comAviso.length) {
+    linhas.push("", "## Avisos (não barram a publicação)", "");
+    for (const r of comAviso)
+      for (const aviso of r.avisos)
+        linhas.push(`- AVISO: ${celula(r.dominio)}: ${celula(aviso)}`);
+  }
   linhas.push("", "## Endereço -> deployment", "");
   if (!vercelPedido) {
     linhas.push("endereço→deployment: NÃO CONFERIDO (sem --vercel)");
@@ -1533,6 +1586,8 @@ export async function conferirFrota(politica, opcoes = {}) {
       cadernetaAntiga: (sonda.amostras ?? []).some(
         (a) => a.cadernetaVersao === "1",
       ),
+      // Avisos que NÃO reprovam (ficam fora de `achados` e de `classe`).
+      avisos: ctx.avisos?.[sonda.dominio] ?? [],
       versao: sonda.versao,
       ficha: sonda.ficha,
       deploymentId: inventario.vercel?.ok
