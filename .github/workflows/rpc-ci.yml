@@ -347,6 +347,8 @@ on:
       - "scripts/publicacao/consultas/193m-medir-infinitos-guardados.sql"
       - "scripts/publicacao/consultas/194a-conferir-o-endereco-antigo-encaminha-aplicado.sql"
       - "scripts/publicacao/consultas/194b-antes-o-endereco-antigo-encaminha-ausente.sql"
+      - "scripts/publicacao/consultas/195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado.sql"
+      - "scripts/publicacao/consultas/195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -668,6 +670,8 @@ on:
       - "scripts/publicacao/consultas/193m-medir-infinitos-guardados.sql"
       - "scripts/publicacao/consultas/194a-conferir-o-endereco-antigo-encaminha-aplicado.sql"
       - "scripts/publicacao/consultas/194b-antes-o-endereco-antigo-encaminha-ausente.sql"
+      - "scripts/publicacao/consultas/195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado.sql"
+      - "scripts/publicacao/consultas/195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1726,6 +1730,16 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         timeout-minutes: 3
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-endereco-antigo-encaminha-viva.cjs
+      # Migration 20261590000000 (a loja guarda o dia da pausa do teste): a coluna assinatura_da_loja.pausa_em (date, anulavel, sem padrao) e a porta
+      # assinatura_da_loja_gravar com a 11a chave OPCIONAL pausa_em. Gestao velha (10 chaves) grava e apaga o dia; gestao nova grava; null grava NULL;
+      # pausa_em torta = valor_invalido citando o campo; chave errada continua nao_autorizado antes de olhar os dados; o leitor devolve a coluna so ao admin;
+      # a simulacao a mostra sem gravar; o RECUO (a porta velha recusa com 22023 / campo_nao_permitido / 'campo: pausa_em'); 7 mutantes; reaplicar 2x
+      # (LF e CRLF); rollback comum (porta byte a byte, coluna mantida) e destrutivo (confirmacao, o comum antes, nenhuma funcao lendo a coluna);
+      # retrato do resto; pre-voo, pos-voo, falha no meio, trava de 5 s e consultas 150c/195a/195b EXECUTADAS. CLONE proprio.
+      - name: Prova viva do dia da pausa do teste guardado pela porta da loja (migration 20261590000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 4
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-guarda-o-dia-da-pausa-do-teste-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam

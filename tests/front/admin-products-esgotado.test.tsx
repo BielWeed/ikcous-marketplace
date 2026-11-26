@@ -10,7 +10,7 @@
 // estado — a loja (ProductCard.tsx, PremiumOffers.tsx) e o simulador de
 // celular embutido NESTA MESMA tela (PhoneSimulator.tsx). A correção
 // reutiliza essa palavra nos dois cartões do painel (compacto e detalhado),
-// com precedência: inativo vence tudo ("Offline"), depois esgotado
+// com precedência: inativo vence tudo ("Oculto da loja"), depois esgotado
 // ("Esgotado"), depois "Em Operação".
 //
 // Monta `AdminProductsView` de verdade (sem @testing-library: createRoot +
@@ -184,7 +184,7 @@ function montarProduto(overrides: Record<string, unknown>) {
   ];
 }
 
-const rotulosDeStatus = ["Em Operação", "Offline", "Esgotado"];
+const rotulosDeStatus = ["Em Operação", "Oculto da loja", "Esgotado"];
 
 describe.each(["compact", "detailed"] as const)(
   "AdminProductsView (%s) — achado 9: etiqueta de status olha o estoque",
@@ -303,12 +303,12 @@ describe.each(["compact", "detailed"] as const)(
       expect(lerEtiquetaDeStatus()).toBe("Em Operação");
     });
 
-    it("produto INATIVO com estoque 0 (precedência): continua 'Offline', não 'Esgotado'", async () => {
+    it("produto INATIVO com estoque 0 (precedência): continua 'Oculto da loja', não 'Esgotado'", async () => {
       montarProduto({ isActive: false, stock: 0 });
 
       await montar();
 
-      expect(lerEtiquetaDeStatus()).toBe("Offline");
+      expect(lerEtiquetaDeStatus()).toBe("Oculto da loja");
     });
   },
 );

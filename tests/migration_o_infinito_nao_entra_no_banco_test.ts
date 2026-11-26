@@ -27,9 +27,15 @@ const PROVA_VIVA = "tests/banco/o-infinito-nao-entra-no-banco-viva.cjs";
 // As SUCESSORAS: migrations que nasceram depois desta (em ordem), cada uma com o seu lote no canais. Uma migration
 // nova depois da 1560 entra aqui de proposito, nunca por afrouxar o "e' a maior da raiz".
 const SUCESSORAS = [
+  // 20261570000000: o endereco antigo encaminha para o novo (a troca de dominio).
   {
     versao: "20261570000000",
     consulta: "194a-conferir-o-endereco-antigo-encaminha-aplicado",
+  },
+  // 20261590000000: a loja guarda o dia da pausa do teste (PR do aviso de teste encerrado).
+  {
+    versao: "20261590000000",
+    consulta: "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado",
   },
 ];
 const lerBruto = (n) =>
@@ -97,12 +103,13 @@ Deno.test("1560: avaliarFase0 nao recusa o par; sem BEGIN/COMMIT; LF; lock_timeo
     assert.ok(!lerBruto(n).includes("\r"), n);
 });
 
-Deno.test("1560: o numero e' o maior da raiz (depois dela, so as SUCESSORAS conhecidas)", () => {
+Deno.test("1560: depois dela so as SUCESSORAS conhecidas, em ordem", () => {
   const versoes = [];
   for (const e of Deno.readDirSync(new URL("supabase/migrations/", DIR)))
     if (e.isFile && /^\d{14}_.+\.sql$/.test(e.name))
       versoes.push(e.name.slice(0, 14));
   versoes.sort();
+  // Sucessoras conhecidas (cada uma com o proprio teste): so elas podem vir depois, e todas, na ordem.
   assert.deepEqual(
     versoes.slice(versoes.indexOf(VERSAO) + 1),
     SUCESSORAS.map((s) => s.versao),
@@ -282,7 +289,7 @@ Deno.test("1560: publicacao — lote unico (193a/193b), rol fechado, consultas s
   assert.equal(lote[0].ausenciaConfirmadaPor, B);
   for (const campo of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
     assert.ok(!(campo in lote[0]), campo);
-  // o ultimo lote do arquivo antes dos das SUCESSORAS (lotes novos vao no fim, sem reordenar)
+  // lotes novos vao no fim, sem reordenar: depois deste so os das SUCESSORAS, na ordem delas
   assert.deepEqual(
     canais.provasDeObjetos
       .slice(-(SUCESSORAS.length + 1))

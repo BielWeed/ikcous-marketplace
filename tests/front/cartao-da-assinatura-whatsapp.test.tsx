@@ -32,6 +32,7 @@ const assinatura: AssinaturaDaLoja = {
   inicioEm: null,
   proximaCobrancaEm: null,
   testeAte: null,
+  pausaEm: null,
   recursos: [],
   gerenciarUrl: "https://example.com/assinatura",
   suporteWhatsapp: "34999999999",

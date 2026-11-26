@@ -987,14 +987,19 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // Com a leitura da config falha, o subtítulo seria a verdade da config de
   // fábrica ("Falta: Nome e logo…"): grupo sem entrada no mapa não desenha a
   // linha, e o aviso no topo explica por quê.
-  const subtitulos = configFalhou
-    ? SEM_SUBTITULOS
-    : subtitulosDosGrupos({
-        config,
-        formasNaEntrega,
-        nivelDoPix,
-        nomesLigados: nomesLigadosDeFrete,
-      });
+  // O cartão pelo app só é lido dentro do bloco "Cartão pelo app" (render
+  // prop abaixo): o resumo de Pagamentos ganha "+ cartão" quando a leitura
+  // chegou e crédito ou débito está ligado; antes disso não chuta (null).
+  const subtitulosCom = (cartaoLigado: boolean | null) =>
+    configFalhou
+      ? SEM_SUBTITULOS
+      : subtitulosDosGrupos({
+          config,
+          formasNaEntrega,
+          nivelDoPix,
+          nomesLigados: nomesLigadosDeFrete,
+          cartaoLigado,
+        });
 
   return (
     <div className="ajustes pb-admin h-auto duration-200 animate-in fade-in lg:pb-12">
@@ -1170,7 +1175,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     <NavegacaoDeAjustes
                       selecionado={grupoSelecionado}
                       onSelecionar={selecionarGrupo}
-                      subtitulos={subtitulos}
+                      subtitulos={subtitulosCom(
+                        estadoDoCartao === "ok" ? cartaoLigado : null,
+                      )}
                       visuais={VISUAL_DO_GRUPO}
                       pendencias={
                         new Map<ChaveDoGrupoDeAjustes, boolean>([
@@ -1191,7 +1198,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       chave="minha-loja"
                       comPendencia={emailPendente || privacidadePendente}
                       onNavigate={onNavigate}
-                      subtitulos={subtitulos}
+                      subtitulos={subtitulosCom(
+                        estadoDoCartao === "ok" ? cartaoLigado : null,
+                      )}
                     >
                       {/* E-mail da loja (14/10/2026): o Gmail que envia o e-mail do
                   pedido e o código de login. Nascida FECHADA como as demais;
@@ -1251,7 +1260,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       selecionada={grupoSelecionado === "aparencia"}
                       chave="aparencia"
                       onNavigate={onNavigate}
-                      subtitulos={subtitulos}
+                      subtitulos={subtitulosCom(
+                        estadoDoCartao === "ok" ? cartaoLigado : null,
+                      )}
                     >
                       {/* Cores do PRÓPRIO painel (Escuro, Claro, Confortável), só
                   neste aparelho: não mexe na vitrine dos clientes. */}
@@ -1274,7 +1285,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       selecionada={grupoSelecionado === "entrega"}
                       chave="entrega"
                       onNavigate={onNavigate}
-                      subtitulos={subtitulos}
+                      subtitulos={subtitulosCom(
+                        estadoDoCartao === "ok" ? cartaoLigado : null,
+                      )}
                     />
 
                     {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
@@ -1296,7 +1309,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                         abrirPagamentosGatilho + abrirMercadoPagoGatilho
                       }
                       onNavigate={onNavigate}
-                      subtitulos={subtitulos}
+                      subtitulos={subtitulosCom(
+                        estadoDoCartao === "ok" ? cartaoLigado : null,
+                      )}
                     >
                       {/* Mesmos sinais dos controles, só leitura. O cartão depende
                   também da liberação do pagamento pelo app, como no checkout. */}
@@ -1409,7 +1424,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       chave="devolucao"
                       comPendencia={politicaDevolucaoPendente}
                       onNavigate={onNavigate}
-                      subtitulos={subtitulos}
+                      subtitulos={subtitulosCom(
+                        estadoDoCartao === "ok" ? cartaoLigado : null,
+                      )}
                     >
                       {(aberta) => (
                         <SecaoColapsavel
@@ -1444,7 +1461,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       chave="ferramentas"
                       subtituloExtra={`Conexão · ${isOffline ? "Indisponível" : "Conectada"}`}
                       onNavigate={onNavigate}
-                      subtitulos={subtitulos}
+                      subtitulos={subtitulosCom(
+                        estadoDoCartao === "ok" ? cartaoLigado : null,
+                      )}
                     >
                       {(aberta) => (
                         <>

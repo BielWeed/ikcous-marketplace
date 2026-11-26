@@ -16296,14 +16296,20 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "depois da 20261490000000",
   ])
     assertStringIncludes(lote._comentario, pedaco);
-  // Anexado no fim: os lotes anteriores nao sao reordenados.
+  // Anexado no fim: os lotes anteriores nao sao reordenados. Depois dele, so os lotes das SUCESSORAS conhecidas, na ordem.
+  const SUCESSORAS_DA_1570 = [
+    // 20261590000000: a loja guarda o dia da pausa do teste.
+    "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado",
+  ];
   assertEquals(
-    canais.provasDeObjetos.at(-1).consulta,
-    NOME_194A,
-    "o lote da 20261570 e' o ultimo",
+    canais.provasDeObjetos
+      .slice(-(SUCESSORAS_DA_1570.length + 1))
+      .map((p) => p.consulta),
+    [NOME_194A, ...SUCESSORAS_DA_1570],
+    "o lote da 20261570 e' o ultimo antes dos das sucessoras",
   );
   assertEquals(
-    canais.provasDeObjetos.at(-2).consulta,
+    canais.provasDeObjetos.at(-(SUCESSORAS_DA_1570.length + 2)).consulta,
     "193a-conferir-o-infinito-nao-entra-no-banco-aplicado",
     "anexado logo depois do lote da 20261560",
   );

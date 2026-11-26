@@ -1098,6 +1098,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "193m-medir-infinitos-guardados",
   "194a-conferir-o-endereco-antigo-encaminha-aplicado",
   "194b-antes-o-endereco-antigo-encaminha-ausente",
+  "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado",
+  "195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

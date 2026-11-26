@@ -136,7 +136,7 @@
       "tipo": "volatil",
       "secdef": true,
       "situacao": "necessaria",
-      "porque": "necessária: o app de gestão do dono grava o cartão da assinatura da loja com a chave pública da loja e a chave PRÓPRIA da loja (p_chave); anon e authenticated. Autentica ANTES de olhar os dados (SHA-256 da chave contra o hash guardado; sem chave definida, chave errada, nula ou vazia = a mesma exceção nao_autorizado), lista branca de 10 campos (recursos e observacao nunca), dados mais velhos ignorados, p_simular não grava; service_role e PUBLIC não executam. A tabela do hash (assinatura_da_loja_chave) é selada para todo papel de aplicação e definir_chave é só do service_role (classe fechada, fora desta lista)."
+      "porque": "necessária: o app de gestão do dono grava o cartão da assinatura da loja com a chave pública da loja e a chave PRÓPRIA da loja (p_chave); anon e authenticated. Autentica ANTES de olhar os dados (SHA-256 da chave contra o hash guardado; sem chave definida, chave errada, nula ou vazia = a mesma exceção nao_autorizado), lista branca de 10 campos + pausa_em opcional (ausente grava NULL; 20261590000000; recursos e observacao nunca), dados mais velhos ignorados, p_simular não grava; service_role e PUBLIC não executam. A tabela do hash (assinatura_da_loja_chave) é selada para todo papel de aplicação e definir_chave é só do service_role (classe fechada, fora desta lista)."
     },
     {
       "funcao": "public.assinatura_da_loja_ler()",

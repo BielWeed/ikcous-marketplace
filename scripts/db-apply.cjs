@@ -1014,6 +1014,54 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261590000000: a loja guarda o dia da pausa do teste. SUCESSORA da porta da 20261399998000: assinatura_da_loja_gravar ganha a 11a chave OPCIONAL pausa_em (ausente grava NULL) e a
+  // coluna assinatura_da_loja.pausa_em. Os marcadores da 20261399998000 (autentica pelo hash antes de olhar p_dados, lista branca, mais velho ignorado) continuam valendo uma vez cada,
+  // mais os da chave opcional: a lista branca com v_opcionais, a data ausente que vira NULL no mesmo laco das outras e o UPDATE que reescreve pausa_em. A coluna, o corpo exato (md5), a
+  // ACL e o leitor intacto sao da consulta 195a e da prova viva.
+  "20261590000000_a_loja_guarda_o_dia_da_pausa_do_teste.sql": [
+    {
+      funcao: "assinatura_da_loja_gravar",
+      esperado: [
+        {
+          texto:
+            "v_enviado := encode(sha256(convert_to(COALESCE(p_chave, ''), 'UTF8')), 'hex');",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF v_guardado IS NULL OR p_chave IS NULL OR p_chave = '' OR v_enviado <> v_guardado THEN",
+          vezes: 1,
+        },
+        {
+          texto: "RAISE EXCEPTION 'nao_autorizado' USING ERRCODE = '42501';",
+          vezes: 1,
+        },
+        {
+          texto:
+            "RAISE EXCEPTION 'campo_nao_permitido' USING ERRCODE = '22023', DETAIL = 'campo: ' || left(v_campo, 40);",
+          vezes: 1,
+        },
+        {
+          texto: "IF v_instante > clock_timestamp() + interval '1 day' THEN",
+          vezes: 1,
+        },
+        {
+          texto: "WHERE a.atualizado_em <= EXCLUDED.atualizado_em;",
+          vezes: 1,
+        },
+        {
+          texto: "WHERE k <> ALL (v_chaves || v_opcionais) ORDER BY k LIMIT 1;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF (p_dados -> v_campo) IS NULL OR jsonb_typeof(p_dados -> v_campo) = 'null' THEN",
+          vezes: 1,
+        },
+        { texto: "pausa_em = EXCLUDED.pausa_em,", vezes: 1 },
+      ],
+    },
+  ],
   // 20261399997000: o pedido guarda quem vai receber. create_marketplace_order_v23 e v24 ganham UMA chave na copia do endereco salvo para dentro do pedido (bloco 6-bis): o nome que a cliente
   // digitou em "Quem vai receber" (user_addresses.recipient_name, aparado; vazio vira NULL e some). Cada marcador aparece UMA vez em cada corpo. A consulta 150a confere o corpo exato (md5), os
   // atributos e a ACL; a prova viva faz o comportamento (com nome, sem nome, sem conta, retirada, endereco digitado, pedido antigo).
