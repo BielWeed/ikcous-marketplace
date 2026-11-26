@@ -958,6 +958,17 @@ export interface EntradaCachePorteiro {
   readonly caderneta: EstadoCaderneta;
   /** Mesma ideia, para `x-ikcous-caderneta-versao` (L8). */
   readonly versaoCaderneta?: VersaoCaderneta;
+  /** Presente só depois de uma FALHA servida com esta ficha (stale-if-error):
+   * até `ate`, o host não pergunta de novo e recebe esta ficha com o estado
+   * da falha (`caderneta`/`versaoCaderneta`). Nunca mexe em `quando`, então
+   * o teto de 1 h da ficha velha continua contando da última resolução boa. */
+  readonly recuo?: RecuoAposFalha;
+}
+
+export interface RecuoAposFalha {
+  readonly ate: number;
+  readonly caderneta: EstadoCaderneta;
+  readonly versaoCaderneta?: VersaoCaderneta;
 }
 
 /** 60 s de cache fresco (não repete a consulta); serve o último bom por até
@@ -975,6 +986,47 @@ export interface EntradaCacheForaDoAr {
   readonly quando: number;
 }
 export const CACHE_FORA_DO_AR_MS = 60_000;
+
+/** O "não achei" DEFINITIVO da caderneta (`miss`: host não cadastrado, alias
+ * antigo, `www.` sem cadastro, Host inventado por robô), guardado por host
+ * normalizado por 60 s — cada pergunta custa CPU no banco da principal
+ * (bcrypt na conferência da chave). Só `miss`: erro/timeout/resposta
+ * malformada e chave anômala NUNCA entram aqui. Preço aceito: uma loja
+ * recém-cadastrada pode esperar até 60 s para abrir naquela instância. */
+export interface EntradaCacheSemLoja {
+  readonly quando: number;
+  readonly versaoCaderneta?: VersaoCaderneta;
+}
+export const CACHE_SEM_LOJA_MS = 60_000;
+
+/** Depois de uma falha servida com a ficha velha, o host espera este tanto
+ * antes de perguntar de novo à caderneta (doente ou lenta: sem o recuo, cada
+ * visita esperava o prazo inteiro e batia de novo no banco). */
+export const RECUO_APOS_FALHA_MS = 30_000;
+
+/** Teto de entradas de TODO cache em memória do porteiro: Host aleatório
+ * (ataque ou robô) não enche a memória da instância. No teto, sai a entrada
+ * gravada há mais tempo. O "não achei" vive num mapa próprio, então uma
+ * enxurrada de hosts desconhecidos nunca empurra para fora a ficha de uma
+ * loja de verdade. */
+export const TETO_ENTRADAS_CACHE = 1000;
+
+function guardarComTeto<V>(
+  mapa: Map<string, V> | undefined,
+  chave: string,
+  valor: V,
+): void {
+  if (!mapa) return;
+  // Apagar antes de gravar põe a chave no FIM da ordem de inserção do `Map`:
+  // o primeiro da iteração é sempre o gravado há mais tempo.
+  mapa.delete(chave);
+  mapa.set(chave, valor);
+  while (mapa.size > TETO_ENTRADAS_CACHE) {
+    const maisAntiga = mapa.keys().next();
+    if (maisAntiga.done) break;
+    mapa.delete(maisAntiga.value);
+  }
+}
 
 /** O sitemap lê o catálogo inteiro da loja (uma consulta por 1000 produtos):
  * 10 min frescos entre robôs, e o último bom por até 1h se o banco cair —
@@ -1018,6 +1070,14 @@ export interface DependenciasPorteiro {
   /** L8: decisões "loja fora do ar", 60 s por host (`Map` de módulo de
    * `middleware.ts`). Opcional: sem ele, cada pedido pergunta à caderneta. */
   readonly cacheForaDoAr?: Map<string, EntradaCacheForaDoAr>;
+  /** O "não achei" da caderneta, 60 s por host (`Map` de módulo de
+   * `middleware.ts`). Opcional: sem ele, cada pedido pergunta à caderneta. */
+  readonly cacheSemLoja?: Map<string, EntradaCacheSemLoja>;
+  /** Resoluções em andamento por host (`Map` de módulo de `middleware.ts`):
+   * pedidos simultâneos do mesmo host esperam a MESMA resolução. A entrada
+   * sai quando ela termina, com sucesso ou erro. Opcional: sem ele, cada
+   * pedido resolve sozinho. */
+  readonly resolucoesEmVoo?: Map<string, ResolucaoEmVoo>;
   /** Cache dos ids do sitemap, também um `Map` de módulo de `middleware.ts`.
    * Opcional: sem ele (teste, chamada avulsa) cada pedido lê o banco. */
   readonly cacheMapa?: Map<string, EntradaCacheMapa>;
@@ -1064,24 +1124,27 @@ class DecisaoForaDoAr extends Error {
 /**
  * O resultado `"encaminha"` de `decidirConcordancia` — SEPARADO de
  * `DecisaoPorteiro` porque não é um motivo de 503 (`MotivoManutencao`): é
- * uma decisão de REDIRECIONAR, com o destino completo já montado
- * (`https://<dominio_publico><pathname><search>`, brief
- * `20260911-brief-aliases-vercel-encaminham.md`). `obterFichaValidada`
+ * uma decisão de REDIRECIONAR para o `dominio_publico` da loja (brief
+ * `20260911-brief-aliases-vercel-encaminham.md`). Carrega só o DOMÍNIO: o
+ * destino completo (`https://<dominio_publico><pathname><search>`) é montado
+ * em `obterFichaValidada` com o caminho de CADA pedido, porque a resolução é
+ * compartilhada entre pedidos simultâneos do mesmo host (`resolucoesEmVoo`)
+ * e o caminho do primeiro nunca pode ir para os outros. `obterFichaValidada`
  * devolve a resposta de encaminhamento pelo MESMO canal (`tipo:
  * "manutencao"`) que hoje devolve a de manutenção — ver o comentário ali
  * sobre a escolha de reaproveitar o tipo em vez de criar um novo.
  */
 class DecisaoEncaminhamento extends Error {
-  readonly destino: string;
+  readonly dominioPublico: string;
   readonly caderneta: EstadoCaderneta;
   readonly versaoCaderneta: VersaoCaderneta | undefined;
   constructor(
-    destino: string,
+    dominioPublico: string,
     caderneta: EstadoCaderneta,
     versaoCaderneta?: VersaoCaderneta,
   ) {
     super("encaminha");
-    this.destino = destino;
+    this.dominioPublico = dominioPublico;
     this.caderneta = caderneta;
     this.versaoCaderneta = versaoCaderneta;
   }
@@ -1106,11 +1169,16 @@ class FalhaResolucaoPorteiro extends Error {
   }
 }
 
-interface FichaResolvida {
+export interface FichaResolvida {
   readonly ficha: FichaDaLoja;
   readonly caderneta: EstadoCaderneta;
   readonly versaoCaderneta?: VersaoCaderneta;
 }
+
+/** Uma resolução em andamento (ver `DependenciasPorteiro.resolucoesEmVoo`).
+ * Rejeita com as decisões (`sem-loja`, fora do ar, encaminha...) e com as
+ * falhas, igual a `resolverFichaViaRede`. */
+export type ResolucaoEmVoo = Promise<FichaResolvida>;
 
 async function resolverFichaViaRede(
   host: string,
@@ -1173,8 +1241,11 @@ async function resolverFichaViaRede(
       // validado `dominioPublico` não-nulo/não-vazio (regra 3, checada
       // primeiro na função) — o cast documenta essa invariante sem
       // duplicar a checagem aqui.
-      const destino = `https://${dominioPublico as string}${url.pathname}${url.search}`;
-      throw new DecisaoEncaminhamento(destino, caderneta, versao);
+      throw new DecisaoEncaminhamento(
+        dominioPublico as string,
+        caderneta,
+        versao,
+      );
     }
     if (decisao !== "ok") throw new DecisaoPorteiro(decisao, caderneta, versao);
     // `publicUrl` preserva protocolo e porta do pedido atendido (rodada B,
@@ -1346,15 +1417,59 @@ export async function obterFichaValidada(
       ),
     };
   }
+  // O "não achei" guardado. Vem DEPOIS da ficha fresca: uma loja ativa com
+  // ficha fresca nunca recebe 503 por causa deste cache (e uma resolução boa
+  // apaga a entrada, abaixo).
+  const semLojaGuardada = deps.cacheSemLoja?.get(host);
+  if (semLojaGuardada && agora - semLojaGuardada.quando < CACHE_SEM_LOJA_MS) {
+    return {
+      tipo: "manutencao",
+      resposta: marcarVersaoDaCaderneta(
+        respostaManutencao("sem-loja", "miss"),
+        semLojaGuardada.versaoCaderneta,
+      ),
+    };
+  }
+  // Recuo depois de uma falha: a ficha velha direto, sem perguntar — sempre
+  // dentro do teto de 1 h da ficha velha.
+  if (
+    doCache?.recuo &&
+    agora < doCache.recuo.ate &&
+    agora - doCache.quando < CACHE_STALE_MAX_MS
+  ) {
+    return {
+      tipo: "ok",
+      ficha: comPublicUrlAtual(doCache.ficha),
+      caderneta: doCache.recuo.caderneta,
+      ...comVersao(doCache.recuo.versaoCaderneta),
+    };
+  }
   try {
-    const resolvida = await resolverFichaViaRede(host, url, ambiente, deps);
-    deps.cache.set(host, {
+    // Pedidos simultâneos do mesmo host esperam a MESMA resolução. Ela não
+    // depende do caminho do pedido (o encaminhamento monta o destino abaixo,
+    // por pedido) e a `publicUrl` é refeita por pedido (`comPublicUrlAtual`).
+    let emVoo = deps.resolucoesEmVoo?.get(host);
+    if (!emVoo) {
+      const nova = resolverFichaViaRede(host, url, ambiente, deps);
+      emVoo = nova;
+      const mapa = deps.resolucoesEmVoo;
+      if (mapa) {
+        mapa.set(host, nova);
+        const liberar = () => {
+          if (mapa.get(host) === nova) mapa.delete(host);
+        };
+        nova.then(liberar, liberar);
+      }
+    }
+    const resolvida = await emVoo;
+    guardarComTeto(deps.cache, host, {
       ficha: resolvida.ficha,
       quando: agora,
       caderneta: resolvida.caderneta,
       ...comVersao(resolvida.versaoCaderneta),
     });
     deps.cacheForaDoAr?.delete(host);
+    deps.cacheSemLoja?.delete(host);
     return {
       tipo: "ok",
       ficha: comPublicUrlAtual(resolvida.ficha),
@@ -1368,7 +1483,11 @@ export async function obterFichaValidada(
     // velha, com a conexão do banco de uma loja que não está mais no ar.
     if (erro instanceof DecisaoForaDoAr) {
       deps.cache.delete(host);
-      deps.cacheForaDoAr?.set(host, { loja: erro.loja, quando: agora });
+      deps.cacheSemLoja?.delete(host);
+      guardarComTeto(deps.cacheForaDoAr, host, {
+        loja: erro.loja,
+        quando: agora,
+      });
       return {
         tipo: "manutencao",
         resposta: respostaForaDoAr(
@@ -1391,11 +1510,22 @@ export async function obterFichaValidada(
       return {
         tipo: "manutencao",
         resposta: marcarVersaoDaCaderneta(
-          respostaEncaminhamento(erro.destino, erro.caderneta),
+          respostaEncaminhamento(
+            `https://${erro.dominioPublico}${url.pathname}${url.search}`,
+            erro.caderneta,
+          ),
           erro.versaoCaderneta,
         ),
       };
-    if (erro instanceof DecisaoPorteiro)
+    if (erro instanceof DecisaoPorteiro) {
+      // Só o "não achei" DEFINITIVO da caderneta (`miss`) é guardado. A
+      // chave anômala também vira `sem-loja`, mas com `caderneta: "erro"`:
+      // é resposta estranha, não "não achei", e pergunta de novo.
+      if (erro.motivo === "sem-loja" && erro.caderneta === "miss")
+        guardarComTeto(deps.cacheSemLoja, host, {
+          quando: agora,
+          ...comVersao(erro.versaoCaderneta),
+        });
       return {
         tipo: "manutencao",
         resposta: marcarVersaoDaCaderneta(
@@ -1403,6 +1533,7 @@ export async function obterFichaValidada(
           erro.versaoCaderneta,
         ),
       };
+    }
     // Falha de rede/schema (não é uma DECISÃO): stale-if-error por até 1h.
     // O `x-ikcous-caderneta` reflete o que ESTA tentativa (a que falhou)
     // já sabia sobre a caderneta antes de falhar — informação mais atual
@@ -1413,6 +1544,18 @@ export async function obterFichaValidada(
     const versaoDaFalha =
       erro instanceof FalhaResolucaoPorteiro ? erro.versaoCaderneta : undefined;
     if (doCache && agora - doCache.quando < CACHE_STALE_MAX_MS) {
+      // Abre o recuo deste host. Só grava se a entrada ainda é a que este
+      // pedido leu: outro pedido (da mesma resolução compartilhada, ou uma
+      // resolução boa que terminou antes) já pode tê-la trocado.
+      if (deps.cache.get(host) === doCache)
+        guardarComTeto(deps.cache, host, {
+          ...doCache,
+          recuo: {
+            ate: agora + RECUO_APOS_FALHA_MS,
+            caderneta: cadernetaDaFalha,
+            ...comVersao(versaoDaFalha),
+          },
+        });
       return {
         tipo: "ok",
         ficha: comPublicUrlAtual(doCache.ficha),
@@ -1591,7 +1734,7 @@ async function atenderMapaDoSite(
       },
       { fetchImpl: deps.fetchImpl },
     );
-    deps.cacheMapa?.set(chaveDoCache, { ids, quando: agora });
+    guardarComTeto(deps.cacheMapa, chaveDoCache, { ids, quando: agora });
     return responder(ids, "completo");
   } catch (erro) {
     // Falha de leitura NUNCA vira erro para o robô: o último mapa bom DESTA
@@ -1714,7 +1857,7 @@ async function cartazDaLoja(
         console.error("[Porteiro] cartaz: banners não lidos:", erro);
         linhas = null;
       }
-      deps.cacheCartaz?.set(chave, { linhas, quando: agora });
+      guardarComTeto(deps.cacheCartaz, chave, { linhas, quando: agora });
     }
     if (linhas === null) return null;
     const linha = escolherBannerDoTopo(linhas, agora);

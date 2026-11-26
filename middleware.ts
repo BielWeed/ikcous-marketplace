@@ -9,6 +9,8 @@ import type {
   EntradaCacheForaDoAr,
   EntradaCacheMapa,
   EntradaCachePorteiro,
+  EntradaCacheSemLoja,
+  ResolucaoEmVoo,
   ResolverLojaNaCaderneta,
 } from "./src/hospedagem/porteiro";
 import {
@@ -90,6 +92,15 @@ const cachePorteiro = new Map<string, EntradaCachePorteiro>();
 // L8: a decisão "loja adormecida/encerrada" por host, 60 s (sem stale): ver
 // `CACHE_FORA_DO_AR_MS` no porteiro. A loja ativa nunca escreve aqui.
 const cacheForaDoAr = new Map<string, EntradaCacheForaDoAr>();
+
+// O "não achei" da caderneta por host, 60 s (só `miss`, nunca erro): ver
+// `CACHE_SEM_LOJA_MS` no porteiro. Host desconhecido não vira uma pergunta
+// cara à caderneta a cada pedido de robô.
+const cacheSemLoja = new Map<string, EntradaCacheSemLoja>();
+
+// Resoluções em andamento por host: pedidos simultâneos do mesmo host esperam
+// a MESMA pergunta à caderneta (ver `resolucoesEmVoo` no porteiro).
+const resolucoesEmVoo = new Map<string, ResolucaoEmVoo>();
 
 // Ids públicos do sitemap por loja (10 min frescos, 1h de stale-if-error,
 // chave = `host|supabaseUrl` da ficha): ver `CACHE_MAPA_FRESCO_MS` no porteiro.
@@ -375,6 +386,8 @@ export default async function middleware(
         resolverNaCaderneta,
         cache: cachePorteiro,
         cacheForaDoAr,
+        cacheSemLoja,
+        resolucoesEmVoo,
       },
     );
     // Ficha ausente (sem-loja/discorda/banco-indisponivel) -> a MESMA 503
@@ -609,6 +622,8 @@ export default async function middleware(
     resolverNaCaderneta,
     cache: cachePorteiro,
     cacheForaDoAr,
+    cacheSemLoja,
+    resolucoesEmVoo,
     cacheMapa: cacheMapaDoSite,
     cacheCartaz: cacheCartazDaLoja,
     // Pessoa abrindo a loja (ou previa de link) -> uma entrada no banco DESTA
