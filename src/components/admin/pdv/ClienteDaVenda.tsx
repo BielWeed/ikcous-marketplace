@@ -25,9 +25,10 @@ import {
 import { type ReactElement, useRef, useState } from "react";
 import "./pdv.css";
 
-/** Uma linha de `get_admin_customers_paged` — só os campos que esta tela usa.
- * O telefone vem na chave `phone` (`COALESCE(p.whatsapp, u.phone)`, migration
- * 20261392000000), nunca `whatsapp`. */
+/** Uma linha de `buscar_clientes_do_balcao` (migration 20261530000000) — os
+ * quatro campos que ela devolve. O telefone vem na chave `phone`
+ * (`COALESCE(p.whatsapp, u.phone)`, a mesma da lista de Clientes), nunca
+ * `whatsapp`. */
 export interface LinhaDeClienteEncontrado {
   readonly id: string;
   readonly full_name: string | null;

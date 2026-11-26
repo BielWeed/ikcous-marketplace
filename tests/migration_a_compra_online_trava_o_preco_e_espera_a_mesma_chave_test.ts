@@ -383,6 +383,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "187a-conferir-a-saude-da-reconciliacao-aplicado",
       "188a-conferir-o-livro-de-registro-aplicado",
       "191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado",
+      "190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado",
       "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
