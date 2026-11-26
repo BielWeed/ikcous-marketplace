@@ -540,7 +540,9 @@ perdeu nunca vira pedido pago.
 
 ### Passo 9 — Cadastro na frota — em construção
 
-O script `cadastro-da-loja.mjs` **ainda não existe** (tarefa B5; o passo entra no comando no C2).
+O script `scripts/frota/cadastro-da-loja.mjs` já existe (tarefa B5, branch
+`claude/nova-loja-integrada`), mas o passo ainda não está no `nova-loja.mjs` (C2). O estado real
+dele está em [Lacunas conhecidas](#lacunas-conhecidas-26112026), no item "cadastro (passo 9)".
 **Não dá para usar numa loja nova o roteiro manual** (passos 1 a 3 da seção "Loja assinante nova"
 de [producao-unica-fonte.md](producao-unica-fonte.md)). Ele foi escrito para loja com **token fixo
 no repositório**:
@@ -549,9 +551,10 @@ no repositório**:
 - a entrada de `lojas.json` aponta `segredoDoToken` para esse nome, e o
   `lojas-nos-workflows.cjs --escrever` liga os workflows a ele.
 
-A loja nova não tem token fixo: só a autorização OAuth da lojista, no cofre do PC do dono. Então
-o segredo ficaria vazio e os workflows da loja não funcionariam. **Espere o B5/C2.** Guarde o SQL
-da caderneta e a entrada de `lojas.json` que o passo `ficha` imprimiu; o cadastro vai usá-los.
+A loja nova não tem token fixo: só a autorização OAuth da lojista, no cofre do PC do dono. Fora
+da [sessão de publicação](#publicar-quando-há-loja-oauth-a-sessão), o segredo dela não existe no
+GitHub e os workflows da loja param. **Espere o C2.** Guarde o SQL da caderneta e a entrada de
+`lojas.json` que o passo `ficha` imprimiu; o cadastro vai usá-los.
 
 ### Passo 10 — Publicar as functions — ainda não automático (script avulso)
 
@@ -585,9 +588,12 @@ node scripts/frota/functions-da-loja.mjs --projeto <ref> --canal <slug> --aplica
 **Depois que deu SIM: a loja NÃO entra em `functionsSoPeloWorkflow`.** O comentário dessa lista
 em `scripts/frota/canais-de-backend.json` diz que a loja nova entra nela depois que as functions
 sobem, e que daí em diante elas só sobem pelo `publicar-functions.yml`. Numa loja só-OAuth isso
-quebraria a loja: o workflow só usa segredos fixos do repositório (`publicar-functions.yml`, linhas
-136 e 211-213) e não alcança a loja. Ao mesmo tempo, o `functions-da-loja.mjs` passaria a recusá-la.
-As functions de dinheiro ficariam velhas, sem conserto. **Até existir uma release de functions e
+pode quebrar a loja. O workflow lê o segredo da loja pelos blocos `LOJAS-SEGREDO-UNICO` (hoje nas
+linhas 211-213, 241-243 e 272-274 do `publicar-functions.yml`), e esse segredo só existe com a
+[sessão de publicação](#publicar-quando-há-loja-oauth-a-sessão) aberta. Mesmo assim, que o workflow
+publica numa loja OAuth **não está provado** (falta a prova P2; se ela falhar, entra a T10). Ao
+mesmo tempo, o `functions-da-loja.mjs` passaria a recusá-la, e as functions de dinheiro poderiam
+ficar velhas, sem conserto. **Até existir uma release de functions e
 migrations para loja só-OAuth, a loja fica fora dessa lista** (ver
 [Lacunas conhecidas](#lacunas-conhecidas-26112026)).
 
@@ -933,10 +939,14 @@ Rode `login-da-loja-nova.mjs --aplicar` **de novo**. Hoje o `ativar` não alcan�
 ### Depois das functions, a loja vira "existente"
 
 O comentário de `functionsSoPeloWorkflow` (`scripts/frota/canais-de-backend.json`) manda pôr a
-loja na lista depois que as functions sobem. **Numa loja só-OAuth, não ponha.** O
-`publicar-functions.yml` só usa segredos fixos do repositório (linhas 136 e 211-213) e não alcança
-a loja, e o `functions-da-loja.mjs` passaria a recusá-la. As functions de dinheiro ficariam
-velhas, sem conserto. Detalhes no [passo 10](#passo-10--publicar-as-functions--ainda-não-automático-script-avulso).
+loja na lista depois que as functions sobem. **Numa loja só-OAuth, não ponha.** Que o
+`publicar-functions.yml` publica numa loja OAuth **não está provado**. Com a
+[sessão de publicação](#publicar-quando-há-loja-oauth-a-sessão) aberta, o segredo da loja existe e
+o workflow o lê pelo bloco `LOJAS-SEGREDO-UNICO` que o cadastro gera. Falta a prova P2: o CLI do
+Supabase que o workflow usa (versão 3.0.0) aceita o token OAuth? Se não aceitar, entra a T10, que
+publica pela API. Enquanto isso, se a loja entrasse na lista, o `functions-da-loja.mjs` passaria a
+recusá-la, e as functions de dinheiro poderiam ficar velhas sem conserto. Detalhes no
+[passo 10](#passo-10--publicar-as-functions--ainda-não-automático-script-avulso).
 
 ### A instalação do banco bate no limite de pedidos por minuto
 
@@ -987,10 +997,17 @@ no painel do projeto dela):
 - **segredos (passo 8):** `scripts/frota/segredos-da-loja.mjs` pede `SUPABASE_ACCESS_TOKEN` quando
   roda sozinho, e o token da lojista não sai do cofre. O conserto de "metade gravada" é no painel
   do projeto, que é da lojista. Espere o C2.
-- **cadastro (passo 9):** `cadastro-da-loja.mjs` não existe. O roteiro manual
-  (`producao-unica-fonte.md`, "Loja assinante nova", passos 1 a 3) pede o segredo fixo
-  `SUPABASE_ACCESS_TOKEN_<LOJA>` no repositório e confere pelo `conferir-banco-da-loja.yml`, que usa
-  esse segredo. Espere o B5/C2.
+- **cadastro (passo 9):** o script `scripts/frota/cadastro-da-loja.mjs` existe (veio da branch
+  `claude/nova-loja-integrada`), mas ainda não é um passo do `nova-loja.mjs` (C2). Com `--aplicar`,
+  ele grava a loja no `lojas.json` (já com `acesso: "oauth"` e o segredo
+  `SUPABASE_ACCESS_TOKEN_<SLUG>`), nos blocos gerados dos workflows e no `canais-de-backend.json`. O
+  SQL da caderneta ele só imprime: quem roda é a sessão do agente. Ele **não** cria o segredo no
+  GitHub, porque o segredo da loja OAuth só existe enquanto a
+  [sessão de publicação](#publicar-quando-há-loja-oauth-a-sessão) está aberta. O roteiro manual
+  (`producao-unica-fonte.md`, "Loja assinante nova", passos 1 a 3) continua **não servindo** para a
+  loja nova, porque pede um segredo fixo no repositório. Antes de rodar o script numa loja de
+  verdade, leia a lacuna da release logo abaixo: uma loja `oauth` no `lojas.json` hoje bloqueia a
+  publicação da frota inteira.
 - **functions (passo 10):** depende do cadastro. Espere o B5/C2.
 - **domínio, marca e chave do plano (passo 12):** a chave do plano vai pelo
   `instalar-chave-da-loja.yml` (segredo fixo, linhas 174-175); o domínio, pelo SQL Editor do projeto;
