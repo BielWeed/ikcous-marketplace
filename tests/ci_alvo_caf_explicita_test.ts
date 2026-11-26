@@ -106,10 +106,13 @@ const WORKFLOWS: [string, string, string][] = [
 for (const [nome, caminho, job] of WORKFLOWS) {
   Deno.test(`${nome}: a opção ikcous-publicada existe depois de loja e sandbox (que não mudam) e expected_sha é um input opcional`, async () => {
     const yaml = await Deno.readTextFile(caminho);
+    // 25/11/2026: o menu (choice) é GERADO de scripts/frota/lojas.json (bloco
+    // LOJAS-OPCOES); sem os comentários do marcador, é byte a byte o de antes.
     assertStringIncludes(
-      yaml,
-      "default: loja\n        options:\n          - loja\n          - sandbox\n          - ikcous-publicada\n",
+      semComentarios(yaml),
+      "type: choice\n        default: loja\n        options:\n          - loja\n          - sandbox\n          - ikcous-publicada\n",
     );
+    assertStringIncludes(yaml, "# LOJAS-OPCOES-INICIO");
     assert(/\n {6}expected_sha:\n/.test(yaml), "falta o input expected_sha");
     const inp = yaml.slice(yaml.indexOf("\n      expected_sha:"));
     assertStringIncludes(inp.slice(0, 400), "required: false");
@@ -211,10 +214,12 @@ for (const [nome, caminho, job] of WORKFLOWS) {
         "secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}",
         "o da CAF só vale na CAF",
       );
+    // o legado só chega a loja/sandbox (forma POSITIVA, gerada do cadastro: um
+    // nome fora dele nunca o recebe, e uma loja nova também não)
     assertEquals(
       [
         ...j.matchAll(
-          /inputs\.projeto != 'ikcous-publicada' && inputs\.projeto != 'savy' && secrets\.SUPABASE_ACCESS_TOKEN \|\| ''/g,
+          /\(inputs\.projeto == 'loja' \|\| inputs\.projeto == 'sandbox'\) && secrets\.SUPABASE_ACCESS_TOKEN \|\| ''/g,
         ),
       ].length,
       legado.length,
@@ -237,12 +242,28 @@ for (const [nome, caminho, job] of WORKFLOWS) {
 Deno.test("conferir-banco-da-loja.yml: o job do ledger (que GRAVA em schema_migrations) não roda para ikcous-publicada; aplicar-migrations.yml não tem job de ledger", async () => {
   const yaml = semComentarios(await Deno.readTextFile(CONFERIR));
   const ledger = bloco(yaml, "ledger");
-  assertStringIncludes(ledger, "inputs.projeto != 'ikcous-publicada'");
+  assertStringIncludes(
+    ledger,
+    "(inputs.projeto == 'loja' || inputs.projeto == 'sandbox')",
+  );
   // o ledger só roda com a conjunção toda: a condição de projeto está no MESMO `if`
   const linhaIf = ledger
     .split("\n")
     .find((l) => l.trimStart().startsWith("if:"));
-  assertStringIncludes(linhaIf, "inputs.projeto != 'ikcous-publicada'");
+  // forma positiva (25/11/2026): as faixas 72..83 só para loja/sandbox; a CAF só
+  // com 92-202 e 60-66; qualquer outro nome (loja nova) não tem ledger
+  assertStringIncludes(
+    linhaIf,
+    "(inputs.projeto == 'loja' || inputs.projeto == 'sandbox') && inputs.gravar_ledger != '92-202' && inputs.gravar_ledger != '60-66'",
+  );
+  assertStringIncludes(
+    linhaIf,
+    "(inputs.projeto == 'ikcous-publicada' && (inputs.gravar_ledger == '92-202' || inputs.gravar_ledger == '60-66'))",
+  );
+  assert(
+    !linhaIf.includes("inputs.projeto != "),
+    "a condição do ledger não usa a forma negativa (um nome novo cairia nela)",
+  );
   assertStringIncludes(linhaIf, "inputs.confirmar == 'GRAVAR'");
   // nenhum outro job do conferir escreve no ledger
   for (const job of [

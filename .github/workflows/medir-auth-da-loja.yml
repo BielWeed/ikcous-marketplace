@@ -13,13 +13,16 @@
 # o cabeçalho dele diz a fonte da API e cada trava. Nenhuma chamada de escrita
 # existe no script, e o corpo cru da resposta nunca vai para o log.
 #
-# PROJETO: fechado em "ikcous-publicada" | "savy" (nunca um ref de texto livre; o
-# ref é resolvido DENTRO do script por `resolverRef`, o mesmo de conferir-banco).
+# PROJETO: menu fechado (choice) GERADO de scripts/frota/lojas.json e VALIDADO de novo contra ele (só lojas
+# assinantes; "loja desconhecida" ANTES de qualquer segredo). Nunca um ref de texto
+# livre: o ref é resolvido DENTRO do script por `resolverRef`, o mesmo de
+# conferir-banco, a partir do mesmo cadastro.
 #
-# CREDENCIAL: nenhuma nova. ikcous-publicada usa SUPABASE_ACCESS_TOKEN_IKCOUS e
-# savy usa SUPABASE_ACCESS_TOKEN_SAVY — os mesmos de publicar-functions.yml. Cada
-# alvo enxerga SÓ o seu segredo (a expressão `&& … || ''` nunca cai no vizinho),
-# nunca o legado, e 401/403 PARAM sem tentar outro segredo. O segredo só existe
+# CREDENCIAL: nenhuma nova. Cada loja usa o segredo que o cadastro nomeia em
+# `segredoDoToken` (ikcous-publicada: SUPABASE_ACCESS_TOKEN_IKCOUS; savy:
+# SUPABASE_ACCESS_TOKEN_SAVY — os mesmos de publicar-functions.yml). Cada alvo
+# enxerga SÓ o seu segredo (a expressão `&& … || ''` nunca cai no vizinho; as linhas
+# são GERADAS do cadastro), nunca o legado, e 401/403 PARAM sem tentar outro segredo. O segredo só existe
 # no ÚLTIMO passo (o do script); o do `expected_sha` e o checkout não o veem.
 #
 # GATILHO: só `workflow_dispatch`. Nenhum `pull_request_target`, nenhum código de
@@ -42,13 +45,15 @@ on:
   workflow_dispatch:
     inputs:
       projeto:
-        description: "Loja a medir: ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita); nunca texto livre"
+        description: "Loja a medir: o nome EXATO de uma loja assinante de scripts/frota/lojas.json (ex.: ikcous-publicada ou savy); loja desconhecida e recusada antes de qualquer segredo"
         required: true
         type: choice
         default: savy
         options:
+          # LOJAS-OPCOES-ASSINANTES-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
           - ikcous-publicada
           - savy
+          # LOJAS-OPCOES-ASSINANTES-FIM
       expected_sha:
         description: "OBRIGATORIO: o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA)"
         required: true
@@ -70,6 +75,9 @@ jobs:
           PROJETO: ${{ inputs.projeto }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
+          if ! [[ "$PROJETO" =~ ^[a-z][a-z0-9-]{1,39}$ ]]; then
+            echo "::error::loja desconhecida (nome fora do formato)"; exit 1
+          fi
           if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
             echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
           fi
@@ -82,11 +90,20 @@ jobs:
         with:
           node-version: "20"
 
+      # A loja existe no cadastro (scripts/frota/lojas.json) e e ASSINANTE? Recusa
+      # ("loja desconhecida") ANTES do passo que ve segredo. Nao le segredo.
+      - name: Confere a loja no cadastro (lojas.json) antes de qualquer segredo
+        env:
+          PROJETO: ${{ inputs.projeto }}
+        run: node scripts/frota/lojas.cjs validar "$PROJETO" --assinante
+
       # Cada alvo enxerga SÓ o seu segredo: segredo vazio dá '', nunca o do
       # vizinho. É o ÚNICO passo com segredo; o script PARA sem o do próprio alvo.
       - name: Mede a configuração de e-mail do login (só leitura, lista fechada)
         env:
+          # LOJAS-SEGREDOS-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
           SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDOS-FIM
           PROJETO: ${{ inputs.projeto }}
         run: node scripts/publicacao/medir-auth-da-loja.cjs

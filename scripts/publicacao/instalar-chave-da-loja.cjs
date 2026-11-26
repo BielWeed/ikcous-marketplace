@@ -20,7 +20,8 @@
  *    minúsculos): select public.assinatura_da_loja_definir_chave('<hash>', <true|false>).
  *    Hash provado hex não tem aspas nem nada a escapar; o booleano sai de um
  *    literal. As outras duas consultas são leituras fixas que devolvem UM booleano.
- *  - PROJETO FECHADO em "ikcous-publicada" | "savy" (`ALVOS`, `Object.hasOwn`); o
+ *  - PROJETO FECHADO nas lojas ASSINANTES de scripts/frota/lojas.json (`ALVOS`,
+ *    `Object.hasOwn`; hoje ikcous-publicada e savy); o
  *    ref vem de `resolverRef` (o mesmo de conferir-banco.cjs), nunca de texto livre.
  *  - CADA ALVO ENXERGA SÓ O SEU SEGREDO (SUPABASE_ACCESS_TOKEN_IKCOUS para a CAF,
  *    SUPABASE_ACCESS_TOKEN_SAVY para a Savy). Sem ele, PARA; 401/403 também PARAM,
@@ -61,25 +62,16 @@
  */
 const fs = require("node:fs");
 const { resolverRef, extrairLinhas } = require("./conferir-banco.cjs");
+const lojasCadastro = require("../frota/lojas.cjs");
 
 const API_BASE = "https://api.supabase.com";
 const TEMPO_LIMITE_MS = 60_000;
 
-/** Os ÚNICOS dois alvos, cada um com o NOME do seu segredo e a mensagem de parada
- * (mesmo texto de conferir-banco.cjs). Nunca uma chave escolhida por quem chama
- * chega a um efeito sem passar por `Object.hasOwn` + `resolverRef`. */
-const ALVOS = Object.freeze({
-  "ikcous-publicada": Object.freeze({
-    segredo: "SUPABASE_ACCESS_TOKEN_IKCOUS",
-    semAcesso:
-      "sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto",
-  }),
-  savy: Object.freeze({
-    segredo: "SUPABASE_ACCESS_TOKEN_SAVY",
-    semAcesso:
-      "sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY — bloqueio concreto",
-  }),
-});
+/** Os alvos são as lojas ASSINANTES do cadastro (scripts/frota/lojas.json): cada
+ * uma com o NOME do seu segredo (`segredoDoToken`) e a mensagem de parada (mesmo
+ * texto de conferir-banco.cjs). Nunca uma chave escolhida por quem chama chega a um
+ * efeito sem passar por `Object.hasOwn` + `resolverRef`. */
+const ALVOS = lojasCadastro.alvosDasAssinantes();
 
 const HASH_VALIDO = /^[0-9a-f]{64}$/;
 const SHA_VALIDO = /^[0-9a-f]{40}$/i;
@@ -180,11 +172,11 @@ async function instalar({
   fetchImpl,
   saida,
 }) {
-  // eslint-disable-next-line security/detect-object-injection -- `Object.hasOwn` na mesma expressão: só as duas chaves de ALVOS passam.
+  // eslint-disable-next-line security/detect-object-injection -- `Object.hasOwn` na mesma expressão: só as chaves de ALVOS (as lojas assinantes do cadastro) passam.
   const alvo = Object.hasOwn(ALVOS, projeto) ? ALVOS[projeto] : null;
   if (!alvo) {
     saida.erro(
-      `FALHOU: projeto desconhecido: "${textoSeguro(projeto, 40)}" (use ikcous-publicada ou savy)`,
+      `FALHOU: projeto desconhecido: "${textoSeguro(projeto, 40)}" (use ${lojasCadastro.listaLegivel(Object.keys(ALVOS))})`,
     );
     return 1;
   }

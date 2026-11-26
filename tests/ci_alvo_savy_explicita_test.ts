@@ -121,19 +121,23 @@ const WORKFLOWS: [string, string, string][] = [
 for (const [nome, caminho, job] of WORKFLOWS) {
   Deno.test(`${nome}: a opção savy existe depois de ikcous-publicada (loja e sandbox não mudam) e a descrição diz que é a loja cliente explícita`, async () => {
     const yaml = await Deno.readTextFile(caminho);
+    // 25/11/2026: o menu (choice) é GERADO de scripts/frota/lojas.json (bloco
+    // LOJAS-OPCOES; savy continua uma loja assinante do cadastro, com as mesmas
+    // travas); sem os comentários do marcador, é byte a byte o de antes.
     assertStringIncludes(
-      yaml,
-      "default: loja\n        options:\n          - loja\n          - sandbox\n          - ikcous-publicada\n          - savy\n",
+      semComentarios(yaml),
+      "type: choice\n        default: loja\n        options:\n          - loja\n          - sandbox\n          - ikcous-publicada\n          - savy\n",
     );
+    assertStringIncludes(yaml, "# LOJAS-OPCOES-INICIO");
     const iProjeto = yaml.indexOf("\n      projeto:");
     assert(iProjeto >= 0, "falta o input projeto");
     const descricao = yaml.slice(iProjeto, iProjeto + 600);
     assertStringIncludes(descricao, "savy");
     assertStringIncludes(descricao, "expected_sha");
-    // o input de sha vale para as duas lojas explícitas
+    // o input de sha vale para todas as lojas assinantes (a savy entre elas)
     const iSha = yaml.indexOf("\n      expected_sha:");
     assert(iSha >= 0);
-    assertStringIncludes(yaml.slice(iSha, iSha + 400), "savy");
+    assertStringIncludes(yaml.slice(iSha, iSha + 400), "assinante");
     assertStringIncludes(yaml.slice(iSha, iSha + 400), "required: false");
   });
 
@@ -152,10 +156,11 @@ for (const [nome, caminho, job] of WORKFLOWS) {
       ),
       "nenhum passo antes da conferência faz rede",
     );
-    assertStringIncludes(
-      blocoRunDoStep(yaml, "Confere o alvo"),
-      '"$PROJETO" = "savy"',
-    );
+    // 25/11/2026: a trava vale para TODA loja que não seja alvo de teste legado
+    // (`loja|sandbox` dispensam); a savy cai no ramo que exige o sha.
+    const passo = blocoRunDoStep(yaml, "Confere o alvo");
+    assertStringIncludes(passo, "loja|sandbox) ;;");
+    assertStringIncludes(passo, "*)");
   });
 
   Deno.test({
@@ -230,8 +235,8 @@ for (const [nome, caminho, job] of WORKFLOWS) {
     for (const l of legado)
       assertEquals(
         l,
-        "${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}",
-        "o legado só vale fora da CAF e da Savy",
+        "${{ (inputs.projeto == 'loja' || inputs.projeto == 'sandbox') && secrets.SUPABASE_ACCESS_TOKEN || '' }}",
+        "o legado só vale em loja e sandbox (forma positiva, gerada do cadastro)",
       );
     for (const l of caf)
       assertEquals(
@@ -297,13 +302,17 @@ Deno.test("conferir-banco-da-loja.yml: o job do ledger (que GRAVA em schema_migr
   const linhaIf = ledger
     .split("\n")
     .find((l) => l.trimStart().startsWith("if:"));
-  assertStringIncludes(linhaIf, "inputs.projeto != 'savy'");
-  assertStringIncludes(linhaIf, "inputs.projeto != 'ikcous-publicada'");
   assertStringIncludes(linhaIf, "inputs.confirmar == 'GRAVAR'");
   // a única exceção: as lojas explícitas só entram no job com a faixa 92-202
+  // (a CAF também com a 60-66); as faixas 72..83 são só de loja/sandbox (forma
+  // positiva desde 25/11/2026: uma loja assinante nova não tem ledger aqui)
   assertStringIncludes(
     linhaIf,
-    "((inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && inputs.gravar_ledger != '92-202' && inputs.gravar_ledger != '60-66') || (inputs.projeto == 'ikcous-publicada' && (inputs.gravar_ledger == '92-202' || inputs.gravar_ledger == '60-66')) || (inputs.projeto == 'savy' && inputs.gravar_ledger == '92-202'))",
+    "(((inputs.projeto == 'loja' || inputs.projeto == 'sandbox') && inputs.gravar_ledger != '92-202' && inputs.gravar_ledger != '60-66') || (inputs.projeto == 'ikcous-publicada' && (inputs.gravar_ledger == '92-202' || inputs.gravar_ledger == '60-66')) || (inputs.projeto == 'savy' && inputs.gravar_ledger == '92-202'))",
+  );
+  assert(
+    !linhaIf.includes("inputs.projeto != "),
+    "a condição do ledger não usa a forma negativa",
   );
   // nenhum outro job do conferir passa LEDGER
   for (const job of [
@@ -747,10 +756,23 @@ const ENVELOPE = "BEGIN ISOLATION LEVEL REPEATABLE READ;\n";
 
 Deno.test("aplicar-migrations.yml: o mapeamento de loja, sandbox e ikcous-publicada é byte a byte o de antes e a savy aponta para o ref fixo da Savy", async () => {
   const yaml = await Deno.readTextFile(APLICAR);
+  // 25/11/2026: o mapa de refs saiu do YAML e mora em scripts/frota/lojas.json
+  // (o node -e lê o cadastro); o mapeamento de cada alvo é o MESMO de antes.
+  assert(!yaml.includes("const REFS = {"), "o mapa fixo de refs não volta");
   assertStringIncludes(
     yaml,
-    "const REFS = { loja: 'cafkrminfnokvgjqtkle', sandbox: 'lofznuxcvezrhxsgjqyg', 'ikcous-publicada': 'cafkrminfnokvgjqtkle', savy: 'gnjsrucsmjkajijrakzr' };",
+    "lojas.lojaDoProjeto(projeto, lojas.carregarLojas())",
   );
+  // eslint-disable-next-line security/detect-non-literal-require -- caminho fixo de scripts/frota/lojas.cjs dentro deste repositório.
+  const { refsPorProjeto, carregarLojas } = require(
+    join(RAIZ, "scripts/frota/lojas.cjs"),
+  );
+  assertEquals(refsPorProjeto(carregarLojas()), {
+    loja: "cafkrminfnokvgjqtkle",
+    sandbox: "lofznuxcvezrhxsgjqyg",
+    "ikcous-publicada": "cafkrminfnokvgjqtkle",
+    savy: "gnjsrucsmjkajijrakzr",
+  });
 });
 
 Deno.test({

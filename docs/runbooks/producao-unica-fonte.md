@@ -1984,25 +1984,25 @@ O cadastro de UMA vez, na entrada do cliente:
 
 1. projeto Supabase da loja com a cadeia de migrations inteira; linha em `frota_lojas`;
    dominio no projeto Vercel;
-2. segredo do token da conta dela no repositorio (o dono grava) e o alvo dela nos workflows
-   `aplicar-migrations.yml`, `conferir-banco-da-loja.yml` e `publicar-functions.yml` (mesmas
-   travas do alvo `savy`: ref fixo, segredo proprio, `expected_sha`).
-   **Lista fechada do script de conferencia (sem isto o alvo novo nao roda ou, pior, usa o token
-   errado):** `scripts/publicacao/conferir-banco.cjs` mantem lista PROPRIA de projetos aceitos
-   (`REFS_POR_PROJETO`: `loja`, `sandbox`, `ikcous-publicada`, `savy`; linhas 232-246) e so escolhe
-   token proprio para a CAF e para a Savy (`main()`, linhas 3997-4008): qualquer outro alvo cairia
-   no `SUPABASE_ACCESS_TOKEN` legado. A loja nova entra ali com (a) ref fixo de 20 letras minusculas
-   (nunca texto livre) e um ramo proprio na `main()` com o segredo PROPRIO dela e a mensagem de
-   parada propria, sem fallback para o legado nem para o de outra loja; esse mesmo ramo tem de
-   recusar o job de ledger para ela e PARAR em 401/403, como `ehCaf`/`ehSavy` fazem (linhas
-   4032-4052 e 4094); (b) em `aplicar-migrations.yml` e `conferir-banco-da-loja.yml`, a opcao do
-   alvo, o segredo proprio dele e o alvo novo dentro do `!=` da expressao do segredo legado
-   (`inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && ...`; senao a loja nova
-   recebe o token legado); em `publicar-functions.yml` os passos do alvo novo com o segredo proprio,
-   como os da Savy; (c) os testes que fixam os alvos de hoje
-   mudam junto, de proposito: `tests/ci_alvo_caf_explicita_test.ts` (o `REFS_POR_PROJETO` exato,
-   linhas 324-335) e `tests/ci_alvo_savy_explicita_test.ts` (a lista de opcoes e as expressoes de
-   segredo, byte a byte, linhas 122-126 e 209-239). Termine com UMA conferencia so de leitura pelo
+2. segredo do token da conta dela no repositorio (o dono grava, com o NOME
+   `SUPABASE_ACCESS_TOKEN_<LOJA>`, em maiusculas) e **UMA entrada** em `scripts/frota/lojas.json`
+   (desde 25/11/2026 a lista de lojas e DADO: `ref` de 20 letras minusculas, `classe: "assinante"`,
+   `apelido`, `segredoDoToken` com o nome do segredo e `functionsNomeadas`, a decisao de seguranca
+   de a loja receber as oito functions nomeadas de `publicar-functions.yml`; copie a entrada da
+   Savy e troque os valores). Depois rode `node scripts/frota/lojas-nos-workflows.cjs --escrever`:
+   ele regrava SO os blocos `LOJAS-SEGREDO*` e `LOJAS-OPCOES*` dos workflows com o nome novo no menu `projeto` e a linha de env do segredo novo, sempre
+   com a guarda `inputs.projeto == '<loja>' && secrets.<NOME> || ''` (o GitHub so entrega ao job os
+   segredos escritos por extenso no YAML; `secrets[format(...)]` entregaria TODOS os segredos do
+   repositorio ao job). Nao ha mais lista fixa nem ramo por loja em `aplicar-migrations.yml`,
+   `conferir-banco-da-loja.yml`, `publicar-functions.yml`, `instalar-chave-da-loja.yml`,
+   `medir-auth-da-loja.yml`, `ativar-email-do-login.yml`, `ativar-google-do-login.yml` nem em
+   `scripts/publicacao/*.cjs`: o menu do input `projeto` (choice) tambem e GERADO do cadastro pelo
+   mesmo comando (o GitHub recusa no disparo um nome fora do menu), um passo recusa "loja desconhecida"
+   tudo que nao esteja no cadastro, ANTES de qualquer segredo, e as travas (ref fixo, segredo
+   proprio, `expected_sha`, 401/403 PARAM, ledger recusado) valem para toda entrada `assinante`.
+   O teste `tests/frota_lojas_test.ts` barra o commit se o YAML ficar fora de sincronia com o
+   cadastro. A revisao Opus continua obrigatoria (mexe em credencial): ela le a entrada do JSON e
+   as linhas geradas. Termine com UMA conferencia so de leitura pelo
    alvo novo: workflow `conferir-banco-da-loja.yml` com `projeto=<alvo novo>`,
    `consulta=149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado` e `expected_sha` completo;
    esperado: 6 linhas, todas `ok = true` (so catalogo e uma contagem, nenhum dado de pessoa).
@@ -2023,9 +2023,8 @@ O cadastro de UMA vez, na entrada do cliente:
    fica `indisponivel` (falha fechada: ninguem cobra). Nunca substitua uma chave que ja cifrou
    credenciais: as cifradas viram ilegiveis.
 6. **Chave do plano (assinatura da loja):** gere o hash pelo app de gestao e instale-o pelo workflow
-   `instalar-chave-da-loja.yml` (script `scripts/publicacao/instalar-chave-da-loja.cjs`). Hoje o
-   script aceita so IKCOUS e Savy: para a loja nova, acrescente o alvo dela ali e no workflow (mesmas
-   travas) antes de rodar.
+   `instalar-chave-da-loja.yml` (script `scripts/publicacao/instalar-chave-da-loja.cjs`). O
+   workflow aceita toda loja assinante do `scripts/frota/lojas.json` (passo 2): nao ha lista a editar.
    **Antes do primeiro acesso — NÃO ENSAIADO em loja nova:** `public.store_config` nasce sem a
    linha `id = 1`. Crie essa linha com o dominio canonico da loja em `dominio_publico`, pelo SQL
    Editor do projeto Supabase da loja, com acesso administrativo. Confira que a

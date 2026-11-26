@@ -707,6 +707,10 @@ Deno.test("workflow: dispatch fechado, SHA antes de checkout, ações pinadas e 
   assertEquals(Object.keys(doc.on ?? {}), ["workflow_dispatch"]);
   const inputs = doc.on.workflow_dispatch.inputs;
   assertEquals(Object.keys(inputs).sort(), ["acao", "expected_sha", "projeto"]);
+  // 25/11/2026: o menu (choice) é GERADO de scripts/frota/lojas.json (bloco
+  // LOJAS-OPCOES-ASSINANTES): o mesmo de antes; o passo "Confere a loja no
+  // cadastro" recusa de novo a desconhecida/não assinante antes do segredo.
+  assertEquals(inputs.projeto.type, "choice");
   assertEquals(inputs.projeto.options, ["ikcous-publicada", "savy"]);
   assertEquals(inputs.acao.options, [
     "medir",
@@ -734,7 +738,24 @@ Deno.test("workflow: dispatch fechado, SHA antes de checkout, ações pinadas e 
       stdout: "piped",
       stderr: "piped",
     }).output();
-    assertEquals(r.code, codigo);
+    // o alvo é recusado ou no 1º passo (formato) ou no passo do cadastro; as
+    // duas travas juntas valem o que a lista fixa valia (`loja` não é assinante)
+    let saiu = r.code;
+    if (saiu === 0) {
+      const validar = passos.find((p) =>
+        String(p.name ?? "").startsWith("Confere a loja no cadastro"),
+      );
+      assert(validar, "falta o passo que confere a loja no cadastro");
+      const v = await new Deno.Command("bash", {
+        args: ["-c", validar.run],
+        cwd: fileURLToPath(new URL("..", import.meta.url)),
+        env: { PROJETO: projeto },
+        stdout: "piped",
+        stderr: "piped",
+      }).output();
+      saiu = v.code;
+    }
+    assertEquals(saiu, codigo, `${projeto}/${acao}`);
   }
   for (const p of passos) {
     if (p.uses) assertMatch(p.uses, /^[\w/-]+@[a-f0-9]{40}$/);

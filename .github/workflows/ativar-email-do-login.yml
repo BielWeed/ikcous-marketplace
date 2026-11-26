@@ -10,13 +10,15 @@ on:
   workflow_dispatch:
     inputs:
       projeto:
-        description: "Loja explícita (nunca um ref livre)"
+        description: "Loja: o nome EXATO de uma loja assinante de scripts/frota/lojas.json (nunca um ref livre); loja desconhecida é recusada antes de qualquer segredo"
         required: true
         type: choice
         default: ikcous-publicada
         options:
+          # LOJAS-OPCOES-ASSINANTES-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
           - ikcous-publicada
           - savy
+          # LOJAS-OPCOES-ASSINANTES-FIM
       acao:
         description: "Medir; preparar sem desligar hook pronto; ativar com guardas; desativar para desfazer"
         required: true
@@ -51,10 +53,9 @@ jobs:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
-          case "$PROJETO" in
-            ikcous-publicada|savy) ;;
-            *) echo "::error::projeto desconhecido"; exit 1 ;;
-          esac
+          if ! [[ "$PROJETO" =~ ^[a-z][a-z0-9-]{1,39}$ ]]; then
+            echo "::error::loja desconhecida (nome fora do formato)"; exit 1
+          fi
           case "$ACAO" in
             medir|preparar|ativar|desativar) ;;
             *) echo "::error::ação desconhecida"; exit 1 ;;
@@ -72,11 +73,20 @@ jobs:
         with:
           node-version: "24"
 
+      # A loja existe no cadastro (scripts/frota/lojas.json) e e ASSINANTE? Recusa
+      # ("loja desconhecida") ANTES do passo que ve segredo. Nao le segredo.
+      - name: Confere a loja no cadastro (lojas.json) antes de qualquer segredo
+        env:
+          PROJETO: ${{ inputs.projeto }}
+        run: node scripts/frota/lojas.cjs validar "$PROJETO" --assinante
+
       # O token só chega ao script, e só o da loja escolhida. Nunca fallback.
       - name: Mede ou configura só os campos do Send Email Hook
         env:
+          # LOJAS-SEGREDOS-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
           SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDOS-FIM
           PROJETO: ${{ inputs.projeto }}
           ACAO: ${{ inputs.acao }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}

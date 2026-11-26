@@ -27,10 +27,12 @@
  *  - SÓ LEITURA: há UMA chamada de rede em todo o arquivo e ela é GET, sem corpo e
  *    sem seguir redirecionamento (a Authorization não vai para outro host). Nenhum
  *    PATCH/POST/PUT/DELETE existe aqui, e o teste falha se aparecer.
- *  - PROJETO FECHADO em "ikcous-publicada" | "savy" (`ALVOS`, `Object.hasOwn`); o ref
- *    vem de `resolverRef` (o mesmo de conferir-banco.cjs), nunca de texto livre.
- *  - CADA ALVO ENXERGA SÓ O SEU SEGREDO: ikcous-publicada lê
- *    SUPABASE_ACCESS_TOKEN_IKCOUS, savy lê SUPABASE_ACCESS_TOKEN_SAVY. Sem ele, PARA;
+ *  - PROJETO FECHADO nas lojas ASSINANTES de scripts/frota/lojas.json (`ALVOS`,
+ *    `Object.hasOwn`; hoje ikcous-publicada e savy); o ref vem de `resolverRef` (o
+ *    mesmo de conferir-banco.cjs, do mesmo cadastro), nunca de texto livre.
+ *  - CADA ALVO ENXERGA SÓ O SEU SEGREDO, o que o cadastro nomeia em `segredoDoToken`:
+ *    ikcous-publicada lê SUPABASE_ACCESS_TOKEN_IKCOUS, savy lê
+ *    SUPABASE_ACCESS_TOKEN_SAVY. Sem ele, PARA;
  *    401/403 também PARAM, sem tentar outro segredo nem outro alvo.
  *  - O CORPO CRU NUNCA VAI PARA O LOG, nem em erro (em falha só o status HTTP). A
  *    saída é montada de uma LISTA FECHADA de campos (`filtrarConfigAuth`): o código
@@ -46,25 +48,17 @@
  */
 const fs = require("node:fs");
 const { resolverRef } = require("./conferir-banco.cjs");
+const lojasCadastro = require("../frota/lojas.cjs");
 
 const API_BASE = "https://api.supabase.com";
 const TEMPO_LIMITE_MS = 30_000;
 
-/** Os ÚNICOS dois alvos, cada um com o NOME do seu segredo e a mensagem de parada
- * (mesmo texto de conferir-banco.cjs). Nunca uma chave escolhida por quem chama
- * chega a um efeito sem passar por `Object.hasOwn` + `resolverRef`. */
-const ALVOS = Object.freeze({
-  "ikcous-publicada": Object.freeze({
-    segredo: "SUPABASE_ACCESS_TOKEN_IKCOUS",
-    semAcesso:
-      "sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto",
-  }),
-  savy: Object.freeze({
-    segredo: "SUPABASE_ACCESS_TOKEN_SAVY",
-    semAcesso:
-      "sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY — bloqueio concreto",
-  }),
-});
+/** Os alvos são as lojas ASSINANTES do cadastro (scripts/frota/lojas.json): cada
+ * uma com o NOME do seu segredo (`segredoDoToken`) e a mensagem de parada (mesmo
+ * texto de sempre). Nunca uma chave escolhida por quem chama chega a um efeito sem
+ * passar por `Object.hasOwn` + `resolverRef`. Os alvos de teste (`loja`, `sandbox`)
+ * não entram: este script nunca roda com o segredo legado. */
+const ALVOS = lojasCadastro.alvosDasAssinantes();
 
 const VAZIO = "(vazio)";
 const INESPERADO = "(formato inesperado)";
@@ -218,11 +212,11 @@ function nomeSeguro(erro) {
  * `process.exit` — o teste injeta `fetchImpl` e `saida`.
  */
 async function medir({ projeto, env, fetchImpl, saida }) {
-  // eslint-disable-next-line security/detect-object-injection -- `Object.hasOwn` na mesma expressão: só as duas chaves de ALVOS passam.
+  // eslint-disable-next-line security/detect-object-injection -- `Object.hasOwn` na mesma expressão: só as chaves de ALVOS (as lojas assinantes do cadastro) passam.
   const alvo = Object.hasOwn(ALVOS, projeto) ? ALVOS[projeto] : null;
   if (!alvo) {
     saida.erro(
-      `FALHOU: projeto desconhecido: "${textoSeguro(projeto, 40)}" (use ikcous-publicada ou savy)`,
+      `FALHOU: projeto desconhecido: "${textoSeguro(projeto, 40)}" (use ${lojasCadastro.listaLegivel(Object.keys(ALVOS))})`,
     );
     return 1;
   }

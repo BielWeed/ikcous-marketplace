@@ -523,14 +523,16 @@ Deno.test("conferir-banco-da-loja.yml: gravar_ledger tem a opção 92-202; o job
   );
   assert(passos.trimStart().startsWith("- name: Confere o alvo"));
   assert(passos.indexOf("Confere o alvo") < passos.indexOf("actions/checkout"));
-  assertStringIncludes(passos, '[ "$PROJETO" = "savy" ]');
+  // 25/11/2026: o sha é exigido de TODA loja que não seja alvo de teste legado
+  // (`loja|sandbox` dispensam), não mais de uma lista fixa de nomes
+  assertStringIncludes(passos, "loja|sandbox) ;;");
   const envs = [
     ...ledger.matchAll(/\$\{\{[^\n]*secrets\.SUPABASE_ACCESS_TOKEN\w*[^\n]*/g),
   ].map((m) => m[0]);
   assertEquals(
     envs.sort(),
     [
-      "${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}",
+      "${{ (inputs.projeto == 'loja' || inputs.projeto == 'sandbox') && secrets.SUPABASE_ACCESS_TOKEN || '' }}",
       "${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}",
       "${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}",
     ].sort(),
@@ -542,7 +544,7 @@ Deno.test("conferir-banco-da-loja.yml: gravar_ledger tem a opção 92-202; o job
     .find((l) => l.trimStart().startsWith("if:"));
   assertStringIncludes(
     linhaIf,
-    "((inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && inputs.gravar_ledger != '92-202' && inputs.gravar_ledger != '60-66') || (inputs.projeto == 'ikcous-publicada' && (inputs.gravar_ledger == '92-202' || inputs.gravar_ledger == '60-66')) || (inputs.projeto == 'savy' && inputs.gravar_ledger == '92-202'))",
+    "(((inputs.projeto == 'loja' || inputs.projeto == 'sandbox') && inputs.gravar_ledger != '92-202' && inputs.gravar_ledger != '60-66') || (inputs.projeto == 'ikcous-publicada' && (inputs.gravar_ledger == '92-202' || inputs.gravar_ledger == '60-66')) || (inputs.projeto == 'savy' && inputs.gravar_ledger == '92-202'))",
   );
   assertStringIncludes(linhaIf, "inputs.confirmar == 'GRAVAR'");
   assertStringIncludes(linhaIf, "inputs.gravar_ledger != 'nao'");

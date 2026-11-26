@@ -19,11 +19,13 @@
 # job que ESCREVE é o `ledger`, e só quando `confirmar` for exatamente
 # `GRAVAR` — e só depois de uma pré-checagem do schema da própria faixa.
 #
-# PROJETO: fechado em "loja"/"sandbox"/"ikcous-publicada"/"savy" (nunca um ref de texto livre — a
-# rodada 2 da revisão provou que `projeto_ref` cru habilitava
-# "<ref>/restart#" e "x/../outroref.../database/query#" com o mesmo token,
-# que vale para TODOS os projetos da conta). O ref de 20 letras é resolvido
-# DENTRO do script (`resolverRef`), nunca aqui.
+# PROJETO: menu fechado (choice) GERADO de scripts/frota/lojas.json e VALIDADO de novo contra ele (as chaves de
+# `lojas`: hoje "loja"/"sandbox"/"ikcous-publicada"/"savy"; "loja desconhecida"
+# ANTES de qualquer segredo). Nunca um ref de texto livre — a rodada 2 da revisão
+# provou que `projeto_ref` cru habilitava "<ref>/restart#" e
+# "x/../outroref.../database/query#" com o mesmo token, que vale para TODOS os
+# projetos da conta. O ref de 20 letras é resolvido DENTRO do script
+# (`resolverRef`), a partir do mesmo cadastro, nunca aqui.
 #
 # CREDENCIAL: o mesmo segredo `SUPABASE_ACCESS_TOKEN` que
 # aplicar-migrations.yml e publicar-functions.yml já usam, para `loja` e
@@ -32,8 +34,9 @@
 # mesmo que publicar-functions.yml já usa para a CAF —, e só `savy` (a loja
 # cliente explícita, 06/10/2026; ref fixo gnjsrucsmjkajijrakzr) usa o de NOME
 # `SUPABASE_ACCESS_TOKEN_SAVY` — o mesmo que publicar-functions.yml já usa para
-# a Savy. Nunca o legado, e sem fallback entre eles: cada alvo enxerga SÓ o seu
-# segredo. Nenhuma credencial nova. As consultas 8a..8k, 9a, 10a, 10b, 11a, 11b, 12a, 12b, 13a, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 18a, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 22m, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 27m, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 32m, 33a, 33b, 33m, 34a, 34b, 34m, 35a, 35b, 35m, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 39m, 40a, 40b, 41a, 41b, 41m, 42m, 43a, 43b, 44m, 45m (pagos apos expirar) e 46m (variacoes independentes) rodam por aqui contra
+# a Savy. Uma loja assinante nova usa o segredo que o cadastro nomeia em
+# `segredoDoToken` (as linhas de env são GERADAS do cadastro). Nunca o legado, e
+# sem fallback entre eles: cada alvo enxerga SÓ o seu segredo. Nenhuma credencial nova. As consultas 8a..8k, 9a, 10a, 10b, 11a, 11b, 12a, 12b, 13a, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 18a, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 22m, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 27m, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 32m, 33a, 33b, 33m, 34a, 34b, 34m, 35a, 35b, 35m, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 39m, 40a, 40b, 41a, 41b, 41m, 42m, 43a, 43b, 44m, 45m (pagos apos expirar) e 46m (variacoes independentes) rodam por aqui contra
 # qualquer um dos quatro alvos; o job `ledger` continua só para as faixas 72..83
 # e NUNCA roda para `ikcous-publicada` nem para `savy`, EXCETO a faixa 92-202 (backfill
 # do registro das migrations 92..202 sem a 201, só com a pré-checagem da 8e).
@@ -395,17 +398,19 @@ on:
           - 182b-antes-o-estado-de-vida-da-loja-ausente
           - backups
       projeto:
-        description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"
+        description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"
         required: false
         type: choice
         default: loja
         options:
+          # LOJAS-OPCOES-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
           - loja
           - sandbox
           - ikcous-publicada
           - savy
+          # LOJAS-OPCOES-FIM
       expected_sha:
-        description: "So para projeto = ikcous-publicada ou savy: o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA); vazio nas outras lojas"
+        description: "So para loja assinante (todas menos loja e sandbox): o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA); vazio em loja e sandbox"
         required: false
         default: ""
       gravar_ledger:
@@ -444,11 +449,18 @@ jobs:
           PROJETO: ${{ inputs.projeto }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
-          if [ "$PROJETO" = "ikcous-publicada" ] || [ "$PROJETO" = "savy" ]; then
-            if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
-              echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
-            fi
+          if ! [[ "$PROJETO" =~ ^[a-z][a-z0-9-]{1,39}$ ]]; then
+            echo "::error::loja desconhecida (nome fora do formato)"; exit 1
           fi
+          # Só os dois alvos de teste antigos (cadastro: classe legado) dispensam o
+          # expected_sha; qualquer outro nome é loja assinante e o exige.
+          case "$PROJETO" in
+            loja|sandbox) ;;
+            *)
+              if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+                echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
+              fi ;;
+          esac
 
       - uses: actions/checkout@v7
 
@@ -456,32 +468,40 @@ jobs:
         with:
           node-version: "20"
 
+      # A loja existe no cadastro (scripts/frota/lojas.json)? Recusa ("loja
+      # desconhecida") ANTES de qualquer passo que veja segredo. Nao le segredo.
+      - name: Confere a loja no cadastro (lojas.json) antes de qualquer segredo
+        env:
+          PROJETO: ${{ inputs.projeto }}
+        run: node scripts/frota/lojas.cjs validar "$PROJETO"
+
       # Cada alvo enxerga SÓ o seu segredo: a expressão `&& … || ''` nunca cai
       # no outro (segredo vazio dá '', não o segredo do vizinho).
       - name: Confere o segredo
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          # LOJAS-SEGREDO-LEGADO-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
+          SUPABASE_ACCESS_TOKEN: ${{ (inputs.projeto == 'loja' || inputs.projeto == 'sandbox') && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          # LOJAS-SEGREDO-LEGADO-FIM
+          # LOJAS-SEGREDOS-INICIO (idem)
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
           SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDOS-FIM
           PROJETO: ${{ inputs.projeto }}
+        # `exigir-segredo` só confere que o token DESTA loja (o do env deste passo;
+        # o das outras vem vazio) chegou; nunca o imprime. Mensagens de sempre:
+        # "sem acesso legítimo à CAF/Savy por … — bloqueio concreto" nas assinantes.
         run: |
-          if [ "$PROJETO" = "ikcous-publicada" ]; then
-            if [ -z "$SUPABASE_ACCESS_TOKEN_IKCOUS" ]; then
-              echo "::error::sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto"; exit 1
-            fi
-          elif [ "$PROJETO" = "savy" ]; then
-            if [ -z "$SUPABASE_ACCESS_TOKEN_SAVY" ]; then
-              echo "::error::sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY — bloqueio concreto"; exit 1
-            fi
-          elif [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
-            echo "::error::segredo SUPABASE_ACCESS_TOKEN ausente no repositório (Settings → Secrets and variables → Actions)"; exit 1
-          fi
+          node scripts/frota/lojas.cjs exigir-segredo "$PROJETO"
 
       - name: Roda a consulta (só leitura)
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          # LOJAS-SEGREDO-LEGADO-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
+          SUPABASE_ACCESS_TOKEN: ${{ (inputs.projeto == 'loja' || inputs.projeto == 'sandbox') && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          # LOJAS-SEGREDO-LEGADO-FIM
+          # LOJAS-SEGREDOS-INICIO (idem)
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
           SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDOS-FIM
           PROJETO: ${{ inputs.projeto }}
           CONSULTA: ${{ inputs.consulta }}
         run: node scripts/publicacao/conferir-banco.cjs
@@ -505,8 +525,9 @@ jobs:
     # pré-checagem OBRIGATÓRIA da 9a-conferir-60-a-66-aplicado (rol fechado, todas as
     # linhas ok=true), com INSERT guardado e pinado por SHA-256, e relê o ledger para
     # CONFERIR as 7 linhas. A expressão do `if` espelha o mapa do script:
-    # ikcous-publicada: 92-202 e 60-66; savy: 92-202; qualquer outro: nenhuma das duas.
-    if: ${{ !inputs.ikcous_original && !inputs.ikcous_publicado && ((inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && inputs.gravar_ledger != '92-202' && inputs.gravar_ledger != '60-66') || (inputs.projeto == 'ikcous-publicada' && (inputs.gravar_ledger == '92-202' || inputs.gravar_ledger == '60-66')) || (inputs.projeto == 'savy' && inputs.gravar_ledger == '92-202')) && inputs.gravar_ledger != 'nao' && inputs.confirmar == 'GRAVAR' }}
+    # ikcous-publicada: 92-202 e 60-66; savy: 92-202; loja e sandbox: as faixas
+    # 72..83; qualquer outro nome (loja assinante nova): NENHUMA (o job nem roda).
+    if: ${{ !inputs.ikcous_original && !inputs.ikcous_publicado && (((inputs.projeto == 'loja' || inputs.projeto == 'sandbox') && inputs.gravar_ledger != '92-202' && inputs.gravar_ledger != '60-66') || (inputs.projeto == 'ikcous-publicada' && (inputs.gravar_ledger == '92-202' || inputs.gravar_ledger == '60-66')) || (inputs.projeto == 'savy' && inputs.gravar_ledger == '92-202')) && inputs.gravar_ledger != 'nao' && inputs.confirmar == 'GRAVAR' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Mesmo grupo de aplicar-migrations.yml: nunca gravar o ledger enquanto
@@ -527,11 +548,18 @@ jobs:
           PROJETO: ${{ inputs.projeto }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
-          if [ "$PROJETO" = "ikcous-publicada" ] || [ "$PROJETO" = "savy" ]; then
-            if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
-              echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
-            fi
+          if ! [[ "$PROJETO" =~ ^[a-z][a-z0-9-]{1,39}$ ]]; then
+            echo "::error::loja desconhecida (nome fora do formato)"; exit 1
           fi
+          # Só os dois alvos de teste antigos (cadastro: classe legado) dispensam o
+          # expected_sha; qualquer outro nome é loja assinante e o exige.
+          case "$PROJETO" in
+            loja|sandbox) ;;
+            *)
+              if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+                echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
+              fi ;;
+          esac
 
       - uses: actions/checkout@v7
 
@@ -539,14 +567,25 @@ jobs:
         with:
           node-version: "20"
 
+      # A loja existe no cadastro (scripts/frota/lojas.json)? Recusa ("loja
+      # desconhecida") ANTES de qualquer passo que veja segredo. Nao le segredo.
+      - name: Confere a loja no cadastro (lojas.json) antes de qualquer segredo
+        env:
+          PROJETO: ${{ inputs.projeto }}
+        run: node scripts/frota/lojas.cjs validar "$PROJETO"
+
       # Cada alvo enxerga SÓ o seu segredo (mesmas expressões do job `conferir`).
       # O script recusa, antes de qualquer requisição, qualquer faixa que não seja
       # a 92-202 nas lojas explícitas, e só grava depois da pré-checagem da 8e.
       - name: Pré-confere o schema da faixa, grava o ledger e confere a leitura posterior (72-78/72-82/72-202; 50-67 na faixa 60-66)
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          # LOJAS-SEGREDO-LEGADO-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
+          SUPABASE_ACCESS_TOKEN: ${{ (inputs.projeto == 'loja' || inputs.projeto == 'sandbox') && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          # LOJAS-SEGREDO-LEGADO-FIM
+          # LOJAS-SEGREDOS-INICIO (idem)
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
           SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDOS-FIM
           PROJETO: ${{ inputs.projeto }}
           LEDGER: ${{ inputs.gravar_ledger }}
         run: node scripts/publicacao/conferir-banco.cjs
