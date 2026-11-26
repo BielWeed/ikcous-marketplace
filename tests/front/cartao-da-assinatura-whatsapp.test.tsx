@@ -150,8 +150,11 @@ it("linha ausente: 'Seu plano vai aparecer aqui', sem texto de defeito e sem bot
   );
   expect(tela.textContent).toContain("Seu plano vai aparecer aqui");
   expect(tela.textContent).toContain(
-    "Estamos ligando a sua assinatura a este painel. Nada muda na sua loja enquanto isso.",
+    "Estamos ligando a sua assinatura a este painel.",
   );
+  // 26/11/2026: a loja pode pausar os pedidos (teste acabou sem pagamento)
+  // antes de o cartão chegar; "nada muda na sua loja" seria promessa falsa.
+  expect(tela.textContent).not.toContain("Nada muda");
   expect(tela.textContent).not.toContain("sincronizado");
   expect(tela.querySelector("button")).toBeNull();
 });

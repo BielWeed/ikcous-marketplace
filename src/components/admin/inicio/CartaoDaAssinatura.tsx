@@ -108,9 +108,10 @@ export function CartaoDaAssinatura({
         <p className="text-base font-bold text-white">
           Seu plano vai aparecer aqui
         </p>
+        {/* Sem "nada muda na sua loja": o teste pode acabar sem pagamento e a
+            loja pausar os pedidos antes de o cartão chegar (26/11/2026). */}
         <p className="text-sm leading-relaxed text-zinc-400">
-          Estamos ligando a sua assinatura a este painel. Nada muda na sua loja
-          enquanto isso.
+          Estamos ligando a sua assinatura a este painel.
         </p>
       </section>
     );
