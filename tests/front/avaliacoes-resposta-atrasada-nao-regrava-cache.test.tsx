@@ -39,7 +39,8 @@ vi.mock("@/lib/supabase", () => ({
       builder.select = () => builder;
       builder.eq = () => builder;
       builder.in = async () => ({ data: [], error: null });
-      builder.order = () =>
+      builder.order = () => builder;
+      builder.limit = () =>
         new Promise((resolve) => {
           h.soltarLeitura = (linhas) => resolve({ data: linhas, error: null });
         });

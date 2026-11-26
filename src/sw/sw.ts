@@ -797,8 +797,9 @@ sw.addEventListener("fetch", (event: any) => {
   // `push` (lê o cache próprio) continuam como eram.
   if (url.pathname === CAMINHO_IDENTIDADE_JSON) return;
 
-  // O porteiro monta o manifesto com a marca atual da loja e manda no-store.
-  // Como a ficha acima, ele vai à rede nativa, sem passar pelo cache do SW.
+  // O porteiro monta o manifesto com a marca atual da loja (5 min no cache do
+  // navegador; no-store em manutenção). Como a ficha acima, ele vai à rede
+  // nativa, sem passar pelo cache do SW.
   if (url.pathname === "/manifest.webmanifest") return;
 
   // Avisos de licenças são um arquivo estático, não uma página offline do app.

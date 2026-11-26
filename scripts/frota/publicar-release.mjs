@@ -816,6 +816,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "187b-antes-a-saude-da-reconciliacao-ausente",
   "188a-conferir-o-livro-de-registro-aplicado",
   "188b-antes-o-livro-de-registro-ausente",
+  "191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado",
+  "191b-antes-a-loja-nova-nasce-com-a-ficha-ausente",
   "190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado",
   "190b-antes-a-loja-grande-nao-trava-o-balcao-ausente",
 ]);

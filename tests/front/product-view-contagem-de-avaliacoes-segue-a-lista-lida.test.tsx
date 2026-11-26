@@ -31,7 +31,11 @@ const h = vi.hoisted(() => {
 });
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: () => ({ select: () => ({ eq: () => ({ order: h.ler }) }) }),
+    from: () => ({
+      select: () => ({
+        eq: () => ({ order: () => ({ limit: h.ler }) }),
+      }),
+    }),
   },
 }));
 vi.mock("@/hooks/useAuth", () => ({

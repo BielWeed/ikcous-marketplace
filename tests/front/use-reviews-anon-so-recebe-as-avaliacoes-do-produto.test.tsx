@@ -79,8 +79,9 @@ vi.mock("@/lib/supabase", () => ({
                 : b.created_at.localeCompare(a.created_at),
             );
           }
-          return Promise.resolve({ data: linhas, error: null });
+          return builder;
         },
+        limit: () => Promise.resolve({ data: linhas, error: null }),
       };
       return builder;
     },

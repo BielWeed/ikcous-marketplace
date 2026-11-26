@@ -38,7 +38,10 @@ export function ProductQA({
     questions,
     loading,
     error,
+    haMaisPerguntas,
+    carregandoMaisPerguntas,
     getQuestionsByProduct,
+    carregarMaisPerguntas,
     addQuestion,
     addAnswer,
     subscribeToQuestions,
@@ -88,6 +91,20 @@ export function ProductQA({
     } finally {
       perguntaEmVooRef.current = false;
       setEnviandoPergunta(false);
+    }
+  };
+
+  // "Ver mais perguntas" (26/11/2026): a página lê só as mais recentes; as
+  // antigas (já respondidas) vêm em levas. Mesma trava do envio: o ref vale
+  // já no segundo toque do mesmo instante, antes de o carregando chegar.
+  const verMaisEmVooRef = useRef(false);
+  const handleVerMais = async () => {
+    if (verMaisEmVooRef.current || carregandoMaisPerguntas) return;
+    verMaisEmVooRef.current = true;
+    try {
+      await carregarMaisPerguntas(productId);
+    } finally {
+      verMaisEmVooRef.current = false;
     }
   };
 
@@ -520,6 +537,19 @@ export function ProductQA({
           ))
         )}
       </div>
+      {!loading && questions.length > 0 && haMaisPerguntas && (
+        <button
+          type="button"
+          onClick={() => void handleVerMais()}
+          disabled={carregandoMaisPerguntas}
+          aria-busy={carregandoMaisPerguntas}
+          className="mt-4 min-h-11 w-full rounded-xl border border-zinc-200 px-4 text-sm font-bold text-zinc-900 transition-colors hover:bg-zinc-50 disabled:cursor-wait disabled:opacity-60"
+        >
+          {carregandoMaisPerguntas
+            ? "Carregando perguntas..."
+            : "Ver mais perguntas"}
+        </button>
+      )}
     </div>
   );
 }

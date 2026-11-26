@@ -42,6 +42,25 @@ ensaio não manda esses cabeçalhos sozinho. Roda com arquivos explícitos:
 npx vitest run --config vitest.porteiro.config.ts tests/porteiro-dois-hosts/cartaz-pre-impresso.test.ts tests/porteiro-dois-hosts/porteiro-dois-hosts.test.ts
 ```
 
+## O `/index.html` guardado em memória (lote C, 26/11/2026)
+
+`porteiro-guarda-o-index.test.ts` usa o mesmo servidor e o `middleware()`
+real. Fica num arquivo próprio porque cada arquivo do Vitest tem um registro de
+módulos novo: o cache do porteiro começa vazio, e dá para contar as buscas ao
+`/index.html` com exatidão. O que ele prova:
+
+- A, A, B, A, B na mesma instância geram uma busca por endereço.
+- Cada loja recebe só a ficha dela, sem nenhum byte do nome nem do banco da
+  outra.
+- Pedidos simultâneos do mesmo host se juntam numa busca só.
+- O manifesto sai com `private, max-age=300`.
+- Só se guarda o HTML DESTE deploy (ressalva do PR #1910). O `dist-test/` do
+  CI nasce sem a marca, porque fora da Vercel não há `VERCEL_DEPLOYMENT_ID`.
+  Por isso o arquivo sobe o servidor com `deployDoBuild`, que aplica ao
+  `index.html` do disco a mesma função do build (`marcarDeployNoHtml`). O
+  runtime recebe o mesmo id. Um teste troca o id do runtime e prova que o HTML
+  de outro deploy é servido, mas buscado a cada pedido.
+
 ## As seis fichas
 
 | Host | Caminho do porteiro | O que prova |

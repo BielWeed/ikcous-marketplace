@@ -39,6 +39,7 @@ function builderSimples(resultado: () => unknown) {
   builder.eq = () => builder;
   builder.in = () => builder;
   builder.order = () => builder;
+  builder.limit = () => builder;
   builder.maybeSingle = () => builder;
   builder.abortSignal = () => builder;
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase

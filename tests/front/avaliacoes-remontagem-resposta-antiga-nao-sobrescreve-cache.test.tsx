@@ -47,7 +47,8 @@ vi.mock("@/lib/supabase", () => ({
           produto = valor;
           return builder;
         },
-        order: () =>
+        order: () => builder,
+        limit: () =>
           new Promise<{
             data: LinhaPublica[];
             error: null | { message: string };

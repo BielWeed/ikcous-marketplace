@@ -166,6 +166,12 @@ const contarPerguntas = (soPendentes: boolean) => {
   ) as Promise<{ count: number | null; error: unknown }>;
 };
 
+// Loja grande (26/11/2026): a página do produto lê as perguntas em levas (as
+// mais recentes primeiro), nunca o produto inteiro de uma vez. "Ver mais
+// perguntas" sobe o teto em mais uma leva (`carregarMaisPerguntas`), como as
+// avaliações; o painel lista todas, em páginas.
+export const PERGUNTAS_POR_LEITURA = 20;
+
 export function useQuestions() {
   const { user, isAdmin, profile } = useAuth();
   const temSessao = !!user;
@@ -186,6 +192,15 @@ export function useQuestions() {
     null,
   );
   const latestProductIdRef = useRef<string | null>(null);
+  // Quantas perguntas a página do produto aberto pede ao banco: volta a uma
+  // leva ao trocar de produto ou de conta e sobe a cada "Ver mais perguntas".
+  const limiteDaListaRef = useRef(PERGUNTAS_POR_LEITURA);
+  const contaDoLimiteRef = useRef<string | undefined>(undefined);
+  const [haMaisPerguntas, setHaMaisPerguntas] = useState(false);
+  // O ref barra o segundo toque do mesmo instante (o estado ainda não mudou);
+  // o símbolo é o do "ver mais" em voo, e só ele pode encerrar o carregando.
+  const carregandoMaisRef = useRef<symbol | null>(null);
+  const [carregandoMaisPerguntas, setCarregandoMaisPerguntas] = useState(false);
   // C4 (laudo 0109): ids das perguntas do produto que ESTA instância
   // carregou por último — é o conjunto contra o qual o canal de `answers`
   // é filtrado. `null` = página ainda não carregou (deixa passar).
@@ -197,7 +212,18 @@ export function useQuestions() {
 
   const getQuestionsByProduct = useCallback(
     async (productId: string, opcoes?: { silencioso?: boolean }) => {
+      if (
+        latestProductIdRef.current !== productId ||
+        contaDoLimiteRef.current !== user?.id
+      ) {
+        limiteDaListaRef.current = PERGUNTAS_POR_LEITURA;
+        contaDoLimiteRef.current = user?.id;
+        carregandoMaisRef.current = null;
+        setCarregandoMaisPerguntas(false);
+        setHaMaisPerguntas(false);
+      }
       latestProductIdRef.current = productId;
+      const limite = limiteDaListaRef.current;
       // Ressalva 1 da revisão da frente C4: durante a recarga o conjunto é
       // o ANTIGO — uma resposta a pergunta criada depois da última carga
       // seria descartada e ficaria invisível até o próximo evento. Anulando
@@ -239,13 +265,15 @@ export function useQuestions() {
 
       try {
         if (anonimo) {
-          const { data, error } = await aguardarComPrazo(
+          // Uma a mais que o teto: se ela vier, há mais no banco.
+          const { data: lidas, error } = await aguardarComPrazo(
             Promise.resolve(
               supabase
                 .from("vw_questions_public" as any)
                 .select("*")
                 .eq("product_id", productId)
                 .order("created_at", { ascending: false })
+                .limit(limite + 1)
                 .abortSignal(signal),
             ),
             15000,
@@ -253,7 +281,9 @@ export function useQuestions() {
           );
 
           if (error) throw error;
-          if (!data) return;
+          if (!lidas) return;
+          const temMais = lidas.length > limite;
+          const data = lidas.slice(0, limite);
 
           let productInfo: { nome: string; imagem_url: string } | null = null;
           const query = supabase
@@ -330,6 +360,7 @@ export function useQuestions() {
               formattedQuestions.map((q) => q.id),
             );
             setQuestions(formattedQuestions);
+            setHaMaisPerguntas(temMais);
             setError(null);
           }
           updateQuestionsCache(productId, true, formattedQuestions);
@@ -349,13 +380,14 @@ export function useQuestions() {
           answers:answers(*)
         `;
 
-        const { data, error } = await aguardarComPrazo(
+        const { data: lidas, error } = await aguardarComPrazo(
           Promise.resolve(
             supabase
               .from("questions" as any)
               .select(selectQuery)
               .eq("product_id", productId)
               .order("created_at", { ascending: false })
+              .limit(limite + 1)
               .abortSignal(signal),
           ),
           15000,
@@ -363,7 +395,9 @@ export function useQuestions() {
         );
 
         if (error) throw error;
-        if (!data) return;
+        if (!lidas) return;
+        const temMais = lidas.length > limite;
+        const data = lidas.slice(0, limite);
 
         // Fetch product info if guest/non-admin
         let productInfo: { nome: string; imagem_url: string } | null = null;
@@ -468,6 +502,7 @@ export function useQuestions() {
             formattedQuestions.map((q) => q.id),
           );
           setQuestions(formattedQuestions);
+          setHaMaisPerguntas(temMais);
           setError(null);
         }
         updateQuestionsCache(productId, false, formattedQuestions);
@@ -512,6 +547,30 @@ export function useQuestions() {
     // `useDataVault.ts:35`).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [isAdmin, user?.id],
+  );
+
+  // "Ver mais perguntas": relê o produto aberto com uma leva a mais (a mesma
+  // leitura de sempre, com prazo e cache). Trocar de produto ou de conta
+  // cancela a leitura em voo e zera o teto (`getQuestionsByProduct`); o
+  // segundo toque, com uma leva já em voo, não pede de novo.
+  const carregarMaisPerguntas = useCallback(
+    async (productId: string) => {
+      if (latestProductIdRef.current !== productId) return;
+      if (carregandoMaisRef.current) return;
+      const vez = Symbol();
+      carregandoMaisRef.current = vez;
+      setCarregandoMaisPerguntas(true);
+      limiteDaListaRef.current += PERGUNTAS_POR_LEITURA;
+      try {
+        await getQuestionsByProduct(productId, { silencioso: true });
+      } finally {
+        if (carregandoMaisRef.current === vez) {
+          carregandoMaisRef.current = null;
+          setCarregandoMaisPerguntas(false);
+        }
+      }
+    },
+    [getQuestionsByProduct],
   );
 
   const perguntasSemConfirmacaoRef = useRef(new Map<string, string>());
@@ -1285,7 +1344,10 @@ export function useQuestions() {
     loading,
     error,
     erroDaListagemAdmin,
+    haMaisPerguntas,
+    carregandoMaisPerguntas,
     getQuestionsByProduct,
+    carregarMaisPerguntas,
     getAllQuestions,
     addQuestion,
     addAnswer,

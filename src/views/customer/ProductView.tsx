@@ -207,7 +207,9 @@ export const ProductView = React.memo(function ProductView({
     loading: loadingReviews,
     erroDaListagemProduto,
     produtoRespondido,
+    resumoDasAvaliacoes,
     getReviewsByProduct,
+    carregarMaisAvaliacoes,
     markHelpful,
     votosUteis,
     userIdAtual,
@@ -554,17 +556,39 @@ export const ProductView = React.memo(function ProductView({
   const avaliacoesPublicadas = reviews.filter(
     (r) => (r.status ?? "publicada") === "publicada",
   );
+  // Loja grande (26/11/2026): a lista traz só as mais recentes. Com mais no
+  // banco (`temMais`), a nota, a contagem e as barras vêm da contagem do
+  // banco por estrela; sem ela (falhou ou ainda vem), dos números do
+  // catálogo — nunca das avaliações que a lista trouxe.
+  const resumoDoBanco =
+    resumoDasAvaliacoes?.productId === product.id && resumoDasAvaliacoes.temMais
+      ? resumoDasAvaliacoes
+      : null;
+  const porNotaDoBanco = resumoDoBanco?.porNota ?? null;
+  const totalDoBanco = porNotaDoBanco?.reduce((acc, n) => acc + n, 0) ?? 0;
   // Lista vazia: só a consulta que JÁ respondeu a esvazia de verdade; antes
   // (ou se falhou) vale a contagem do produto.
-  const reviewCount =
-    reviews.length > 0 || produtoRespondido === product.id
+  const reviewCount = resumoDoBanco
+    ? porNotaDoBanco
+      ? totalDoBanco
+      : (product.reviewCount ?? 0)
+    : reviews.length > 0 || produtoRespondido === product.id
       ? avaliacoesPublicadas.length
       : (product.reviewCount ?? 0);
   // Média em décimos INTEIROS, metade para cima: o catálogo vem do banco
   // (`round(avg(rating), 1)`) e 97/20 em ponto flutuante dá 4,8499… ("4,8")
   // onde o banco diz 4,9.
-  const averageRating =
-    avaliacoesPublicadas.length > 0
+  const averageRating = resumoDoBanco
+    ? porNotaDoBanco
+      ? totalDoBanco > 0
+        ? Math.floor(
+            (20 * porNotaDoBanco.reduce((acc, n, i) => acc + n * (i + 1), 0) +
+              totalDoBanco) /
+              (2 * totalDoBanco),
+          ) / 10
+        : 0
+      : (product.rating ?? 5)
+    : avaliacoesPublicadas.length > 0
       ? Math.floor(
           (20 * avaliacoesPublicadas.reduce((acc, r) => acc + r.rating, 0) +
             avaliacoesPublicadas.length) /
@@ -573,9 +597,12 @@ export const ProductView = React.memo(function ProductView({
       : reviews.length > 0
         ? 0
         : (product.rating ?? 5);
+  const temPublicadas = resumoDoBanco
+    ? reviewCount > 0
+    : avaliacoesPublicadas.length > 0;
   // Só há avaliação em análise (a da própria cliente): nada de "(0)" nem de
   // "Sem avaliações ainda" em cima do comentário que ela acabou de enviar.
-  const soEmAnalise = avaliacoesPublicadas.length === 0 && reviews.length > 0;
+  const soEmAnalise = !temPublicadas && reviews.length > 0;
   const notaComVirgula = averageRating.toFixed(1).replace(".", ",");
 
   const { fileiras, variante } = fileirasDeVariacao(
@@ -1781,7 +1808,7 @@ export const ProductView = React.memo(function ProductView({
                   ) : (
                     <>
                       {/* Rating Distribution Chart */}
-                      {avaliacoesPublicadas.length > 0 && (
+                      {temPublicadas && (
                         <div className="group relative mb-6 overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 text-white shadow-xl">
                           {/* Subtle blur highlights */}
                           <div className="absolute right-0 top-0 size-48 -translate-y-1/2 translate-x-1/2 rounded-full bg-amber-500/10 blur-[60px]" />
@@ -1812,37 +1839,42 @@ export const ProductView = React.memo(function ProductView({
                               </span>
                             </div>
 
-                            {/* Right Panel: Bars */}
-                            <div className="w-full flex-1 space-y-2 md:border-l md:border-zinc-800 md:pl-6">
-                              {[5, 4, 3, 2, 1].map((star) => {
-                                const count = avaliacoesPublicadas.filter(
-                                  (r) => r.rating === star,
-                                ).length;
-                                const percentage =
-                                  reviewCount > 0
-                                    ? (count / reviewCount) * 100
-                                    : 0;
-                                return (
-                                  <div
-                                    key={star}
-                                    className="group/row flex items-center gap-3.5"
-                                  >
-                                    <span className="w-3 text-xs font-bold text-zinc-400 transition-colors group-hover/row:text-white">
-                                      {star}
-                                    </span>
-                                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800/60 p-px">
-                                      <div
-                                        className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)] transition-all duration-700 ease-out"
-                                        style={{ width: `${percentage}%` }}
-                                      />
+                            {/* Right Panel: Bars — com mais no banco e sem a
+                                contagem por estrela, não há barra honesta. */}
+                            {(!resumoDoBanco || porNotaDoBanco) && (
+                              <div className="w-full flex-1 space-y-2 md:border-l md:border-zinc-800 md:pl-6">
+                                {[5, 4, 3, 2, 1].map((star) => {
+                                  const count = porNotaDoBanco
+                                    ? (porNotaDoBanco.at(star - 1) ?? 0)
+                                    : avaliacoesPublicadas.filter(
+                                        (r) => r.rating === star,
+                                      ).length;
+                                  const percentage =
+                                    reviewCount > 0
+                                      ? (count / reviewCount) * 100
+                                      : 0;
+                                  return (
+                                    <div
+                                      key={star}
+                                      className="group/row flex items-center gap-3.5"
+                                    >
+                                      <span className="w-3 text-xs font-bold text-zinc-400 transition-colors group-hover/row:text-white">
+                                        {star}
+                                      </span>
+                                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800/60 p-px">
+                                        <div
+                                          className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)] transition-all duration-700 ease-out"
+                                          style={{ width: `${percentage}%` }}
+                                        />
+                                      </div>
+                                      <span className="w-8 text-right text-xs font-bold text-zinc-400 transition-colors group-hover/row:text-zinc-300">
+                                        {count}
+                                      </span>
                                     </div>
-                                    <span className="w-8 text-right text-xs font-bold text-zinc-400 transition-colors group-hover/row:text-zinc-300">
-                                      {count}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1858,14 +1890,20 @@ export const ProductView = React.memo(function ProductView({
                           />
                         ))}
                       </div>
-                      {reviews.length > avaliacoesVisiveis && (
+                      {(reviews.length > avaliacoesVisiveis ||
+                        resumoDoBanco) && (
                         <button
                           type="button"
-                          onClick={() =>
-                            setAvaliacoesVisiveis(
-                              (n) => n + AVALIACOES_POR_PAGINA,
-                            )
-                          }
+                          onClick={() => {
+                            const proximo =
+                              avaliacoesVisiveis + AVALIACOES_POR_PAGINA;
+                            setAvaliacoesVisiveis(proximo);
+                            // Passou das que já chegaram: a próxima leva
+                            // vem do banco.
+                            if (resumoDoBanco && proximo > reviews.length) {
+                              void carregarMaisAvaliacoes(product.id);
+                            }
+                          }}
                           className="mt-4 min-h-11 w-full rounded-xl border border-zinc-200 px-4 text-sm font-bold text-zinc-900 transition-colors hover:bg-zinc-50"
                         >
                           Ver mais avaliações
