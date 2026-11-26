@@ -68,8 +68,8 @@
 //                      FROTA_TIMEOUT_MS (padrão 15000).
 //
 // CLASSES (a mais grave vence): LOJA_TROCADA > SUSPEITA_ISOLAMENTO >
-// INALCANCAVEL > ENDERECO_ANTIGO > CANONICO_INVALIDO > BUILD_DIVERGENTE >
-// ESTADO_INESPERADO > ENCERRADA > ADORMECIDA > OK.
+// INALCANCAVEL > CADERNETA_NA_RESERVA > ENDERECO_ANTIGO > CANONICO_INVALIDO >
+// BUILD_DIVERGENTE > ESTADO_INESPERADO > ENCERRADA > ADORMECIDA > OK.
 // SAÍDA: 0 só se TUDO está OK (ou fora do ar por decisão: ADORMECIDA/ENCERRADA);
 // 1 em qualquer outro caso (inclui pedir --vercel e a consulta falhar); 2 = erro
 // de uso. Inventário PARCIAL (sem --vercel) com tudo OK sai 0, mas o relatório
@@ -85,6 +85,14 @@
 // e loja de politica.json lojasQueNuncaDormem fora do ar também.
 // x-ikcous-caderneta-versao: 1 (porteiro na caderneta antiga, que não conhece o
 // estado) vira AVISO no relatório.
+//
+// CADERNETA NA RESERVA (PLANO-RESERVA-DA-CADERNETA-26-11.md, T10): amostra de
+// "/" com x-ikcous-caderneta: reserva = a caderneta central falhou e o porteiro
+// abriu a loja pela reserva (Global Config). A loja está no ar, mas NÃO conta
+// como loja ativa (`refDaLojaSondada` só aceita hit): CADERNETA_NA_RESERVA
+// bloqueia antes do promote e reprova depois. Amostras que diferem SÓ na
+// caderneta (hit numa instância, reserva noutra: caches diferentes da MESMA
+// loja) não são LOJA_TROCADA; ref, título, HTTP ou publicUrl diferentes, sim.
 
 import { execFile } from "node:child_process";
 import {
@@ -102,6 +110,7 @@ export const GRAVIDADE = [
   "LOJA_TROCADA",
   "SUSPEITA_ISOLAMENTO",
   "INALCANCAVEL",
+  "CADERNETA_NA_RESERVA",
   "ENDERECO_ANTIGO",
   "CANONICO_INVALIDO",
   "BUILD_DIVERGENTE",
@@ -162,6 +171,8 @@ export const COMO_RECUPERAR = {
   BUILD_DIVERGENTE:
     "publicar de novo do mesmo SHA, de worktree limpa (version.json fora do contrato do build: campo ausente ou malformado).",
   INALCANCAVEL: "repetir a conferência; persistindo, abrir o endereço.",
+  CADERNETA_NA_RESERVA:
+    "NÃO promover: a caderneta central (frota_lojas no banco da caderneta) falhou e o porteiro está abrindo a loja pela reserva da caderneta (x-ikcous-caderneta: reserva). Consertar a caderneta (IKCOUS_FROTA_URL/chave da caderneta, banco no ar) e repetir a conferência até o endereço voltar a responder hit.",
   ESTADO_INESPERADO:
     "abrir o endereço: ou ele mudou de papel (declarar em scripts/frota/politica.json, enderecosEsperados), ou é uma loja que perdeu a ficha (caderneta). Se a resposta traz x-ikcous-porteiro/x-ikcous-estado de loja fora do ar, o porteiro saiu do contrato (503 adormecida / 410 encerrada, estado igual, x-ikcous-ref de 20 letras); se é uma loja de lojasQueNuncaDormem, acordá-la no cadastro (frota_lojas.estado) antes de publicar.",
   ENCERRADA:
@@ -410,6 +421,9 @@ export async function sondarEndereco(dominio, opcoes = {}) {
         refPorteiro: res.headers.get("x-ikcous-ref"),
         // "1" = o porteiro caiu na caderneta antiga (resolver_loja, sem estado).
         cadernetaVersao: res.headers.get("x-ikcous-caderneta-versao"),
+        // Destino de um 3xx (a reserva só aceita encaminhamento para loja da
+        // frota). Fora de `chaveDaAmostra`: não muda a estabilidade da ficha.
+        location: res.headers.get("location"),
         titulo: extrairTitulo(html),
         refs: extrairRefsSupabase(html),
         publicUrl: extrairPublicUrl(html),
@@ -885,6 +899,28 @@ export function montarContexto(
 
 // ---------------------------------------------------------------- classificação
 
+/** Valor de x-ikcous-caderneta quando o porteiro abriu pela reserva (T3). */
+const CADERNETA_RESERVA = "reserva";
+
+/**
+ * As amostras divergem SÓ na caderneta, entre hit e reserva (uma instância
+ * ainda com a ficha, outra já aberta pela reserva)? Então é a MESMA loja e a
+ * divergência é a caderneta caindo, não ficha trocada. Qualquer outro campo
+ * da comparação de estabilidade (`chaveDaAmostra`: HTTP, título, refs,
+ * publicUrl) diferente, ou outra caderneta (erro, miss), continua divergente.
+ */
+function soACadernetaOscila(amostras) {
+  if (amostras.length === 0) return false;
+  const semCaderneta = (a) =>
+    JSON.stringify([a.status, a.titulo, a.refs, a.publicUrl]);
+  const primeira = semCaderneta(amostras[0]);
+  return amostras.every(
+    (a) =>
+      (a.caderneta === "hit" || a.caderneta === CADERNETA_RESERVA) &&
+      semCaderneta(a) === primeira,
+  );
+}
+
 /**
  * Classifica UM endereço. Devolve { classe, achados: [{classe, motivo}] } —
  * `classe` é a mais grave dos achados (precedência = ordem de GRAVIDADE).
@@ -897,10 +933,26 @@ export function classificar(alvo, sonda, ctx) {
   const achados = [];
   const add = (classe, motivo) => achados.push({ classe, motivo });
   const { ficha, versao } = sonda;
+  const amostrasDaPagina =
+    Array.isArray(sonda.amostras) && sonda.amostras.length
+      ? sonda.amostras
+      : ficha
+        ? [ficha]
+        : [];
+  const naReserva = amostrasDaPagina.filter(
+    (a) => a.caderneta === CADERNETA_RESERVA,
+  ).length;
+
+  // 0) A caderneta central caiu e o porteiro abriu pela reserva (T10).
+  if (naReserva)
+    add(
+      "CADERNETA_NA_RESERVA",
+      `x-ikcous-caderneta: reserva em ${naReserva} de ${amostrasDaPagina.length} amostras de "/" (HTTP ${ficha?.status ?? "-"}): a caderneta central falhou e o porteiro abriu pela reserva`,
+    );
 
   // 1) A ficha que o porteiro serve.
   if (ficha) {
-    if (!ficha.estavel) {
+    if (!ficha.estavel && !soACadernetaOscila(amostrasDaPagina)) {
       const resumo = [
         ...new Set(
           sonda.amostras.map(
@@ -931,21 +983,29 @@ export function classificar(alvo, sonda, ctx) {
         `resposta de loja fora do ar fora do contrato (HTTP ${ficha.status}, x-ikcous-porteiro ${ficha.porteiro ?? "(ausente)"}, x-ikcous-estado ${ficha.estado ?? "(ausente)"}, x-ikcous-ref ${ficha.refPorteiro ?? "(ausente)"}${ficha.estavel === false ? ", amostras divergentes" : ""}): esperado 503 adormecida ou 410 encerrada, estado igual e ref de 20 letras minúsculas em todas as amostras`,
       );
     } else if (!alvo.esperado) {
-      if (ficha.caderneta !== "hit") {
+      // Na reserva a página é de loja: confere-se como hit (refs, título,
+      // HTTP, selo); a reserva em si já virou CADERNETA_NA_RESERVA acima.
+      const comPagina =
+        ficha.caderneta === "hit" || ficha.caderneta === CADERNETA_RESERVA;
+      if (!comPagina) {
         add(
           "ESTADO_INESPERADO",
           `endereço sem ficha de loja (caderneta=${ficha.caderneta ?? "(ausente)"}, HTTP ${ficha.status}) e fora de enderecosEsperados da política`,
         );
       } else {
+        const cad = ficha.caderneta;
         if (ficha.refs.length === 0)
-          add("LOJA_TROCADA", "caderneta hit mas o HTML não traz ref Supabase");
+          add(
+            "LOJA_TROCADA",
+            `caderneta ${cad} mas o HTML não traz ref Supabase`,
+          );
         else if (ficha.refs.length > 1)
           add(
             "LOJA_TROCADA",
-            `caderneta hit com mais de um ref Supabase no HTML (${ficha.refs.join(", ")})`,
+            `caderneta ${cad} com mais de um ref Supabase no HTML (${ficha.refs.join(", ")})`,
           );
         if (!ficha.titulo)
-          add("LOJA_TROCADA", "caderneta hit mas a página não tem <title>");
+          add("LOJA_TROCADA", `caderneta ${cad} mas a página não tem <title>`);
         if (ficha.status !== 200)
           add(
             "ESTADO_INESPERADO",
