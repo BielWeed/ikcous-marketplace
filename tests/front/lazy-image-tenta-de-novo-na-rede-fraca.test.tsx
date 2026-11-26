@@ -12,7 +12,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const URL_FOTO =
-  "https://loja.supabase.co/storage/v1/object/public/produtos/camisa.png";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/camisa.png";
 
 // @ts-expect-error flag interna do React, sem tipo publico.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

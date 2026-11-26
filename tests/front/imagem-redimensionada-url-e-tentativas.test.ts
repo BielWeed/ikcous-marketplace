@@ -25,11 +25,12 @@ import {
 } from "@/lib/imageUrl";
 import { describe, expect, it } from "vitest";
 
-// Projeto QUALQUER (não é o da IKCOUS, que não oferece transformação).
+// Projeto MEDIDO com a transformação ligada (src/lib/imageUrl.ts); os outros
+// servem o original.
 const ORIGINAL =
-  "https://abcdefghijklmnopqrst.supabase.co/storage/v1/object/public/produtos/foto.jpg";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/foto.jpg";
 const TRANSFORMADA =
-  "https://abcdefghijklmnopqrst.supabase.co/storage/v1/render/image/public/produtos/foto.jpg";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/render/image/public/produtos/foto.jpg";
 
 describe("imagemRedimensionada — o pedido de transformação", () => {
   it("monta largura, resize=contain e qualidade 75 por padrão", () => {

@@ -39,7 +39,17 @@
 // ISOLAMENTO (sem manifesto): 3 amostras de "/" por endereço (o porteiro tem
 // cache em memória por instância) com ref e título IGUAIS nas 3; endereço com
 // caderneta hit tem UM só ref no HTML; mesmo ref => mesmo título; refs
-// diferentes com o MESMO título => SUSPEITA_ISOLAMENTO (falha).
+// diferentes com o MESMO título => SUSPEITA_ISOLAMENTO (falha), a não ser que o
+// BANCO de cada ref confirme o nome: o título que o porteiro serve é montado de
+// v_store_config (store_name, store_city, store_state) do banco da loja, então
+// a conferência lê essas 3 colunas do banco de cada ref do grupo (1 GET anônimo
+// por ref, com a chave PUBLICÁVEL que a própria ficha serve a todo visitante;
+// nenhum segredo) e, se CADA endereço serve exatamente o título do próprio
+// banco, são lojistas diferentes com o mesmo nome: vira só AVISO. Leitura que
+// falha, nome diferente (ex.: título assado do build, ou a identidade de uma
+// loja servida com o banco de outra) = SUSPEITA_ISOLAMENTO, como sempre foi.
+// (O publicUrl da ficha NÃO serve de âncora aqui: o porteiro o monta com o
+// próprio host atendido, então ele sempre "confirma" o endereço sondado.)
 //
 // CANÔNICO: o publicUrl da ficha (dominio_publico do cadastro frota_lojas) de
 // cada loja tem de ser um endereço do inventário que responde 200 hit e serve
@@ -144,7 +154,7 @@ export const COMO_RECUPERAR = {
   LOJA_TROCADA:
     "PARAR a publicação e voltar com `vercel rollback <deployment anterior>` (um endereço serviu a ficha de OUTRA loja, ou a ficha mudou entre amostras: falha de isolamento).",
   SUSPEITA_ISOLAMENTO:
-    "PARAR a publicação e abrir os endereços citados: refs diferentes mostrando o mesmo título indicam ficha trocada; se for legítimo, o título da loja precisa ser distinto.",
+    "PARAR a publicação e abrir os endereços citados: refs diferentes mostrando o mesmo título, com algum endereço cujo título não é o nome gravado no banco do próprio ref (v_store_config), indicam ficha trocada ou título assado do build. Lojas diferentes com o mesmo nome só passam quando o banco de CADA ref confirma o título servido (aí vira aviso).",
   ENDERECO_ANTIGO:
     "promover o deployment da release com `vercel promote <deployment>` (leva TODOS os domínios de produção de uma vez; não mover endereço por endereço).",
   CANONICO_INVALIDO:
@@ -214,6 +224,28 @@ export function extrairPublicUrl(html) {
   try {
     const url = JSON.parse(m[1])?.identidade?.publicUrl;
     return typeof url === "string" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Chave PUBLICÁVEL do banco da loja que a ficha serve a todo visitante (bloco
+ * <script id="ikcous-loja">, campo conexao.publishableKey). Não é segredo: é a
+ * mesma chave que o navegador do cliente usa. null se ausente ou com caractere
+ * fora do formato de chave (ela vai num cabeçalho HTTP).
+ */
+export function extrairChavePublica(html) {
+  if (typeof html !== "string") return null;
+  const m = /<script[^>]*\bid="ikcous-loja"[^>]*>([\s\S]*?)<\/script>/.exec(
+    html,
+  );
+  if (!m) return null;
+  try {
+    const chave = JSON.parse(m[1])?.conexao?.publishableKey;
+    return typeof chave === "string" && /^[A-Za-z0-9._-]{20,1024}$/.test(chave)
+      ? chave
+      : null;
   } catch {
     return null;
   }
@@ -381,6 +413,7 @@ export async function sondarEndereco(dominio, opcoes = {}) {
         titulo: extrairTitulo(html),
         refs: extrairRefsSupabase(html),
         publicUrl: extrairPublicUrl(html),
+        chavePublica: extrairChavePublica(html),
       };
     } catch (e) {
       return { erro: `amostra ${i + 1} da página: ${descreverErroDeRede(e)}` };
@@ -408,7 +441,15 @@ export async function sondarEndereco(dominio, opcoes = {}) {
     }
   })();
   const [, , ...resultados] = await Promise.all([versao, redirect, ...paginas]);
-  sonda.amostras = resultados.filter((r) => !r.erro);
+  // A chave publicável fica na sonda, fora das amostras e da ficha: não entra
+  // na comparação de estabilidade nem no --json.
+  sonda.chavePublica = null;
+  sonda.amostras = resultados
+    .filter((r) => !r.erro)
+    .map(({ chavePublica, ...a }) => {
+      sonda.chavePublica ??= chavePublica;
+      return a;
+    });
   sonda.errosPagina.push(
     ...resultados.filter((r) => r.erro).map((r) => r.erro),
   );
@@ -504,18 +545,9 @@ const norm = (s) =>
     .trim()
     .toLowerCase();
 
-/**
- * Isolamento ENTRE endereços, só com o que o porteiro serviu: devolve
- * { [dominio]: [{classe, motivo}] }. `ignorar` = endereços que não são loja.
- *  - mesmo ref com títulos diferentes -> LOJA_TROCADA (quem destoa da maioria);
- *  - refs diferentes com o MESMO título -> SUSPEITA_ISOLAMENTO (todos os envolvidos).
- */
-export function verificarIsolamentoCruzado(sondas, ignorar = new Set()) {
-  const achados = {};
-  const add = (dominio, classe, motivo) => {
-    (achados[dominio] ??= []).push({ classe, motivo });
-  };
-  const fichas = sondas
+// Fichas comparáveis entre endereços: estáveis, caderneta hit, UM ref e título.
+function fichasComparaveis(sondas, ignorar) {
+  return sondas
     .filter(
       (s) =>
         !ignorar.has(s.dominio) &&
@@ -529,7 +561,29 @@ export function verificarIsolamentoCruzado(sondas, ignorar = new Set()) {
       ref: s.ficha.refs[0],
       titulo: norm(s.ficha.titulo),
       tituloOriginal: s.ficha.titulo,
+      chavePublica: s.chavePublica ?? null,
     }));
+}
+
+/**
+ * Isolamento ENTRE endereços, só com o que o porteiro serviu: devolve
+ * { [dominio]: [{classe, motivo}] }. `ignorar` = endereços que não são loja.
+ *  - mesmo ref com títulos diferentes -> LOJA_TROCADA (quem destoa da maioria);
+ *  - refs diferentes com o MESMO título -> SUSPEITA_ISOLAMENTO (todos os
+ *    envolvidos), SALVO quando o banco de cada ref confirma o título servido
+ *    (`titulosNoBanco`, ver `titulosRepetidos`: aí é aviso, não achado). Sem
+ *    `titulosNoBanco` nada se confirma e vale a regra antiga inteira.
+ */
+export function verificarIsolamentoCruzado(
+  sondas,
+  ignorar = new Set(),
+  titulosNoBanco = {},
+) {
+  const achados = {};
+  const add = (dominio, classe, motivo) => {
+    (achados[dominio] ??= []).push({ classe, motivo });
+  };
+  const fichas = fichasComparaveis(sondas, ignorar);
 
   const porRef = new Map();
   for (const f of fichas) porRef.set(f.ref, [...(porRef.get(f.ref) ?? []), f]);
@@ -548,21 +602,148 @@ export function verificarIsolamentoCruzado(sondas, ignorar = new Set()) {
     }
   }
 
+  for (const [dominio, lista] of Object.entries(
+    titulosRepetidos(sondas, ignorar, titulosNoBanco).suspeitas,
+  ))
+    for (const a of lista) add(dominio, a.classe, a.motivo);
+  return achados;
+}
+
+/** Grupos de título repetido em refs diferentes: [{ refs, lista }]. */
+function gruposDeTituloRepetido(sondas, ignorar) {
   const porTitulo = new Map();
-  for (const f of fichas)
+  for (const f of fichasComparaveis(sondas, ignorar))
     porTitulo.set(f.titulo, [...(porTitulo.get(f.titulo) ?? []), f]);
-  for (const [, lista] of porTitulo) {
-    const refs = [...new Set(lista.map((f) => f.ref))].sort();
-    if (refs.length < 2) continue;
+  return [...porTitulo.values()]
+    .map((lista) => ({
+      refs: [...new Set(lista.map((f) => f.ref))].sort(),
+      lista,
+    }))
+    .filter((g) => g.refs.length >= 2);
+}
+
+/**
+ * Refs DIFERENTES com o MESMO título. Com dezenas de lojas, duas lojistas reais
+ * com o mesmo nome ("Bella Modas") é normal: o título sozinho não prova ficha
+ * trocada. A prova independente do HTML servido é o BANCO de cada ref:
+ * `titulosNoBanco` = { [ref]: título montado de v_store_config daquele banco,
+ * ou null se a leitura falhou } (`lerTitulosNoBanco`).
+ *  - CADA endereço do grupo serve EXATAMENTE o título do banco do próprio ref
+ *    -> AVISO (não reprova): só o nome coincide;
+ *  - basta UM que não bate (nome de outra loja, título assado do build) ou um
+ *    ref sem leitura -> SUSPEITA_ISOLAMENTO em todos (como sempre foi).
+ * Devolve { suspeitas: { [dominio]: [{classe, motivo}] }, avisos: { [dominio]: [motivo] } }.
+ */
+export function titulosRepetidos(
+  sondas,
+  ignorar = new Set(),
+  titulosNoBanco = {},
+) {
+  const suspeitas = {};
+  const avisos = {};
+  for (const { refs, lista } of gruposDeTituloRepetido(sondas, ignorar)) {
+    const confirmados = lista.every(
+      (f) =>
+        Object.hasOwn(titulosNoBanco, f.ref) &&
+        typeof titulosNoBanco[f.ref] === "string" &&
+        titulosNoBanco[f.ref] === f.tituloOriginal,
+    );
     for (const f of lista) {
-      add(
-        f.dominio,
-        "SUSPEITA_ISOLAMENTO",
-        `o título "${f.tituloOriginal}" aparece em refs Supabase diferentes (${refs.join(", ")})`,
-      );
+      if (confirmados) {
+        (avisos[f.dominio] ??= []).push(
+          `o título "${f.tituloOriginal}" se repete em lojas diferentes (refs ${refs.join(", ")}); o banco de cada ref confirma esse nome, então não barra`,
+        );
+      } else {
+        (suspeitas[f.dominio] ??= []).push({
+          classe: "SUSPEITA_ISOLAMENTO",
+          motivo: `o título "${f.tituloOriginal}" aparece em refs Supabase diferentes (${refs.join(", ")}) e o banco de algum deles não confirma esse nome`,
+        });
+      }
     }
   }
-  return achados;
+  return { suspeitas, avisos };
+}
+
+/**
+ * O título que o porteiro monta da linha de v_store_config (mesma regra de
+ * src/config/identidadeNoHtml.ts + parseStoreIdentity de
+ * src/lib/storeIdentity.ts): store_name aparado, e " | cidade, UF" quando há.
+ * Espaços colapsados como em `extrairTitulo`. null se a linha não serve.
+ */
+export function tituloDaLinhaDoBanco(linha) {
+  if (linha === null || typeof linha !== "object") return null;
+  const nome =
+    typeof linha.store_name === "string" ? linha.store_name.trim() : "";
+  if (!nome) return null;
+  const cidade =
+    typeof linha.store_city === "string" ? linha.store_city.trim() : "";
+  const uf =
+    typeof linha.store_state === "string"
+      ? linha.store_state.trim().toUpperCase()
+      : "";
+  const lugar = [cidade, uf].filter(Boolean).join(", ");
+  return `${nome}${lugar ? ` | ${lugar}` : ""}`.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Lê do BANCO de `ref` o título da loja: 1 GET anônimo em v_store_config (só
+ * store_name, store_city, store_state; a mesma view que o porteiro e o
+ * navegador do cliente leem), com a chave publicável que a ficha serve.
+ * Devolve o título ou null em QUALQUER falha (sem chave, HTTP != 200, linha
+ * != 1, nome vazio, rede): null nunca confirma nada (falha fechada).
+ */
+export async function lerTituloNoBanco(
+  ref,
+  chave,
+  { fetchImpl = fetch, timeoutMs = 15000 } = {},
+) {
+  if (!RE_REF_SUPABASE.test(String(ref)) || typeof chave !== "string")
+    return null;
+  const url = `https://${ref}.supabase.co/rest/v1/v_store_config?select=store_name,store_city,store_state&id=eq.1&limit=2`;
+  // Chave nova (sb_publishable_...) não é JWT e vai só em apikey; a antiga
+  // (anon, JWT) vai também em Authorization, como o supabase-js faz.
+  const headers = { apikey: chave, accept: "application/json" };
+  if (!chave.startsWith("sb_publishable_"))
+    headers.authorization = `Bearer ${chave}`;
+  try {
+    const res = await fetchImpl(url, {
+      cache: "no-store",
+      redirect: "error",
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const texto = await res.text();
+    if (res.status !== 200) return null;
+    const linhas = JSON.parse(texto);
+    if (!Array.isArray(linhas) || linhas.length !== 1) return null;
+    return tituloDaLinhaDoBanco(linhas[0]);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Só para os refs que caem num grupo de título repetido (frota normal = zero
+ * leituras): { [ref]: título no banco | null }. A chave de cada ref é a da
+ * ficha de um endereço que serve aquele ref; chave de outro projeto dá 401 no
+ * banco e vira null (não confirma).
+ */
+export async function lerTitulosNoBanco(
+  sondas,
+  ignorar = new Set(),
+  opcoes = {},
+) {
+  const chaves = new Map();
+  for (const { lista } of gruposDeTituloRepetido(sondas, ignorar))
+    for (const f of lista)
+      if (!chaves.get(f.ref)) chaves.set(f.ref, f.chavePublica);
+  const titulos = {};
+  await Promise.all(
+    [...chaves].map(async ([ref, chave]) => {
+      titulos[ref] = await lerTituloNoBanco(ref, chave, opcoes);
+    }),
+  );
+  return titulos;
 }
 
 /**
@@ -647,6 +828,7 @@ export function montarContexto(
     vercel = null,
     ignorarNoCruzamento = new Set(),
     lojasQueNuncaDormem = new Set(),
+    titulosNoBanco = {},
   } = {},
 ) {
   if (!RE_SHA.test(String(sha)))
@@ -660,7 +842,11 @@ export function montarContexto(
       s.versao.codeSha === sha &&
       problemasDoContrato(s.versao).length === 0,
   );
-  const cruzado = verificarIsolamentoCruzado(sondas, ignorarNoCruzamento);
+  const cruzado = verificarIsolamentoCruzado(
+    sondas,
+    ignorarNoCruzamento,
+    titulosNoBanco,
+  );
   const canonico = verificarCanonico(sondas, ignorarNoCruzamento);
   for (const [dominio, lista] of Object.entries(canonico.achados))
     (cruzado[dominio] ??= []).push(...lista);
@@ -675,6 +861,11 @@ export function montarContexto(
         ? doGrupo[0].versao.codeVersion
         : maioriaEstrita(doGrupo.map((s) => s.versao.codeVersion)),
     cruzado,
+    // Não reprovam: só aparecem no relatório (título repetido entre lojas
+    // cujo banco confirma o nome). Fora de `cruzado` de propósito: tudo que
+    // está lá vira achado, e achado barra a publicação.
+    avisos: titulosRepetidos(sondas, ignorarNoCruzamento, titulosNoBanco)
+      .avisos,
     canonicos: canonico.canonicos,
     lojasQueNuncaDormem,
   };
@@ -1402,6 +1593,13 @@ export function montarRelatorio({
     linhas.push(
       `- AVISO: o porteiro respondeu pela caderneta antiga (x-ikcous-caderneta-versao: 1) em ${antigas.map((r) => celula(r.dominio)).join(", ")}: ali uma loja adormecida ou encerrada aparece como endereço desconhecido, não como fora do ar. Aplicar a migration do estado de vida no banco onde a caderneta mora.`,
     );
+  const comAviso = resultados.filter((r) => r.avisos?.length);
+  if (comAviso.length) {
+    linhas.push("", "## Avisos (não barram a publicação)", "");
+    for (const r of comAviso)
+      for (const aviso of r.avisos)
+        linhas.push(`- AVISO: ${celula(r.dominio)}: ${celula(aviso)}`);
+  }
   linhas.push("", "## Endereço -> deployment", "");
   if (!vercelPedido) {
     linhas.push("endereço→deployment: NÃO CONFERIDO (sem --vercel)");
@@ -1503,10 +1701,20 @@ export async function conferirFrota(politica, opcoes = {}) {
     politica.enderecosEsperados.map((e) => [e.dominio, e]),
   );
   const esperados = new Map([...declarados].map(([d, e]) => [d, e.estado]));
+  const ignorarNoCruzamento = new Set(esperados.keys());
+  const titulosNoBanco = await lerTitulosNoBanco(
+    inventario.sondas,
+    ignorarNoCruzamento,
+    {
+      fetchImpl: opcoes.fetchImpl ?? fetch,
+      timeoutMs: opcoes.timeoutMs ?? 15000,
+    },
+  );
   const { grupos, ctx } = montarContexto(inventario.sondas, {
     sha,
     vercel: inventario.vercel,
-    ignorarNoCruzamento: new Set(esperados.keys()),
+    ignorarNoCruzamento,
+    titulosNoBanco,
     lojasQueNuncaDormem: new Set(
       (politica.lojasQueNuncaDormem ?? []).map((l) => l.ref),
     ),
@@ -1533,6 +1741,8 @@ export async function conferirFrota(politica, opcoes = {}) {
       cadernetaAntiga: (sonda.amostras ?? []).some(
         (a) => a.cadernetaVersao === "1",
       ),
+      // Avisos que NÃO reprovam (ficam fora de `achados` e de `classe`).
+      avisos: ctx.avisos?.[sonda.dominio] ?? [],
       versao: sonda.versao,
       ficha: sonda.ficha,
       deploymentId: inventario.vercel?.ok

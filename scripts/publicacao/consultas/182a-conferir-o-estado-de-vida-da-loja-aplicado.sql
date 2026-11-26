@@ -2,6 +2,8 @@
 -- Nao le nenhuma linha de public.frota_lojas nem de public.frota_segredo (a caderneta guarda o endereco e a chave do banco de cada loja e
 -- o hash do segredo da frota): roda por papel sem privilegio de tabela. Confere o ESTADO NOVO inteiro: a v1 com o filtro do estado e as
 -- travas de sempre, a v2 nova com as mesmas travas, as tres colunas, o CHECK e a caderneta continuando fechada.
+-- As duas portas tem uma SUCESSORA, a 20261490000000 (a caderneta confere a chave sem bcrypt por chamada: troca so a conferencia da chave,
+-- o filtro do estado e o retorno ficam letra por letra); o corpo dela e aceito ao lado do desta (quem distingue e a 186a).
 WITH fn AS (
   SELECT p.proname, p.oid, md5(replace(p.prosrc, chr(13), '')) AS h, l.lanname, p.prosecdef, p.provolatile, p.proretset, p.proisstrict,
          p.proconfig, p.proowner, pg_get_function_arguments(p.oid) AS args, pg_get_function_result(p.oid) AS resultado,
@@ -18,7 +20,7 @@ WITH fn AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'resolver_loja: uma so, com o corpo da 20261460000000 (md5)', 'sim', CASE WHEN
     (SELECT count(*) FROM fn WHERE proname = 'resolver_loja') = 1
-    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'resolver_loja' AND h = '19072d99f3253583342a0bb6c42447dd') THEN 'sim' ELSE 'nao' END
+    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'resolver_loja' AND h IN ('19072d99f3253583342a0bb6c42447dd', '0c60eb13c0016d2129b51def3ec7c255')) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'resolver_loja: atributos de sempre (plpgsql, SECURITY DEFINER, VOLATILE, search_path vazio, as 6 colunas) e EXECUTE so do anon', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(f.lanname = 'plpgsql' AND f.prosecdef AND f.provolatile = 'v' AND f.proretset AND NOT f.proisstrict
         AND f.proconfig = ARRAY['search_path=""']::text[] AND f.args = 'p_host text, p_chave text'
@@ -27,7 +29,7 @@ WITH fn AS (
        FROM fn f WHERE f.proname = 'resolver_loja'), false) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'resolver_loja_com_estado: uma so, com o corpo da 20261460000000 (md5)', 'sim', CASE WHEN
     (SELECT count(*) FROM fn WHERE proname = 'resolver_loja_com_estado') = 1
-    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'resolver_loja_com_estado' AND h = '92682af1143806d3662411b6d5788096') THEN 'sim' ELSE 'nao' END
+    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'resolver_loja_com_estado' AND h IN ('92682af1143806d3662411b6d5788096', 'a30e752cff5ae4edc2db612866eb8bcd')) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'resolver_loja_com_estado: as travas da v1 (plpgsql, SECURITY DEFINER, VOLATILE, search_path vazio, o mesmo dono, 7 colunas terminando em estado) e EXECUTE so do anon', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(f.lanname = 'plpgsql' AND f.prosecdef AND f.provolatile = 'v' AND f.proretset AND NOT f.proisstrict
         AND f.proconfig = ARRAY['search_path=""']::text[] AND f.args = 'p_host text, p_chave text'

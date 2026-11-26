@@ -40,6 +40,11 @@ const {
   anexarAoSummary,
 } = require("./efemero.cjs");
 const CONF = require("../../scripts/publicacao/conferir-banco.cjs");
+// A 20261490 sucede os corpos das portas da caderneta e o pre-voo desta migration (o md5 da 20261460) a recusaria: o clone e exclusivo,
+// entao main() a desfaz (comum + destrutivo, COMITADO) antes de qualquer prova. Definicao unica no modulo abaixo.
+const {
+  desfazerChaveSemBcryptNoClone,
+} = require("./a-caderneta-confere-a-chave-sem-bcrypt-posterior.cjs");
 
 const NOME = "20261460000000_a_loja_tem_estado_de_vida.sql";
 const ler = (n) =>
@@ -1127,6 +1132,8 @@ async function main() {
     return r;
   };
   try {
+    // A sucessora 20261490 sai antes de tudo (ver o require do modulo -posterior no topo).
+    await desfazerChaveSemBcryptNoClone(c);
     assert.equal(
       await md5Vivo(c, V1),
       MD5_V1_NOVO,

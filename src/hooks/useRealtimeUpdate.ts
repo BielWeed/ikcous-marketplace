@@ -32,7 +32,7 @@ export function useRealtimeUpdate(
     // plano na Black Friday; o painel do lojista divide esse teto com a
     // vitrine). O ping de deploy só adianta a checagem de versão: sem ele a
     // visitante é avisada pela checagem periódica e ao voltar à aba do
-    // `useUpdateCheck` (3 min / visibilitychange). Nem BroadcastChannel: o
+    // `useUpdateCheck` (20 min / visibilitychange). Nem BroadcastChannel: o
     // líder sem canal não tem ping para repassar.
     if (!userId) {
       console.log(

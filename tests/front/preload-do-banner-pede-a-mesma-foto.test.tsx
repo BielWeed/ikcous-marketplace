@@ -51,7 +51,7 @@ vi.mock("@/lib/dataVault", () => ({
 vi.mock("embla-carousel-react", () => ({ default: () => [null, undefined] }));
 
 const URL_BANNER =
-  "https://loja.supabase.co/storage/v1/object/public/banners/topo.png";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/banners/topo.png";
 const LARGURAS = [200, 320, 480, 640, 960, 1280];
 
 class ImagemRegistrada {

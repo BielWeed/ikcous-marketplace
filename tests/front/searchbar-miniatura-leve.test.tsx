@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Product } from "@/types";
 
 const FOTO_ORIGINAL =
-  "https://abc123.supabase.co/storage/v1/object/public/products/aliança-grande.jpg";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/products/aliança-grande.jpg";
 
 const MARCADOR = "https://placehold.co/600x600?text=Sem+Imagem";
 

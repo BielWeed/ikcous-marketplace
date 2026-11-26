@@ -21,7 +21,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it("não consulta versão nem SW em 3 minutos escondida; consulta ao voltar e no próximo intervalo visível", async () => {
+it("não consulta versão nem SW em 20 minutos escondida; consulta ao voltar e no próximo intervalo visível", async () => {
   expect(inicio).toBeGreaterThan(0);
   expect(fim).toBeGreaterThan(inicio);
   const efeito = fonte.slice(inicio, fim + fimDoEfeito.length);
@@ -50,7 +50,7 @@ it("não consulta versão nem SW em 3 minutos escondida; consulta ao voltar e no
     vi.fn(),
   );
   try {
-    await vi.advanceTimersByTimeAsync(180_000);
+    await vi.advanceTimersByTimeAsync(1_200_000);
     expect(lerVersao).not.toHaveBeenCalled();
     expect(atualizar).not.toHaveBeenCalled();
 
@@ -60,14 +60,14 @@ it("não consulta versão nem SW em 3 minutos escondida; consulta ao voltar e no
     expect(lerVersao).toHaveBeenCalledTimes(1);
     expect(atualizar).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(180_000);
+    await vi.advanceTimersByTimeAsync(1_200_000);
     expect(lerVersao).toHaveBeenCalledTimes(2);
     expect(atualizar).toHaveBeenCalledTimes(2);
   } finally {
     limpar?.();
   }
   document.dispatchEvent(new Event("visibilitychange"));
-  await vi.advanceTimersByTimeAsync(180_000);
+  await vi.advanceTimersByTimeAsync(1_200_000);
   expect(lerVersao).toHaveBeenCalledTimes(2);
   expect(atualizar).toHaveBeenCalledTimes(2);
 });

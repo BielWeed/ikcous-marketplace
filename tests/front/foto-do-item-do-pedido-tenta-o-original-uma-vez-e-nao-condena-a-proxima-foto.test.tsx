@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const SUPABASE =
-  "https://loja-de-teste.supabase.co/storage/v1/object/public/produtos/blusa.jpg";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/blusa.jpg";
 const EXTERNA_A = "https://cdn.exemplo.test/a.jpg";
 const EXTERNA_B = "https://cdn.exemplo.test/b.jpg";
 
