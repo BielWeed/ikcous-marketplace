@@ -59,6 +59,12 @@ concurrency:
 jobs:
   google:
     runs-on: ubuntu-latest
+    # Gaveta da loja: o token de loja OAuth mora no environment loja-<projeto>
+    # (mesmo nome de segredo); sem gaveta propria vale o segredo do repositorio.
+    # deployment: false = so os segredos, sem registro de deploy.
+    environment:
+      name: loja-${{ inputs.projeto }}
+      deployment: false
     timeout-minutes: 5
     steps:
       - name: Confere alvo, turma e SHA antes de checkout e segredos

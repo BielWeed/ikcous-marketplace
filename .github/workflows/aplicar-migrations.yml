@@ -95,6 +95,12 @@ jobs:
   aplicar:
     name: Aplicar migrations
     runs-on: ubuntu-latest
+    # Gaveta da loja: o token de loja OAuth mora no environment loja-<projeto>
+    # (mesmo nome de segredo); sem gaveta propria vale o segredo do repositorio.
+    # deployment: false = so os segredos, sem registro de deploy.
+    environment:
+      name: loja-${{ inputs.projeto }}
+      deployment: false
     # Mesmo grupo de conferir-banco-da-loja.yml (job `ledger`): nunca aplicar
     # migration enquanto o ledger está sendo gravado, nem o contrário, nem dois
     # applies no mesmo banco. O grupo é POR BANCO (banco-da-loja-<ref>, gerado do
