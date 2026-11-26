@@ -2214,8 +2214,9 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
   };
 
   // admin: o dono cadastrado é admin nas duas fontes do cargo (depois do
-  // definir-dono, a dona pode ter nomeado outras), ou, sem isso, exatamente
-  // 1 admin com admin nas duas fontes (antes do definir-dono)
+  // definir-dono, a dona pode ter nomeado outras, e TODAS têm de estar nas
+  // duas: admin só numa fonte foi gravada fora da definir_cargo), ou, sem
+  // isso, exatamente 1 admin com admin nas duas fontes (antes do definir-dono)
   try {
     const r = await leitura.consultarBanco(ref, SQL_ADMINS);
     const l = Array.isArray(r) && r.length === 1 ? r[0] : null;
@@ -2231,7 +2232,11 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
         SIM,
         "1 administradora, com admin nas duas fontes do cargo.",
       );
-    } else if (l.admins > 1 && donoEAdmin() === true) {
+    } else if (
+      l.admins > 1 &&
+      l.nas_duas === l.admins &&
+      donoEAdmin() === true
+    ) {
       item(
         "admin",
         SIM,

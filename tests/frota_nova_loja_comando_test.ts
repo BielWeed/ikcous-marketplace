@@ -2233,6 +2233,33 @@ Deno.test("conferir: item admin — a dona cadastrada (admin nas duas fontes) qu
   assertEquals(a.veredito, "SIM", a.detalhe);
 });
 
+Deno.test("conferir: item admin — a dona admin nas duas fontes + outra admin só em auth.users (fora da definir_cargo) = NÃO", async () => {
+  const amb = await ateConferir();
+  const banco = amb.api.banco;
+  const responder = banco.responder;
+  // 2 admins na união das fontes, só 1 (a dona) nas duas
+  banco.responder = (sql) => {
+    if (sql === SQL_ADMINS) return [{ admins: 2, nas_duas: 1 }];
+    if (sql === SQL_DONO) {
+      return [
+        {
+          admins: 2,
+          nas_duas: 1,
+          confirmada: true,
+          donos: 1,
+          dono_admin: true,
+        },
+      ];
+    }
+    return responder(sql);
+  };
+  const r = await executarPasso(pedido("conferir"), amb.deps);
+  const a = r.itens.find((i) => i.item === "admin");
+  assertEquals(a.veredito, "NÃO", a.detalhe);
+  assertStringIncludes(a.detalhe, "(1 nas duas)");
+  assertEquals(r.veredito, "NÃO");
+});
+
 Deno.test("conferir: dono que não é mais admin = NÃO no item definir-dono", async () => {
   const amb = await ateConferir();
   amb.api.banco.dono = "ex";
