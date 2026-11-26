@@ -568,6 +568,7 @@ async function executarTesteDeConexao(
     let mensagem: string;
     let ambiente: "producao" | "teste" | null = null;
     let conta: string | null = null;
+    let contaId: string | null = null;
     try {
         const resposta = await buscar(`${BASE_URL_PADRAO}/users/me`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -586,6 +587,7 @@ async function executarTesteDeConexao(
             const analise = analisarAmbienteDaConta(dados, token);
             ambiente = analise.ambiente;
             conta = typeof dados.nickname === "string" ? dados.nickname : null;
+            contaId = idDaConta(dados);
             // O log diz o ambiente e QUAL marca decidiu — nunca o e-mail.
             console.log(
                 `[credenciais-mp] ambiente da conta: ${
@@ -637,9 +639,114 @@ async function executarTesteDeConexao(
             mensagem,
             ambiente,
             conta,
+            conta_id: contaId,
         },
         semResposta,
     };
+}
+
+/**
+ * O `id` da conta na resposta de `GET /users/me`, em texto (o MP devolve
+ * número). Qualquer outra forma vira null: sem id não se afirma conta nenhuma.
+ */
+function idDaConta(dadosDoUsersMe: unknown): string | null {
+    if (typeof dadosDoUsersMe !== "object" || dadosDoUsersMe === null) return null;
+    const id = (dadosDoUsersMe as Record<string, unknown>).id;
+    if (typeof id === "number" && Number.isSafeInteger(id) && id > 0) {
+        return String(id);
+    }
+    if (typeof id === "string" && /^\d+$/.test(id.trim())) return id.trim();
+    return null;
+}
+
+// ── Troca de CONTA com pagamento em aberto (26/11/2026) ──────────────────
+
+/**
+ * Recusa a troca do Access Token por o de OUTRA conta do Mercado Pago
+ * enquanto a conta atual ainda tem pagamento em aberto. Devolve a resposta da
+ * recusa, ou null quando a troca pode seguir.
+ *
+ * POR QUE: o webhook só aceita a assinatura da chave em vigor e a
+ * reconciliação consulta com o token em vigor. Trocar de conta (pessoa física
+ * -> empresa) com um PIX (30 min) ou um 3DS de cartão (40 min) aberto na conta
+ * antiga deixa esse pagamento sem ninguém para conferir: o aviso da conta
+ * antiga leva 401, a consulta com o token novo não acha a cobrança, o pedido
+ * expira, o estoque volta à venda e o dinheiro cai na conta antiga sem o aviso
+ * de pagamento atrasado (P1).
+ *
+ * "EM ABERTO" é a fila da própria reconciliação (`pagamentos_a_reconciliar`):
+ * exatamente os pedidos que ela ainda vai consultar com o token em vigor — o
+ * mesmo critério, num lugar só. A fila esvazia sozinha quando o MP dá a
+ * cobrança como terminal (paga, expirada, cancelada).
+ *
+ * MESMA CONTA = mesmo `id` de `GET /users/me`. O da conta nova sai do teste
+ * de conexão que o `salvar` acabou de rodar (sem chamada nova); o da antiga,
+ * do `ultimo_teste.conta_id` gravado. Registro anterior a esse campo: pergunta
+ * ao MP com o token antigo, e só quando há fila (o único caso em que decide).
+ * Conta que não se identifica com fila cheia RECUSA: falha nunca libera.
+ *
+ * Roda ANTES de qualquer escrita. Primeira configuração e token igual ao
+ * salvo nem chegam aqui (quem chama filtra).
+ */
+async function recusaDaTrocaDeConta(
+    supabase: any,
+    args: {
+        testeDaChaveNova: UltimoTeste | null;
+        testeDaChaveAntiga: UltimoTeste | null | undefined;
+        tokenAntigo: string | null;
+        buscar: (url: string, init?: RequestInit) => Promise<Response>;
+    },
+): Promise<Response | null> {
+    const contaNova = args.testeDaChaveNova?.conectado === true
+        ? args.testeDaChaveNova.conta_id ?? null
+        : null;
+    const contaAntigaGravada = args.testeDaChaveAntiga?.conectado === true
+        ? args.testeDaChaveAntiga.conta_id ?? null
+        : null;
+    // Mesma conta provada pelo que já está em mãos: nem consulta a fila.
+    if (contaNova !== null && contaNova === contaAntigaGravada) return null;
+
+    const { data: fila, error } = await supabase.rpc("pagamentos_a_reconciliar");
+    if (error || !Array.isArray(fila)) {
+        console.error(
+            "[credenciais-mp] troca de conta: a fila de pagamentos em aberto não pôde ser lida:",
+            error?.message ?? "resposta sem lista",
+        );
+        return json(
+            {
+                erro: "Não consegui conferir agora se há pedidos aguardando pagamento na conta atual do Mercado Pago, então nada foi alterado. Tente de novo em instantes.",
+            },
+            503,
+        );
+    }
+    if (fila.length === 0) return null;
+
+    let contaAntiga = contaAntigaGravada;
+    if (contaAntiga === null && contaNova !== null && args.tokenAntigo) {
+        const { ultimoTeste } = await executarTesteDeConexao(
+            args.tokenAntigo,
+            args.buscar,
+        );
+        contaAntiga = ultimoTeste.conectado ? ultimoTeste.conta_id ?? null : null;
+    }
+    if (contaNova !== null && contaNova === contaAntiga) return null;
+
+    const quantos = `Há ${fila.length} pedido(s) aguardando pagamento na conta atual do Mercado Pago`;
+    const espere =
+        "Espere eles terminarem (em geral leva até 1 hora) ou cancele os pedidos, e troque depois. Nada foi salvo.";
+    console.warn(
+        `[credenciais-mp] troca de conta recusada: ${fila.length} pedido(s) em aberto; conta ${
+            contaNova === null || contaAntiga === null ? "não identificada" : "diferente"
+        }`,
+    );
+    return json(
+        {
+            erro: contaNova === null || contaAntiga === null
+                ? `${quantos}, e não consegui confirmar se as chaves novas são da mesma conta. Se trocar agora, esses pagamentos podem não ser mais conferidos pelo app. ${espere}`
+                : `${quantos}, e as chaves novas são de outra conta. Se trocar agora, esses pagamentos não seriam mais conferidos pelo app. ${espere}`,
+        },
+        409,
+    );
 }
 
 // ── A liberação automática: alvo, reconciliação e recados ─────────────────
@@ -1095,6 +1202,7 @@ export async function handler(
                             "Não consegui ler a chave salva. Cole e salve as chaves de novo.",
                         ambiente: null,
                         conta: null,
+                        conta_id: null,
                     };
                 } else {
                     const resultado = await executarTesteDeConexao(
@@ -1104,6 +1212,24 @@ export async function handler(
                     ultimoTeste = resultado.ultimoTeste;
                     testeSemResposta = resultado.semResposta;
                 }
+            }
+
+            // TROCA DE CONTA COM PAGAMENTO EM ABERTO (26/11/2026): Access
+            // Token novo sobre um já salvo (primeira configuração não tem conta
+            // anterior a proteger; o mesmo token colado de novo não troca
+            // nada) passa pela recusa ANTES de qualquer escrita — ver
+            // `recusaDaTrocaDeConta`.
+            if (
+                trocouToken && registroAntigo?.token_cifrado &&
+                accessToken !== tokenSalvo
+            ) {
+                const recusaDaTroca = await recusaDaTrocaDeConta(supabase, {
+                    testeDaChaveNova: ultimoTeste,
+                    testeDaChaveAntiga: registroAntigo.ultimo_teste,
+                    tokenAntigo: tokenSalvo,
+                    buscar,
+                });
+                if (recusaDaTroca) return recusaDaTroca;
             }
 
             // R1 (revisão de 30/09): o teste acima leva segundos, e o lojista

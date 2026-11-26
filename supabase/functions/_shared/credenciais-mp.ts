@@ -61,6 +61,14 @@ export type UltimoTeste = {
     mensagem: string;
     ambiente: "producao" | "teste" | null;
     conta: string | null;
+    /**
+     * O `id` da conta no Mercado Pago (o de `GET /users/me`), em texto — o
+     * identificador ESTÁVEL da conta; o apelido (`conta`) é só para a tela.
+     * Gravado desde 26/11/2026 pelo teste de conexão que passou: é com ele
+     * que `salvar` sabe se o Access Token novo é da MESMA conta. Registro
+     * mais antigo não tem o campo (opcional de propósito).
+     */
+    conta_id?: string | null;
 };
 
 /** O que dorme em app_settings — segredos só em ciphertext + iv. */
