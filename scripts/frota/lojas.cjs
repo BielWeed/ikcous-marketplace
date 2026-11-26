@@ -30,7 +30,9 @@
  * os segredos que o arquivo cita, e a regra da casa ("cada alvo enxerga SÓ o
  * seu segredo") fica de pé.
  *
- * Uso (workflows): node scripts/frota/lojas.cjs validar <projeto> [--assinante]
+ * Uso (workflows): node scripts/frota/lojas.cjs validar <projeto> [--assinante] [--saida-do-passo]
+ *                  (--saida-do-passo: grava `segredo=<NOME do segredo da loja>` no
+ *                  GITHUB_OUTPUT do passo; nunca o valor)
  *                  node scripts/frota/lojas.cjs ref <projeto> [--functions]
  *                  node scripts/frota/lojas.cjs campo <projeto> <classe|segredoDoToken|functionsNomeadas>
  *                  node scripts/frota/lojas.cjs exigir-segredo <projeto>   (só confere que o token da loja chegou; nunca o imprime)
@@ -288,6 +290,19 @@ function cli(
       return falhar(
         `${l.projeto} não é loja assinante (este workflow só aceita lojas assinantes)`,
       );
+    // Com `--saida-do-passo` (o passo `id: loja` dos workflows), deixa para os
+    // passos seguintes do job o NOME do segredo desta loja
+    // (`steps.loja.outputs.segredo`), nunca o valor. A guarda do segredo da org
+    // central compara com ele (lojas-nos-workflows.cjs). Opção EXPLÍCITA: quem
+    // chama `validar` no meio de outro passo (publicar-functions) não ganha uma
+    // saída que não pediu. O nome já casou RE_SEGREDO: sem quebra de linha.
+    if (
+      resto.includes("--saida-do-passo") &&
+      typeof env.GITHUB_OUTPUT === "string" &&
+      env.GITHUB_OUTPUT !== ""
+    )
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- é o arquivo de saída do passo que o próprio runner do Actions cria e passa no ambiente.
+      fs.appendFileSync(env.GITHUB_OUTPUT, `segredo=${l.segredoDoToken}\n`);
     saida.out(`loja ${l.projeto}: ${l.classe}`);
     return 0;
   }

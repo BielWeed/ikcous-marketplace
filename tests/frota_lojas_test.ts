@@ -476,6 +476,143 @@ Deno.test("CLI: validar aceita só o cadastro, recusa com 'loja desconhecida' e 
   assertEquals(cli(["campo", "savy", "__proto__"]).codigo, 1);
 });
 
+// O passo "Confere a loja no cadastro" (id: loja) deixa para os passos seguintes
+// do MESMO job o NOME do segredo da loja escolhida (`steps.loja.outputs.segredo`),
+// lido do cadastro — nunca o valor. É o que deixa a linha do segredo da org
+// central ser UMA, de tamanho fixo, em vez de uma guarda que cresce com loja.
+Deno.test("CLI validar --saida-do-passo: escreve segredo=<NOME do segredo da loja> no GITHUB_OUTPUT; recusa, outro comando ou validar SEM a opção não escrevem nada", () => {
+  const dir = Deno.makeTempDirSync({ prefix: "saida-do-passo-" });
+  try {
+    const arq = join(dir, "out.txt");
+    const rodar = (args: string[], cad = CADASTRO_REAL, opcao = true) => {
+      Deno.writeTextFileSync(arq, "");
+      const comOpcao =
+        opcao && args[0] === "validar" ? [...args, "--saida-do-passo"] : args;
+      const r = cli(comOpcao, { GITHUB_OUTPUT: arq }, cad);
+      return { ...r, saida: Deno.readTextFileSync(arq) };
+    };
+    assertEquals(
+      rodar(["validar", "savy"]).saida,
+      "segredo=SUPABASE_ACCESS_TOKEN_SAVY\n",
+    );
+    assertEquals(
+      rodar(["validar", "ikcous-publicada", "--assinante"]).saida,
+      "segredo=SUPABASE_ACCESS_TOKEN_IKCOUS\n",
+    );
+    assertEquals(
+      rodar(["validar", "loja"]).saida,
+      "segredo=SUPABASE_ACCESS_TOKEN\n",
+    );
+    assertEquals(
+      rodar(["validar", NOVA], cadastroComLojaNova()).saida,
+      `segredo=${SEGREDO_NOVO}\n`,
+    );
+    // recusa (desconhecida, não assinante, forja) não escreve NADA
+    for (const args of [
+      ["validar", "almeida"],
+      ["validar", "loja", "--assinante"],
+      ["validar", "x\nsegredo=SUPABASE_ACCESS_TOKEN_SAVY"],
+    ]) {
+      const r = rodar(args);
+      assertEquals(r.codigo, 1, args.join(" "));
+      assertEquals(r.saida, "", args.join(" "));
+    }
+    // sem a opção, validar não escreve (publicar-functions chama validar no
+    // meio do passo `alvo`, que tem as saídas dele)
+    const semOpcao = rodar(["validar", "savy"], CADASTRO_REAL, false);
+    assertEquals(semOpcao.codigo, 0);
+    assertEquals(semOpcao.saida, "");
+    // os outros comandos não escrevem no GITHUB_OUTPUT
+    assertEquals(rodar(["ref", "savy"]).saida, "");
+    assertEquals(rodar(["campo", "savy", "classe"]).saida, "");
+    // sem GITHUB_OUTPUT (fora do Actions): valida igual e não escreve em lugar nenhum
+    assertEquals(cli(["validar", "savy", "--saida-do-passo"], {}).codigo, 0);
+    assertEquals(
+      cli(["validar", "savy", "--saida-do-passo"], { GITHUB_OUTPUT: "" })
+        .codigo,
+      0,
+    );
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
+/** Os jobs (dos workflows por loja) que têm o bloco LOJAS-SEGREDOS. */
+function jobsComBlocoDeSegredos(nome: string): string[] {
+  const texto = Deno.readTextFileSync(join(DIR_WF, nome));
+  const ids: string[] = [];
+  let job = "";
+  for (const linha of texto.split(/\r?\n/)) {
+    const m = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(linha);
+    if (m) job = m[1];
+    if (/# LOJAS-SEGREDOS-INICIO/.test(linha) && !ids.includes(job))
+      ids.push(job);
+  }
+  return ids;
+}
+
+Deno.test("todo job com o bloco LOJAS-SEGREDOS tem o passo `id: loja` que roda lojas.cjs validar ANTES do primeiro passo com segredo", () => {
+  let jobs = 0;
+  for (const nome of OITO_WORKFLOWS) {
+    const doc = docDe(nome);
+    for (const idJob of jobsComBlocoDeSegredos(nome)) {
+      jobs++;
+      const passos = doc.jobs[idJob].steps;
+      const iLoja = passos.findIndex((p) => p.id === "loja");
+      assert(iLoja >= 0, `${nome} / ${idJob}: falta o passo id: loja`);
+      assertEquals(
+        passos.filter((p) => p.id === "loja").length,
+        1,
+        `${nome} / ${idJob}: id: loja repetido`,
+      );
+      const passo = passos[iLoja];
+      assert(
+        String(passo.name).startsWith("Confere a loja no cadastro"),
+        `${nome} / ${idJob}: id: loja no passo errado`,
+      );
+      assertStringIncludes(passo.run, "node scripts/frota/lojas.cjs validar");
+      assertStringIncludes(passo.run, "--saida-do-passo");
+      assert(!/secrets\./.test(JSON.stringify(passo)), `${nome}: vê segredo`);
+      const iSegredo = passos.findIndex((p) =>
+        /secrets\.SUPABASE_ACCESS_TOKEN/.test(JSON.stringify(p)),
+      );
+      assert(
+        iLoja < iSegredo,
+        `${nome} / ${idJob}: o id: loja vem depois do segredo`,
+      );
+    }
+  }
+  // aplicar (1) + conferir-banco (conferir e ledger) + os 5 de assinante
+  assertEquals(jobs, 8);
+});
+
+Deno.test("o passo `id: loja` de verdade (bash), com GITHUB_OUTPUT, deixa o nome do segredo da loja e nada mais", async () => {
+  const dir = Deno.makeTempDirSync({ prefix: "passo-loja-" });
+  try {
+    const arq = join(dir, "out.txt");
+    for (const nome of OITO_WORKFLOWS) {
+      const doc = docDe(nome);
+      for (const idJob of jobsComBlocoDeSegredos(nome)) {
+        const passo = doc.jobs[idJob].steps.find((p) => p.id === "loja");
+        assert(passo, `${nome} / ${idJob}: sem id: loja`);
+        Deno.writeTextFileSync(arq, "");
+        const r = await bash(passo.run, {
+          PROJETO: "savy",
+          GITHUB_OUTPUT: arq,
+        });
+        assertEquals(r.codigo, 0, `${nome}: ${r.saida}`);
+        assertEquals(
+          Deno.readTextFileSync(arq),
+          "segredo=SUPABASE_ACCESS_TOKEN_SAVY\n",
+          nome,
+        );
+      }
+    }
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
 Deno.test("CLI exigir-segredo: só o token DA LOJA conta, a mensagem de parada é a de sempre e o valor nunca é impresso", () => {
   const tk = "tk-segredo-que-nao-pode-vazar";
   const ok = cli(["exigir-segredo", "savy"], {

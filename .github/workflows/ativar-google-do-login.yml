@@ -96,9 +96,10 @@ jobs:
       # A loja existe no cadastro (scripts/frota/lojas.json) e e ASSINANTE? Recusa
       # ("loja desconhecida") ANTES do passo que ve segredo. Nao le segredo.
       - name: Confere a loja no cadastro (lojas.json) antes de qualquer segredo
+        id: loja
         env:
           PROJETO: ${{ inputs.projeto }}
-        run: node scripts/frota/lojas.cjs validar "$PROJETO" --assinante
+        run: node scripts/frota/lojas.cjs validar "$PROJETO" --assinante --saida-do-passo
 
       # Nunca fallback entre lojas ou turmas. Segredo só ao ativar, por env.
       - name: Mede ou configura só os campos do Google
