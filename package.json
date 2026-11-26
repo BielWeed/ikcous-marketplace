@@ -134,6 +134,12 @@
     "qs": "^6.15.2",
     "estimo": {
       "nanoid": "^5.1.11"
+    },
+    "htmlhint": {
+      "glob": "^14.0.6"
+    },
+    "workbox-build": {
+      "glob": "^14.0.6"
     }
   }
 }
