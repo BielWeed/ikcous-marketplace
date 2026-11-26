@@ -3,9 +3,10 @@
 /* eslint-disable security/detect-object-injection -- as chaves indexadas são nomes de passo de PASSOS (lista fechada) ou o slug já conferido por RE_PROJETO, sempre com Object.hasOwn. */
 /**
  * nova-loja.mjs — o comando ASSISTIDO que abre uma loja nova passo a passo
- * (plano nova-loja de 26/11/2026, tarefa C1; o desenho vem do L4b). Nesta
- * versão: abrir, receber, criar-projeto, banco e ficha. Os passos de segredos,
- * functions, admin e cadastro entram no C2/C3.
+ * (plano nova-loja de 26/11/2026, tarefas C1 e C3; o desenho vem do L4b).
+ * Nesta versão: abrir, receber, criar-projeto, banco, ficha, primeira-admin e
+ * conferir; definir-dono está reservado (aguardando a decisão do sócio). Os
+ * passos de segredos, functions, login e cadastro entram no C2.
  *
  *   node scripts/frota/nova-loja.mjs <passo> --loja <slug> [--aplicar] [opções]
  *
@@ -14,6 +15,9 @@
  *   criar-projeto  --org <slug da organização da lojista>
  *   banco
  *   ficha          [--nome <apelido>]
+ *   primeira-admin (o e-mail da administradora pela ENTRADA, nunca por argumento)
+ *   conferir       (só leitura: a lista do que torna a loja pronta)
+ *   definir-dono   (reservado: recusa até a regra ser decidida)
  *
  * O QUE ESTE ARQUIVO GARANTE (tests/frota_nova_loja_comando_test.ts trava):
  *  - SEM --aplicar NADA sai nem se grava: nenhum fetch (nem o POST do
@@ -27,7 +31,14 @@
  *    refresh, código, client_secret, db_pass, e-mail nem chave da loja;
  *  - uma rodada com --aplicar segura a trava <slug>.trava da pasta do estado:
  *    dois comandos da MESMA loja nunca correm juntos (dois criar-projeto
- *    fariam dois POST);
+ *    fariam dois POST); o segundo é NÃO sem nenhum fetch. Se a marca da trava
+ *    não chega a ser escrita, a própria travar apaga o arquivo que criou (só
+ *    se ainda for o dela), como o cofre-local;
+ *  - a loja (slug) que não cabe no cadastro (nome de segredo
+ *    SUPABASE_ACCESS_TOKEN_<LOJA> com sufixo de até 24, domínio <slug>.vercel.app
+ *    sem hífen no fim) é recusada já no abrir, antes de qualquer autorização;
+ *  - estado local que não grava DEPOIS do POST do projeto é INCERTO (o projeto
+ *    pode ter nascido; a retomada o acha pelo nome), nunca NÃO;
  *  - o access token só existe em memória: cada rodada renova UMA vez pelo
  *    acesso-oauth.mjs, que grava o refresh novo no cofre ANTES de devolver o
  *    access token (e recusa renovação simultânea, mesmo de outro processo);
@@ -40,7 +51,15 @@
  *    5 min (o mesmo padrão do provider Terraform da Supabase);
  *  - banco chama o instalador-banco.mjs (uma migration por chamada) e só diz
  *    SIM se, relido o banco depois, a fila INTEIRA está no ledger e a marca da
- *    instalação está concluída;
+ *    instalação está concluída; envios sem erro com a releitura de conferência
+ *    caída = INCERTO (não dá para dizer que não ficou);
+ *  - primeira-admin chama o primeira-admin.mjs (B3) com o acesso OAuth desta
+ *    rodada: o e-mail entra pela entrada e só vai ao banco (nunca ao estado, à
+ *    saída nem à mensagem); a transação do B3 tem o SET LOCAL ROLE postgres
+ *    (as travas de cargo leem o GUC role) e repete todas as guardas;
+ *  - conferir é SÓ LEITURA (GET e database/query read_only; não grava nem o
+ *    estado local) e dá SIM, NÃO ou INCERTO por item; o geral é SIM só se
+ *    TODOS forem SIM, e o que ainda não está ligado aparece como pendente NÃO;
  *  - ficha confere store_config id = 1 (semeada pela migration
  *    20261540000000) e GERA, sem executar, o SQL da linha em frota_lojas e a
  *    entrada de lojas.json para o passo de cadastro (B5);
@@ -65,8 +84,15 @@ import {
   arquivosDoRepo,
   instalar,
   lerEstado,
+  lerPrivilegiosPadrao,
   planejarInstalacao,
 } from "./instalador-banco.mjs";
+import { executar as executarPrimeiraAdmin } from "./primeira-admin.mjs";
+import {
+  SQL_SAUDE,
+  faltandoNo,
+  lerEstado as lerEstadoDosSegredos,
+} from "./segredos-da-loja.mjs";
 import {
   API_GESTAO,
   ESTADO_DESCONHECIDO,
@@ -90,7 +116,12 @@ export const PASSOS = Object.freeze([
   "criar-projeto",
   "banco",
   "ficha",
+  "primeira-admin",
+  "definir-dono",
+  "conferir",
 ]);
+/** Passo com o nome guardado e sem execução: a regra está com o sócio. */
+const RESERVADOS = new Set(["definir-dono"]);
 export const SIM = "SIM";
 export const NAO = "NÃO";
 export const INCERTO = "INCERTO";
@@ -157,6 +188,8 @@ export const CAMPOS_DO_ESTADO = Object.freeze({
     total: inteiro,
   }),
   ficha: Object.freeze({}),
+  // só o veredito: o e-mail NUNCA entra aqui
+  "primeira-admin": Object.freeze({}),
 });
 
 export class ErroDoComando extends Error {
@@ -214,8 +247,9 @@ export function conferirEstado(e, slug) {
 /**
  * O estado em disco: <pasta>/<slug>.json, gravado de forma atômica (arquivo
  * novo + rename), e a trava <pasta>/<slug>.trava (criação exclusiva).
+ * `abrirArquivo` existe para o teste simular disco que falha.
  */
-export function criarEstadoEmArquivo({ pasta } = {}) {
+export function criarEstadoEmArquivo({ pasta, abrirArquivo = open } = {}) {
   const raiz = exigirPastaSegura(pasta ?? pastaPadraoDoEstado());
   const arquivo = (slug, ext) => {
     if (typeof slug !== "string" || !RE_PROJETO.test(slug)) {
@@ -255,7 +289,7 @@ export function criarEstadoEmArquivo({ pasta } = {}) {
       const final = arquivo(slug, "json");
       const temporario = `${final}.${randomBytes(6).toString("hex")}.tmp`;
       try {
-        const h = await open(temporario, "wx", 0o600);
+        const h = await abrirArquivo(temporario, "wx", 0o600);
         try {
           await h.writeFile(`${JSON.stringify(e, null, 2)}\n`, "utf8");
           await h.sync();
@@ -277,7 +311,7 @@ export function criarEstadoEmArquivo({ pasta } = {}) {
       const marca = `${process.pid} ${new Date().toISOString()} ${randomBytes(8).toString("hex")}`;
       let h;
       try {
-        h = await open(caminho, "wx", 0o600);
+        h = await abrirArquivo(caminho, "wx", 0o600);
       } catch (e) {
         if (e?.code === "EEXIST") {
           throw new ErroDoComando(
@@ -290,9 +324,32 @@ export function criarEstadoEmArquivo({ pasta } = {}) {
         );
       }
       try {
-        await h.writeFile(marca, "utf8");
-      } finally {
-        await h.close();
+        try {
+          await h.writeFile(marca, "utf8");
+        } finally {
+          await h.close();
+        }
+      } catch {
+        // O arquivo foi criado por NÓS (o "wx" acima), mas a marca não ficou
+        // inteira: sem marca, o liberar() nunca o reconheceria e a loja
+        // ficaria travada. Só é apagado se ainda for o nosso (vazio ou com um
+        // pedaço do começo da nossa marca); outro conteúdo = alguém apagou o
+        // nosso e travou depois, e esse fica. O mesmo do cofre-local; o erro
+        // de baixo nível fica de fora (a mensagem dele carrega o caminho).
+        let nossaSaiu = false;
+        try {
+          const atual = await readFile(caminho, "utf8");
+          if (marca.startsWith(atual)) await unlink(caminho);
+          nossaSaiu = true; // apagada agora, ou o que está lá não é a nossa
+        } catch (e) {
+          nossaSaiu = e?.code === "ENOENT";
+        }
+        throw new ErroDoComando(
+          nossaSaiu
+            ? `Estado: não consegui gravar a trava da loja ${slug}; nada ficou travado e nada foi feito. Repita o comando.`
+            : `Estado: não consegui gravar a trava da loja ${slug} nem apagá-la; nada foi feito, e o próximo comando da loja vai dizer qual arquivo apagar.`,
+          { codigo: "TRAVA_NAO_GRAVOU" },
+        );
       }
       let solta = false;
       return async () => {
@@ -410,11 +467,12 @@ function contexto(pedido, d) {
     agora: d.agora,
   });
   const sinal = { limite: false };
+  const token = fonteDeToken(acesso, slug, d.agora);
   const gestao = criarClienteGestao({
-    token: fonteDeToken(acesso, slug, d.agora),
+    token,
     fetch: fetchQueVeOLimite(d.fetch, sinal),
   });
-  return { slug, acesso, gestao, sinal };
+  return { slug, acesso, gestao, sinal, token };
 }
 
 async function lerUmaEntrada(d, pergunta) {
@@ -436,6 +494,27 @@ const temOrgDeclarada = (p) =>
   typeof p?.organization_slug === "string" ||
   typeof p?.organization_id === "string";
 const nomeDoProjeto = (slug) => `ikcous-${slug}`;
+const segredoDoToken = (slug) =>
+  `SUPABASE_ACCESS_TOKEN_${slug.toUpperCase().replace(/-/g, "_")}`;
+/** Até onde o slug cabe no cadastro (lojas.cjs, RE_SEGREDO: sufixo de até 24;
+ * o hífen vira sublinhado, um por um). */
+export const TETO_DO_SLUG = 24;
+
+/** Por que a loja não cabe no cadastro (null = cabe). O mesmo teste que o
+ * cadastroGerado faz no fim, feito no abrir: falhar depois do projeto criado
+ * deixaria uma loja que não se cadastra. */
+function slugQueNaoCabe(slug) {
+  if (!RE_SEGREDO.test(segredoDoToken(slug))) {
+    return `a loja ${slug} tem ${slug.length} caracteres e o limite é ${TETO_DO_SLUG}: o cadastro guarda o acesso dela no segredo ${textoSeguro(segredoDoToken(slug), 80)}, que aceita no máximo ${TETO_DO_SLUG} depois de SUPABASE_ACCESS_TOKEN_. Escolha um nome de até ${TETO_DO_SLUG} caracteres (letras minúsculas, dígitos e hífen) e rode abrir de novo; nada foi feito.`;
+  }
+  // Com o slug em RE_PROJETO (^[a-z][a-z0-9-]{1,39}$), <slug>.vercel.app só
+  // reprova no CHECK de frota_lojas.dominio_publico (20261141000000: cada
+  // rótulo termina em letra ou dígito) se o slug terminar em hífen.
+  if (slug.endsWith("-")) {
+    return `o domínio ${slug}.vercel.app não passa no CHECK de frota_lojas (o nome da loja não pode terminar em hífen). Escolha outro nome e rode abrir de novo; nada foi feito.`;
+  }
+  return null;
+}
 
 // ─── abrir ──────────────────────────────────────────────────────────────────
 
@@ -593,7 +672,26 @@ async function esperarAtivo(gestao, ref, org, d) {
 const MENSAGEM_LIMITE =
   "PARAR: o Supabase recusou criar o projeto porque a conta da lojista já tem 2 projetos grátis ATIVOS. Esse limite é POR PESSOA (conta todas as organizações em que ela é dona ou administradora), não por organização. O que a lojista faz: no painel do Supabase, pausar (ou apagar, se não usa mais) um projeto grátis que já tem — projeto pausado não conta —, ou criar a loja com outra conta, de outro e-mail. Depois rode criar-projeto de novo.";
 
+/** Depois que o POST do projeto saiu, o estado local que não grava NÃO prova
+ * que "nada mudou" (achado da revisão do C1): o projeto pode ter nascido, e
+ * quem o acha é a retomada, pelo nome. Antes do POST, a falha do estado
+ * continua NÃO (nada saiu). */
 async function passoCriarProjeto(pedido, d) {
+  const marca = { postSaiu: false };
+  try {
+    return await criarProjeto(pedido, d, marca);
+  } catch (erro) {
+    if (marca.postSaiu && erro?.codigo === "ESTADO_NAO_GRAVOU") {
+      return resultado(
+        INCERTO,
+        `${erro.message} Mas o pedido de criação do projeto já tinha saído: o projeto ${nomeDoProjeto(pedido.slug)} PODE ter sido criado. Rode criar-projeto de novo — a retomada procura o projeto pelo nome antes de criar (não cria outro), e a senha do banco no cofre é a mesma.`,
+      );
+    }
+    throw erro;
+  }
+}
+
+async function criarProjeto(pedido, d, marca) {
   const { slug, org } = pedido;
   if (!org) {
     return resultado(
@@ -657,6 +755,7 @@ async function passoCriarProjeto(pedido, d) {
         postEm: new Date(d.agora()).toISOString(),
       });
       let criado;
+      marca.postSaiu = true;
       try {
         criado = await gestao.pedir("projetos", {
           metodo: "POST",
@@ -834,7 +933,12 @@ async function passoBanco(pedido, d) {
         mensagem = `${r.mensagem} Mas a conferência não fecha: ${conf.motivo}`;
       }
     }
-  } else if (r.estado === "ESTADO_DESCONHECIDO") {
+  } else if (
+    r.estado === "ESTADO_DESCONHECIDO" ||
+    (r.estado === "FALHOU" && r.releituraFalhou === true)
+  ) {
+    // envio sem resposta, ou envios certos sem a releitura que os confere:
+    // pode ter ficado, então não é NÃO (achado da revisão do C1)
     veredito = INCERTO;
   } else {
     veredito = NAO;
@@ -854,21 +958,12 @@ const literal = (v) => `'${String(v).replace(/'/g, "''")}'`;
 
 /** A entrada de lojas.json e o SQL de frota_lojas, só como TEXTO. */
 function cadastroGerado({ slug, ref, apelido, publicavel, lojasBrutas }) {
-  // Com o slug já em RE_PROJETO (^[a-z][a-z0-9-]{1,39}$), <slug>.vercel.app só
-  // reprova no CHECK de frota_lojas.dominio_publico (20261141000000: cada
-  // rótulo termina em letra ou dígito) se o slug terminar em hífen.
+  // o abrir já recusa o slug que não cabe; esta é a mesma conferência de novo
+  // (loja aberta antes desta trava existir)
   const dominio = `${slug}.vercel.app`;
-  if (slug.endsWith("-")) {
-    throw new ErroDoComando(
-      `o domínio ${dominio} não passa no CHECK de frota_lojas (o slug não pode terminar em hífen).`,
-    );
-  }
-  const segredo = `SUPABASE_ACCESS_TOKEN_${slug.toUpperCase().replace(/-/g, "_")}`;
-  if (!RE_SEGREDO.test(segredo)) {
-    throw new ErroDoComando(
-      `o nome de segredo ${textoSeguro(segredo, 80)} passa do limite do cadastro (sufixo de até 24 caracteres): o passo de cadastro escolhe outro nome.`,
-    );
-  }
+  const naoCabe = slugQueNaoCabe(slug);
+  if (naoCabe) throw new ErroDoComando(naoCabe);
+  const segredo = segredoDoToken(slug);
   const entrada = {
     ref,
     classe: "assinante",
@@ -913,6 +1008,20 @@ function cadastroGerado({ slug, ref, apelido, publicavel, lojasBrutas }) {
   };
 }
 
+/** A linha de SQL_FICHA, ou null se veio fora do formato. */
+function linhaDaFicha(linhas) {
+  const l = Array.isArray(linhas) && linhas.length === 1 ? linhas[0] : null;
+  if (
+    !l ||
+    !Number.isInteger(l.ficha) ||
+    !(l.marca === null || typeof l.marca === "string") ||
+    !(l.dominio_publico === null || typeof l.dominio_publico === "string")
+  ) {
+    return null;
+  }
+  return l;
+}
+
 async function passoFicha(pedido, d) {
   const { slug } = pedido;
   const e = await d.estado.ler(slug);
@@ -932,13 +1041,8 @@ async function passoFicha(pedido, d) {
   const linhas = await gestao.consultarBanco(pre.ref, SQL_FICHA, {
     somenteLeitura: true,
   });
-  const l = Array.isArray(linhas) && linhas.length === 1 ? linhas[0] : null;
-  if (
-    !l ||
-    !Number.isInteger(l.ficha) ||
-    !(l.marca === null || typeof l.marca === "string") ||
-    !(l.dominio_publico === null || typeof l.dominio_publico === "string")
-  ) {
+  const l = linhaDaFicha(linhas);
+  if (!l) {
     const r = resultado(INCERTO, "a leitura da ficha voltou fora do formato.");
     await registrar(d, slug, "ficha", { veredito: INCERTO });
     return r;
@@ -992,6 +1096,390 @@ async function passoFicha(pedido, d) {
     SIM,
     "ficha conferida; SQL da caderneta e entrada de lojas.json geradas acima, sem executar.",
   );
+}
+
+// ─── primeira-admin ─────────────────────────────────────────────────────────
+
+/** O código de saída do primeira-admin.mjs (B3) → veredito. */
+const VEREDITO_DO_B3 = new Map([
+  [0, SIM],
+  [1, NAO],
+  [2, INCERTO],
+]);
+const RE_LINHA_DO_VEREDITO = /^VEREDITO: (?:SIM|NÃO|INCERTO) — ([\s\S]*)$/;
+
+/** Defesa na fronteira do comando: o B3 já não imprime o e-mail; se alguma
+ * linha o trouxer (qualquer caixa), ela não sai daqui. */
+function semOEmail(linhas, email) {
+  const alvo = typeof email === "string" ? email.trim().toLowerCase() : "";
+  return linhas.map((l) =>
+    alvo !== "" && String(l).toLowerCase().includes(alvo)
+      ? "(linha omitida: continha o e-mail)"
+      : String(l),
+  );
+}
+
+async function passoPrimeiraAdmin(pedido, d) {
+  const { slug } = pedido;
+  const e = await d.estado.ler(slug);
+  if (e?.passos?.banco?.veredito !== SIM) {
+    return resultado(
+      NAO,
+      "rode banco --aplicar até dar SIM antes da primeira-admin (a conta dela mora no banco da loja). Nada foi lido.",
+    );
+  }
+  const pre = await projetoPronto(d, slug, "primeira-admin");
+  if (pre.falta) return resultado(NAO, pre.falta);
+  const { token } = contexto(pedido, d);
+  // o e-mail só existe nesta variável e no SQL que o B3 manda ao banco
+  let email = "";
+  const r = await executarPrimeiraAdmin(
+    ["--projeto", pre.ref, "--loja", slug, "--aplicar"],
+    {
+      lerEntrada: async () => {
+        const t = await d.lerEntrada(
+          "Digite o e-mail da administradora (o mesmo com que ela se cadastrou NA LOJA) e tecle Enter: ",
+        );
+        email = typeof t === "string" ? t : "";
+        return t;
+      },
+      obterToken: () => token(),
+      fetch: d.fetch,
+    },
+  );
+  const saida = semOEmail(Array.isArray(r?.saida) ? r.saida : [], email);
+  const erros = semOEmail(Array.isArray(r?.erros) ? r.erros : [], email);
+  email = "";
+  const final = saida.at(-1) ?? "";
+  const m = RE_LINHA_DO_VEREDITO.exec(final);
+  const lido = VEREDITO_DO_B3.get(r?.codigo);
+  const veredito = m && lido ? lido : INCERTO;
+  const corpo = m
+    ? m[1]
+    : "o primeira-admin respondeu fora do formato: não dá para afirmar o que aconteceu. Rode de novo (é seguro: a mesma pessoa já admin dá SIM sem gravar).";
+  for (const l of saida.slice(0, -1)) d.saida.out(l);
+  const mensagem = erros.length > 0 ? `${corpo} (${erros.join("; ")})` : corpo;
+  try {
+    await registrar(d, slug, "primeira-admin", { veredito });
+  } catch (erro) {
+    if (erro?.codigo !== "ESTADO_NAO_GRAVOU") throw erro;
+    // o banco pode ter gravado: SIM sem o estado não é SIM
+    return resultado(
+      veredito === SIM ? INCERTO : veredito,
+      `${mensagem}. ${erro.message} Rode primeira-admin de novo: é seguro (a mesma pessoa já admin dá SIM sem gravar).`,
+    );
+  }
+  return resultado(veredito, mensagem);
+}
+
+// ─── conferir ───────────────────────────────────────────────────────────────
+
+/** Só leitura: quantas pessoas são admin em QUALQUER das duas fontes do cargo
+ * (a mesma união do primeira-admin.mjs) e quantas são admin nas DUAS. Nenhum
+ * id, nenhum e-mail. */
+export const SQL_ADMINS =
+  "SELECT (SELECT count(*) FROM (SELECT p.id FROM public.profiles p WHERE p.role = 'admin' UNION SELECT u.id FROM auth.users u WHERE u.raw_app_meta_data ->> 'role' = 'admin') a)::int AS admins, (SELECT count(*) FROM auth.users u JOIN public.profiles p ON p.id = u.id WHERE p.role = 'admin' AND u.raw_app_meta_data ->> 'role' = 'admin')::int AS nas_duas;";
+
+/** O que a loja pronta precisa e este comando ainda não faz: aparece como
+ * pendente (NÃO) até o passo ser ligado (C2; definir-dono com o sócio). */
+const PENDENTES = Object.freeze([
+  "functions",
+  "login",
+  "marca",
+  "chave-do-plano",
+  "cadastro",
+  "definir-dono",
+]);
+/** Os itens que só se conferem dentro do projeto (SQL e secrets). */
+const ITENS_DO_PROJETO = Object.freeze([
+  "banco",
+  "ficha",
+  "segredos",
+  "reconciliação",
+  "admin",
+]);
+const IDADE_MAXIMA_DA_RODADA_S = 900;
+
+/**
+ * O veredito do conjunto: SIM só se TODOS os itens forem SIM; algum NÃO = NÃO;
+ * o resto (INCERTO, ou qualquer coisa fora de SIM/NÃO/INCERTO) = INCERTO.
+ * Lista vazia não é SIM: nada conferido não prova nada.
+ */
+export function vereditoGeral(itens) {
+  if (!Array.isArray(itens) || itens.length === 0) return NAO;
+  const vs = itens.map((i) => i?.veredito);
+  if (vs.includes(NAO)) return NAO;
+  if (vs.every((v) => v === SIM)) return SIM;
+  return INCERTO;
+}
+
+/** A gestão que só LÊ: pedir só aceita GET e toda consulta vai read_only.
+ * O conferir não tem como escrever, nem por engano de quem chama. */
+function somenteLeitura(gestao) {
+  return Object.freeze({
+    async pedir(modelo, opcoes = {}) {
+      if ((opcoes?.metodo ?? "GET") !== "GET") {
+        throw new ErroDoComando(
+          "conferir é só leitura: um pedido de escrita foi recusado antes da rede.",
+        );
+      }
+      return await gestao.pedir(modelo, opcoes);
+    },
+    async consultarBanco(ref, sql) {
+      return await gestao.consultarBanco(ref, sql, { somenteLeitura: true });
+    },
+  });
+}
+
+/** Por que uma leitura falhou, sem segredo (só mensagem de módulo nosso). */
+const porque = (erro) => resultadoDoErro(erro).mensagem;
+
+async function conferirNaLoja(pedido, d, ref, org, item) {
+  const naoConferidos = (motivo) => {
+    for (const n of ITENS_DO_PROJETO) item(n, INCERTO, motivo);
+  };
+  const { gestao: gestaoCompleta, token } = contexto(pedido, d);
+  const leitura = somenteLeitura(gestaoCompleta);
+  // o acesso desta rodada antes de tudo, uma vez: se ele falha, as leituras
+  // não tentam renovar de novo (cada renovação gira o refresh)
+  try {
+    await token();
+  } catch (erro) {
+    item("projeto", INCERTO, `sem acesso à conta da lojista: ${porque(erro)}`);
+    naoConferidos("não conferido: sem acesso à conta da lojista.");
+    return;
+  }
+
+  let p;
+  try {
+    p = await leitura.pedir("projeto", { ref });
+  } catch (erro) {
+    item(
+      "projeto",
+      INCERTO,
+      `não consegui ler o projeto ${ref}: ${porque(erro)}`,
+    );
+    naoConferidos("não conferido: o projeto não foi lido.");
+    return;
+  }
+  if (org && temOrgDeclarada(p) && !projetoEhDaOrg(p, org)) {
+    item("projeto", NAO, `o projeto ${ref} não é da organização ${org}.`);
+    naoConferidos("não conferido: o projeto não é o desta loja.");
+    return;
+  }
+  const status = RE_STATUS.test(String(p?.status)) ? p.status : null;
+  if (status !== PRONTO) {
+    item(
+      "projeto",
+      status === null ? INCERTO : NAO,
+      `o projeto ${ref} está ${status ?? "com status ilegível"}, não ACTIVE_HEALTHY.`,
+    );
+    naoConferidos("não conferido: SQL só com o projeto ACTIVE_HEALTHY.");
+    return;
+  }
+  item("projeto", SIM, `${ref} ACTIVE_HEALTHY.`);
+
+  // banco: o ledger e a marca do instalador, e os privilégios padrão (o mesmo
+  // que o instalador exige para dizer JA_INSTALADA)
+  try {
+    const cliente = clienteDoInstalador(leitura, ref);
+    const plano = planejarInstalacao(await lerEstado(cliente), d.arquivos());
+    if (plano.acao !== "ja_instalada") {
+      item(
+        "banco",
+        NAO,
+        `a instalação não está concluída: ${String(plano.motivo ?? plano.acao).slice(0, 300)}`,
+      );
+    } else {
+      const priv = await lerPrivilegiosPadrao(cliente);
+      item(
+        "banco",
+        priv.faltando === "" ? SIM : NAO,
+        priv.faltando === ""
+          ? `as ${plano.total} migrations da fila estão no ledger, a instalação está concluída e os privilégios padrão de public batem.`
+          : `ledger completo e instalação concluída, mas os privilégios padrão de public não batem (falta: ${String(priv.faltando).slice(0, 200)}).`,
+      );
+    }
+  } catch (erro) {
+    item(
+      "banco",
+      INCERTO,
+      `não consegui ler o ledger: ${String(erro?.message ?? erro).slice(0, 300)}`,
+    );
+  }
+
+  // ficha: store_config id = 1 com a marca da migration 20261540000000
+  try {
+    const l = linhaDaFicha(await leitura.consultarBanco(ref, SQL_FICHA));
+    if (!l)
+      item("ficha", INCERTO, "a leitura da ficha voltou fora do formato.");
+    else if (l.ficha !== 1)
+      item(
+        "ficha",
+        NAO,
+        "public.store_config id = 1 não existe: sem a ficha a loja fica em manutenção (503).",
+      );
+    else if (l.marca !== MARCA_DA_FICHA)
+      item(
+        "ficha",
+        INCERTO,
+        "a ficha id = 1 existe, mas sem a marca da migration 20261540000000: conferir quem a criou.",
+      );
+    else item("ficha", SIM, "store_config id = 1 com a marca da migration.");
+  } catch (erro) {
+    item("ficha", INCERTO, `não consegui ler a ficha: ${porque(erro)}`);
+  }
+
+  // segredos do B1: só NOMES (o segredos-da-loja descarta o digest que a API
+  // devolve junto); a reconciliação vem da saude_da_loja() (plano, L3)
+  let seg = null;
+  try {
+    seg = await lerEstadoDosSegredos(leitura, ref);
+    if (!seg.pronto) {
+      item(
+        "segredos",
+        INCERTO,
+        `o projeto saiu de ACTIVE_HEALTHY durante a conferência (${textoSeguro(seg.status)}).`,
+      );
+    } else {
+      const falta = faltandoNo(seg);
+      item(
+        "segredos",
+        falta.length === 0 ? SIM : NAO,
+        falta.length === 0
+          ? "todos os nomes existem (functions, Vault e store_config.vapid_public_key); nenhum valor foi lido."
+          : `falta: ${falta.join(", ")} (quem grava é o segredos-da-loja.mjs; o passo segredos entra no C2).`,
+      );
+    }
+  } catch (erro) {
+    item("segredos", INCERTO, `não consegui ler os nomes: ${porque(erro)}`);
+  }
+  if (!seg?.pronto) {
+    item(
+      "reconciliação",
+      INCERTO,
+      "não conferida: os segredos não foram lidos.",
+    );
+  } else if (!seg.saudeExiste) {
+    item(
+      "reconciliação",
+      NAO,
+      "saude_da_loja() não existe neste banco (falta a migration 20261500000000).",
+    );
+  } else {
+    try {
+      const r = await leitura.consultarBanco(ref, SQL_SAUDE);
+      const saude = Array.isArray(r) && r.length === 1 ? r[0]?.saude : null;
+      const idade = saude?.idade_rodada_s;
+      if (saude && idade === null) {
+        item(
+          "reconciliação",
+          NAO,
+          "ainda não rodou: o cron roda de 10 em 10 min e precisa dos segredos e da function reconciliar-pagamentos. Rode conferir de novo daqui a 10 min.",
+        );
+      } else if (typeof idade !== "number" || !Number.isFinite(idade)) {
+        item(
+          "reconciliação",
+          INCERTO,
+          "saude_da_loja() respondeu fora do formato.",
+        );
+      } else if (idade < IDADE_MAXIMA_DA_RODADA_S) {
+        item("reconciliação", SIM, `rodou há ${Math.round(idade)} s.`);
+      } else {
+        item(
+          "reconciliação",
+          NAO,
+          `a última rodada foi há ${Math.round(idade)} s (mais de 15 min): parada? Confira o passo 4 do runbook.`,
+        );
+      }
+    } catch (erro) {
+      item(
+        "reconciliação",
+        INCERTO,
+        `não consegui ler saude_da_loja(): ${porque(erro)}`,
+      );
+    }
+  }
+
+  // admin: exatamente 1, com admin nas duas fontes do cargo
+  try {
+    const r = await leitura.consultarBanco(ref, SQL_ADMINS);
+    const l = Array.isArray(r) && r.length === 1 ? r[0] : null;
+    if (!l || !inteiro(l.admins) || !inteiro(l.nas_duas)) {
+      item(
+        "admin",
+        INCERTO,
+        "a contagem de administradoras voltou fora do formato.",
+      );
+    } else if (l.admins === 1 && l.nas_duas === 1) {
+      item(
+        "admin",
+        SIM,
+        "1 administradora, com admin nas duas fontes do cargo.",
+      );
+    } else if (l.admins === 0) {
+      item(
+        "admin",
+        NAO,
+        "a loja não tem administradora: rode primeira-admin --aplicar.",
+      );
+    } else {
+      item(
+        "admin",
+        NAO,
+        `esperava 1 administradora com admin nas duas fontes do cargo; achei ${l.admins} (${l.nas_duas} nas duas). Conferir antes de entregar a loja.`,
+      );
+    }
+  } catch (erro) {
+    item(
+      "admin",
+      INCERTO,
+      `não consegui contar as administradoras: ${porque(erro)}`,
+    );
+  }
+}
+
+async function passoConferir(pedido, d) {
+  const { slug } = pedido;
+  const itens = [];
+  const item = (nome, veredito, detalhe) =>
+    itens.push({ item: nome, veredito, detalhe });
+  const cp = (await d.estado.ler(slug))?.passos?.["criar-projeto"];
+  if (cp?.ref) {
+    await conferirNaLoja(pedido, d, cp.ref, cp.org, item);
+  } else {
+    item(
+      "projeto",
+      NAO,
+      "o estado local não tem projeto: rode criar-projeto --aplicar.",
+    );
+    for (const n of ITENS_DO_PROJETO)
+      item(n, NAO, "não conferido: a loja ainda não tem projeto.");
+  }
+  for (const p of PENDENTES) {
+    item(
+      p,
+      NAO,
+      `pendente: passo ${p} ainda não ligado${p === "definir-dono" ? " (aguardando decisão)" : " (entra no C2)"}.`,
+    );
+  }
+  const veredito = vereditoGeral(itens);
+  d.saida.out(
+    [
+      `Conferência da loja ${slug} (só leitura; nada foi gravado):`,
+      ...itens.map((i) => `  [${i.veredito}] ${i.item}: ${i.detalhe}`),
+    ].join("\n"),
+  );
+  const fora = itens.filter((i) => i.veredito !== SIM).map((i) => i.item);
+  return {
+    ...resultado(
+      veredito,
+      veredito === SIM
+        ? `a loja está pronta: os ${itens.length} itens deram SIM.`
+        : `${itens.length - fora.length} de ${itens.length} itens SIM; não SIM: ${fora.join(", ")}.`,
+    ),
+    itens,
+  };
 }
 
 // ─── ensaio ─────────────────────────────────────────────────────────────────
@@ -1054,12 +1542,27 @@ async function ensaio(pedido, d) {
       `${ENSAIO} a fila deste checkout tem ${plano.total} migrations; num banco vazio iriam uma por chamada, cada uma com o registro no ledger na mesma transação; o que já estiver no ledger não é repetido.`,
     );
   }
-  // ficha
-  if (passos.banco?.veredito !== SIM)
-    return resultado(NAO, `${ENSAIO} rode banco até dar SIM antes.`);
+  if (passo === "ficha") {
+    if (passos.banco?.veredito !== SIM)
+      return resultado(NAO, `${ENSAIO} rode banco até dar SIM antes.`);
+    return resultado(
+      INCERTO,
+      `${ENSAIO} leria store_config id = 1 (só leitura) e a chave publishable, e geraria o SQL de frota_lojas e a entrada de lojas.json sem executar.`,
+    );
+  }
+  if (passo === "primeira-admin") {
+    // nem o e-mail é pedido: sem --aplicar não há o que fazer com ele
+    if (passos.banco?.veredito !== SIM)
+      return resultado(NAO, `${ENSAIO} rode banco até dar SIM antes.`);
+    return resultado(
+      INCERTO,
+      `${ENSAIO} pediria o e-mail pela entrada, leria a conta e as administradoras (só leitura) e, se a conta for única, confirmada e a loja não tiver administradora, mandaria UMA transação: BEGIN; SET LOCAL ROLE postgres; as guardas de novo; UPDATE do cargo; conferência 1,1,1; COMMIT.`,
+    );
+  }
+  // conferir
   return resultado(
     INCERTO,
-    `${ENSAIO} leria store_config id = 1 (só leitura) e a chave publishable, e geraria o SQL de frota_lojas e a entrada de lojas.json sem executar.`,
+    `${ENSAIO} ${passos["criar-projeto"]?.ref ? `leria (só leitura) o projeto ${passos["criar-projeto"].ref}` : "a loja ainda não tem projeto no estado local; com projeto, leria (só leitura)"}: status, ${ITENS_DO_PROJETO.join(", ")}; e listaria como pendente: ${PENDENTES.join(", ")}.`,
   );
 }
 
@@ -1071,6 +1574,8 @@ const EXECUTORES = Object.freeze({
   "criar-projeto": passoCriarProjeto,
   banco: passoBanco,
   ficha: passoFicha,
+  "primeira-admin": passoPrimeiraAdmin,
+  conferir: passoConferir,
 });
 
 /** As dependências reais só nascem se o chamador não as deu (o teste dá todas). */
@@ -1094,8 +1599,9 @@ function completar(deps) {
 
 /**
  * Roda UM passo. `pedido` = { passo, slug, aplicar, clientId?, redirect?,
- * org?, nome? }. Devolve { passo, veredito, mensagem } e imprime a linha do
- * veredito. Nunca lança: erro vira NÃO ou INCERTO com mensagem sem segredo.
+ * org?, nome? }. Devolve { passo, veredito, mensagem } (o conferir também
+ * `itens`) e imprime a linha do veredito. Nunca lança: erro vira NÃO ou
+ * INCERTO com mensagem sem segredo.
  */
 export async function executarPasso(pedido, deps = {}) {
   const passo = pedido?.passo;
@@ -1111,6 +1617,13 @@ export async function executarPasso(pedido, deps = {}) {
       r = resultado(NAO, "loja inválida (minúsculas, dígitos e hífen).");
     } else if (pedido.org !== undefined && !RE_ORG.test(String(pedido.org))) {
       r = resultado(NAO, "--org fora do formato.");
+    } else if (RESERVADOS.has(passo)) {
+      r = resultado(
+        NAO,
+        `o passo ${passo} está reservado, aguardando decisão da regra (quem vira dona da loja, e quando). Nada foi feito.`,
+      );
+    } else if (passo === "abrir" && slugQueNaoCabe(pedido.slug)) {
+      r = resultado(NAO, slugQueNaoCabe(pedido.slug));
     }
     if (!r) {
       d = completar(deps);
@@ -1143,7 +1656,7 @@ const OPCOES_COM_VALOR = new Map([
   ["--nome", "nome"],
 ]);
 const POR_ENTRADA =
-  "o código e o client_secret entram pela entrada padrão (cole quando o comando pedir), nunca por argumento";
+  "o código, o client_secret e o e-mail da administradora entram pela entrada padrão (cole quando o comando pedir), nunca por argumento";
 
 /** argv sem "node" e sem o caminho do script. LANÇA ErroDoComando (sem ecoar
  * valor nenhum que não seja nome de opção saneado). */
@@ -1230,7 +1743,7 @@ async function principal() {
       e instanceof ErroDoComando ? e.message : "argumentos ilegíveis.",
     );
     console.error(
-      "Uso: node scripts/frota/nova-loja.mjs <abrir|receber|criar-projeto|banco|ficha> --loja <slug> [--aplicar] [--client-id <id> --redirect <url>] [--org <org>] [--nome <apelido>]",
+      `Uso: node scripts/frota/nova-loja.mjs <${PASSOS.join("|")}> --loja <slug> [--aplicar] [--client-id <id> --redirect <url>] [--org <org>] [--nome <apelido>]`,
     );
     return 1;
   }

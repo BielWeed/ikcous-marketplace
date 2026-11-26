@@ -28,6 +28,7 @@
  * Nenhuma chamada de rede real: todo fetch aqui é falso; os cofres são os de
  * memória; o estado vai para uma pasta temporária.
  */
+import { open } from "node:fs/promises";
 import { join } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
   assert,
@@ -47,12 +48,25 @@ import {
 import {
   INTERVALO_CONSULTA_MS,
   MARCA_DA_FICHA,
+  PASSOS,
   PRAZO_ATIVO_MS,
+  SQL_ADMINS,
   SQL_FICHA,
   criarEstadoEmArquivo,
   executarPasso,
   lerArgumentos,
+  vereditoGeral,
 } from "../scripts/frota/nova-loja.mjs";
+import {
+  sqlDaPromocao,
+  sqlDoDiagnostico,
+} from "../scripts/frota/primeira-admin.mjs";
+import {
+  SQL_ESTADO_DO_BANCO,
+  SQL_NOMES_NO_VAULT,
+  SQL_SAUDE,
+  SQL_STORE_CONFIG,
+} from "../scripts/frota/segredos-da-loja.mjs";
 
 const SLUG = "loja-nova";
 const ORG = "orgdalojistaaaaaaaaa";
@@ -66,6 +80,14 @@ const CODIGO = "codigo-FALSO-da-lojista-0123456789";
 const ACCESS = "sbp_oauth_ACCESS_FALSO_0123456789abcdef";
 const REFRESH_1 = "refresh-FALSO-um-0123456789";
 const EMAIL = "lojista.falsa@exemplo.test";
+// o digest que GET /secrets devolve junto do nome: nunca pode sair
+const DIGEST_DO_SEGREDO = "digest-FALSO-do-valor-0123456789abcdef";
+const SEGREDOS_DO_B1 = [
+  "MP_CHAVES_ENCRYPTION_KEY",
+  "RECONCILIACAO_SECRET",
+  "VAPID_PUBLIC_KEY",
+  "VAPID_PRIVATE_KEY",
+];
 const PUBLICAVEL = "sb_publishable_CHAVE_PUBLICA_FALSA_0123";
 const SERVICE_ROLE = "eyJSERVICE_ROLE_FALSA.nunca.imprimir";
 // montada em pedaços: um literal com a forma de chave secreta do Supabase
@@ -102,8 +124,23 @@ function resposta(status, corpo) {
 
 /** O banco do projeto, do lado de lá do database/query (o mesmo roteiro do
  * bancoFalso do teste do instalador, devolvendo HTTP). */
-function bancoFalso({ ficha = 1, marca = MARCA_DA_FICHA } = {}) {
+function bancoFalso({
+  ficha = 1,
+  marca = MARCA_DA_FICHA,
+  alvo = "customer",
+  outrasAdmins = 0,
+  vault = ["reconciliacao_secret", "reconciliacao_url"],
+  temVapid = true,
+  idadeRodada = 120,
+} = {}) {
   const b = {
+    alvo,
+    outrasAdmins,
+    vault: [...vault],
+    temVapid,
+    idadeRodada,
+    falharEstadoNa: null,
+    leiturasDoEstado: 0,
     tabelas: 0,
     ledger: null,
     marcaInstalacao: null,
@@ -122,6 +159,9 @@ function bancoFalso({ ficha = 1, marca = MARCA_DA_FICHA } = {}) {
         ];
       }
       if (sql === SQL_ESTADO) {
+        b.leiturasDoEstado += 1;
+        if (b.leiturasDoEstado === b.falharEstadoNa)
+          throw Object.assign(new Error("leitura caiu"), { http: 503 });
         return [
           {
             tabelas_em_public: b.tabelas,
@@ -153,6 +193,44 @@ function bancoFalso({ ficha = 1, marca = MARCA_DA_FICHA } = {}) {
           },
         ];
       }
+      const admins = () => (b.alvo === "admin" ? 1 : 0) + b.outrasAdmins;
+      if (sql === SQL_ADMINS) return [{ admins: admins(), nas_duas: admins() }];
+      if (sql === sqlDoDiagnostico(EMAIL)) {
+        return [
+          {
+            contas: 1,
+            confirmada: true,
+            cargo_login: b.alvo,
+            tem_perfil: true,
+            cargo_perfil: b.alvo,
+            admins: admins(),
+            alvo_admin: b.alvo === "admin",
+          },
+        ];
+      }
+      if (sql === sqlDaPromocao(EMAIL)) {
+        if (b.outrasAdmins > 0)
+          throw Object.assign(new Error("ja tem"), { sqlstate: "IKA05" });
+        const acao = b.alvo === "admin" ? "ja_era_admin" : "promovida";
+        const linhas = b.alvo === "admin" ? 0 : 1;
+        b.alvo = "admin";
+        return [
+          {
+            resultado: JSON.stringify({ acao, usuarios: 1, linhas, admins: 1 }),
+          },
+        ];
+      }
+      if (sql === SQL_ESTADO_DO_BANCO) {
+        return [
+          { vault_existe: true, store_config_existe: true, saude_existe: true },
+        ];
+      }
+      if (sql === SQL_STORE_CONFIG)
+        return [{ linhas: 1, tem_vapid: b.temVapid }];
+      if (sql === SQL_NOMES_NO_VAULT)
+        return [...b.vault].sort().map((name) => ({ name }));
+      if (sql === SQL_SAUDE)
+        return [{ saude: { idade_rodada_s: b.idadeRodada } }];
       const m = /VALUES \('(\d{13,14})', '([a-z0-9_-]+)'/.exec(sql);
       if (!m || !sql.startsWith("BEGIN;\n"))
         throw new Error(`consulta inesperada: ${sql.slice(0, 60)}`);
@@ -176,8 +254,10 @@ function apiFalsa({
   postProjeto,
   banco = bancoFalso(),
   linha = [],
+  segredos = SEGREDOS_DO_B1,
 } = {}) {
   const s = {
+    segredos: [...segredos],
     chamadas: [],
     linha,
     banco,
@@ -191,7 +271,10 @@ function apiFalsa({
     const u = new URL(String(url));
     const metodo = init.method ?? "GET";
     const auth = init.headers?.authorization ?? "";
-    s.chamadas.push({ metodo, caminho: u.pathname, auth });
+    const somenteLeitura = u.pathname.endsWith("/database/query")
+      ? JSON.parse(init.body).read_only
+      : undefined;
+    s.chamadas.push({ metodo, caminho: u.pathname, auth, somenteLeitura });
     s.linha.push(`fetch ${metodo} ${u.pathname}`);
     if (u.pathname === "/v1/oauth/token") {
       const campos = new URLSearchParams(init.body);
@@ -256,8 +339,17 @@ function apiFalsa({
       try {
         return resposta(201, s.banco.responder(query));
       } catch (e) {
-        return resposta(400, { message: `ERROR:  XX000: ${e.message}` });
+        if (e.http) return resposta(e.http, { message: "indisponível" });
+        return resposta(400, {
+          message: `ERROR:  ${e.sqlstate ?? "XX000"}: ${e.message}`,
+        });
       }
+    }
+    if (metodo === "GET" && u.pathname === `/v1/projects/${REF}/secrets`) {
+      return resposta(
+        200,
+        s.segredos.map((name) => ({ name, value: DIGEST_DO_SEGREDO })),
+      );
     }
     if (metodo === "GET" && u.pathname === `/v1/projects/${REF}/api-keys`) {
       return resposta(200, [
@@ -874,4 +966,470 @@ Deno.test("argumentos: forma da chamada e o código NUNCA por argumento", () => 
   assertThrows(() => lerArgumentos(["segredos", "--loja", SLUG]));
   assertThrows(() => lerArgumentos(["banco", "--loja", "Loja Errada"]));
   assertThrows(() => lerArgumentos(["banco"]));
+});
+
+// ─── C3: a trava de verdade (achado ANTES DE CRESCER da revisão do C1) ──────
+
+/** fetch que segura a 1ª chamada a `caminho` até `soltar()`. */
+function fetchComPortao(fetchFn, caminho) {
+  let soltar;
+  const portao = new Promise((ok) => {
+    soltar = ok;
+  });
+  let chegou;
+  const chegada = new Promise((ok) => {
+    chegou = ok;
+  });
+  let segurou = false;
+  const f = async (url, init) => {
+    if (!segurou && new URL(String(url)).pathname === caminho) {
+      segurou = true;
+      chegou();
+      await portao;
+    }
+    return fetchFn(url, init);
+  };
+  return { fetch: f, soltar: () => soltar(), chegada };
+}
+
+Deno.test("trava: dois executarPasso simultâneos na mesma loja — o segundo é NÃO 'outro comando está rodando' e faz 0 fetch", async () => {
+  const amb = await ambiente();
+  await conectar(amb);
+  // o 1º para DEPOIS de renovar o acesso (a trava do cofre já foi solta),
+  // no GET das organizações: só a trava do comando segura o 2º
+  const p = fetchComPortao(amb.api.fetch, "/v1/organizations");
+  const primeiro = executarPasso(pedido("criar-projeto"), {
+    ...amb.deps,
+    fetch: p.fetch,
+  });
+  await p.chegada;
+  const doSegundo = [];
+  const segundo = await executarPasso(pedido("criar-projeto"), {
+    ...amb.deps,
+    fetch: (url, init) => {
+      doSegundo.push(String(url));
+      return amb.api.fetch(url, init);
+    },
+  });
+  p.soltar();
+  const r1 = await primeiro;
+  assertEquals(segundo.veredito, "NÃO", segundo.mensagem);
+  assertStringIncludes(segundo.mensagem, "Outro comando");
+  assertStringIncludes(segundo.mensagem, "está rodando");
+  assertEquals(doSegundo, [], "o segundo chamou a rede");
+  assertEquals(r1.veredito, "SIM", r1.mensagem);
+  assertEquals(amb.api.posts("/v1/projects").length, 1);
+  // e a trava foi solta: o próximo roda
+  const r3 = await executarPasso(pedido("criar-projeto"), amb.deps);
+  assertEquals(r3.veredito, "SIM", r3.mensagem);
+});
+
+/** open() de verdade, mas o handle da TRAVA falha ao escrever. */
+function abrirQueFalhaNaTrava(antes = async () => {}) {
+  return async (caminho, flags, modo) => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho da pasta temporária do teste.
+    const h = await open(caminho, flags, modo);
+    if (!String(caminho).endsWith(".trava")) return h;
+    return {
+      async writeFile(dados) {
+        await antes(caminho, h, String(dados));
+        throw Object.assign(new Error(`EIO: falha ao escrever ${caminho}`), {
+          code: "EIO",
+        });
+      },
+      close: () => h.close(),
+    };
+  };
+}
+
+Deno.test("trava: a marca não grava = a própria trava apaga o arquivo que criou (nada fica órfão) e o passo não sai", async () => {
+  for (const antes of [
+    async () => {},
+    async (_c, h, marca) => {
+      await h.write(marca.slice(0, 5));
+    },
+  ]) {
+    const pasta = await pastaTemporaria();
+    const estado = criarEstadoEmArquivo({
+      pasta,
+      abrirArquivo: abrirQueFalhaNaTrava(antes),
+    });
+    const e = await estado.travar(SLUG).then(
+      () => null,
+      (x) => x,
+    );
+    assert(e, "travar não recusou");
+    assertEquals(e.codigo, "TRAVA_NAO_GRAVOU");
+    assert(!e.message.includes(pasta), "a mensagem carrega o caminho");
+    assert(!e.message.includes("EIO"), "a mensagem carrega o erro cru");
+    assertEquals(
+      [...Deno.readDirSync(pasta)].map((x) => x.name),
+      [],
+      "a trava ficou órfã",
+    );
+    // e pelo comando: não diz SIM e não chama a rede
+    const amb = await ambiente({ estado, pasta });
+    const r = await executarPasso(pedido("criar-projeto"), amb.deps);
+    assert(r.veredito !== "SIM");
+    assertEquals(amb.api.chamadas.length, 0);
+    assertEquals(
+      [...Deno.readDirSync(pasta)].map((x) => x.name),
+      [],
+    );
+    // a loja continua travável por quem vier depois
+    const liberar = await criarEstadoEmArquivo({ pasta }).travar(SLUG);
+    await liberar();
+  }
+});
+
+Deno.test("trava: a marca não grava mas o arquivo já é de OUTRO = não apaga a trava alheia", async () => {
+  const pasta = await pastaTemporaria();
+  const alheia = "99999 2026-11-26T00:00:00.000Z outro-processo";
+  const estado = criarEstadoEmArquivo({
+    pasta,
+    abrirArquivo: abrirQueFalhaNaTrava(async (caminho) => {
+      await Deno.writeTextFile(caminho, alheia);
+    }),
+  });
+  const e = await estado.travar(SLUG).then(
+    () => null,
+    (x) => x,
+  );
+  assertEquals(e?.codigo, "TRAVA_NAO_GRAVOU");
+  assertEquals(await Deno.readTextFile(join(pasta, `${SLUG}.trava`)), alheia);
+});
+
+// ─── C3: estado que não grava DEPOIS do POST (achado :266-271) ──────────────
+
+/** O erro que o estado de verdade lança quando o disco falha. */
+async function falhaDeGravacao(slug) {
+  const pasta = await pastaTemporaria();
+  const estado = criarEstadoEmArquivo({
+    pasta,
+    abrirArquivo: async () => {
+      throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" });
+    },
+  });
+  return await estado.gravar(slug, { versao: 1, slug, passos: {} }).then(
+    () => new Error("devia falhar"),
+    (e) => e,
+  );
+}
+
+Deno.test("criar-projeto: o POST deu certo e o estado não grava = INCERTO 'pode ter sido criado'; a retomada acha pelo nome", async () => {
+  const amb = await ambiente({ apiOpcoes: { statusSeq: ["COMING_UP"] } });
+  await conectar(amb);
+  const real = amb.deps.estado;
+  const erroDoDisco = await falhaDeGravacao(SLUG);
+  assertEquals(erroDoDisco.codigo, "ESTADO_NAO_GRAVOU");
+  // o disco "enche" na 1ª gravação DEPOIS do POST (a do ref)
+  amb.deps.estado = {
+    ler: (s) => real.ler(s),
+    travar: (s) => real.travar(s),
+    gravar: (s, e) => {
+      if (amb.api.posts("/v1/projects").length > 0) throw erroDoDisco;
+      return real.gravar(s, e);
+    },
+  };
+  const r1 = await executarPasso(pedido("criar-projeto"), amb.deps);
+  assertEquals(r1.veredito, "INCERTO", r1.mensagem);
+  assertStringIncludes(r1.mensagem, "PODE ter sido criado");
+  assertStringIncludes(r1.mensagem, "pelo nome");
+  assertEquals(amb.api.posts("/v1/projects").length, 1);
+  // o disco volta: a retomada acha ikcous-loja-nova pelo nome, sem 2º POST
+  amb.deps.estado = real;
+  amb.api.statusSeq = ["ACTIVE_HEALTHY"];
+  const r2 = await executarPasso(pedido("criar-projeto"), amb.deps);
+  assertEquals(r2.veredito, "SIM", r2.mensagem);
+  assertEquals(amb.api.posts("/v1/projects").length, 1);
+});
+
+Deno.test("criar-projeto: o estado não grava ANTES do POST = NÃO, e nenhum POST sai", async () => {
+  const amb = await ambiente();
+  await conectar(amb);
+  const real = amb.deps.estado;
+  const erroDoDisco = await falhaDeGravacao(SLUG);
+  amb.deps.estado = {
+    ler: (s) => real.ler(s),
+    travar: (s) => real.travar(s),
+    gravar: () => {
+      throw erroDoDisco;
+    },
+  };
+  const r = await executarPasso(pedido("criar-projeto"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertEquals(amb.api.posts("/v1/projects").length, 0);
+});
+
+// ─── C3: banco com a leitura de conferência caída (achado :839-840) ─────────
+
+Deno.test("banco: envios certos e a releitura de conferência do instalador cai = INCERTO (nunca NÃO); a retomada fecha SIM", async () => {
+  const banco = bancoFalso();
+  const amb = await ambiente({ apiOpcoes: { banco } });
+  await conectar(amb);
+  await executarPasso(pedido("criar-projeto"), amb.deps);
+  // 1ª leitura do estado: o passo banco; 2ª: o instalar; 3ª: a conferência
+  banco.falharEstadoNa = banco.leiturasDoEstado + 3;
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  const envelopes = banco.consultas.filter(
+    (q) => q.startsWith("BEGIN;\n") && q !== ddlDoLedger(),
+  );
+  assertEquals(envelopes.length, 2, "os envios foram feitos");
+  assertEquals(banco.marcaInstalacao, "em_curso");
+  const r2 = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r2.veredito, "SIM", r2.mensagem);
+});
+
+Deno.test("banco: conferência que LÊ e não fecha (versão fora do ledger) continua NÃO", async () => {
+  const banco = bancoFalso();
+  const responder = banco.responder;
+  let leituras = 0;
+  banco.responder = (sql) => {
+    const r = responder(sql);
+    if (sql === SQL_LEDGER && ++leituras >= 2) return r.slice(0, 1);
+    return r;
+  };
+  const amb = await ambiente({ apiOpcoes: { banco } });
+  await conectar(amb);
+  await executarPasso(pedido("criar-projeto"), amb.deps);
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+});
+
+// ─── C3: o slug que não cabe no cadastro para no abrir ──────────────────────
+
+Deno.test("abrir: loja com mais de 24 caracteres (ou terminada em hífen) é recusada já no abrir, sem rede nem entrada", async () => {
+  for (const slug of [
+    "a".repeat(25),
+    "loja-de-nome-comprido-demais",
+    "loja-",
+  ]) {
+    for (const aplicar of [true, false]) {
+      const amb = await ambiente();
+      amb.entradas.push(CLIENT_SECRET);
+      const r = await executarPasso(
+        pedido("abrir", { slug, aplicar }),
+        amb.deps,
+      );
+      assertEquals(r.veredito, "NÃO", `${slug}: ${r.mensagem}`);
+      if (slug.length > 24) assertStringIncludes(r.mensagem, "24");
+      assertEquals(amb.api.chamadas.length, 0);
+      assertEquals(amb.entradas.length, 1, "leu o client_secret");
+      assertEquals([...Deno.readDirSync(amb.pasta)].length, 0);
+    }
+  }
+  // o limite exato (24) passa
+  const amb = await ambiente();
+  amb.entradas.push(CLIENT_SECRET);
+  const r = await executarPasso(
+    pedido("abrir", { slug: "a".repeat(24) }),
+    amb.deps,
+  );
+  assertEquals(r.veredito, "SIM", r.mensagem);
+});
+
+// ─── C3: primeira-admin ─────────────────────────────────────────────────────
+
+Deno.test("primeira-admin: promove pela transação do B3 (SET LOCAL ROLE postgres), e-mail só pela entrada e em lugar nenhum mais", async () => {
+  const amb = await ateFicha();
+  amb.entradas.push(EMAIL);
+  const r = await executarPasso(pedido("primeira-admin"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(amb.entradas.length, 0, "o e-mail não foi lido");
+  const promocao = amb.api.banco.consultas.filter(
+    (q) => q === sqlDaPromocao(EMAIL),
+  );
+  assertEquals(promocao.length, 1);
+  assertStringIncludes(promocao[0], "SET LOCAL ROLE postgres;");
+  assertEquals(amb.api.banco.alvo, "admin");
+  const estado = await lerArquivoDeEstado(amb.pasta);
+  assertEquals(JSON.parse(estado).passos["primeira-admin"].veredito, "SIM");
+  const tudo = `${amb.saida.join("\n")}\n${estado}\n${r.mensagem}`;
+  for (const p of [EMAIL, EMAIL.toLowerCase(), EMAIL.toUpperCase(), ACCESS]) {
+    assert(!tudo.includes(p), `vazou ${p.slice(0, 8)}…`);
+  }
+});
+
+Deno.test("primeira-admin: rodar de novo com a mesma pessoa já admin = SIM sem escrita", async () => {
+  const amb = await ateFicha();
+  amb.entradas.push(EMAIL, EMAIL);
+  await executarPasso(pedido("primeira-admin"), amb.deps);
+  const antes = amb.api.banco.consultas.length;
+  const r = await executarPasso(pedido("primeira-admin"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  const novas = amb.api.banco.consultas.slice(antes);
+  assertEquals(novas, [sqlDoDiagnostico(EMAIL)], "gravou de novo");
+});
+
+Deno.test("primeira-admin: a loja já tem OUTRA admin = NÃO, nenhuma escrita enviada", async () => {
+  const amb = await ateFicha({
+    apiOpcoes: { banco: bancoFalso({ outrasAdmins: 1 }) },
+  });
+  amb.entradas.push(EMAIL);
+  const r = await executarPasso(pedido("primeira-admin"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "outra administradora");
+  assert(!amb.api.banco.consultas.includes(sqlDaPromocao(EMAIL)));
+});
+
+Deno.test("primeira-admin: sem --aplicar nenhuma chamada e o e-mail nem é pedido; sem banco SIM é NÃO", async () => {
+  const amb = await ateFicha();
+  amb.entradas.push(EMAIL);
+  const n = amb.api.chamadas.length;
+  const estadoAntes = await lerArquivoDeEstado(amb.pasta);
+  const r = await executarPasso(
+    pedido("primeira-admin", { aplicar: false }),
+    amb.deps,
+  );
+  assertEquals(r.veredito, "INCERTO");
+  assertStringIncludes(r.mensagem, "ENSAIO");
+  assertEquals(amb.api.chamadas.length, n);
+  assertEquals(amb.entradas.length, 1);
+  assertEquals(await lerArquivoDeEstado(amb.pasta), estadoAntes);
+  // loja com projeto pronto e SEM banco instalado
+  const crua = await ambiente();
+  await conectar(crua);
+  assertEquals(
+    (await executarPasso(pedido("criar-projeto"), crua.deps)).veredito,
+    "SIM",
+  );
+  crua.entradas.push(EMAIL);
+  const m = crua.api.chamadas.length;
+  const r2 = await executarPasso(pedido("primeira-admin"), crua.deps);
+  assertEquals(r2.veredito, "NÃO");
+  assertEquals(crua.api.chamadas.length, m);
+  assertEquals(crua.entradas.length, 1);
+});
+
+// ─── C3: definir-dono reservado ─────────────────────────────────────────────
+
+Deno.test("definir-dono: reservado, recusa 'aguardando decisão' com e sem --aplicar, sem rede, trava nem estado", async () => {
+  assert(PASSOS.includes("definir-dono"));
+  assertEquals(
+    lerArgumentos(["definir-dono", "--loja", SLUG]).passo,
+    "definir-dono",
+  );
+  const amb = await ambiente();
+  for (const aplicar of [true, false]) {
+    const r = await executarPasso(
+      pedido("definir-dono", { aplicar }),
+      amb.deps,
+    );
+    assertEquals(r.veredito, "NÃO");
+    assertStringIncludes(r.mensagem, "aguardando decisão");
+  }
+  assertEquals(amb.api.chamadas.length, 0);
+  assertEquals([...Deno.readDirSync(amb.pasta)].length, 0);
+});
+
+// ─── C3: conferir ───────────────────────────────────────────────────────────
+
+Deno.test("vereditoGeral: SIM só com todos SIM; INCERTO nunca vira SIM; lista vazia não é SIM", () => {
+  const i = (veredito) => ({ item: "x", veredito, detalhe: "" });
+  assertEquals(vereditoGeral([i("SIM"), i("SIM")]), "SIM");
+  assertEquals(vereditoGeral([i("SIM"), i("INCERTO")]), "INCERTO");
+  assertEquals(vereditoGeral([i("INCERTO"), i("NÃO")]), "NÃO");
+  assertEquals(vereditoGeral([i("SIM"), i("NÃO")]), "NÃO");
+  assertEquals(vereditoGeral([]), "NÃO");
+  assertEquals(vereditoGeral([i("SIM"), i("talvez")]), "INCERTO");
+});
+
+async function ateConferir(o = {}) {
+  const amb = await ateFicha(o);
+  amb.entradas.push(EMAIL);
+  const r = await executarPasso(pedido("primeira-admin"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  return amb;
+}
+
+const porItem = (r) =>
+  Object.fromEntries(r.itens.map((i) => [i.item, i.veredito]));
+
+Deno.test("conferir: o que já existe dá SIM item a item; o que não está ligado é 'pendente' NÃO; só leitura", async () => {
+  const amb = await ateConferir();
+  const n = amb.api.chamadas.length;
+  const estadoAntes = await lerArquivoDeEstado(amb.pasta);
+  const r = await executarPasso(pedido("conferir"), amb.deps);
+  const v = porItem(r);
+  for (const k of [
+    "projeto",
+    "banco",
+    "ficha",
+    "segredos",
+    "reconciliação",
+    "admin",
+  ]) {
+    assertEquals(Reflect.get(v, k), "SIM", `${k}: ${JSON.stringify(r.itens)}`);
+  }
+  const pendentes = r.itens.filter((i) =>
+    i.detalhe.startsWith("pendente: passo"),
+  );
+  for (const p of ["functions", "login", "cadastro"]) {
+    assert(
+      pendentes.some((i) => i.detalhe.includes(`passo ${p} ainda não ligado`)),
+      `sem o pendente ${p}`,
+    );
+  }
+  assert(pendentes.every((i) => i.veredito === "NÃO"));
+  assertEquals(r.veredito, "NÃO");
+  // só leitura: além de renovar o acesso, só GET e consultas read_only
+  const novas = amb.api.chamadas.slice(n);
+  for (const c of novas) {
+    if (c.metodo === "GET") continue;
+    if (c.caminho === "/v1/oauth/token") continue;
+    assert(c.caminho.endsWith("/database/query"), `${c.metodo} ${c.caminho}`);
+    assertEquals(c.somenteLeitura, true, "consulta sem read_only");
+  }
+  assertEquals(await lerArquivoDeEstado(amb.pasta), estadoAntes);
+  const texto = amb.saida.join("\n");
+  assert(!texto.includes(DIGEST_DO_SEGREDO), "o digest do segredo saiu");
+  assert(!texto.includes(EMAIL));
+});
+
+Deno.test("conferir: segredo faltando, 0 admin e reconciliação que não rodou = NÃO com o nome do que falta", async () => {
+  const amb = await ateFicha({
+    apiOpcoes: {
+      segredos: ["MP_CHAVES_ENCRYPTION_KEY"],
+      banco: bancoFalso({ idadeRodada: null }),
+    },
+  });
+  const r = await executarPasso(pedido("conferir"), amb.deps);
+  const v = porItem(r);
+  assertEquals(v.segredos, "NÃO");
+  assertEquals(v.admin, "NÃO");
+  assertEquals(v.reconciliação, "NÃO");
+  const seg = r.itens.find((i) => i.item === "segredos");
+  assertStringIncludes(seg.detalhe, "VAPID_PRIVATE_KEY");
+  assertEquals(r.veredito, "NÃO");
+});
+
+Deno.test("conferir: leitura que cai é INCERTO no item (nunca SIM); sem projeto no estado é NÃO sem rede; sem --aplicar 0 chamadas", async () => {
+  const amb = await ateConferir();
+  const responder = amb.api.banco.responder;
+  amb.api.banco.responder = (sql) => {
+    if (sql === SQL_ADMINS)
+      throw Object.assign(new Error("caiu"), { http: 503 });
+    return responder(sql);
+  };
+  const r = await executarPasso(pedido("conferir"), amb.deps);
+  assertEquals(porItem(r).admin, "INCERTO");
+  assert(r.veredito !== "SIM");
+  // ensaio
+  const n = amb.api.chamadas.length;
+  const e = await executarPasso(
+    pedido("conferir", { aplicar: false }),
+    amb.deps,
+  );
+  assertStringIncludes(e.mensagem, "ENSAIO");
+  assert(e.veredito !== "SIM");
+  assertEquals(amb.api.chamadas.length, n);
+  // loja sem projeto
+  const crua = await ambiente();
+  await conectar(crua);
+  const m = crua.api.chamadas.length;
+  const r2 = await executarPasso(pedido("conferir"), crua.deps);
+  assertEquals(r2.veredito, "NÃO");
+  assertEquals(porItem(r2).projeto, "NÃO");
+  assertEquals(crua.api.chamadas.length, m);
 });

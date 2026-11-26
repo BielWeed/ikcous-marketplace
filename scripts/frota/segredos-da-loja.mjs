@@ -450,8 +450,9 @@ export function planejarSegredos(estado, { vapidContato } = {}) {
   return { itens };
 }
 
-/** O que falta para a loja estar pronta (só nomes). */
-function faltandoNo(estado) {
+/** O que falta para a loja estar pronta (só nomes). Exportada para o
+ * `conferir` do nova-loja.mjs usar a MESMA lista. */
+export function faltandoNo(estado) {
   const falta = [];
   for (const n of [F.chaveMp, F.reconciliacao, F.vapidPublica, F.vapidPrivada])
     if (!estado.segredos.has(n)) falta.push(`functions ${n}`);
