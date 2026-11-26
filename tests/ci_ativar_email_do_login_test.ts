@@ -15,6 +15,21 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const require = createRequire(import.meta.url);
+
+// 26/11/2026: o menu esperado sai do cadastro (loja nova entra por dado, sem
+// editar este teste); a IKCOUS e a cliente real (Savy) nunca somem dele sem
+// reprovar.
+const { assinantes, carregarLojas } = require(
+  fileURLToPath(new URL("../scripts/frota/lojas.cjs", import.meta.url)),
+);
+const assinantesDoCadastro = (): string[] => {
+  const lista = assinantes(carregarLojas()).map(
+    (l: { projeto: string }) => l.projeto,
+  );
+  for (const p of ["ikcous-publicada", "savy"])
+    assert(lista.includes(p), `${p} sumiu das assinantes: ${lista.join(", ")}`);
+  return lista;
+};
 const SCRIPT = new URL(
   "../scripts/publicacao/ativar-email-do-login.cjs",
   import.meta.url,
@@ -711,7 +726,7 @@ Deno.test("workflow: dispatch fechado, SHA antes de checkout, ações pinadas e 
   // LOJAS-OPCOES-ASSINANTES): o mesmo de antes; o passo "Confere a loja no
   // cadastro" recusa de novo a desconhecida/não assinante antes do segredo.
   assertEquals(inputs.projeto.type, "choice");
-  assertEquals(inputs.projeto.options, ["ikcous-publicada", "savy"]);
+  assertEquals(inputs.projeto.options, assinantesDoCadastro());
   assertEquals(inputs.acao.options, [
     "medir",
     "preparar",
