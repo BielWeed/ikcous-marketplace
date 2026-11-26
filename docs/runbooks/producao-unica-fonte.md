@@ -1977,6 +1977,28 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    loja inteira sem resposta, ou endereco que a Vercel nao liga ao deployment promovido — isso
    sai 1 (FALHOU).
 
+   **Banco da loja fora do ar (`BANCO_INDISPONIVEL`).** O porteiro responde a pagina inicial com
+   HTTP 503 e `x-ikcous-porteiro: banco-indisponivel` (com `x-ikcous-caderneta: hit`) quando
+   conhece a loja mas o banco Supabase DELA nao respondeu: projeto pausado pelo Supabase ou
+   incidente. A conferencia da frota chama isso de `BANCO_INDISPONIVEL`, nunca de
+   `LOJA_TROCADA`. So o trio exato conta: um 503 sem esse marcador (a Vercel caindo, outro
+   motivo, a caderneta fora) continua como antes.
+   - **Antes do promote** (ensaio ou `--promover`): BLOQUEIA. A loja NAO e pulada, porque ela
+     voltaria com o front novo sobre o banco velho. Saidas: restaurar o projeto ("Restore
+     project" no painel do Supabase; para loja OAuth, `node scripts/frota/acordar-projeto.mjs`)
+     e rodar o ensaio de novo; ou, so para loja que NAO e a IKCOUS nem a Savy, adormece-la pela
+     caderneta (`node scripts/frota/estado-da-loja.mjs --adormecer ...`, decisao do socio; veja
+     [estado de vida da loja](estado-de-vida-da-loja.md)).
+   - **Depois do promote**: Saida 3 (**INCERTO**), sem "FALHOU." e sem a ordem de rollback,
+     desde que o resto esteja provado (a Vercel liga o endereco ao deployment promovido, o
+     `version.json` dele e o da release e nao ha outro achado). O front novo esta no ar; restaure
+     o banco e rode a conferencia de novo (o relatorio imprime o comando). Rollback da frota nao
+     traz o banco de volta. Se o painel do Supabase mostrar o projeto no ar (nao pausado) e a
+     loja continuar com o 503 `banco-indisponivel`, a causa pode ser o front novo lendo o banco:
+     ai sim trate como conferencia que falhou (Saida 1) e siga o [rollback](#rollback).
+   - `LOJA_TROCADA` de verdade (pagina com a ficha ou o ref de OUTRA loja, ou ficha que muda
+     entre amostras) continua sendo rollback ja, mesmo que outra loja esteja com o banco fora.
+
    Saida 1 com a secao "PRIORIDADE ALTA — loja que acordou durante a publicação" (texto exato do relatorio) NAO pede
    rollback da frota: uma loja que estava fora do ar acordou no meio da publicacao e nao passou
    pela prontidao desta release. Rode, para cada loja listada, o
@@ -2001,8 +2023,9 @@ node scripts/frota/conferir-frota.mjs --sha <sha40> --vercel
 ```
 
 Classes: `OK`, `ENDERECO_ANTIGO` (aponta para outro deployment: recuperar com o passo 4, nunca
-`alias set`), `LOJA_TROCADA` / `SUSPEITA_ISOLAMENTO` (isolamento: rollback ja), `CANONICO_INVALIDO`,
-`BUILD_DIVERGENTE`, `INALCANCAVEL`, `ESTADO_INESPERADO`. No GitHub: workflow `frota-conferir.yml`
+`alias set`), `LOJA_TROCADA` / `SUSPEITA_ISOLAMENTO` (isolamento: rollback ja),
+`BANCO_INDISPONIVEL` (o banco da loja caiu: restaurar o banco, nunca rollback do front; ver o passo
+4), `CANONICO_INVALIDO`, `BUILD_DIVERGENTE`, `INALCANCAVEL`, `ESTADO_INESPERADO`. No GitHub: workflow `frota-conferir.yml`
 (sem segredo; inventario PARCIAL porque o CI nao le a Vercel). Nao ha vigia agendado: o ramo
 padrao do GitHub e `develop`, e agendamento so dispara de la.
 

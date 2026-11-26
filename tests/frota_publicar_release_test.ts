@@ -39,6 +39,7 @@ import {
   decidirLote,
   evidenciaDaProva,
   importsRelativos,
+  incertezaDepoisDoPromote,
   lerArgumentos,
   lerCanais,
   lerVeredicto,
@@ -13729,9 +13730,14 @@ Deno.test("L8 publicarRelease: loja ATIVA com 503 banco-indisponivel continua BL
   assertEquals(r.codigo, 1, r.relatorio);
   assertEquals(chamadas.promover, []);
   assertEquals(r.lojasForaDoAr, []);
+  // Desde 26/11/2026 o bloqueio diz que é o BANCO (não "não foi sondada").
   assertStringIncludes(
     r.relatorio,
-    "a loja Savy está cadastrada mas não foi sondada",
+    `o banco da loja em ${DOM_SAVY} está fora do ar`,
+  );
+  assertStringIncludes(
+    r.relatorio,
+    "a loja Savy está cadastrada e não apareceu em nenhum endereço",
   );
 });
 
@@ -14368,4 +14374,294 @@ Deno.test("C6 no portão: dependências sem o leitor de arquivo e workflow difer
     semLeitor: true,
   });
   assertEquals(r.estado, "SEM_EVIDENCIA");
+});
+
+// ---- banco da loja fora do ar (projeto Supabase pausado ou incidente)
+// O porteiro conhece a loja (caderneta hit), o banco DELA não respondeu e não
+// há ficha guardada: 503 `x-ikcous-porteiro: banco-indisponivel`, HTML sem marca
+// e sem ref (src/hospedagem/porteiro.ts, respostaManutencao). Antes do conserto:
+// antes do promote virava "não é loja legível" + "não foi sondada" + LOJA_TROCADA
+// e o relatório nunca dizia que era o banco; depois do promote virava "FALHOU."
+// com a ordem de voltar a frota INTEIRA, sem o front ser a causa.
+
+/** A resposta que `respostaManutencao("banco-indisponivel", "hit")` dá a "/". */
+const respostaBancoFora = () =>
+  new Response(
+    '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta http-equiv="refresh" content="30"><title>Loja em manutenção</title></head><body><p>Esta loja está em manutenção. Volte em instantes.</p><a href="">Tentar novamente</a></body></html>',
+    {
+      status: 503,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "retry-after": "60",
+        "x-ikcous-porteiro": "banco-indisponivel",
+        "x-ikcous-caderneta": "hit",
+      },
+    },
+  );
+
+/** "/" dos `dominios` responde banco fora na `fase` ("antes", "depois" ou "sempre"). */
+function bancoForaEm(dominios, fase, resposta = respostaBancoFora) {
+  return ({ hostname, pathname, depois }) => {
+    if (!dominios.includes(hostname) || pathname !== "/") return undefined;
+    if (fase !== "sempre" && (fase === "depois") !== depois) return undefined;
+    return resposta();
+  };
+}
+
+const textoDe = (r) =>
+  `${r.relatorio}\n${r.bloqueios.map((b) => `${b.alvo}: ${b.motivo}`).join("\n")}`;
+
+Deno.test("banco fora ANTES do promote (S1): BLOQUEIA, a loja não é pulada, e o motivo diz que o banco caiu e as saídas", async () => {
+  const { d, chamadas } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: bancoForaEm([DOM_SAVY, DOM_SAVY_EXTRA], "sempre"),
+  });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover, []);
+  const motivos = r.bloqueios.map((b) => `${b.alvo}: ${b.motivo}`).join("\n");
+  for (const dominio of [DOM_SAVY, DOM_SAVY_EXTRA])
+    assertStringIncludes(
+      motivos,
+      `o banco da loja em ${dominio} está fora do ar (pausado pelo Supabase ou incidente)`,
+    );
+  assertStringIncludes(motivos, "NÃO é pulada");
+  assertStringIncludes(motivos, '"Restore project"');
+  assertStringIncludes(motivos, "node scripts/frota/acordar-projeto.mjs");
+  assertStringIncludes(
+    motivos,
+    "node scripts/frota/estado-da-loja.mjs --adormecer",
+  );
+  assertStringIncludes(motivos, "decisão do sócio");
+  // A loja cadastrada que sumiu é nomeada junto do banco, não como "não sondada".
+  assertStringIncludes(motivos, "a loja Savy está cadastrada e não apareceu");
+  const tudo = textoDe(r);
+  for (const errado of [
+    "não é loja legível",
+    "não foi sondada",
+    "LOJA_TROCADA",
+    "ESTADO_INESPERADO",
+    "CANONICO_INVALIDO",
+  ])
+    assert(!tudo.includes(errado), `${errado}:\n${tudo}`);
+});
+
+Deno.test("banco fora ANTES do promote, no ensaio (sem --promover): também BLOQUEIA (código 1)", async () => {
+  const { d, chamadas } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: bancoForaEm([DOM_SAVY_EXTRA], "sempre"),
+  });
+  const r = await executar(d, false);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover, []);
+  assert(
+    r.bloqueios.some((b) =>
+      b.motivo.includes(`o banco da loja em ${DOM_SAVY_EXTRA} está fora do ar`),
+    ),
+    JSON.stringify(r.bloqueios),
+  );
+  // Um endereço da Savy responde: ela foi sondada; nada de "cadastrada e não apareceu".
+  assert(!textoDe(r).includes("não apareceu"), textoDe(r));
+});
+
+Deno.test("banco fora DEPOIS do promote (S5): INCERTO, código 3, sem FALHOU e sem rollback; diz que o front está no ar e manda restaurar o banco e conferir de novo", async () => {
+  const { d, chamadas, conferencias } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: bancoForaEm([DOM_SAVY, DOM_SAVY_EXTRA], "depois"),
+  });
+  const r = await executar(d, true);
+  assertEquals(conferencias[0].ok, true, conferencias[0].relatorio);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(conferencias.at(-1).ok, false);
+  assertEquals(r.codigo, 3, r.relatorio);
+  assertEquals(r.bloqueios, []);
+  assert(!r.relatorio.includes("**FALHOU.**"), r.relatorio);
+  assert(!r.relatorio.includes("vercel rollback"), r.relatorio);
+  assertStringIncludes(r.relatorio, "**INCERTO.**");
+  assertStringIncludes(r.relatorio, "o front novo está no ar");
+  assertStringIncludes(
+    r.relatorio,
+    `a loja Savy (${SAVY}) está com o banco fora`,
+  );
+  assertStringIncludes(r.relatorio, DOM_SAVY_EXTRA);
+  assertStringIncludes(
+    r.relatorio,
+    "restaure o banco e rode a conferência de novo",
+  );
+  assertStringIncludes(
+    r.relatorio,
+    `node scripts/frota/conferir-frota.mjs --sha ${SHA} --vercel`,
+  );
+});
+
+Deno.test("banco fora DEPOIS do promote em UM endereço (a loja responde no outro): INCERTO, código 3", async () => {
+  const { d, chamadas } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: bancoForaEm([DOM_SAVY_EXTRA], "depois"),
+  });
+  const r = await executar(d, true);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(r.codigo, 3, r.relatorio);
+  assert(!r.relatorio.includes("vercel rollback"), r.relatorio);
+  assertStringIncludes(r.relatorio, "**INCERTO.**");
+  assertStringIncludes(r.relatorio, DOM_SAVY_EXTRA);
+});
+
+Deno.test("depois do promote, LOJA_TROCADA de verdade ao lado de um banco fora continua FALHOU com o rollback da frota", async () => {
+  const banco = bancoForaEm([DOM_SAVY_EXTRA], "depois");
+  const { d, chamadas } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: (p) => {
+      if (p.depois && p.hostname === DOM_IKCOUS && p.pathname === "/")
+        // caderneta hit, 200, e uma página sem o ref: isolamento não provado
+        return new Response("<title>Savy</title>", {
+          headers: { "x-ikcous-caderneta": "hit", "x-ikcous-porteiro": "ok" },
+        });
+      return banco(p);
+    },
+  });
+  const r = await executar(d, true);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "LOJA_TROCADA");
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
+  assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+  assert(!r.relatorio.includes("**INCERTO.**"), r.relatorio);
+});
+
+Deno.test("depois do promote, o 503 SEM o marcador do porteiro (a Vercel caindo) continua FALHOU com o rollback", async () => {
+  const { d } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: bancoForaEm(
+      [DOM_SAVY, DOM_SAVY_EXTRA],
+      "depois",
+      () =>
+        new Response("<title>503</title>", {
+          status: 503,
+          headers: { "x-ikcous-caderneta": "hit" },
+        }),
+    ),
+  });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
+  assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+  assert(!r.relatorio.includes("**INCERTO.**"), r.relatorio);
+});
+
+Deno.test("depois do promote, banco fora num endereço que ainda serve a release ANTIGA continua FALHOU (o front não chegou ali)", async () => {
+  const banco = bancoForaEm([DOM_SAVY_EXTRA], "depois");
+  const { d } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: (p) => {
+      if (
+        p.depois &&
+        p.hostname === DOM_SAVY_EXTRA &&
+        p.pathname === "/version.json"
+      )
+        return new Response(versao(BASE));
+      return banco(p);
+    },
+  });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
+  assert(!r.relatorio.includes("**INCERTO.**"), r.relatorio);
+});
+
+Deno.test("incertezaDepoisDoPromote: banco fora só é INCERTO quando cada endereço que reprova tem SÓ esse achado e cada loja sumida tinha, antes do promote, um endereço agora com o banco fora", () => {
+  const banco = (dominio, extra = {}) => ({
+    dominio,
+    classe: "BANCO_INDISPONIVEL",
+    achados: [{ classe: "BANCO_INDISPONIVEL", motivo: "banco fora" }],
+    deploymentId: DPL,
+    ...extra,
+  });
+  const pos = (resultados, lojasNaoSondadas = []) => ({
+    ok: false,
+    resultados,
+    vercel: { ok: true },
+    inventario: { completo: true },
+    cobertura: { lojasNaoSondadas, dominiosNaoSondados: [] },
+  });
+  const lojasAntes = [
+    { ref: SAVY, titulo: "Savy", dominios: [DOM_SAVY, DOM_SAVY_EXTRA] },
+    { ref: CAF, titulo: "IKCOUS", dominios: [DOM_IKCOUS] },
+  ];
+  assertEquals(
+    incertezaDepoisDoPromote(
+      pos(
+        [banco(DOM_SAVY), banco(DOM_SAVY_EXTRA)],
+        [{ ref: SAVY, nome: "Savy" }],
+      ),
+      DPL,
+      lojasAntes,
+    ),
+    { semResposta: [], bancoFora: [DOM_SAVY, DOM_SAVY_EXTRA].sort() },
+  );
+  // A IKCOUS sumiu e nenhum endereço DELA está com o banco fora: não se explica.
+  assertEquals(
+    incertezaDepoisDoPromote(
+      pos([banco(DOM_SAVY)], [{ ref: CAF, nome: "IKCOUS" }]),
+      DPL,
+      lojasAntes,
+    ),
+    null,
+  );
+  // Sem saber de quem era o endereço antes do promote, loja sumida não se explica.
+  assertEquals(
+    incertezaDepoisDoPromote(
+      pos([banco(DOM_SAVY)], [{ ref: SAVY, nome: "Savy" }]),
+      DPL,
+    ),
+    null,
+  );
+  // Outro achado no MESMO endereço, outro deployment, achado vazio: não é INCERTO.
+  for (const ruim of [
+    banco(DOM_SAVY, {
+      achados: [
+        { classe: "BANCO_INDISPONIVEL", motivo: "banco fora" },
+        { classe: "LOJA_TROCADA", motivo: "x" },
+      ],
+      classe: "LOJA_TROCADA",
+    }),
+    banco(DOM_SAVY, { deploymentId: "dpl_Outro" }),
+    banco(DOM_SAVY, { achados: [] }),
+  ])
+    assertEquals(incertezaDepoisDoPromote(pos([ruim]), DPL, lojasAntes), null);
+  // Endereço de loja que sumiu do inventário depois do promote: não é INCERTO.
+  const sumiu = pos([banco(DOM_SAVY)]);
+  sumiu.cobertura.dominiosNaoSondados = [DOM_IKCOUS];
+  assertEquals(incertezaDepoisDoPromote(sumiu, DPL, lojasAntes), null);
+  // A Vercel não lida, inventário parcial, conferência OK: nunca INCERTO.
+  assertEquals(
+    incertezaDepoisDoPromote(
+      { ...pos([banco(DOM_SAVY)]), vercel: { ok: false } },
+      DPL,
+      lojasAntes,
+    ),
+    null,
+  );
+  assertEquals(
+    incertezaDepoisDoPromote(
+      { ...pos([banco(DOM_SAVY)]), inventario: { completo: false } },
+      DPL,
+      lojasAntes,
+    ),
+    null,
+  );
+  assertEquals(
+    incertezaDepoisDoPromote({ ...pos([]), ok: true }, DPL, lojasAntes),
+    null,
+  );
+  // O INCERTO de antes (version.json que tropeçou) não muda e não leva banco junto.
+  assertEquals(soEnderecosSemResposta(pos([banco(DOM_SAVY)]), DPL), null);
 });

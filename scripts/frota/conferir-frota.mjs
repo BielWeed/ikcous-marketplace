@@ -68,8 +68,8 @@
 //                      FROTA_TIMEOUT_MS (padrão 15000).
 //
 // CLASSES (a mais grave vence): LOJA_TROCADA > SUSPEITA_ISOLAMENTO >
-// INALCANCAVEL > ENDERECO_ANTIGO > CANONICO_INVALIDO > BUILD_DIVERGENTE >
-// ESTADO_INESPERADO > ENCERRADA > ADORMECIDA > OK.
+// INALCANCAVEL > ENDERECO_ANTIGO > BANCO_INDISPONIVEL > CANONICO_INVALIDO >
+// BUILD_DIVERGENTE > ESTADO_INESPERADO > ENCERRADA > ADORMECIDA > OK.
 // SAÍDA: 0 só se TUDO está OK (ou fora do ar por decisão: ADORMECIDA/ENCERRADA);
 // 1 em qualquer outro caso (inclui pedir --vercel e a consulta falhar); 2 = erro
 // de uso. Inventário PARCIAL (sem --vercel) com tudo OK sai 0, mas o relatório
@@ -85,6 +85,15 @@
 // e loja de politica.json lojasQueNuncaDormem fora do ar também.
 // x-ikcous-caderneta-versao: 1 (porteiro na caderneta antiga, que não conhece o
 // estado) vira AVISO no relatório.
+//
+// BANCO DA LOJA FORA DO AR (projeto Supabase pausado ou incidente): a caderneta
+// conhece a loja (hit), mas o banco DELA não respondeu e o porteiro não tem ficha
+// guardada. Ele responde "/" com HTTP 503, x-ikcous-porteiro: banco-indisponivel,
+// sem x-ikcous-estado/x-ikcous-ref e sem ref no HTML (src/hospedagem/porteiro.ts,
+// respostaManutencao). SÓ essa combinação, igual nas 3 amostras, vira
+// BANCO_INDISPONIVEL: reprova (exit 1), mas não é LOJA_TROCADA nem pede rollback
+// do front. Um 503 sem o marcador (a Vercel, outro motivo, caderneta fora)
+// continua como antes.
 
 import { execFile } from "node:child_process";
 import {
@@ -103,6 +112,7 @@ export const GRAVIDADE = [
   "SUSPEITA_ISOLAMENTO",
   "INALCANCAVEL",
   "ENDERECO_ANTIGO",
+  "BANCO_INDISPONIVEL",
   "CANONICO_INVALIDO",
   "BUILD_DIVERGENTE",
   "ESTADO_INESPERADO",
@@ -123,6 +133,9 @@ export const CLASSES_SEM_FALHA = Object.freeze(
 // O HTTP que o porteiro usa para cada estado fora do ar (contrato do L8).
 const STATUS_FORA_DO_AR = Object.freeze({ adormecida: 503, encerrada: 410 });
 const RE_REF_SUPABASE = /^[a-z]{20}$/;
+/** O motivo que o porteiro escreve em `x-ikcous-porteiro` quando o banco da loja
+ * não respondeu (o MESMO literal de `MotivoManutencao` em src/hospedagem/porteiro.ts). */
+export const PORTEIRO_BANCO_INDISPONIVEL = "banco-indisponivel";
 
 const RE_SHA = /^[0-9a-f]{40}$/;
 const RE_DOMINIO = {
@@ -162,6 +175,8 @@ export const COMO_RECUPERAR = {
   BUILD_DIVERGENTE:
     "publicar de novo do mesmo SHA, de worktree limpa (version.json fora do contrato do build: campo ausente ou malformado).",
   INALCANCAVEL: "repetir a conferência; persistindo, abrir o endereço.",
+  BANCO_INDISPONIVEL:
+    'NÃO é caso de rollback do front: o banco da loja deste endereço está fora do ar (pausado pelo Supabase ou incidente) e o porteiro respondeu 503 banco-indisponivel. Restaurar o projeto ("Restore project" no painel do Supabase; para loja OAuth, `node scripts/frota/acordar-projeto.mjs`) e conferir de novo. Só para loja que não é a IKCOUS nem a Savy, a outra saída é adormecê-la pela caderneta (`node scripts/frota/estado-da-loja.mjs --adormecer ...`, decisão do sócio). Se o painel mostrar o projeto no ar e a loja continuar 503, a causa não é o banco: abrir o endereço.',
   ESTADO_INESPERADO:
     "abrir o endereço: ou ele mudou de papel (declarar em scripts/frota/politica.json, enderecosEsperados), ou é uma loja que perdeu a ficha (caderneta). Se a resposta traz x-ikcous-porteiro/x-ikcous-estado de loja fora do ar, o porteiro saiu do contrato (503 adormecida / 410 encerrada, estado igual, x-ikcous-ref de 20 letras); se é uma loja de lojasQueNuncaDormem, acordá-la no cadastro (frota_lojas.estado) antes de publicar.",
   ENCERRADA:
@@ -577,6 +592,33 @@ export function lojaForaDoAr(sonda) {
   return amostras.every(confere) ? { estado, ref } : null;
 }
 
+/**
+ * O banco da loja deste endereço está fora do ar, dito pelo PORTEIRO em TODAS as
+ * amostras de "/": HTTP 503, x-ikcous-porteiro = banco-indisponivel,
+ * x-ikcous-caderneta = hit (a caderneta conhece a loja; o que caiu foi o banco
+ * DELA), sem x-ikcous-estado nem x-ikcous-ref e sem ref Supabase no HTML.
+ * Qualquer outra combinação (503 da Vercel sem o marcador, caderneta erro =
+ * a caderneta é que caiu, amostras que discordam) devolve false.
+ */
+export function bancoIndisponivel(sonda) {
+  const ficha = sonda?.ficha;
+  if (!ficha || ficha.estavel === false) return false;
+  const amostras =
+    Array.isArray(sonda.amostras) && sonda.amostras.length
+      ? sonda.amostras
+      : [ficha];
+  return amostras.every(
+    (a) =>
+      a.status === 503 &&
+      a.porteiro === PORTEIRO_BANCO_INDISPONIVEL &&
+      a.caderneta === "hit" &&
+      (a.estado ?? null) === null &&
+      (a.refPorteiro ?? null) === null &&
+      Array.isArray(a.refs) &&
+      a.refs.length === 0,
+  );
+}
+
 // Valor da maioria ESTRITA (> 50%); null se não há (empate ou nenhum).
 export function maioriaEstrita(valores) {
   if (valores.length === 0) return null;
@@ -838,9 +880,9 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
     const f = s.ficha;
     if (ignorar.has(s.dominio) || !f?.estavel || f.caderneta !== "hit")
       continue;
-    // Página de loja fora do ar (válida ou não) não serve loja, então não tem
-    // canônico a provar: quem a reprova, se for o caso, é `classificar`.
-    if (alegaForaDoAr(f)) continue;
+    // Página de loja fora do ar (válida ou não) ou de banco fora do ar não
+    // serve loja, então não tem canônico a provar: quem a reprova é `classificar`.
+    if (alegaForaDoAr(f) || bancoIndisponivel(s)) continue;
     if (!f.publicUrl) {
       add(s.dominio, "ficha sem publicUrl (cadastro sem dominio_publico)");
       continue;
@@ -1000,6 +1042,11 @@ export function classificar(alvo, sonda, ctx) {
       add(
         "ESTADO_INESPERADO",
         `resposta de loja fora do ar fora do contrato (HTTP ${ficha.status}, x-ikcous-porteiro ${ficha.porteiro ?? "(ausente)"}, x-ikcous-estado ${ficha.estado ?? "(ausente)"}, x-ikcous-ref ${ficha.refPorteiro ?? "(ausente)"}${ficha.estavel === false ? ", amostras divergentes" : ""}): esperado 503 adormecida ou 410 encerrada, estado igual e ref de 20 letras minúsculas em todas as amostras`,
+      );
+    } else if (!alvo.esperado && bancoIndisponivel(sonda)) {
+      add(
+        "BANCO_INDISPONIVEL",
+        `o banco da loja deste endereço está fora do ar (HTTP 503, x-ikcous-porteiro: ${PORTEIRO_BANCO_INDISPONIVEL}, caderneta hit): a caderneta conhece a loja, mas o banco Supabase dela não respondeu (projeto pausado ou incidente)`,
       );
     } else if (!alvo.esperado) {
       if (ficha.caderneta !== "hit") {
@@ -1765,12 +1812,24 @@ export function refDaLojaSondada(ficha) {
   return ficha.refs[0];
 }
 
-export function problemasLojasNaoSondadas(lojasObrigatorias, refsSondados) {
+/**
+ * Lojas cadastradas que não apareceram em nenhum endereço. Com endereço de
+ * banco fora do ar (`enderecosComBancoFora`), o porteiro não diz de qual loja
+ * ele é (o 503 não traz ref), então a loja sumida é, provavelmente, a de lá: a
+ * frase diz isso em vez de "não foi sondada". Continua sendo problema.
+ */
+export function problemasLojasNaoSondadas(
+  lojasObrigatorias,
+  refsSondados,
+  enderecosComBancoFora = [],
+) {
+  const bancoFora = [...enderecosComBancoFora].sort();
   return lojasObrigatorias
     .filter(({ ref }) => !refsSondados.has(ref))
-    .map(
-      ({ ref, nome }) =>
-        `a loja ${nome ?? ref} está cadastrada mas não foi sondada`,
+    .map(({ ref, nome }) =>
+      bancoFora.length
+        ? `a loja ${nome ?? ref} está cadastrada e não apareceu em nenhum endereço; o banco está fora do ar em ${bancoFora.join(", ")} e, com o banco fora, o porteiro não diz de qual loja é o endereço: ela deve ser a de lá (restaurar o banco e rodar de novo; se ela continuar sem aparecer, é outro problema)`
+        : `a loja ${nome ?? ref} está cadastrada mas não foi sondada`,
     );
 }
 
@@ -1864,8 +1923,15 @@ export async function conferirFrota(politica, opcoes = {}) {
       (dominio) => !dominiosSondados.has(dominio),
     ),
   };
+  const enderecosComBancoFora = resultados
+    .filter((r) => r.achados.some((a) => a.classe === "BANCO_INDISPONIVEL"))
+    .map((r) => r.dominio);
   const problemasDeCobertura = [
-    ...problemasLojasNaoSondadas(lojasObrigatorias, refsSondados),
+    ...problemasLojasNaoSondadas(
+      lojasObrigatorias,
+      refsSondados,
+      enderecosComBancoFora,
+    ),
     ...cobertura.dominiosNaoSondados.map(
       (dominio) =>
         `${dominio}: endereço de loja sondado antes do promote, mas não depois`,

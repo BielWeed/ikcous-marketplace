@@ -70,6 +70,10 @@
  * sonda, em endereço cuja página respondeu e que a Vercel diz apontar para o
  * deployment promovido (sem "FALHOU." e sem o rollback: conferir de novo; ver
  * soEnderecosSemResposta). 404, não-JSON, página ou loja sem resposta = 1.
+ * Também é 3 quando o que sobra é BANCO DE LOJA FORA DO AR (o porteiro respondeu
+ * 503 banco-indisponivel; ver incertezaDepoisDoPromote): o front novo está no ar
+ * e voltar a frota não traz o banco de volta. Antes do promote, o banco fora
+ * BLOQUEIA: a loja não é pulada (voltaria com o front novo sobre o banco velho).
  */
 
 import { execFile, execFileSync } from "node:child_process";
@@ -90,6 +94,7 @@ import {
   CABECALHOS_DE_PRIMEIRA_ABERTURA,
   CLASSES_SEM_FALHA,
   ESPERAS_DA_NOVA_TENTATIVA_MS,
+  bancoIndisponivel,
   conferirFrota,
   criarExecutorVercel,
   inventariar,
@@ -378,14 +383,18 @@ function conferirNotasDaVersao(versao, sha, lerArquivoNoSha) {
  * Agrupa o inventário em lojas pelo ref Supabase da ficha servida pelo
  * porteiro. Endereço esperado sem loja (manutenção/redirecionamento) fica fora.
  * Loja fora do ar por decisão (contrato provado por `lojaForaDoAr`) vai para
- * `foraDoAr` [{ref, estado, dominios}] e não para `lojas`. Endereço que não é
- * esperado e não tem ficha de loja legível é problema, e a mesma loja ativa
- * num endereço e fora do ar em outro (ou com dois estados) também.
+ * `foraDoAr` [{ref, estado, dominios}] e não para `lojas`. Endereço com o banco
+ * da loja fora do ar (503 banco-indisponivel do porteiro, `bancoIndisponivel`)
+ * vai para `bancoFora` [dominio]: o 503 não diz de qual loja ele é, e quem
+ * publica o BLOQUEIA com o motivo certo. Endereço que não é esperado e não tem
+ * ficha de loja legível é problema, e a mesma loja ativa num endereço e fora do
+ * ar em outro (ou com dois estados) também.
  */
 export function lojasDoInventario(inventario, politica) {
   const esperados = new Set(politica.enderecosEsperados.map((e) => e.dominio));
   const lojas = new Map();
   const paradas = new Map();
+  const bancoFora = [];
   const problemas = [];
   if (!inventario.vercel?.ok)
     problemas.push(
@@ -409,6 +418,10 @@ export function lojasDoInventario(inventario, politica) {
       const parada = paradas.get(fora.ref);
       parada.estados.add(fora.estado);
       parada.dominios.push(sonda.dominio);
+      continue;
+    }
+    if (bancoIndisponivel(sonda)) {
+      bancoFora.push(sonda.dominio);
       continue;
     }
     const ref = refDaLojaSondada(f);
@@ -455,8 +468,14 @@ export function lojasDoInventario(inventario, politica) {
         estado: [...p.estados][0],
         dominios: p.dominios,
       })),
+    bancoFora: bancoFora.sort(),
     problemas,
   };
+}
+
+/** O bloqueio de UM endereço com o banco da loja fora do ar, antes do promote. */
+export function motivoDoBancoForaAntes(dominio) {
+  return `o banco da loja em ${dominio} está fora do ar (pausado pelo Supabase ou incidente): o porteiro respondeu 503 banco-indisponivel. A loja NÃO é pulada: ela voltaria com o front novo sobre o banco velho. Saídas: (1) restaurar o projeto ("Restore project" no painel do Supabase; para loja OAuth, \`node scripts/frota/acordar-projeto.mjs\`) e rodar o ensaio de novo; (2) só se a loja NÃO for a IKCOUS nem a Savy, adormecê-la pela caderneta (\`node scripts/frota/estado-da-loja.mjs --adormecer ...\`, decisão do sócio) e rodar o ensaio de novo.`;
 }
 
 /**
@@ -521,6 +540,30 @@ export function problemasAntesDoPromote(conferencia, sha) {
  *   sem version.json, essa é a única prova de que ele serve a release.
  */
 export function soEnderecosSemResposta(pos, deploymentId) {
+  const incerteza = incertezaDepoisDoPromote(pos, deploymentId);
+  return incerteza && !incerteza.bancoFora.length
+    ? incerteza.semResposta
+    : null;
+}
+
+/**
+ * DEPOIS do promote: o que reprova a conferência é SÓ "não sei", nunca "errado"?
+ * Devolve { semResposta, bancoFora } (domínios, em ordem) ou null — e null é
+ * FALHOU com o rollback. Cada endereço que reprova tem de apontar (Vercel) para
+ * `deploymentId` e ter UMA destas espécies de achado, e nenhuma outra:
+ *  - semResposta: só INALCANCAVEL marcado como tropeço do version.json (ver
+ *    soEnderecosSemResposta);
+ *  - bancoFora: só BANCO_INDISPONIVEL — o porteiro respondeu 503
+ *    banco-indisponivel (o banco DA LOJA caiu: projeto pausado ou incidente).
+ *    O version.json dele é o da release (senão haveria ENDERECO_ANTIGO), e uma
+ *    página 503 sem marca nem ref não mostra loja de ninguém. Voltar a frota não
+ *    traz o banco de volta.
+ * Loja cadastrada que não apareceu só passa se, ANTES do promote (`lojasAntes`,
+ * as lojas do inventário com seus domínios), um endereço dela está agora em
+ * `bancoFora`: o 503 não traz ref, e essa é a única prova de quem ele é. Sem
+ * `lojasAntes`, loja sumida é FALHOU. Endereço que sumiu do inventário é FALHOU.
+ */
+export function incertezaDepoisDoPromote(pos, deploymentId, lojasAntes = []) {
   if (pos?.ok === true || !Array.isArray(pos?.resultados)) return null;
   if (typeof deploymentId !== "string" || !deploymentId) return null;
   if (pos.vercel?.ok !== true || pos.inventario?.completo !== true) return null;
@@ -528,27 +571,43 @@ export function soEnderecosSemResposta(pos, deploymentId) {
   if (
     !Array.isArray(cobertura?.lojasNaoSondadas) ||
     !Array.isArray(cobertura?.dominiosNaoSondados) ||
-    cobertura.lojasNaoSondadas.length ||
     cobertura.dominiosNaoSondados.length
   )
     return null;
   const semResposta = new Set();
+  const bancoFora = new Set();
   for (const r of pos.resultados) {
     if (CLASSES_SEM_FALHA.has(r?.classe)) continue;
     const achados = Array.isArray(r?.achados) ? r.achados : [];
+    if (!achados.length || r.deploymentId !== deploymentId) return null;
     if (
-      r.classe !== "INALCANCAVEL" ||
-      !achados.length ||
-      !achados.every(
+      r.classe === "INALCANCAVEL" &&
+      achados.every(
         (a) => a?.classe === "INALCANCAVEL" && a.tropecouEm === "version.json",
-      ) ||
-      r.deploymentId !== deploymentId
+      )
+    )
+      semResposta.add(r.dominio);
+    else if (
+      r.classe === "BANCO_INDISPONIVEL" &&
+      achados.every((a) => a?.classe === "BANCO_INDISPONIVEL")
+    )
+      bancoFora.add(r.dominio);
+    else return null;
+  }
+  const antes = Array.isArray(lojasAntes) ? lojasAntes : [];
+  for (const loja of cobertura.lojasNaoSondadas) {
+    const dela = antes.find((l) => l?.ref === loja?.ref);
+    if (
+      !Array.isArray(dela?.dominios) ||
+      !dela.dominios.some((d) => bancoFora.has(d))
     )
       return null;
-    semResposta.add(r.dominio);
   }
-  if (!semResposta.size) return null;
-  return [...semResposta].sort();
+  if (!semResposta.size && !bancoFora.size) return null;
+  return {
+    semResposta: [...semResposta].sort(),
+    bancoFora: [...bancoFora].sort(),
+  };
 }
 
 // ------------------------------------------------------------------ etapa 3: migrations
@@ -2083,6 +2142,7 @@ export async function publicarRelease(opcoes, deps) {
   const {
     lojas,
     foraDoAr,
+    bancoFora,
     problemas: probInv,
   } = lojasDoInventario(inventario, politica);
   const semBackend = new Set(
@@ -2097,9 +2157,17 @@ export async function publicarRelease(opcoes, deps) {
     ...lojas.map((l) => l.ref),
     ...foraDoAr.map((l) => l.ref),
   ]);
+  // Banco da loja fora do ar: BLOQUEIA, endereço por endereço, com o motivo e
+  // as saídas. A loja que por isso não apareceu é nomeada junto (o 503 não traz
+  // o ref), em vez de "não foi sondada".
+  for (const dominio of bancoFora)
+    bloqueios.push({
+      alvo: `banco da loja em ${dominio}`,
+      motivo: motivoDoBancoForaAntes(dominio),
+    });
   for (const p of [
     ...probInv,
-    ...problemasLojasNaoSondadas(lojasObrigatorias, refsSondados),
+    ...problemasLojasNaoSondadas(lojasObrigatorias, refsSondados, bancoFora),
   ])
     bloqueios.push({ alvo: "inventário", motivo: p });
   // IKCOUS e Savy nunca dormem: uma delas fora do ar é incidente, não decisão.
@@ -2367,13 +2435,14 @@ export async function publicarRelease(opcoes, deps) {
   });
   const producaoDepois = pos.vercel?.producaoOficial ?? null;
   const ok = pos.ok === true && producaoDepois === deploymentId;
-  // Endereço que só não respondeu não é prova de release errada: sem
-  // "FALHOU." e sem o rollback da frota inteira (que assustava o dono à toa).
-  const semResposta =
+  // Endereço que só não respondeu, ou loja com o BANCO fora do ar, não é prova
+  // de release errada: sem "FALHOU." e sem o rollback da frota inteira (que
+  // assustava o dono à toa e não traria banco nenhum de volta).
+  const incerteza =
     ok || producaoDepois !== deploymentId
       ? null
-      : soEnderecosSemResposta(pos, deploymentId);
-  const incerto = semResposta !== null;
+      : incertezaDepoisDoPromote(pos, deploymentId, lojas);
+  const incerto = incerteza !== null;
   const acordou = lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario, sha);
   linhas.push(
     "",
@@ -2387,14 +2456,30 @@ export async function publicarRelease(opcoes, deps) {
       `Produção oficial depois: \`${producaoDepois}\` (esperado \`${deploymentId}\`).`,
     );
   if (incerto) {
+    const { semResposta, bancoFora: bancoForaDepois } = incerteza;
+    if (semResposta.length)
+      linhas.push(
+        "",
+        `**INCERTO.** O version.json de ${semResposta.length} endereço(s) não respondeu (rede, tempo esgotado ou erro 5xx) nem depois de ${ESPERAS_DA_NOVA_TENTATIVA_MS.length + 1} tentativas: ${semResposta.join(", ")}. A página inicial deles respondeu (isolamento conferido), a Vercel diz que apontam para o deployment promovido, a produção oficial é ele e nenhum outro problema apareceu. Isto sozinho não pede voltar a frota; confira de novo com:`,
+      );
+    if (bancoForaDepois.length)
+      linhas.push(
+        "",
+        `**INCERTO.** Publicado: o front novo está no ar (a produção oficial é o deployment promovido e o version.json de cada endereço é o da release); ${lojasComBancoFora(bancoForaDepois, lojas).join("; ")} (pausado pelo Supabase ou incidente: o porteiro respondeu 503 banco-indisponivel). Voltar a frota não traz o banco de volta: restaure o banco e rode a conferência de novo ("Restore project" no painel do Supabase; para loja OAuth, \`node scripts/frota/acordar-projeto.mjs\`):`,
+      );
     linhas.push(
-      "",
-      `**INCERTO.** O version.json de ${semResposta.length} endereço(s) não respondeu (rede, tempo esgotado ou erro 5xx) nem depois de ${ESPERAS_DA_NOVA_TENTATIVA_MS.length + 1} tentativas: ${semResposta.join(", ")}. A página inicial deles respondeu (isolamento conferido), a Vercel diz que apontam para o deployment promovido, a produção oficial é ele e nenhum outro problema apareceu. Isto sozinho não pede voltar a frota; confira de novo com:`,
       "```",
       `node scripts/frota/conferir-frota.mjs --sha ${sha} --vercel`,
       "```",
-      "Se continuarem sem responder, vira falha da conferência: siga a Saida 3 em docs/runbooks/producao-unica-fonte.md.",
     );
+    if (semResposta.length)
+      linhas.push(
+        "Se continuarem sem responder, vira falha da conferência: siga a Saida 3 em docs/runbooks/producao-unica-fonte.md.",
+      );
+    if (bancoForaDepois.length)
+      linhas.push(
+        "Se o painel do Supabase mostrar o projeto no ar (não pausado) e a loja continuar respondendo 503 banco-indisponivel, a causa pode ser o front novo lendo o banco: trate como conferência que falhou e siga a Saida 3 em docs/runbooks/producao-unica-fonte.md.",
+      );
   } else if (!ok) {
     linhas.push(
       "",
@@ -2447,6 +2532,26 @@ export async function publicarRelease(opcoes, deps) {
     lojasForaDoAr: foraDoAr,
     producaoAnterior,
   };
+}
+
+/**
+ * "a loja Savy (<ref>) está com o banco fora do ar em a, b", uma frase por loja do inventário de ANTES do promote (`lojasAntes`);
+ * endereço que não era de loja nenhuma antes sai sozinho ("a loja em x").
+ */
+function lojasComBancoFora(bancoFora, lojasAntes) {
+  const frases = [];
+  const restantes = new Set(bancoFora);
+  for (const l of lojasAntes) {
+    const dominios = l.dominios.filter((d) => restantes.has(d)).sort();
+    if (!dominios.length) continue;
+    for (const d of dominios) restantes.delete(d);
+    frases.push(
+      `a loja ${l.titulo || l.ref} (${l.ref}) está com o banco fora do ar em ${dominios.join(", ")}`,
+    );
+  }
+  for (const d of [...restantes].sort())
+    frases.push(`a loja em ${d} está com o banco fora do ar`);
+  return frases;
 }
 
 /**
