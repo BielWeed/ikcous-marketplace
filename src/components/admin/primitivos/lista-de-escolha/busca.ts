@@ -75,18 +75,19 @@ export function partesDoTrecho(
   const achadoEm = normalizado.indexOf(chave);
   if (achadoEm < 0) return [{ texto, achado: false }];
 
-  const primeiro = posicoes[achadoEm];
-  const ultimo = posicoes[achadoEm + chave.length - 1];
+  // `.at()`: índices numéricos calculados aqui, nunca chave vinda de fora.
+  const primeiro = posicoes.at(achadoEm) ?? 0;
+  const ultimo = posicoes.at(achadoEm + chave.length - 1) ?? primeiro;
   // O fim avança sobre as marcas combinantes que seguem o último caractere.
   let fimDoCaractere = ultimo + 1;
   while (
     fimDoCaractere < caracteres.length &&
-    /^[\u0300-\u036f]$/.test(caracteres[fimDoCaractere])
+    /^[\u0300-\u036f]$/.test(caracteres.at(fimDoCaractere) ?? "")
   ) {
     fimDoCaractere += 1;
   }
-  const de = inicioDoCaractere[primeiro];
-  const ate = inicioDoCaractere[fimDoCaractere];
+  const de = inicioDoCaractere.at(primeiro) ?? 0;
+  const ate = inicioDoCaractere.at(fimDoCaractere) ?? texto.length;
 
   const partes: ParteDoTrecho[] = [];
   if (de > 0) partes.push({ texto: texto.slice(0, de), achado: false });

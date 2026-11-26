@@ -1,4 +1,4 @@
-/* eslint-disable security/detect-non-literal-fs-filename -- Lê só arquivos fixos do repositório (package.json e package-lock.json). */
+ 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";

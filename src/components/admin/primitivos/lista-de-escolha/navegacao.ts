@@ -10,7 +10,7 @@ export function primeiraHabilitada(opcoes: readonly OpcaoDaLista[]): number {
 export function ultimaHabilitada(opcoes: readonly OpcaoDaLista[]): number {
   // `findLastIndex` é ES2023; o `lib` do app é ES2022.
   for (let i = opcoes.length - 1; i >= 0; i--) {
-    if (!opcoes[i].desabilitada) return i;
+    if (!opcoes.at(i)?.desabilitada) return i;
   }
   return -1;
 }
@@ -31,7 +31,7 @@ export function proximaHabilitada(
       : ultimaHabilitada(opcoes);
   }
   for (let i = atual + direcao; i >= 0 && i < opcoes.length; i += direcao) {
-    if (!opcoes[i].desabilitada) return i;
+    if (!opcoes.at(i)?.desabilitada) return i;
   }
   return atual;
 }
@@ -50,8 +50,12 @@ export function porLetra(
   if (!chave || opcoes.length === 0) return atual;
   for (let passo = 1; passo <= opcoes.length; passo++) {
     const i = (Math.max(atual, -1) + passo + opcoes.length) % opcoes.length;
-    const opcao = opcoes[i];
-    if (!opcao.desabilitada && normalizeText(opcao.rotulo).startsWith(chave)) {
+    const opcao = opcoes.at(i);
+    if (
+      opcao &&
+      !opcao.desabilitada &&
+      normalizeText(opcao.rotulo).startsWith(chave)
+    ) {
       return i;
     }
   }

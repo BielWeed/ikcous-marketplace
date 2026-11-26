@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode, Ref } from "react";
+import type { KeyboardEventHandler, ReactNode, Ref } from "react";
 
 /**
  * Lista de escolha do painel: o lugar dos `<select>` nativos. No celular abre
@@ -61,17 +61,19 @@ export type PropsDaEscolha<V extends string> = Comum<V> &
 
 /** O que o gatilho próprio (o chip do Extrato) recebe para desenhar o botão. */
 export interface PropsDoGatilho {
-  /** Espalhar no `<button>`: id, aria-*, `data-valor`, clique e ref. */
+  /** Espalhar no `<button>`: id, aria-*, `data-valor`, clique, teclas e ref. */
   readonly botao: {
     readonly ref: Ref<HTMLButtonElement>;
     readonly id: string;
     readonly type: "button";
     readonly "aria-haspopup": "listbox";
     readonly "aria-expanded": boolean;
-    readonly "aria-controls": string | undefined;
+    readonly "aria-controls": string;
     readonly "data-valor": string;
     readonly disabled: boolean | undefined;
     readonly onClick: () => void;
+    /** ↓ e ↑ no campo fechado abrem a lista (como no `<select>`). */
+    readonly onKeyDown: KeyboardEventHandler<HTMLButtonElement>;
   };
   readonly aberta: boolean;
   /** A opção escolhida (nada no modo ação ou com valor fora da lista). */
