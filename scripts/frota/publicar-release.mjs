@@ -1709,19 +1709,21 @@ function detalheSeguro(e, tokens) {
   return m.replace(/sbp_[A-Za-z0-9_]+/g, "[token]").slice(0, 400);
 }
 
-/** "loja OAuth <slug> não lida — <motivo>. O que fazer: <passo>. Detalhe: …" */
-function explicarFalhaOAuth(e, slug, tokens) {
+/**
+ * O motivo e o passo de uma falha da loja OAuth. `repetir` é o que o dono faz
+ * para tentar de novo (no portão: o ensaio; na abertura da sessão: outra
+ * sessão).
+ */
+function diagnosticoOAuth(e, slug, repetir = "rode o ensaio de novo") {
   const abrir = `rode \`node scripts/frota/nova-loja.mjs abrir --loja ${slug}\` e depois \`node scripts/frota/nova-loja.mjs receber --loja ${slug} --aplicar\` (a lojista autoriza de novo)`;
-  const deNovo =
-    "rode o ensaio de novo; se repetir, chame o dev com este relatório";
+  const deNovo = `${repetir}; se repetir, chame o dev com este relatório`;
   const codigo = e?.codigo;
   let motivo;
   let fazer;
   if (e instanceof CofreTravado) {
     motivo =
       "o cofre da loja está travado por outro comando (sessão de publicação ou nova-loja em andamento)";
-    fazer =
-      "espere ele terminar e rode o ensaio de novo; se nenhum estiver rodando, a trava é órfã: apague o arquivo que o detalhe diz";
+    fazer = `espere ele terminar e ${repetir}; se nenhum estiver rodando, a trava é órfã: apague o arquivo que o detalhe diz`;
   } else if (codigo === "NAO_CONECTADA") {
     motivo = "sem acesso: o cofre deste PC não tem o refresh dela";
     fazer = abrir;
@@ -1735,12 +1737,20 @@ function explicarFalhaOAuth(e, slug, tokens) {
   } else if (codigo === "TOKEN_SEM_PRAZO") {
     motivo = "o token veio sem prazo de validade";
     fazer = deNovo;
+  } else if (codigo === "TOKEN_CURTO") {
+    motivo = "o acesso dela dura menos que o mínimo da sessão";
+    fazer = deNovo;
+  } else if (codigo === "FORA_DA_SESSAO") {
+    motivo =
+      "ficou fora desta sessão de publicação (a abertura falhou para ela; o motivo saiu quando a sessão abriu)";
+    fazer =
+      "resolva aquele motivo, feche esta sessão (sair) e abra outra: ela entra na próxima";
   } else if (
     codigo === ESTADO_DESCONHECIDO ||
     (codigo === "HTTP" && (e.status === 429 || e.status >= 500))
   ) {
     motivo = "a API do Supabase não respondeu (rede ou Supabase fora do ar)";
-    fazer = "rode o ensaio de novo em alguns minutos";
+    fazer = `${repetir} em alguns minutos`;
   } else if (codigo === "BAIXAR_INDISPONIVEL") {
     motivo = "o código das functions dela ainda não se baixa pela API (T3)";
     fazer =
@@ -1766,7 +1776,23 @@ function explicarFalhaOAuth(e, slug, tokens) {
     motivo = `falha ao usar o acesso dela (${typeof codigo === "string" && /^[A-Z_]{1,40}$/.test(codigo) ? codigo : "sem código"})`;
     fazer = deNovo;
   }
+  return { motivo, fazer };
+}
+
+/** "loja OAuth <slug> não lida — <motivo>. O que fazer: <passo>. Detalhe: …" */
+function explicarFalhaOAuth(e, slug, tokens) {
+  const { motivo, fazer } = diagnosticoOAuth(e, slug);
   return `loja OAuth ${slug} não lida — ${motivo}. O que fazer: ${fazer}. Detalhe: ${detalheSeguro(e, tokens)}`;
+}
+
+/** A loja que ficou fora da sessão na abertura: nome, motivo, o que fazer. */
+function explicarForaDaSessao(f, tokens) {
+  const { motivo, fazer } = diagnosticoOAuth(
+    f.erro,
+    f.projeto,
+    "feche esta sessão (sair) e abra outra",
+  );
+  return `loja OAuth ${f.projeto} FICOU FORA desta sessão (não recebe release nela) — ${motivo}. O que fazer: ${fazer}. Detalhe: ${detalheSeguro(f.erro, tokens)}${f.travaPresa ? ` A trava do cofre da loja ${f.projeto} não soltou: o próximo comando dela diz qual arquivo apagar.` : ""}`;
 }
 
 /**
@@ -3270,8 +3296,14 @@ export function dependenciasReais({ rodarGh, rodarSupabase } = {}) {
 /** A sessão fecha sozinha quando falta menos que isto para o token vencer. */
 export const AVISO_DE_VENCIMENTO_MS = 45 * 60 * 1000;
 
-/** Teto do fechar: a janela fechada dá ~10 s antes de o Windows matar o processo. */
+/** O fechar NUNCA desiste: ele espera cada renovação e cada trava (matar o
+ * processo entre a resposta do Supabase e o cofre perde o acesso da loja). O
+ * teto só marca quando avisar "ainda fechando, não feche a janela": o maior
+ * entre TETO_DO_FECHAR_MS e TETO_POR_LOJA_MS por loja da sessão. */
 export const TETO_DO_FECHAR_MS = 8000;
+export const TETO_POR_LOJA_MS = 500;
+export const tetoDoFechar = (lojas) =>
+  Math.max(TETO_DO_FECHAR_MS, lojas * TETO_POR_LOJA_MS);
 
 /** A saída quando o fechar não confirmou que todos os segredos saíram (a
  * mesma da --faxina que deixa sobra): a última rodada 0 vira 1; outro código
@@ -3343,18 +3375,6 @@ function horaLocal(ms) {
   return `${dois(d.getHours())}:${dois(d.getMinutes())}`;
 }
 
-/** Resolve com `valor` ou com ESTOUROU depois de `ms`; nunca lança. */
-const ESTOUROU = Symbol("estourou");
-function comTeto(promessa, ms) {
-  let relogio;
-  return Promise.race([
-    Promise.resolve(promessa).catch(() => ESTOUROU),
-    new Promise((ok) => {
-      relogio = setTimeout(() => ok(ESTOUROU), ms);
-    }),
-  ]).finally(() => clearTimeout(relogio));
-}
-
 /**
  * `--faxina`: apaga do GitHub os segredos de TODA loja OAuth do cadastro que
  * estiverem lá. Nada renova. Imprime só nomes. 0 = nada sobrou; 1 = algum não
@@ -3399,6 +3419,10 @@ export async function rodarFaxina({ cadastro, gh, escrever }) {
  *   deps, cadastro, acesso, gh, escrever, entrada { perguntar, on, off, close },
  *   sinais { on, off }, runsEmAndamento, agora?, agendar?, publicar?,
  *   matarTokenNoFechar?, minimoMs?, tetoDoFecharMs?, gravarJson?
+ * Loja que falha na abertura fica fora da sessão (dita com nome, motivo e o
+ * que fazer); o portão a vê como "não lida". O fechar só devolve com TODA
+ * renovação terminada e toda trava solta: o main pode sair com process.exit
+ * logo depois sem cortar nenhuma no meio.
  * Devolve o código de saída: o da última rodada (1 se nenhuma terminou; 2 se o
  * ensaio lançou exceção), ou SAIDA_SEGREDO_NAO_APAGADO no lugar de um 0 quando
  * o fechar não confirmou que todos os segredos saíram do GitHub.
@@ -3416,7 +3440,6 @@ export async function rodarSessao(opcoes, amb) {
       return () => clearTimeout(t);
     });
   const publicar = amb.publicar ?? publicarRelease;
-  const tetoMs = amb.tetoDoFecharMs ?? TETO_DO_FECHAR_MS;
   const vistos = new Set();
   const dizer = (t) => escrever(semTokens(t, vistos));
 
@@ -3436,12 +3459,6 @@ export async function rodarSessao(opcoes, amb) {
 
   function relatarFechamento(r) {
     const nomes = sessao.lojas.map((l) => l.nome);
-    if (r === ESTOUROU) {
-      dizer(
-        `NÃO confirmei em ${Math.round(tetoMs / 1000)} s que os segredos (${nomes.join(", ")}) saíram do GitHub. Rode AGORA: node scripts/frota/publicar-release.mjs --faxina`,
-      );
-      return;
-    }
     dizer(`segredos apagados: ${r.apagados.length} de ${nomes.length}`);
     for (const x of r.naoApagados)
       dizer(`NÃO apagado: ${x.nome} — rode: ${x.comando}`);
@@ -3466,20 +3483,30 @@ export async function rodarSessao(opcoes, amb) {
     pararRelogio();
     if (aviso) dizer(aviso);
     dizer(
-      "Fechando a sessão: tirando os segredos das lojas OAuth do GitHub...",
+      "Fechando a sessão: tirando os segredos das lojas OAuth do GitHub... Não feche a janela até aparecer `segredos apagados`.",
     );
+    // o teto só avisa: o fechar é esperado até o fim (nada fica no meio)
+    const n = sessao.lojas.length;
+    const tetoMs = amb.tetoDoFecharMs ?? tetoDoFechar(n);
+    let pararAviso = () => {};
+    const avisar = () => {
+      dizer(
+        `ainda fechando a sessão (${n} loja(s)): apagando os segredos, renovando e soltando a trava do cofre de cada uma. Espere: não feche a janela (fechar no meio de uma renovação pode fazer a loja perder o acesso).`,
+      );
+      pararAviso = agendar(avisar, tetoMs);
+    };
+    pararAviso = agendar(avisar, tetoMs);
     let limpo = false;
     try {
-      const r = await comTeto(sessao.fechar(), tetoMs);
+      const r = await sessao.fechar();
       relatarFechamento(r);
-      limpo =
-        r !== ESTOUROU &&
-        Array.isArray(r?.naoApagados) &&
-        r.naoApagados.length === 0;
+      limpo = Array.isArray(r?.naoApagados) && r.naoApagados.length === 0;
     } catch {
       dizer(
         "o fechar falhou: rode AGORA node scripts/frota/publicar-release.mjs --faxina",
       );
+    } finally {
+      pararAviso();
     }
     fase = "fechada";
     terminou(!limpo && codigo === 0 ? SAIDA_SEGREDO_NAO_APAGADO : codigo);
@@ -3612,8 +3639,9 @@ export async function rodarSessao(opcoes, amb) {
         sinal: abortar.signal,
       });
     } catch (e) {
-      fase = "fechada";
       dizer(`A sessão NÃO abriu: ${detalheSeguro(e, vistos)}`);
+      for (const f of e?.foraDaSessao ?? [])
+        dizer(explicarForaDaSessao(f, vistos));
       const l = e?.limpeza;
       if (l) {
         if (l.apagados.length)
@@ -3623,12 +3651,23 @@ export async function rodarSessao(opcoes, amb) {
         for (const p of l.travasPresas)
           dizer(`a trava do cofre da loja ${p} não soltou`);
       }
+      // uma renovação que o sinal deixou no ar ainda vai gravar no cofre:
+      // só se devolve (e o processo só sai) depois de ela terminar
+      if (e?.renovacaoEmVoo) {
+        dizer(
+          "esperando a renovação que já estava em andamento terminar e gravar no cofre: não feche a janela.",
+        );
+        await e.renovacaoEmVoo;
+      }
+      fase = "fechada";
       return 1;
     }
     fase = "aberta";
     dizer(
       `Sessão aberta. Segredos gravados no GitHub: ${sessao.lojas.map((l) => l.nome).join(", ")}; vale até ${horaLocal(sessao.validaAte)} (fecha sozinha às ${horaLocal(sessao.validaAte - AVISO_DE_VENCIMENTO_MS)}). Cole os comandos gh workflow run em OUTRA janela.`,
     );
+    for (const f of sessao.foraDaSessao ?? [])
+      dizer(explicarForaDaSessao(f, vistos));
     pararRelogio = agendar(
       () => {
         if (noPrompt) void terminar(ultimo ?? 1, avisoDeVencimento());
@@ -3846,7 +3885,10 @@ if (
   import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
 ) {
   // A sessão sai com process.exit depois de a saída escoar: um ensaio ainda em
-  // voo (interrompido por sinal) não pode segurar o processo aberto.
+  // voo (interrompido por sinal) não pode segurar o processo aberto. O exit só
+  // chega depois de o rodarSessao devolver, e ele só devolve com o fechar
+  // inteiro (e a renovação em voo de uma abertura interrompida) terminado:
+  // nenhuma renovação é cortada entre a resposta do Supabase e o cofre.
   const encerrarJa = process.argv.includes("--sessao");
   main().then(
     (c) => {

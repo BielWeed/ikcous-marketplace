@@ -832,7 +832,15 @@ node scripts/frota/publicar-release.mjs --sessao --sha <sha> --deployment <dpl_.
   - `A sessão NÃO abriu: ...`: nada ficou aberto. Copie **só essa linha** e mande para o agente.
     Se ela disser `além do dono, têm escrita no repositório: ...`, é a regra de escrita acima: tire
     a permissão dessa pessoa no GitHub ou fale com o agente. Se a mensagem trouxer
-    `NÃO apagado: ... — rode: ...`, rode o comando que ela mostra, do jeito que está.
+    `NÃO apagado: ... — rode: ...`, rode o comando que ela mostra, do jeito que está. Se vier
+    `esperando a renovação que já estava em andamento terminar`, **não feche a janela**: espere a
+    linha do PowerShell (`>`) voltar.
+  - `loja OAuth <slug> FICOU FORA desta sessão ...`, logo abaixo de `Sessão aberta.`: a sessão
+    abriu só com as outras lojas. Essa loja não recebe release nesta sessão, e enquanto ela estiver
+    fora o relatório dá `BLOQUEADO` com `loja OAuth <slug> não lida`. A linha diz o motivo e o que
+    fazer. Digite `sair`, faça o que ela pede e abra outra sessão (passo 1). Se o motivo não ficar
+    claro, mande **só essa linha** para o agente. Se **todas** as lojas ficarem fora, a sessão não
+    abre e cada uma aparece numa linha dessas, depois de `A sessão NÃO abriu: ...`.
   - `--promover não se usa com --sessao`: o comando tem `--promover` a mais. Tire e rode de novo.
     Dentro da sessão, publicar é digitar `promover` (passo 5).
 
@@ -923,9 +931,12 @@ vale do mesmo jeito.
 ### Passo 6 — Como saber que a sessão fechou
 
 - **O que aparece:**
-  `Fechando a sessão: tirando os segredos das lojas OAuth do GitHub...` e, logo depois,
-  `segredos apagados: N de N` (os dois números iguais). A janela volta para a linha que termina em
-  `>`.
+  `Fechando a sessão: tirando os segredos das lojas OAuth do GitHub... Não feche a janela até
+  aparecer `segredos apagados`.` e, logo depois, `segredos apagados: N de N` (os dois números
+  iguais). A janela volta para a linha que termina em `>`. **Não feche a janela antes disso:** o
+  fechar renova o acesso de cada loja e solta a trava do cofre dela, e cortar no meio pode fazer a
+  loja perder o acesso. Com muitas lojas leva mais tempo; enquanto isso pode aparecer
+  `ainda fechando a sessão (N loja(s)): ...`. É normal: espere.
 - **Como saber que deu certo:** os dois números são iguais e, ao rodar o comando abaixo, a
   resposta é `0`:
 
@@ -935,8 +946,8 @@ vale do mesmo jeito.
 
   `0` = publicou (ou fechou depois de um ensaio PRONTO) e o GitHub ficou limpo.
 - **Se aparecer diferente:**
-  - `segredos apagados: 1 de 2` (números diferentes), `NÃO apagado: ...`, `NÃO confirmei em 8 s
-    ...` ou `o fechar falhou`: **sobrou segredo no GitHub.** Vá para o passo 7 agora.
+  - `segredos apagados: 1 de 2` (números diferentes), `NÃO apagado: ...` ou `o fechar falhou`:
+    **sobrou segredo no GitHub.** Vá para o passo 7 agora.
   - `$LASTEXITCODE` deu `1`: um destes três casos. (a) O último ensaio estava `BLOQUEADO` e você
     digitou `sair`. (b) Sobrou segredo no GitHub. (c) Você digitou `promover`, a conferência
     depois de publicar falhou e você digitou `sair`: nesse caso **a publicação aconteceu** e a

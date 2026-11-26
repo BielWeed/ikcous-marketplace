@@ -224,7 +224,8 @@ function desconhecido(onde, motivo) {
 }
 
 /**
- * fetch com prazo que cobre também a LEITURA do corpo. Devolve { status, texto }.
+ * fetch com prazo que cobre também a LEITURA do corpo. Devolve { status, texto,
+ * headers }.
  * Prazo estourado ou exceção do fetch => ErroDaGestao ESTADO_DESCONHECIDO, sem
  * `cause` (a exceção original pode carregar a URL ou o cabeçalho).
  * `onde` é um rótulo fixo de quem chama (ex.: "POST /v1/oauth/token"), nunca
@@ -245,7 +246,8 @@ export async function buscarComPrazo(fetchFn, url, init, prazoMs, onde) {
       estouro,
     ]);
     const texto = await Promise.race([r.text(), estouro]);
-    return { status: r.status, texto };
+    // headers: a ponte lê o limite de pedidos do GitHub (retry-after)
+    return { status: r.status, texto, headers: r.headers };
   } catch (e) {
     if (e instanceof ErroDaGestao) throw e;
     throw desconhecido(onde, `a conexão falhou (${nomeSeguro(e)})`);

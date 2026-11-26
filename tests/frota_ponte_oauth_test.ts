@@ -40,8 +40,12 @@ import {
   criarCofreMemoria,
 } from "../scripts/frota/cofre-local.mjs";
 import {
+  CONCORRENCIA_DO_FECHAR,
+  CONCORRENCIA_DO_GITHUB,
+  ESPERA_MAXIMA_NO_LIMITE_MS,
   ErroDaPonte,
   MINIMO_PADRAO_MS,
+  TENTATIVAS_NO_LIMITE,
   abrirSessao,
   criarGhReal,
   faxinar,
@@ -523,27 +527,47 @@ Deno.test("as travas ficam PRESAS durante a sessão e soltam no fechar", async (
 
 // ------------------------------------------------------------ 5. prazo --
 
-Deno.test("validade: token sem prazo recusa ANTES de gravar qualquer segredo e solta as travas", async () => {
+Deno.test("validade: token sem prazo deixa SÓ aquela loja fora (trava solta, nada gravado dela); as outras abrem", async () => {
   const m = await montar({
     porLoja: { "loja-b": () => respostaToken(CANARIO_B, null) },
   });
-  const e = await pegarErro(() => abrir(m));
-  assert(e instanceof ErroDaPonte);
-  assertEquals(e.codigo, "TOKEN_SEM_PRAZO");
-  assertEquals(m.gh.gravacoes, []);
-  assertEquals(await travaLivre(m.cofre, "loja-a"), true);
+  const s = await abrir(m);
+  assertEquals(
+    s.lojas.map((l) => l.projeto),
+    ["loja-a"],
+  );
+  assertEquals(
+    s.foraDaSessao.map((f) => [f.projeto, f.nome, f.erro.codigo]),
+    [["loja-b", NOME_B, "TOKEN_SEM_PRAZO"]],
+  );
+  assertEquals(
+    m.gh.gravacoes.map((g) => g.nome),
+    [NOME_A],
+  );
   assertEquals(await travaLivre(m.cofre, "loja-b"), true);
-  assertSemCanario(e, "erro de prazo");
+  assertEquals(await travaLivre(m.cofre, "loja-a"), false);
+  assertSemCanario(s.foraDaSessao, "loja fora");
+  await s.fechar();
+  assertEquals(await travaLivre(m.cofre, "loja-a"), true);
 });
 
-Deno.test("validade: token que dura menos que o mínimo recusa antes de gravar; validaAte é o menor vencimento", async () => {
+Deno.test("validade: token que dura menos que o mínimo deixa aquela loja fora; validaAte é o menor vencimento", async () => {
   const curto = await montar({
     porLoja: { "loja-a": () => respostaToken(CANARIO_A, 3600) },
   });
-  const e = await pegarErro(() => abrir(curto));
-  assertEquals(e.codigo, "TOKEN_CURTO");
-  assertEquals(curto.gh.gravacoes, []);
+  const sc = await abrir(curto);
+  assertEquals(
+    sc.foraDaSessao.map((f) => [f.projeto, f.erro.codigo]),
+    [["loja-a", "TOKEN_CURTO"]],
+  );
+  assertEquals(
+    curto.gh.gravacoes.map((g) => g.nome),
+    [NOME_B],
+  );
   assertEquals(await travaLivre(curto.cofre, "loja-a"), true);
+  // o curto não entra no validaAte da sessão
+  assertEquals(sc.validaAte, AGORA + 24 * HORA);
+  await sc.fechar();
 
   // exatamente o mínimo passa; o menor dos dois vira o validaAte
   const m = await montar({
@@ -551,24 +575,79 @@ Deno.test("validade: token que dura menos que o mínimo recusa antes de gravar; 
   });
   const s = await abrir(m, { minimoMs: 3 * HORA });
   assertEquals(s.validaAte, AGORA + 3 * HORA);
+  assertEquals(s.foraDaSessao, []);
   await s.fechar();
   assertEquals(MINIMO_PADRAO_MS, 2 * HORA);
 });
 
 // ------------------------------------------- 6 + mudança 5: falha no meio --
 
-Deno.test("falha na renovação da 2ª loja: apaga TODOS os nomes OAuth, solta as travas, erro sobe com a limpeza", async () => {
+Deno.test("falha na renovação da 2ª loja (HTTP 500): SÓ ela fica fora, com o erro; a 1ª abre e grava", async () => {
   const m = await montar({
     porLoja: { "loja-b": () => new Response("{}", { status: 500 }) },
   });
+  const s = await abrir(m);
+  assertEquals(
+    s.lojas.map((l) => l.nome),
+    [NOME_A],
+  );
+  assertEquals(s.foraDaSessao.length, 1);
+  assertEquals(s.foraDaSessao[0].projeto, "loja-b");
+  assertEquals(s.foraDaSessao[0].nome, NOME_B);
+  assertEquals(s.foraDaSessao[0].erro.status, 500);
+  assertEquals(
+    m.gh.gravacoes.map((g) => g.nome),
+    [NOME_A],
+  );
+  assert(!m.gh.segredos.has(NOME_B));
+  assertEquals(await travaLivre(m.cofre, "loja-b"), true);
+  // a de fora não tem token nesta sessão
+  const fora = pegarErroSinc(() => s.tokenDe(REF_B));
+  assertEquals(fora.codigo, "FORA_DA_SESSAO");
+  const r = await s.fechar();
+  assertEquals(r.apagados, [NOME_A]);
+  assertEquals(await travaLivre(m.cofre, "loja-a"), true);
+});
+
+Deno.test("trava presa (CofreTravado) numa loja: ela fica fora e as outras abrem — a trava de quem a segura fica intocada", async () => {
+  const m = await montar();
+  const outraOperacao = await m.cofre.travar("loja-b");
+  const s = await abrir(m);
+  assertEquals(
+    s.lojas.map((l) => l.projeto),
+    ["loja-a"],
+  );
+  assertEquals(s.foraDaSessao[0].projeto, "loja-b");
+  assert(s.foraDaSessao[0].erro instanceof CofreTravado);
+  assertEquals(m.fetch.chamadas, { "loja-a": 1, "loja-b": 0 });
+  await s.fechar();
+  assertEquals(await travaLivre(m.cofre, "loja-b"), false);
+  await outraOperacao();
+  assertEquals(await travaLivre(m.cofre, "loja-a"), true);
+});
+
+Deno.test("TODAS as lojas falham na renovação: a sessão NÃO abre, o erro lista cada uma, nada gravado, travas soltas", async () => {
+  const m = await montar({
+    porLoja: {
+      "loja-a": () => new Response("{}", { status: 500 }),
+      "loja-b": () => new Response("{}", { status: 503 }),
+    },
+  });
   const e = await pegarErro(() => abrir(m));
-  assertEquals(e.status, 500);
+  assert(e instanceof ErroDaPonte);
+  assertEquals(e.codigo, "NENHUMA_LOJA_ABRIU");
+  assertEquals(
+    e.foraDaSessao.map((f) => [f.projeto, f.erro.status]),
+    [
+      ["loja-a", 500],
+      ["loja-b", 503],
+    ],
+  );
   assertEquals(m.gh.gravacoes, []);
-  const apagados = m.log.filter((x) => x.startsWith("apagar:")).sort();
-  assertEquals(apagados, [`apagar:${NOME_A}`, `apagar:${NOME_B}`]);
   assertEquals(e.limpeza.naoApagados, []);
   assertEquals(await travaLivre(m.cofre, "loja-a"), true);
   assertEquals(await travaLivre(m.cofre, "loja-b"), true);
+  assertSemCanario(e, "erro de nenhuma loja");
 });
 
 Deno.test("falha ao gravar o 2º segredo (que pode ter gravado): os dois nomes saem do GitHub, travas soltas", async () => {
@@ -675,8 +754,21 @@ Deno.test("sinal durante a renovação: a abertura cai na hora, e a trava da ren
   assertEquals(e.codigo, "ABERTURA_INTERROMPIDA");
   assertEquals(m.gh.gravacoes, []);
   assertEquals(await travaLivre(m.cofre, "loja-a"), true);
-  soltarResposta();
+  // a renovação atrasada fica no erro, para quem chama esperar antes de sair
+  // do processo (matar o processo entre a resposta e o cofre perde o acesso)
+  assert(e.renovacaoEmVoo instanceof Promise, "sem a renovação em voo no erro");
+  let terminou = false;
+  e.renovacaoEmVoo.then(() => {
+    terminou = true;
+  });
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
+  assertEquals(
+    terminou,
+    false,
+    "a renovação em voo 'terminou' antes de chegar",
+  );
+  soltarResposta();
+  await e.renovacaoEmVoo;
   assertEquals(await travaLivre(m.cofre, "loja-b"), true);
 });
 
@@ -832,15 +924,31 @@ Deno.test("falha na abertura com matarTokenNoFechar: só a loja cujo segredo foi
 });
 
 Deno.test("falha na abertura ANTES de gravar, com matarTokenNoFechar: token que não foi ao GitHub não é renovado de novo", async () => {
+  // as duas curtas: nenhuma abre, e nenhum token foi ao GitHub
   const m = await montar({
-    porLoja: { "loja-b": () => respostaToken(CANARIO_B, 600) },
+    porLoja: {
+      "loja-a": () => respostaToken(CANARIO_A, 600),
+      "loja-b": () => respostaToken(CANARIO_B, 600),
+    },
   });
   const e = await pegarErro(() => abrir(m, { matarTokenNoFechar: true }));
-  assertEquals(e.codigo, "TOKEN_CURTO");
+  assertEquals(e.codigo, "NENHUMA_LOJA_ABRIU");
+  assertEquals(
+    e.foraDaSessao.map((f) => f.erro.codigo),
+    ["TOKEN_CURTO", "TOKEN_CURTO"],
+  );
   assertEquals(m.fetch.chamadas, { "loja-a": 1, "loja-b": 1 });
   assertEquals(e.limpeza.tokensNaoMortos, []);
   assertEquals(await travaLivre(m.cofre, "loja-a"), true);
   assertEquals(await travaLivre(m.cofre, "loja-b"), true);
+
+  // só a loja-b curta: ela fica fora e o fechar não a renova de novo
+  const m2 = await montar({
+    porLoja: { "loja-b": () => respostaToken(CANARIO_B, 600) },
+  });
+  const s2 = await abrir(m2, { matarTokenNoFechar: true });
+  await s2.fechar();
+  assertEquals(m2.fetch.chamadas, { "loja-a": 2, "loja-b": 1 });
 });
 
 // ------------------------------------------------------------ faxina --
@@ -867,18 +975,25 @@ Deno.test("faxinar sem loja OAuth no cadastro: nem entra no gh", async () => {
 
 Deno.test("canário: nenhum token em erro, resultado, argumento de nome nem process.env", async () => {
   const erros = [];
+  const ecoando = () =>
+    new Response(JSON.stringify({ error: "x", error_description: CANARIO_A }), {
+      status: 500,
+    });
   for (const porLoja of [
-    { "loja-b": () => respostaToken(CANARIO_B, null) },
     {
-      "loja-b": () =>
-        new Response(
-          JSON.stringify({ error: "x", error_description: CANARIO_A }),
-          { status: 500 },
-        ),
+      "loja-a": () => respostaToken(CANARIO_A, null),
+      "loja-b": () => respostaToken(CANARIO_B, null),
     },
+    { "loja-a": ecoando, "loja-b": ecoando },
   ]) {
-    erros.push(await pegarErro(async () => abrir(await montar({ porLoja }))));
+    const e = await pegarErro(async () => abrir(await montar({ porLoja })));
+    erros.push(e, ...e.foraDaSessao.map((f) => f.erro));
   }
+  // e a loja de fora de uma sessão que abriu
+  const parcial = await abrir(await montar({ porLoja: { "loja-b": ecoando } }));
+  erros.push(...parcial.foraDaSessao.map((f) => f.erro));
+  await parcial.fechar();
+  assertEquals(erros.length, 7);
   for (const e of erros) assertSemCanario(e, "erro");
   const m = await montar();
   const s = await abrir(m);
@@ -1209,4 +1324,272 @@ Deno.test("gh real: repositório fora de OWNER/REPO recusa na criação", () => 
       repo,
     );
   }
+});
+
+// ------------------------------------------ escala: 50 lojas e o GitHub --
+
+const esperarMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** `n` lojas OAuth (refs de 20 letras distintas), sem IKCOUS/Savy. */
+function cadastroGrande(n) {
+  const letra = (k) => String.fromCharCode(97 + (k % 26));
+  const lojas = Array.from({ length: n }, (_, i) => [
+    `loja-g${i}`,
+    {
+      projeto: `loja-g${i}`,
+      ref: `${letra(Math.floor(i / 26))}${letra(i)}`.padEnd(20, "q"),
+      classe: "assinante",
+      acesso: "oauth",
+      segredoDoToken: `SUPABASE_ACCESS_TOKEN_LOJA_G${i}`,
+    },
+  ]);
+  return { lojas: Object.fromEntries(lojas) };
+}
+
+/**
+ * Acesso dublê com renovação LENTA no fechar (cada renovarDeNovo leva
+ * `deNovoMs`): conta quantas correm juntas e grava a ordem de renovar/soltar.
+ */
+function acessoLento({ deNovoMs = 5 } = {}) {
+  const ev = { juntos: 0, maxJuntos: 0, log: [], deNovoFeitos: 0, soltas: 0 };
+  const acesso = {
+    async renovarComTravaLonga({ slug }) {
+      return {
+        accessToken: `tok-${slug}`,
+        expiraEm: AGORA + 20 * HORA,
+        async renovarDeNovo() {
+          ev.juntos++;
+          ev.maxJuntos = Math.max(ev.maxJuntos, ev.juntos);
+          ev.log.push(`deNovo-inicio:${slug}`);
+          await esperarMs(deNovoMs);
+          ev.juntos--;
+          ev.deNovoFeitos++;
+          ev.log.push(`deNovo-fim:${slug}`);
+          return { accessToken: `morto-${slug}`, expiraEm: AGORA + 24 * HORA };
+        },
+        async liberar() {
+          ev.soltas++;
+          ev.log.push(`liberar:${slug}`);
+        },
+      };
+    },
+  };
+  return { acesso, ev };
+}
+
+/** gh dublê com DELETE lento que conta quantos correm juntos. */
+function ghContado(log, { existentes = [], apagarMs = 3 } = {}) {
+  const gh = ghFalso(log, { existentes });
+  const apagarOriginal = gh.apagar;
+  gh.juntos = 0;
+  gh.maxJuntos = 0;
+  gh.apagar = async (nome) => {
+    gh.juntos++;
+    gh.maxJuntos = Math.max(gh.maxJuntos, gh.juntos);
+    try {
+      await esperarMs(apagarMs);
+      return await apagarOriginal(nome);
+    } finally {
+      gh.juntos--;
+    }
+  };
+  return gh;
+}
+
+Deno.test("escala: fechar com 50 lojas e renovação lenta — no máximo CONCORRENCIA_DO_FECHAR renovações por vez, cada trava solta logo depois da renovação DELA, e o fechar só termina com todas feitas", async () => {
+  const log = [];
+  const { acesso, ev } = acessoLento({ deNovoMs: 4 });
+  const gh = ghContado(log);
+  const s = await abrirSessao({
+    cadastro: cadastroGrande(50),
+    acesso,
+    gh,
+    agora: () => AGORA,
+    matarTokenNoFechar: true,
+  });
+  assertEquals(s.lojas.length, 50);
+  const r = await s.fechar();
+  // nenhuma renovação ficou no meio: todas terminaram ANTES de o fechar resolver
+  assertEquals(ev.deNovoFeitos, 50);
+  assertEquals(ev.soltas, 50);
+  assertEquals(ev.juntos, 0);
+  assertEquals(r.tokensNaoMortos, []);
+  assertEquals(r.travasPresas, []);
+  assertEquals(r.apagados.length, 50);
+  // concorrência limitada (e de fato paralela)
+  assert(
+    ev.maxJuntos <= CONCORRENCIA_DO_FECHAR,
+    `renovou ${ev.maxJuntos} ao mesmo tempo`,
+  );
+  assert(ev.maxJuntos > 1, "o fechar renovou uma por vez");
+  // cada trava solta DEPOIS da renovação dela, e a 1ª solta antes da última renovação
+  for (let i = 0; i < 50; i++) {
+    const slug = `loja-g${i}`;
+    assert(
+      ev.log.indexOf(`deNovo-fim:${slug}`) < ev.log.indexOf(`liberar:${slug}`),
+      `${slug} soltou antes de renovar`,
+    );
+  }
+  const primeiraSolta = ev.log.findIndex((x) => x.startsWith("liberar:"));
+  const ultimaRenovacao = ev.log.findLastIndex((x) =>
+    x.startsWith("deNovo-inicio:"),
+  );
+  assert(
+    primeiraSolta < ultimaRenovacao,
+    "as travas só soltaram depois de TODAS as renovações",
+  );
+});
+
+Deno.test("escala: o fechar apaga no máximo CONCORRENCIA_DO_GITHUB segredos ao mesmo tempo (o GitHub limita 100 simultâneos)", async () => {
+  const log = [];
+  const { acesso } = acessoLento({ deNovoMs: 0 });
+  const gh = ghContado(log);
+  const s = await abrirSessao({
+    cadastro: cadastroGrande(50),
+    acesso,
+    gh,
+    agora: () => AGORA,
+    matarTokenNoFechar: false,
+  });
+  const r = await s.fechar();
+  assertEquals(r.apagados.length, 50);
+  assert(
+    gh.maxJuntos <= CONCORRENCIA_DO_GITHUB,
+    `${gh.maxJuntos} DELETE ao mesmo tempo`,
+  );
+  assert(gh.maxJuntos > 1, "apagou um por vez");
+});
+
+Deno.test("escala: a faxina avulsa também apaga com concorrência limitada", async () => {
+  const log = [];
+  const cad = cadastroGrande(50);
+  const gh = ghContado(log, {
+    existentes: Object.values(cad.lojas).map((l) => l.segredoDoToken),
+  });
+  const r = await faxinar({ cadastro: cad, gh });
+  assertEquals(r.apagados.length, 50);
+  assertEquals(r.naoApagados, []);
+  assert(gh.maxJuntos <= CONCORRENCIA_DO_GITHUB, `${gh.maxJuntos} juntos`);
+});
+
+// ---------------------------------------- limite de pedidos do GitHub --
+
+const SEM_CORPO = (status, headers = {}, corpo = null) =>
+  new Response(corpo, { status, headers });
+
+/** faxina avulsa de NOME_A com o gh REAL, fetch roteirizado e relógio dublê. */
+async function faxinaComLimite(...respostasDoDelete) {
+  const dormidas = [];
+  const f = fetchGh(
+    json(200, { total_count: 1, secrets: [{ name: NOME_A }] }),
+    ...respostasDoDelete,
+  );
+  const gh = ghReal(spawnFalso({ saida: TOKEN_GH }), f, {
+    agora: () => AGORA,
+  });
+  const r = await faxinar({
+    cadastro: cadastro(),
+    gh,
+    dormir: async (ms) => {
+      dormidas.push(ms);
+    },
+  });
+  const deletes = f.chamadas.filter((c) => c.init.method === "DELETE").length;
+  return { r, dormidas, deletes };
+}
+
+Deno.test("limite do GitHub: 429 com Retry-After espera o tempo pedido (relógio dublê) e tenta de novo", async () => {
+  const { r, dormidas, deletes } = await faxinaComLimite(
+    SEM_CORPO(429, { "retry-after": "7" }),
+    SEM_CORPO(204),
+  );
+  assertEquals(dormidas, [7000]);
+  assertEquals(deletes, 2);
+  assertEquals(r.apagados, [NOME_A]);
+  assertEquals(r.naoApagados, []);
+});
+
+Deno.test("limite do GitHub: 403 com x-ratelimit-remaining 0 espera até o x-ratelimit-reset", async () => {
+  const { r, dormidas } = await faxinaComLimite(
+    SEM_CORPO(403, {
+      "x-ratelimit-remaining": "0",
+      "x-ratelimit-reset": String(AGORA / 1000 + 20),
+    }),
+    SEM_CORPO(204),
+  );
+  assertEquals(dormidas, [20_000]);
+  assertEquals(r.apagados, [NOME_A]);
+});
+
+Deno.test("limite do GitHub: limite secundário sem cabeçalho espera 1 minuto (a regra da documentação)", async () => {
+  const { r, dormidas } = await faxinaComLimite(
+    SEM_CORPO(
+      403,
+      {},
+      JSON.stringify({ message: "You have exceeded a secondary rate limit." }),
+    ),
+    SEM_CORPO(204),
+  );
+  assertEquals(dormidas, [60_000]);
+  assertEquals(r.apagados, [NOME_A]);
+});
+
+Deno.test("limite do GitHub: teto de tentativas — depois dele, o nome fica em NÃO apagado com o comando", async () => {
+  const limites = Array.from({ length: TENTATIVAS_NO_LIMITE }, () =>
+    SEM_CORPO(429, { "retry-after": "1" }),
+  );
+  const { r, dormidas, deletes } = await faxinaComLimite(
+    ...limites,
+    // a lista que confere o que falhou: o nome continua lá
+    json(200, { total_count: 1, secrets: [{ name: NOME_A }] }),
+  );
+  assertEquals(deletes, TENTATIVAS_NO_LIMITE);
+  assertEquals(dormidas.length, TENTATIVAS_NO_LIMITE - 1);
+  assertEquals(r.apagados, []);
+  assertEquals(r.naoApagados, [
+    {
+      nome: NOME_A,
+      comando: `gh secret delete ${NOME_A} --app actions --repo ${REPO}`,
+    },
+  ]);
+});
+
+Deno.test("limite do GitHub: espera maior que o teto não pendura (não espera e reporta); 403 sem sinal de limite não repete", async () => {
+  const longo = await faxinaComLimite(
+    SEM_CORPO(429, {
+      "retry-after": String(ESPERA_MAXIMA_NO_LIMITE_MS / 1000 + 1),
+    }),
+    json(200, { total_count: 1, secrets: [{ name: NOME_A }] }),
+  );
+  assertEquals(longo.dormidas, []);
+  assertEquals(longo.deletes, 1);
+  assertEquals(
+    longo.r.naoApagados.map((x) => x.nome),
+    [NOME_A],
+  );
+  const proibido = await faxinaComLimite(
+    SEM_CORPO(403, {}, JSON.stringify({ message: "Resource not accessible" })),
+    json(200, { total_count: 1, secrets: [{ name: NOME_A }] }),
+  );
+  assertEquals(proibido.dormidas, []);
+  assertEquals(proibido.deletes, 1);
+  assertEquals(
+    proibido.r.naoApagados.map((x) => x.nome),
+    [NOME_A],
+  );
+});
+
+Deno.test("limite do GitHub: o erro do apagar real diz quanto esperar e não carrega token", async () => {
+  const gh = ghReal(
+    spawnFalso({ saida: TOKEN_GH }),
+    fetchGh(SEM_CORPO(429, { "retry-after": "3" })),
+    { agora: () => AGORA },
+  );
+  await gh.entrar();
+  const e = await pegarErro(() => gh.apagar(NOME_A));
+  assert(e instanceof ErroDaPonte);
+  assertEquals(e.codigo, "LIMITE_DO_GITHUB");
+  assertEquals(e.esperarMs, 3000);
+  assertEquals(e.status, 429);
+  assertSemCanario(e, "erro de limite");
 });

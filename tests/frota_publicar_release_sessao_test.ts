@@ -46,7 +46,11 @@ import {
   assertStringIncludes,
   assertThrows,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { criarGhReal } from "../scripts/frota/ponte-oauth.mjs";
+import { CofreTravado } from "../scripts/frota/cofre-local.mjs";
+import {
+  CONCORRENCIA_DO_FECHAR,
+  criarGhReal,
+} from "../scripts/frota/ponte-oauth.mjs";
 import {
   AVISO_DA_SESSAO_OAUTH,
   AVISO_DE_VENCIMENTO_MS,
@@ -519,8 +523,10 @@ Deno.test("sessão 1: `sair` encerra com o código da última rodada e cancela o
     async (m) => {
       assertEquals(await m.rodar(), 1);
       assertEquals(m.publicar.chamadas.length, 1);
-      assertEquals(m.agendados.length, 1);
+      // o relógio do vencimento e o aviso do fechar: os dois desligados
+      assertEquals(m.agendados.length, 2);
       assert(m.agendados[0].cancelado, "o relógio do vencimento ficou ligado");
+      assert(m.agendados[1].cancelado, "o aviso do fechar ficou ligado");
       assertFechouLimpo(m);
     },
   );
@@ -706,7 +712,11 @@ Deno.test("sessão 2: parado no prompt, o relógio agendado para 45 min antes do
   );
 });
 
-Deno.test("sessão 2: o fechar tem teto — DELETE que não responde não prende a sessão; manda rodar --faxina", async () => {
+/** O aviso "não feche a janela" agendado pelo fechar (o relógio é o dublê). */
+const avisosDoFechar = (m, teto) =>
+  m.agendados.filter((a) => a.ms === teto && !a.cancelado);
+
+Deno.test("sessão 2: o fechar ESPERA o DELETE preso (não desiste no teto e não manda o processo embora); o teto só avisa para não fechar a janela", async () => {
   await comSessao(
     {
       respostas: ["sair"],
@@ -715,16 +725,31 @@ Deno.test("sessão 2: o fechar tem teto — DELETE que não responde não prende
       amb: { tetoDoFecharMs: 40 },
     },
     async (m) => {
-      assertEquals(await m.rodar(), 1);
-      assertStringIncludes(m.texto(), "--faxina");
-      assertStringIncludes(m.texto(), NOME_TESTE);
-      // solta o DELETE preso e deixa o fechar em segundo plano terminar
+      let terminou = false;
+      const r = m.rodar().then((c) => {
+        terminou = true;
+        return c;
+      });
+      await ate(() => m.github.apagados.length === 2, "os DELETE começarem");
+      await esperar(120);
+      assertEquals(terminou, false, "a sessão saiu com o fechar no meio");
+      assertEquals(m.acessoChamadas.liberar, [], "soltou antes de apagar");
+      // o teto chegou: só avisa, e se reagenda
+      const [aviso] = avisosDoFechar(m, 40);
+      assert(aviso, "o fechar não agendou o aviso");
+      aviso.fn();
+      assertStringIncludes(m.texto(), "não feche a janela");
+      // o aviso se reagenda (avisa de novo se o fechar continuar)
+      assertEquals(m.agendados.filter((a) => a.ms === 40).length, 2);
       m.github.soltar();
-      await ate(
-        () => m.acessoChamadas.liberar.length === 2,
-        "o fechar em segundo plano",
+      assertEquals(await r, 1);
+      assert(!m.texto().includes("NÃO confirmei"));
+      assertStringIncludes(m.texto(), "segredos apagados: 2 de 2");
+      assert(
+        m.agendados.filter((a) => a.ms === 40).at(-1).cancelado,
+        "o aviso ficou ligado depois do fechar",
       );
-      await esperar(20);
+      assertFechouLimpo(m);
     },
   );
 });
@@ -827,7 +852,7 @@ Deno.test("sessão 2 (revisão, c): promover publicou mas o fechar NÃO apagou 1
   );
 });
 
-Deno.test("sessão 2 (revisão, c): `sair` depois de um ensaio PRONTO com o fechar estourando o teto — a saída não é 0", async () => {
+Deno.test("sessão 2 (revisão, c): `sair` depois de um ensaio PRONTO com o DELETE lento — a saída 0 só vem depois de o GitHub confirmar", async () => {
   await comSessao(
     {
       respostas: ["sair"],
@@ -836,14 +861,17 @@ Deno.test("sessão 2 (revisão, c): `sair` depois de um ensaio PRONTO com o fech
       amb: { tetoDoFecharMs: 40 },
     },
     async (m) => {
-      assertEquals(await m.rodar(), 1);
-      assertStringIncludes(m.texto(), "--faxina");
+      let terminou = false;
+      const r = m.rodar().then((c) => {
+        terminou = true;
+        return c;
+      });
+      await ate(() => m.github.apagados.length === 2, "os DELETE começarem");
+      await esperar(80);
+      assertEquals(terminou, false);
       m.github.soltar();
-      await ate(
-        () => m.acessoChamadas.liberar.length === 2,
-        "o fechar em segundo plano",
-      );
-      await esperar(20);
+      assertEquals(await r, 0);
+      assertFechouLimpo(m);
     },
   );
 });
@@ -968,25 +996,48 @@ Deno.test("sessão 4 (mudança 3): o SINAL fecha mesmo com run em andamento, e a
 // 5. mudanças 5 e 6: abertura interrompida e escrita de terceiros
 // ====================================================================
 
-Deno.test("sessão 5 (mudança 5): sinal DURANTE a renovação — a abertura cai, TODOS os nomes OAuth são apagados, nada ensaia", async () => {
+Deno.test("sessão 5 (mudança 5): sinal DURANTE a renovação — a abertura cai, TODOS os nomes OAuth são apagados, nada ensaia, e a sessão só devolve depois de a renovação em voo chegar e soltar", async () => {
+  let soltarRenovacao = () => {};
+  const renovacaoPresa = new Promise((r) => {
+    soltarRenovacao = r;
+  });
+  let naRenovacao = false;
   await comSessao(
     {
       acesso: {
         antesDeRenovar: async (slug) => {
           if (slug !== "loja-dois") return;
+          naRenovacao = true;
           setTimeout(() => sinaisDoTeste.emit("SIGINT"), 0);
-          await pendente();
+          await renovacaoPresa;
         },
       },
     },
     async (m) => {
       sinaisDoTeste = m.sinais;
-      assertEquals(await m.rodar(), 1);
+      let terminou = false;
+      const r = m.rodar().then((c) => {
+        terminou = true;
+        return c;
+      });
+      await ate(() => naRenovacao, "a renovação da loja-dois");
+      await ate(
+        () => m.texto().includes("interrompida"),
+        "a abertura cair com o sinal",
+      );
+      await esperar(50);
+      // a renovação ainda está entre o Supabase e o cofre: sair agora mataria
+      assertEquals(terminou, false, "saiu com a renovação em voo");
+      assertStringIncludes(m.texto(), "não feche a janela");
+      soltarRenovacao();
+      assertEquals(await r, 1);
       assertEquals(m.publicar.chamadas.length, 0);
       assertEquals(deletesDe(m), [NOME_DOIS, NOME_TESTE]);
-      assertStringIncludes(m.texto(), "interrompida");
       assertEquals(m.github.noGitHub(), []);
-      assertEquals(m.acessoChamadas.liberar, ["loja-teste"]);
+      assertEquals(m.acessoChamadas.liberar.sort(), [
+        "loja-dois",
+        "loja-teste",
+      ]);
       assertEquals(m.sinais.listenerCount("SIGINT"), 0);
       assert(m.entrada.fechada);
     },
@@ -1466,6 +1517,231 @@ Deno.test("matar o token no fechar fica LIGADO até a prova P6b decidir (lado se
       await m.rodar();
       assertEquals(m.acessoChamadas.deNovo.sort(), ["loja-dois", "loja-teste"]);
       semCanario(m.texto(), "saída");
+    },
+  );
+});
+
+// ====================================================================
+// 9. escala: loja que falha na abertura e o fechar com muitas lojas
+// ====================================================================
+
+/** Um publicar dublê que NÃO pede token (a loja de fora não derruba a rodada). */
+function publicarSemToken(codigo = 1) {
+  const chamadas = [];
+  const fn = async (opcoes) => {
+    chamadas.push({ opcoes });
+    return {
+      codigo,
+      relatorio: `rodada ${chamadas.length}`,
+      bloqueios: [],
+      lojas: [],
+      producaoAnterior: null,
+    };
+  };
+  fn.chamadas = chamadas;
+  return fn;
+}
+
+const travada = (slug) =>
+  new CofreTravado(
+    `Cofre: a loja ${slug} já está travada por outra operação (arquivo C:\\x\\${slug}.trava). Se nenhum comando da loja estiver rodando, apague esse arquivo e repita.`,
+  );
+
+Deno.test("sessão 9: uma loja com a trava presa fica FORA — a sessão abre com as outras e diz nome, motivo e o que fazer", async () => {
+  await comSessao(
+    {
+      acesso: {
+        antesDeRenovar: async (slug) => {
+          if (slug === "loja-dois") throw travada(slug);
+        },
+      },
+      publicar: publicarSemToken(1),
+      respostas: ["sair"],
+    },
+    async (m) => {
+      assertEquals(await m.rodar(), 1);
+      const texto = m.texto();
+      assertStringIncludes(texto, "Sessão aberta");
+      assertStringIncludes(
+        texto,
+        `Segredos gravados no GitHub: ${NOME_TESTE};`,
+      );
+      const linha = m.saida.find((l) => l.includes("FICOU FORA"));
+      assert(linha, `sem a linha da loja de fora:\n${texto}`);
+      assertStringIncludes(linha, "loja-dois");
+      assertStringIncludes(linha, "travado");
+      assertStringIncludes(linha, "O que fazer:");
+      assertStringIncludes(linha, "loja-dois.trava");
+      // só a loja de dentro foi gravada, e o GitHub termina limpo
+      const sets = m
+        .ghRegistro()
+        .filter((r) => r.args[0] === "secret")
+        .map((r) => r.args[2]);
+      assertEquals(sets, [NOME_TESTE]);
+      assertEquals(m.github.noGitHub(), []);
+      assertEquals(m.acessoChamadas.liberar, ["loja-teste"]);
+      assertEquals(m.publicar.chamadas.length, 1);
+      semCanario(texto, "saída");
+    },
+  );
+});
+
+Deno.test("sessão 9: com o portão de verdade, a loja que ficou fora é 'não lida' e BLOQUEIA a promoção, com o motivo da sessão", async () => {
+  const { d } = depsDoPortao();
+  await comSessao(
+    {
+      acesso: {
+        antesDeRenovar: async (slug) => {
+          if (slug === "loja-dois") throw travada(slug);
+        },
+      },
+      publicar: publicarRelease,
+      deps: d,
+      respostas: ["promover", "sair"],
+    },
+    async (m) => {
+      assertEquals(await m.rodar(), 1);
+      const texto = m.texto();
+      assertStringIncludes(texto, "BLOQUEADO");
+      assertStringIncludes(texto, "loja OAuth loja-dois não lida");
+      assertStringIncludes(texto, "ficou fora desta sessão");
+      // promover com bloqueio não publica: as duas rodadas pararam no portão
+      assertEquals(m.entrada.perguntas.length, 2);
+      assertEquals(m.github.noGitHub(), []);
+    },
+  );
+});
+
+Deno.test("sessão 9: TODAS as lojas falham na abertura — a sessão NÃO abre e cada uma sai com o motivo", async () => {
+  await comSessao(
+    {
+      acesso: {
+        antesDeRenovar: async (slug) => {
+          throw travada(slug);
+        },
+      },
+      publicar: publicarSemToken(1),
+    },
+    async (m) => {
+      assertEquals(await m.rodar(), 1);
+      const texto = m.texto();
+      assertStringIncludes(texto, "A sessão NÃO abriu");
+      assert(
+        m.saida.some(
+          (l) => l.includes("FICOU FORA") && l.includes("loja-teste"),
+        ),
+      );
+      assert(
+        m.saida.some(
+          (l) => l.includes("FICOU FORA") && l.includes("loja-dois"),
+        ),
+      );
+      assertEquals(m.publicar.chamadas.length, 0);
+      assertEquals(
+        m.ghRegistro().filter((r) => r.args[0] === "secret").length,
+        0,
+      );
+    },
+  );
+});
+
+/** `n` lojas OAuth no cadastro normalizado, refs de 20 letras distintas. */
+function cadastroGrande(n) {
+  const letra = (k) => String.fromCharCode(97 + (k % 26));
+  const lojas = {
+    "ikcous-publicada": {
+      ref: REF_IKCOUS,
+      classe: "assinante",
+      apelido: "CAF",
+      segredoDoToken: NOME_IKCOUS,
+      functionsNomeadas: true,
+    },
+  };
+  for (let i = 0; i < n; i++) {
+    lojas[`loja-g${i}`] = lojaOAuth(
+      `${letra(Math.floor(i / 26))}${letra(i)}`.padEnd(20, "q"),
+      `loja-g${i}`,
+    );
+  }
+  return validarCadastro({ lojas });
+}
+
+/** gh no contrato da ponte, sem processo filho (50 lojas = 50 gh seriam lentos). */
+function ghEmMemoria(cadastro) {
+  const segredos = new Set();
+  const permitidos = new Set(
+    Object.values(cadastro.lojas)
+      .filter((l) => l.acesso === "oauth")
+      .map((l) => l.segredoDoToken),
+  );
+  return {
+    repo: REPO,
+    dono: "dono-falso",
+    segredos,
+    async entrar() {},
+    async comEscrita() {
+      return ["dono-falso"];
+    },
+    async listar() {
+      return [...segredos];
+    },
+    async definir(nome) {
+      if (!permitidos.has(nome)) throw new Error("nome recusado");
+      segredos.add(nome);
+    },
+    async apagar(nome) {
+      await esperar(1);
+      segredos.delete(nome);
+    },
+    async esquecer() {},
+  };
+}
+
+Deno.test("sessão 9 (escala): fechar com 50 lojas e renovação LENTA — a sessão só devolve (e o processo só sai) com TODAS as renovações terminadas e as 50 travas soltas, no máximo CONCORRENCIA_DO_FECHAR por vez", async () => {
+  const cadastro = cadastroGrande(50);
+  const ev = { juntos: 0, maxJuntos: 0, feitas: 0, soltas: 0, emVoo: 0 };
+  const acesso = {
+    async renovarComTravaLonga({ slug }) {
+      return {
+        accessToken: `tok-${slug}`,
+        expiraEm: AGORA + 20 * HORA,
+        async renovarDeNovo() {
+          ev.juntos++;
+          ev.emVoo++;
+          ev.maxJuntos = Math.max(ev.maxJuntos, ev.juntos);
+          await esperar(5); // PowerShell 2× + o Supabase, encolhidos
+          ev.juntos--;
+          ev.emVoo--;
+          ev.feitas++;
+          return { accessToken: `morto-${slug}`, expiraEm: AGORA + 24 * HORA };
+        },
+        async liberar() {
+          ev.soltas++;
+        },
+      };
+    },
+  };
+  const gh = ghEmMemoria(cadastro);
+  await comSessao(
+    {
+      cadastro,
+      publicar: publicarSemToken(1),
+      respostas: ["sair"],
+      // um teto minúsculo: o código antigo desistia aqui e o process.exit
+      // matava as renovações no meio
+      amb: { acesso, gh, tetoDoFecharMs: 1 },
+    },
+    async (m) => {
+      assertEquals(await m.rodar(), 1);
+      assertEquals(ev.emVoo, 0, "a sessão devolveu com renovação no meio");
+      assertEquals(ev.feitas, 50);
+      assertEquals(ev.soltas, 50);
+      assert(
+        ev.maxJuntos <= CONCORRENCIA_DO_FECHAR,
+        `${ev.maxJuntos} renovações ao mesmo tempo`,
+      );
+      assertEquals([...gh.segredos], []);
+      assertStringIncludes(m.texto(), "segredos apagados: 50 de 50");
     },
   );
 });

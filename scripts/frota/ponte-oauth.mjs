@@ -14,17 +14,30 @@
 //      quem escreve lê todo segredo por um workflow);
 //   3. faxina: apaga todo segredo de loja OAuth DO CADASTRO que sobrou;
 //   4. renova cada loja UMA vez (renovarComTravaLonga: a trava fica presa);
-//   5. confere o prazo de TODOS antes de gravar QUALQUER segredo;
+//      a loja cuja renovação falha (trava de outro comando, SemAcesso, 429,
+//      rede) fica FORA desta sessão (`foraDaSessao`, com o erro) e as outras
+//      seguem;
+//   5. confere o prazo de cada uma antes de gravar QUALQUER segredo: sem prazo
+//      ou curta, fica fora (a trava dela solta na hora);
 //   6. grava cada segredo (gh secret set, valor pelo stdin).
-//   Falha ou sinal em qualquer passo depois do 1: apaga TODOS os nomes OAuth
-//   do cadastro (como a faxina: o gh pode ter gravado e dito que falhou),
-//   solta todas as travas e o erro original sobe com `limpeza`.
+//   Nenhuma loja sobrou, falha no canal do GitHub (passos 1-3 e 6) ou sinal:
+//   apaga TODOS os nomes OAuth do cadastro (como a faxina: o gh pode ter
+//   gravado e dito que falhou), solta todas as travas e o erro sobe com
+//   `limpeza` e `foraDaSessao`. Sinal com uma renovação em voo: o erro leva
+//   `renovacaoEmVoo`, que quem chama espera antes de sair do processo.
 //
-// FECHAR (fechar): apaga os segredos da sessão em paralelo; com
-// matarTokenNoFechar, renova cada loja de novo DEPOIS de apagar (se a P6b
-// provar que renovar invalida o anterior, o token que esteve no GitHub morre);
-// solta as travas; esquece o token do gh. Nunca lança; pode ser chamado de
-// novo (devolve o mesmo resultado). O que não saiu volta com o comando exato.
+// FECHAR (fechar): apaga os segredos da sessão; com matarTokenNoFechar, renova
+// cada loja de novo DEPOIS de apagar (se a P6b provar que renovar invalida o
+// anterior, o token que esteve no GitHub morre) e solta a trava DELA logo em
+// seguida, CONCORRENCIA_DO_FECHAR lojas por vez; esquece o token do gh. Só
+// resolve com TODAS as renovações terminadas (nenhuma fica entre a resposta do
+// Supabase e o cofre). Nunca lança; pode ser chamado de novo (devolve o mesmo
+// resultado). O que não saiu volta com o comando exato.
+//
+// GITHUB: todo DELETE vai com no máximo CONCORRENCIA_DO_GITHUB ao mesmo tempo;
+// recusado pelo limite de pedidos (403/429), espera o que ele pediu
+// (retry-after, x-ratelimit-reset ou 1 min) e tenta de novo, até
+// TENTATIVAS_NO_LIMITE e nunca mais que ESPERA_MAXIMA_NO_LIMITE_MS por vez.
 //
 // "APAGADO" só com prova: DELETE 204, ou um DELETE que falhou e a lista do
 // repositório mostra que o nome não está lá. 404 sozinho não prova (é também
@@ -46,6 +59,16 @@ const {
 
 export const MINIMO_PADRAO_MS = 2 * 60 * 60 * 1000;
 export const API_GITHUB = "https://api.github.com";
+/** Pedidos de segredo ao GitHub ao mesmo tempo. O limite secundário dele é
+ * 100 simultâneos e 900 pontos/min (DELETE vale 5): 10 fica longe dos dois. */
+export const CONCORRENCIA_DO_GITHUB = 10;
+/** Lojas do fechar ao mesmo tempo (cada renovação abre o PowerShell 2×). */
+export const CONCORRENCIA_DO_FECHAR = 4;
+/** Tentativas de um DELETE que o GitHub recusou por limite (a 1ª conta). */
+export const TENTATIVAS_NO_LIMITE = 3;
+/** A espera mais longa que se aceita pelo limite do GitHub; acima dela não
+ * se espera: o nome volta em naoApagados, com o comando da faxina. */
+export const ESPERA_MAXIMA_NO_LIMITE_MS = 60_000;
 const PRAZO_GH_MS = 30_000;
 const POR_PAGINA = 100;
 const TETO_PAGINAS = 10;
@@ -153,23 +176,69 @@ function escolherLojas(todas, pedidas) {
 const comandoApagar = (gh, nome) =>
   `gh secret delete ${nome} --app actions --repo ${gh.repo}`;
 
+const dormirDeVerdade = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
 /**
- * Apaga os nomes em paralelo. O que falhou é conferido UMA vez na lista do
- * repositório: ausente = apagado; presente ou lista que falha = naoApagados.
- * Nunca lança.
+ * Roda `fazer` em cada item, no máximo `limite` ao mesmo tempo, e espera
+ * TODOS terminarem (nada fica no meio). Devolve os ÍNDICES dos itens que
+ * falharam. Nunca lança.
+ * @returns {Promise<Set<number>>}
  */
-async function apagarTodos(gh, nomes) {
-  const r = await Promise.all(
-    nomes.map((n) =>
-      Promise.resolve()
-        .then(() => gh.apagar(n))
-        .then(
-          () => null,
-          () => n,
-        ),
-    ),
+async function comLimite(itens, limite, fazer) {
+  const fila = itens.map((item, i) => ({ item, i }));
+  const falhos = new Set();
+  const vaga = async () => {
+    for (let t = fila.shift(); t !== undefined; t = fila.shift()) {
+      try {
+        await fazer(t.item);
+      } catch {
+        falhos.add(t.i);
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limite, itens.length) }, vaga),
   );
-  let falhos = r.filter((n) => n !== null);
+  return falhos;
+}
+
+/**
+ * Um DELETE. Recusado pelo LIMITE de pedidos do GitHub (codigo
+ * LIMITE_DO_GITHUB, com esperarMs), espera o que ele pediu e tenta de novo,
+ * até TENTATIVAS_NO_LIMITE; espera acima de ESPERA_MAXIMA_NO_LIMITE_MS não se
+ * faz (o erro sobe). Qualquer outro erro sobe na hora.
+ */
+async function apagarUm(gh, nome, dormir) {
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      return await gh.apagar(nome);
+    } catch (e) {
+      const ms = e?.codigo === "LIMITE_DO_GITHUB" ? e.esperarMs : undefined;
+      if (
+        tentativa >= TENTATIVAS_NO_LIMITE ||
+        typeof ms !== "number" ||
+        !Number.isFinite(ms) ||
+        ms < 0 ||
+        ms > ESPERA_MAXIMA_NO_LIMITE_MS
+      ) {
+        throw e;
+      }
+      await dormir(ms);
+    }
+  }
+}
+
+/**
+ * Apaga os nomes, no máximo CONCORRENCIA_DO_GITHUB ao mesmo tempo (o GitHub
+ * limita pedidos simultâneos e pontos por minuto). O que falhou é conferido
+ * UMA vez na lista do repositório: ausente = apagado; presente ou lista que
+ * falha = naoApagados. Nunca lança.
+ */
+async function apagarTodos(gh, nomes, dormir) {
+  const falharam = await comLimite(nomes, CONCORRENCIA_DO_GITHUB, (n) =>
+    apagarUm(gh, n, dormir),
+  );
+  let falhos = nomes.filter((_, i) => falharam.has(i));
   if (falhos.length > 0) {
     try {
       const existentes = new Set(await gh.listar());
@@ -188,11 +257,12 @@ async function apagarTodos(gh, nomes) {
 }
 
 /** A faxina com o gh já entrado: só os nomes OAuth que existem. */
-async function faxinarEntrado(todas, gh) {
+async function faxinarEntrado(todas, gh, dormir) {
   const existentes = new Set(await gh.listar());
   return apagarTodos(
     gh,
     todas.map((l) => l.nome).filter((n) => existentes.has(n)),
+    dormir,
   );
 }
 
@@ -216,6 +286,14 @@ function exigirGh(gh) {
   }
 }
 
+function exigirDormir(dormir) {
+  if (typeof dormir !== "function") {
+    throw new ErroDaPonte("Ponte: dormir precisa ser uma função (ms).", {
+      codigo: "PEDIDO_INVALIDO",
+    });
+  }
+}
+
 async function esquecer(gh) {
   try {
     await gh.esquecer?.();
@@ -229,13 +307,14 @@ async function esquecer(gh) {
  * que estiverem no GitHub. Nada renova. Sem loja OAuth, nem entra no gh.
  * @returns {Promise<{ apagados: string[], naoApagados: Array<{ nome: string, comando: string }> }>}
  */
-export async function faxinar({ cadastro, gh } = {}) {
+export async function faxinar({ cadastro, gh, dormir = dormirDeVerdade } = {}) {
   const todas = lojasOAuthDo(cadastro);
   if (todas.length === 0) return { apagados: [], naoApagados: [] };
   exigirGh(gh);
+  exigirDormir(dormir);
   await gh.entrar();
   try {
-    return await faxinarEntrado(todas, gh);
+    return await faxinarEntrado(todas, gh, dormir);
   } finally {
     await esquecer(gh);
   }
@@ -268,24 +347,46 @@ function criarEspera(sinal) {
   };
 }
 
-/** Roda `fazer` em cada [loja, handle] em paralelo; devolve os projetos que falharam. */
-async function quemFalhou(pares, fazer) {
-  const r = await Promise.all(
-    pares.map(([l, h]) =>
-      Promise.resolve()
-        .then(() => fazer(h))
-        .then(
-          () => null,
-          () => l.projeto,
-        ),
-    ),
+/** As lojas de fora, na ordem da sessão, congeladas. */
+function congelarFora(fora, daSessao) {
+  const ordem = daSessao.map((l) => l.projeto);
+  return Object.freeze(
+    [...fora]
+      .sort((a, b) => ordem.indexOf(a.projeto) - ordem.indexOf(b.projeto))
+      .map((f) => Object.freeze({ ...f })),
   );
-  return r.filter((p) => p !== null);
 }
 
-/** Renova de novo (P6b): se renovar invalida o anterior, o token morre. */
-const matarTokens = (pares) => quemFalhou(pares, (h) => h.renovarDeNovo());
-const soltarTravas = (pares) => quemFalhou(pares, (h) => h.liberar());
+/**
+ * Loja por loja, no máximo CONCORRENCIA_DO_FECHAR ao mesmo tempo: renova de
+ * novo (P6b: se renovar invalida o anterior, o token que esteve no GitHub
+ * morre) quando `matar([loja, handle])`, e LOGO DEPOIS solta a trava DELA,
+ * nunca no fim de todas. Espera cada uma terminar: nenhuma renovação fica no
+ * meio (entre a resposta do Supabase e o cofre). Nunca lança.
+ */
+async function matarESoltar(pares, matar) {
+  const naoMortos = new Set();
+  const presas = new Set();
+  await comLimite(pares, CONCORRENCIA_DO_FECHAR, async ([l, h]) => {
+    if (matar([l, h])) {
+      try {
+        await h.renovarDeNovo();
+      } catch {
+        naoMortos.add(l.projeto);
+      }
+    }
+    try {
+      await h.liberar();
+    } catch {
+      presas.add(l.projeto);
+    }
+  });
+  const ordem = pares.map(([l]) => l.projeto);
+  return {
+    tokensNaoMortos: ordem.filter((p) => naoMortos.has(p)),
+    travasPresas: ordem.filter((p) => presas.has(p)),
+  };
+}
 
 /**
  * @param {{
@@ -298,9 +399,12 @@ const soltarTravas = (pares) => quemFalhou(pares, (h) => h.liberar());
  *   minimoMs?: number,
  *   matarTokenNoFechar: boolean,   resultado da P6b (renovar invalida o anterior?)
  *   sinal?: AbortSignal,       interrompe a abertura (Ctrl+C antes de abrir)
+ *   dormir?: (ms: number) => Promise<void>,  a espera pelo limite do GitHub
  * }} opcoes
  * @returns {Promise<{
  *   lojas: ReadonlyArray<{ projeto: string, ref: string, nome: string }>,
+ *   foraDaSessao: ReadonlyArray<{ projeto: string, ref: string, nome: string,
+ *     erro: Error, travaPresa: boolean }>,
  *   validaAte: number,
  *   readonly estado: "aberta" | "fechando" | "fechada",
  *   tokenDe: (ref: string) => string,
@@ -318,6 +422,7 @@ export async function abrirSessao({
   minimoMs = MINIMO_PADRAO_MS,
   matarTokenNoFechar,
   sinal,
+  dormir = dormirDeVerdade,
 } = {}) {
   // ---- 0. tudo que se recusa sem rede
   const todas = lojasOAuthDo(cadastro);
@@ -354,13 +459,17 @@ export async function abrirSessao({
       codigo: "PEDIDO_INVALIDO",
     });
   }
+  exigirDormir(dormir);
   if (sinal?.aborted) throw interrompida();
 
   const espera = criarEspera(sinal);
-  /** @type {Array<[string, any]>} projeto -> handle da trava longa */
-  const presas = [];
+  /** @type {Array<[object, any]>} as lojas com a trava PRESA: [loja, handle] */
+  let presas = [];
+  /** as lojas que ficaram fora desta sessão, com o erro de cada uma */
+  const fora = [];
   const tentados = new Set();
   let entrou = false;
+  let renovacaoEmVoo;
   try {
     // ---- 1. o token do gh, uma vez
     await espera.esperar(gh.entrar());
@@ -378,45 +487,73 @@ export async function abrirSessao({
       );
     }
     // ---- 3. faxina de toda loja OAuth do cadastro
-    const fax = await espera.esperar(faxinarEntrado(todas, gh));
+    const fax = await espera.esperar(faxinarEntrado(todas, gh, dormir));
     if (fax.naoApagados.length > 0) {
       throw new ErroDaPonte(
         `Ponte: a faxina não conseguiu apagar ${fax.naoApagados.map((x) => x.nome).join(", ")}; a sessão não abre.`,
         { codigo: "FAXINA_INCOMPLETA" },
       );
     }
-    // ---- 4. uma renovação por loja, com a trava presa
+    // ---- 4. uma renovação por loja, com a trava presa. A que falha (trava
+    // de outro comando, SemAcesso, 429, rede) fica FORA desta sessão e as
+    // outras seguem; a renovarComTravaLonga já soltou a trava dela.
     for (const l of daSessao) {
       espera.conferir();
       const p = acesso.renovarComTravaLonga({ slug: l.projeto });
       try {
         presas.push([l, await espera.esperar(p)]);
       } catch (e) {
-        // sinal no meio: a renovação ainda pode chegar; quando chegar, solta
-        p.then(
-          (h) => h.liberar(),
-          () => {},
-        );
+        if (!sinal?.aborted) {
+          fora.push({ ...l, erro: e, travaPresa: false });
+          continue;
+        }
+        // sinal no meio: a renovação ainda pode chegar; quando chegar, solta.
+        // Quem chama espera esta promessa antes de sair do processo: matar o
+        // processo entre a resposta do Supabase e o cofre perde o acesso.
+        renovacaoEmVoo = p
+          .then(
+            (h) => h.liberar(),
+            () => {},
+          )
+          .catch(() => {});
         throw e;
       }
     }
-    // ---- 5. o prazo de TODOS antes de gravar qualquer um
+    // ---- 5. o prazo, antes de gravar qualquer um: a loja sem prazo ou com
+    // prazo curto fica fora (o token dela não foi a lugar nenhum: só solta)
     const t = agora();
-    for (const [{ projeto }, h] of presas) {
+    const curtas = [];
+    presas = presas.filter(([l, h]) => {
+      let erro = null;
       if (typeof h.expiraEm !== "number" || !Number.isFinite(h.expiraEm)) {
-        throw new ErroDaPonte(
-          `Ponte: o Supabase não disse quando o acesso da loja ${projeto} vence; a sessão não abre sem prazo.`,
+        erro = new ErroDaPonte(
+          `Ponte: o Supabase não disse quando o acesso da loja ${l.projeto} vence; sem prazo, ela fica fora da sessão.`,
           { codigo: "TOKEN_SEM_PRAZO" },
         );
-      }
-      if (h.expiraEm - t < minimoMs) {
-        throw new ErroDaPonte(
-          `Ponte: o acesso da loja ${projeto} dura menos que o mínimo da sessão (${Math.round(minimoMs / 60_000)} min).`,
+      } else if (h.expiraEm - t < minimoMs) {
+        erro = new ErroDaPonte(
+          `Ponte: o acesso da loja ${l.projeto} dura menos que o mínimo da sessão (${Math.round(minimoMs / 60_000)} min); ela fica fora da sessão.`,
           { codigo: "TOKEN_CURTO" },
         );
       }
+      if (erro) curtas.push([l, h, erro]);
+      return erro === null;
+    });
+    const { travasPresas: curtasPresas } = await matarESoltar(
+      curtas.map(([l, h]) => [l, h]),
+      () => false,
+    );
+    for (const [l, , erro] of curtas) {
+      fora.push({ ...l, erro, travaPresa: curtasPresas.includes(l.projeto) });
     }
-    // ---- 6. grava (o definir recebe o sinal e mata o gh em voo)
+    if (presas.length === 0) {
+      throw new ErroDaPonte(
+        `Ponte: nenhuma loja OAuth abriu (${fora.map((f) => f.projeto).join(", ")}); a sessão não abre.`,
+        { codigo: "NENHUMA_LOJA_ABRIU" },
+      );
+    }
+    // ---- 6. grava (o definir recebe o sinal e mata o gh em voo). A falha
+    // aqui é do canal do GitHub, o mesmo para todas: a sessão inteira cai.
     for (const [l, h] of presas) {
       espera.conferir();
       tentados.add(l.nome);
@@ -428,16 +565,18 @@ export async function abrirSessao({
       ? await apagarTodos(
           gh,
           todas.map((l) => l.nome),
+          dormir,
         )
       : { apagados: [], naoApagados: [] };
-    const mortas = matarTokenNoFechar
-      ? await matarTokens(presas.filter(([l]) => tentados.has(l.nome)))
-      : [];
-    const travasPresas = await soltarTravas(presas);
+    // só o token que foi ao GitHub (segredo tentado) é renovado de novo
+    const { tokensNaoMortos, travasPresas } = await matarESoltar(
+      presas,
+      ([l]) => matarTokenNoFechar && tentados.has(l.nome),
+    );
     await esquecer(gh);
     const limpeza = Object.freeze({
       ...apagou,
-      tokensNaoMortos: mortas,
+      tokensNaoMortos,
       travasPresas,
     });
     // com o sinal dado, a causa é a interrupção (o gh morto falha por ela)
@@ -445,6 +584,8 @@ export async function abrirSessao({
     if (erro !== null && typeof erro === "object") {
       try {
         erro.limpeza = limpeza;
+        erro.foraDaSessao = congelarFora(fora, daSessao);
+        if (renovacaoEmVoo) erro.renovacaoEmVoo = renovacaoEmVoo;
       } catch {
         // erro congelado: sobe sem a limpeza anexada
       }
@@ -454,10 +595,11 @@ export async function abrirSessao({
     espera.soltar();
   }
 
-  // ---- a sessão aberta
+  // ---- a sessão aberta (só as lojas que renovaram com prazo)
   const tokens = new Map(presas.map(([l, h]) => [l.ref, h.accessToken]));
   const validaAte = Math.min(...presas.map(([, h]) => h.expiraEm));
-  const nomes = daSessao.map((l) => l.nome);
+  const nomes = presas.map(([l]) => l.nome);
+  const foraDaSessao = congelarFora(fora, daSessao);
   let estado = "aberta";
   let fechando = null;
 
@@ -471,24 +613,26 @@ export async function abrirSessao({
         comando: comandoApagar(gh, nome),
       })),
     };
-    let mortas = matarTokenNoFechar ? presas.map(([l]) => l.projeto) : [];
-    let travasPresas = presas.map(([l]) => l.projeto);
     try {
-      apagou = await apagarTodos(gh, nomes);
-      if (matarTokenNoFechar) mortas = await matarTokens(presas);
+      apagou = await apagarTodos(gh, nomes, dormir);
     } catch {
-      // nunca lança: os valores pessimistas acima (nada apagado, nada
-      // morto) são o que vale, e o dono recebe os comandos para apagar à mão
-    } finally {
-      travasPresas = await soltarTravas(presas);
-      await esquecer(gh);
-      estado = "fechada";
+      // nunca lança: o valor pessimista acima (nada apagado) é o que vale, e
+      // o dono recebe os comandos para apagar à mão
     }
-    return Object.freeze({ ...apagou, tokensNaoMortos: mortas, travasPresas });
+    // DEPOIS de apagar: renova de novo (P6b) e solta a trava, loja por loja,
+    // esperando cada uma (nenhuma renovação fica no meio)
+    const { tokensNaoMortos, travasPresas } = await matarESoltar(
+      presas,
+      () => matarTokenNoFechar,
+    );
+    await esquecer(gh);
+    estado = "fechada";
+    return Object.freeze({ ...apagou, tokensNaoMortos, travasPresas });
   }
 
   return Object.freeze({
-    lojas: Object.freeze([...daSessao]),
+    lojas: Object.freeze(presas.map(([l]) => l)),
+    foraDaSessao,
     validaAte,
     get estado() {
       return estado;
@@ -516,6 +660,40 @@ export async function abrirSessao({
 }
 
 // ------------------------------------------------------------ o gh real --
+
+/** Sem cabeçalho que diga quanto esperar, a regra do GitHub é 1 minuto. */
+const ESPERA_SEM_CABECALHO_MS = 60_000;
+
+/**
+ * Quanto esperar quando o GitHub recusa pelo LIMITE de pedidos (403 ou 429,
+ * docs "Rate limits for the REST API"): `retry-after` (segundos ou data);
+ * senão, com `x-ratelimit-remaining: 0`, até o `x-ratelimit-reset` (segundos
+ * UTC); senão 1 minuto. Devolve null quando a recusa NÃO é de limite (um 403
+ * de permissão não se repete). O corpo só é testado, nunca vai em mensagem.
+ */
+function esperaDoLimite(status, headers, texto, agora) {
+  if (status !== 403 && status !== 429) return null;
+  const ler = (nome) => {
+    const v = headers?.get?.(nome);
+    return typeof v === "string" ? v.trim() : null;
+  };
+  const depois = ler("retry-after");
+  const restam = ler("x-ratelimit-remaining");
+  const reset = ler("x-ratelimit-reset");
+  const secundario = /secondary rate limit/i.test(String(texto ?? ""));
+  if (status === 403 && depois === null && restam !== "0" && !secundario) {
+    return null;
+  }
+  if (depois !== null) {
+    if (/^\d{1,6}$/.test(depois)) return Number(depois) * 1000;
+    const quando = Date.parse(depois);
+    if (Number.isFinite(quando)) return Math.max(0, quando - agora());
+  }
+  if (restam === "0" && reset !== null && /^\d{1,12}$/.test(reset)) {
+    return Math.max(0, Number(reset) * 1000 - agora());
+  }
+  return ESPERA_SEM_CABECALHO_MS;
+}
 
 /** Tira do texto do gh o que pode ser segredo e devolve uma linha curta. */
 function redigir(texto, segredos) {
@@ -545,6 +723,7 @@ export function criarGhReal({
   executavel = "gh",
   prazoMs = PRAZO_GH_MS,
   env = process.env,
+  agora = Date.now,
 } = {}) {
   const m = RE_REPO.exec(typeof repo === "string" ? repo : "");
   if (!m || m[2] === "." || m[2] === "..") {
@@ -799,21 +978,31 @@ export function criarGhReal({
       );
     },
 
-    /** DELETE; só 204 é sucesso. */
+    /** DELETE; só 204 é sucesso. Recusa pelo limite de pedidos sobe com
+     * codigo LIMITE_DO_GITHUB e `esperarMs` (quanto o GitHub pediu). */
     async apagar(nome) {
       exigirNome(nome);
       exigirToken();
       const onde = `GitHub DELETE ${nome}`;
-      const { status } = await api(
+      const { status, texto, headers } = await api(
         "DELETE",
         `/repos/${repo}/actions/secrets/${nome}`,
         onde,
       );
       if (status !== 204) {
-        throw new ErroDaPonte(`Ponte: ${onde} respondeu HTTP ${status}.`, {
-          codigo: "HTTP",
-          status,
-        });
+        const esperarMs = esperaDoLimite(status, headers, texto, agora);
+        if (esperarMs === null) {
+          throw new ErroDaPonte(`Ponte: ${onde} respondeu HTTP ${status}.`, {
+            codigo: "HTTP",
+            status,
+          });
+        }
+        const e = new ErroDaPonte(
+          `Ponte: ${onde} respondeu HTTP ${status}: limite de pedidos do GitHub (pediu ${Math.ceil(esperarMs / 1000)} s).`,
+          { codigo: "LIMITE_DO_GITHUB", status },
+        );
+        e.esperarMs = esperarMs;
+        throw e;
       }
     },
 
