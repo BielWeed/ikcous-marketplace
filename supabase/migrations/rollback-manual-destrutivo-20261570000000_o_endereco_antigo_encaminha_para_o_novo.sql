@@ -23,7 +23,7 @@ BEGIN
   IF COALESCE(current_setting('app.confirmo_apagar_enderecos_que_encaminham', true), '') <> 'APAGAR' THEN
     RAISE EXCEPTION 'ENDERECOS_QUE_ENCAMINHAM_SO_COM_O_DONO: confirme antes de apagar os enderecos que encaminham (public.frota_enderecos_que_encaminham).';
   END IF;
-  IF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'resolver_encaminhamento') THEN
+  IF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname IN ('resolver_encaminhamento', 'frota_trocar_dominio')) THEN
     RAISE EXCEPTION 'ENDERECOS_QUE_ENCAMINHAM_ROLLBACK_COMUM_PRIMEIRO: tire as portas (rollback comum) antes de apagar os enderecos que encaminham.';
   END IF;
   -- A trava de escrita (SHARE) vale ate o fim da transacao: ninguem grava linha entre a conferencia e o DROP.

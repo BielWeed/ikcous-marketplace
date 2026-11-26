@@ -24,6 +24,16 @@
 --      dá zero linhas sem erro; a chave certa paga o bcrypt uma vez por hash e grava o atalho só em transação de escrita. Devolve o
 --      dominio_publico ATUAL da loja dona do host, só se a loja tem ativa = true e o destino é diferente do próprio host; senão zero
 --      linhas. A loja adormecida ou encerrada encaminha igual: quem mostra a página certa é o endereço novo, pela v2.
+--   d) public.frota_trocar_dominio(p_id, p_ref, p_de, p_para, p_motivo, p_valido_ate): a PORTA DE TROCA (a virada, P2 do roteiro).
+--      SECURITY INVOKER, search_path vazio, EXECUTE só do dono (o mesmo molde de frota_mudar_estado). Recusa, sem escrever nada:
+--      instrução vencida (agora > p_valido_ate, ou NULL) ou com validade de mais de 1 h; de ou para fora do formato de host (o mesmo
+--      CHECK de frota_lojas.dominio_publico, só minúsculas); de = para; motivo vazio ou com mais de 200 caracteres; loja que não existe
+--      com aquele id E aquele ref; endereço atual diferente de p_de (a mensagem diz o atual); p_para que não é um endereço que
+--      encaminha para ESTA loja (prova de que o preparo foi feito; apelido de outra loja também recusa). Passando tudo, numa transação
+--      só: tranca a linha da loja e a do apelido (FOR UPDATE), apaga p_para da tabela nova, troca frota_lojas.dominio_publico para
+--      p_para e grava p_de com o motivo antigo. Devolve id, nome, dominio_publico (o novo) e dominio_anterior. Ela é o próprio desfazer:
+--      chamar com de e para invertidos volta o roteamento ao de antes (o endereço novo passa a encaminhar com o motivo antigo). O
+--      motivo não é guardado em tabela (não há histórico de domínio): sai num NOTICE para o registro de quem rodou a virada.
 --
 -- 3. DADOS EXISTENTES
 --
@@ -38,7 +48,7 @@
 -- estiver aplicada (frota_segredo sem hash_rapido/hash_rapido_de, ou resolver_loja e resolver_loja_com_estado sem os corpos dela); a
 -- tabela, a função do gatilho e o gatilho não estiverem TODOS ausentes ou TODOS idênticos aos desta migration (colunas, restrições,
 -- índice, RLS, política, privilégio, dono, corpo, atributos, ACL; sobrecarga também recusa); a porta de leitura existir com outro
--- corpo, outros atributos, outra ACL ou sobrecarga (ausente é aceito: é o que o rollback comum deixa).
+-- corpo, outros atributos, outra ACL ou sobrecarga (ausente é aceito: é o que o rollback comum deixa); a porta de troca, idem.
 --
 -- 5. TRANSAÇÃO E TRAVAS
 --
@@ -68,6 +78,9 @@
 --             has_function_privilege('anon', 'public.resolver_encaminhamento(text, text)', 'EXECUTE'),
 --             has_function_privilege('authenticated', 'public.resolver_encaminhamento(text, text)', 'EXECUTE');
 --      -- esperado: false, false, true, false.
+--   4. SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc
+--       WHERE oid = to_regprocedure('public.frota_trocar_dominio(text, text, text, text, text, timestamptz)');
+--      -- esperado: 5758ff83113e042fc927d83c254291bd.
 --   PROVA VIVA: tests/banco/o-endereco-antigo-encaminha-viva.cjs (rpc-ci).
 -- ============================================================================
 
@@ -81,6 +94,7 @@ DECLARE
   v_tabela oid := to_regclass('public.frota_enderecos_que_encaminham');
   v_gatilho_fn oid := to_regprocedure('public.frota_enderecos_que_encaminham_nao_e_principal()');
   v_leitura oid := to_regprocedure('public.resolver_encaminhamento(text, text)');
+  v_troca oid := to_regprocedure('public.frota_trocar_dominio(text, text, text, text, text, timestamptz)');
   v_dono oid;
   v_gatilhos integer;
 BEGIN
@@ -173,6 +187,25 @@ BEGIN
        OR NOT has_function_privilege('anon', v_leitura, 'EXECUTE')
      ) THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: resolver_encaminhamento já existe e não é a desta migration (corpo, atributos, dono ou ACL) — meça o banco e revise.';
+  END IF;
+
+  -- A porta de troca: ausente (primeira vez ou depois do rollback comum) ou idêntica (reaplicação). Só existe com a tabela.
+  IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'frota_trocar_dominio')
+     <> (CASE WHEN v_troca IS NULL THEN 0 ELSE 1 END) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: frota_trocar_dominio existe com outra assinatura ou com sobrecarga — meça o banco e revise.';
+  END IF;
+  IF v_troca IS NOT NULL AND (
+       v_tabela IS NULL
+       OR NOT EXISTS (
+         SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
+          WHERE p.oid = v_troca AND md5(replace(p.prosrc, E'\r', '')) = '5758ff83113e042fc927d83c254291bd'
+            AND l.lanname = 'plpgsql' AND NOT p.prosecdef AND p.provolatile = 'v' AND p.proretset AND NOT p.proisstrict
+            AND p.proowner = v_dono AND p.proconfig = ARRAY['search_path=""']::text[]
+            AND pg_get_function_result(p.oid) = 'TABLE(id text, nome text, dominio_publico text, dominio_anterior text)')
+       OR EXISTS (SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g
+                   WHERE p.oid = v_troca AND g.privilege_type = 'EXECUTE' AND g.grantee <> p.proowner)
+     ) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: frota_trocar_dominio já existe e não é a desta migration (corpo, atributos, dono ou ACL) — meça o banco e revise.';
   END IF;
 
   -- Fotografia do que esta migration não pode mudar: frota_lojas (colunas, restrições, dono, ACL, gatilhos que não são internos) e as
@@ -290,16 +323,115 @@ $$;
 REVOKE ALL ON FUNCTION public.resolver_encaminhamento(text, text) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.resolver_encaminhamento(text, text) TO anon;
 
+-- A porta de troca: a virada do endereço principal, numa transação, com o próprio desfazer (de e para invertidos).
+CREATE OR REPLACE FUNCTION public.frota_trocar_dominio(
+  p_id text,
+  p_ref text,
+  p_de text,
+  p_para text,
+  p_motivo text,
+  p_valido_ate timestamptz
+)
+RETURNS TABLE (
+  id text,
+  nome text,
+  dominio_publico text,
+  dominio_anterior text
+)
+LANGUAGE plpgsql
+SECURITY INVOKER
+VOLATILE
+SET search_path = ''
+AS $$
+DECLARE
+  -- O mesmo formato de frota_lojas.dominio_publico e de frota_enderecos_que_encaminham.host.
+  v_formato constant text := '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$';
+  v_atual text;
+  v_dono_do_para text;
+BEGIN
+  IF p_valido_ate IS NULL OR clock_timestamp() > p_valido_ate THEN
+    RAISE EXCEPTION 'FROTA_DOMINIO_INSTRUCAO_VENCIDA: a instrução valia até % — gere outra.', p_valido_ate;
+  END IF;
+  IF p_valido_ate > clock_timestamp() + interval '1 hour' THEN
+    RAISE EXCEPTION 'FROTA_DOMINIO_VALIDADE_LONGA: a instrução vale até %, mais de 1 hora a partir de agora — gere outra.', p_valido_ate;
+  END IF;
+  IF p_de IS NULL OR p_para IS NULL OR p_de !~ v_formato OR p_para !~ v_formato THEN
+    RAISE EXCEPTION 'FROTA_DOMINIO_HOST_INVALIDO: de (%) e para (%) têm de ser endereços em minúsculas, sem porta e sem caminho.', COALESCE(p_de, 'NULL'), COALESCE(p_para, 'NULL');
+  END IF;
+  IF p_de = p_para THEN
+    RAISE EXCEPTION 'FROTA_DOMINIO_SEM_MUDANCA: de e para são o mesmo endereço (%).', p_para;
+  END IF;
+  IF p_motivo IS NULL OR btrim(p_motivo) = '' OR char_length(p_motivo) > 200 THEN
+    RAISE EXCEPTION 'FROTA_DOMINIO_MOTIVO: o motivo é obrigatório e tem no máximo 200 caracteres.';
+  END IF;
+
+  -- id é a chave de frota_lojas: no máximo uma linha; o ref tem de ser o dela. FOR UPDATE: duas trocas ao mesmo tempo esperam uma pela
+  -- outra, e a segunda relê o endereço já trocado (e cai na conferência de p_de logo abaixo).
+  SELECT fl.dominio_publico INTO v_atual
+    FROM public.frota_lojas fl
+   WHERE fl.id = p_id AND fl.project_ref = p_ref
+     FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'FROTA_DOMINIO_LOJA_NAO_ENCONTRADA: nenhuma loja com id % e ref % na caderneta.', COALESCE(p_id, 'NULL'), COALESCE(p_ref, 'NULL');
+  END IF;
+  IF v_atual IS DISTINCT FROM p_de THEN
+    RAISE EXCEPTION 'FROTA_DOMINIO_DIVERGENTE: o endereço principal da loja % é %, não %.', p_id, v_atual, p_de;
+  END IF;
+  -- O preparo feito: p_para já encaminha para ESTA loja (DNS, certificado e Vercel provados antes da virada).
+  SELECT fe.loja_id INTO v_dono_do_para
+    FROM public.frota_enderecos_que_encaminham fe
+   WHERE fe.host = p_para
+     FOR UPDATE;
+  IF v_dono_do_para IS DISTINCT FROM p_id THEN
+    RAISE EXCEPTION 'FROTA_DOMINIO_SEM_PREPARO: % não é um endereço que encaminha para a loja % — prepare-o antes (motivo novo-em-preparo).', p_para, p_id;
+  END IF;
+
+  -- As três escritas, nesta ordem: o gatilho da tabela nova só aceita p_de depois que ele deixou de ser o principal.
+  DELETE FROM public.frota_enderecos_que_encaminham fe WHERE fe.host = p_para;
+  RETURN QUERY
+    WITH mudou AS (
+      UPDATE public.frota_lojas fl
+         SET dominio_publico = p_para
+       WHERE fl.id = p_id AND fl.project_ref = p_ref
+      RETURNING fl.id, fl.nome, fl.dominio_publico
+    )
+    SELECT m.id, m.nome, m.dominio_publico, p_de FROM mudou m;
+  INSERT INTO public.frota_enderecos_que_encaminham (host, loja_id, motivo) VALUES (p_de, p_id, 'antigo');
+
+  RAISE NOTICE 'FROTA_DOMINIO_TROCADO: a loja % passou de % para % (motivo: %).', p_id, p_de, p_para, p_motivo;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.frota_trocar_dominio(text, text, text, text, text, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
+
 DO $posvoo_20261570000000$
 DECLARE
   v_lojas oid := to_regclass('public.frota_lojas');
   v_tabela oid := to_regclass('public.frota_enderecos_que_encaminham');
   v_gatilho_fn oid := to_regprocedure('public.frota_enderecos_que_encaminham_nao_e_principal()');
   v_leitura oid := to_regprocedure('public.resolver_encaminhamento(text, text)');
+  v_troca oid := to_regprocedure('public.frota_trocar_dominio(text, text, text, text, text, timestamptz)');
   v_dono oid := (SELECT c.relowner FROM pg_class c WHERE c.oid = to_regclass('public.frota_lojas'));
 BEGIN
-  IF v_tabela IS NULL OR v_gatilho_fn IS NULL OR v_leitura IS NULL THEN
-    RAISE EXCEPTION 'POSVOO_20261570000000: a tabela frota_enderecos_que_encaminham, a função do gatilho ou a porta de leitura está ausente';
+  IF v_tabela IS NULL OR v_gatilho_fn IS NULL OR v_leitura IS NULL OR v_troca IS NULL THEN
+    RAISE EXCEPTION 'POSVOO_20261570000000: a tabela frota_enderecos_que_encaminham, a função do gatilho, a porta de leitura ou a de troca está ausente';
+  END IF;
+  IF NOT EXISTS (
+       SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
+        WHERE p.oid = v_troca AND md5(replace(p.prosrc, E'\r', '')) = '5758ff83113e042fc927d83c254291bd'
+          AND l.lanname = 'plpgsql' AND NOT p.prosecdef AND p.provolatile = 'v' AND p.proretset AND NOT p.proisstrict
+          AND p.proowner = v_dono AND p.proconfig = ARRAY['search_path=""']::text[]
+          AND pg_get_function_arguments(p.oid) = 'p_id text, p_ref text, p_de text, p_para text, p_motivo text, p_valido_ate timestamp with time zone'
+          AND pg_get_function_result(p.oid) = 'TABLE(id text, nome text, dominio_publico text, dominio_anterior text)')
+     OR (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'frota_trocar_dominio') <> 1 THEN
+    RAISE EXCEPTION 'POSVOO_20261570000000: corpo, atributos ou dono de frota_trocar_dominio não são os desta migration';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g
+              WHERE p.oid = v_troca AND g.privilege_type = 'EXECUTE' AND g.grantee <> p.proowner)
+     OR has_function_privilege('anon', v_troca, 'EXECUTE')
+     OR has_function_privilege('authenticated', v_troca, 'EXECUTE')
+     OR has_function_privilege('service_role', v_troca, 'EXECUTE') THEN
+    RAISE EXCEPTION 'POSVOO_20261570000000: alguém além do dono executa frota_trocar_dominio';
   END IF;
   IF NOT EXISTS (
        SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang

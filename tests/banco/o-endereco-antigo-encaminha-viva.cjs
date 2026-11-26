@@ -19,7 +19,12 @@
  *   (e) a porta de leitura resolver_encaminhamento, como anon (o PostgREST): chave errada, NULL ou vazia = zero linhas; a chave certa
  *       devolve o endereço ATUAL da loja (duas mudanças seguidas não viram corrente); o host principal e a loja com ativa = false dão
  *       zero linhas; transação só de leitura responde sem gravar; só o anon executa; o bloco da chave é, texto por texto, o da v2;
- *   (f) o rollback comum (2x) tira as funções e preserva a tabela com as linhas; recusa corpo divergente; o destrutivo exige o comum.
+ *   (f) o rollback comum (2x) tira as funções e preserva a tabela com as linhas; recusa corpo divergente; o destrutivo exige o comum;
+ *   (g) a porta de troca frota_trocar_dominio (só o dono executa): as três escritas numa transação (o preparado sai da tabela, vira o
+ *       principal, o principal antigo entra com motivo antigo); cada recusa sem escrever nada (validade vencida ou maior que 1 h, de
+ *       diferente do atual, para que não é apelido desta loja — nem de outra —, de = para, host malformado, motivo vazio, loja que não
+ *       existe); a troca invertida volta o roteamento ao de antes; uma falha no meio desfaz tudo;
+ *   (h) duas conexões: duas trocas iguais ao mesmo tempo — a segunda espera a primeira e é recusada pelo endereço já trocado.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/o-endereco-antigo-encaminha-viva.cjs
  */
@@ -51,6 +56,10 @@ const DESTRUTIVO = ler(`rollback-manual-destrutivo-${NOME}`);
 
 const TABELA = "public.frota_enderecos_que_encaminham";
 const LEITURA = "public.resolver_encaminhamento(text, text)";
+const TROCA =
+  "public.frota_trocar_dominio(text, text, text, text, text, timestamptz)";
+const SQL_TROCA =
+  "SELECT * FROM public.frota_trocar_dominio($1, $2, $3, $4, $5, now() + $6::interval)";
 const V2 = "public.resolver_loja_com_estado(text, text)";
 const CHAVE = "chave-da-prova-1570";
 const SEM_ATALHO = { hash_rapido: null, hash_rapido_de: null };
@@ -485,6 +494,38 @@ async function preVoo(c) {
           ),
       ],
       [
+        "a porta de leitura já existe com outro corpo",
+        () =>
+          c.query(
+            "CREATE FUNCTION public.resolver_encaminhamento(p_host text, p_chave text) RETURNS TABLE (destino text) LANGUAGE plpgsql SECURITY DEFINER VOLATILE SET search_path = '' AS $f$ BEGIN RETURN; END $f$",
+          ),
+      ],
+      [
+        "a porta de troca já existe com outro corpo",
+        () =>
+          c.query(
+            "CREATE FUNCTION public.frota_trocar_dominio(p_id text, p_ref text, p_de text, p_para text, p_motivo text, p_valido_ate timestamptz) RETURNS TABLE (id text, nome text, dominio_publico text, dominio_anterior text) LANGUAGE plpgsql SET search_path = '' AS $f$ BEGIN RETURN; END $f$",
+          ),
+      ],
+      [
+        "a porta de troca aberta ao service_role (reaplicação)",
+        async () => {
+          await c.query(MIGRATION);
+          await c.query(
+            "GRANT EXECUTE ON FUNCTION public.frota_trocar_dominio(text, text, text, text, text, timestamptz) TO service_role",
+          );
+        },
+      ],
+      [
+        "a porta de leitura aberta ao authenticated (reaplicação)",
+        async () => {
+          await c.query(MIGRATION);
+          await c.query(
+            "GRANT EXECUTE ON FUNCTION public.resolver_encaminhamento(text, text) TO authenticated",
+          );
+        },
+      ],
+      [
         "frota_lojas ausente",
         () => c.query("DROP TABLE public.frota_lojas CASCADE"),
       ],
@@ -734,6 +775,11 @@ async function rollbackComum(c) {
         null,
         `rollback ${vez}: a porta de leitura sai`,
       );
+      assert.equal(
+        await prosrc(c, TROCA),
+        null,
+        `rollback ${vez}: a porta de troca sai`,
+      );
     }
     const desfeito = await foto(c);
     assert.deepEqual(
@@ -775,19 +821,352 @@ async function rollbackComum(c) {
   // O rollback comum recusa corpo divergente (sucessora no ar?) sem tirar nada.
   await desfeita(c, async () => {
     const base = await foto(c);
-    const r = await tentar(c, async () => {
-      await c.query(
+    for (const [nome, sabotagem] of [
+      [
+        "porta de leitura com outro corpo",
         "CREATE OR REPLACE FUNCTION public.resolver_encaminhamento(p_host text, p_chave text) RETURNS TABLE (destino text) LANGUAGE plpgsql SECURITY DEFINER VOLATILE SET search_path = '' AS $f$ BEGIN RETURN; END $f$",
+      ],
+      [
+        "porta de troca com outro corpo",
+        "CREATE OR REPLACE FUNCTION public.frota_trocar_dominio(p_id text, p_ref text, p_de text, p_para text, p_motivo text, p_valido_ate timestamptz) RETURNS TABLE (id text, nome text, dominio_publico text, dominio_anterior text) LANGUAGE plpgsql SET search_path = '' AS $f$ BEGIN RETURN; END $f$",
+      ],
+    ]) {
+      const r = await tentar(c, async () => {
+        await c.query(sabotagem);
+        await c.query(ROLLBACK);
+      });
+      assert.match(
+        r?.message ?? "(desfez)",
+        /B1_BASELINE_DIVERGENT/,
+        `rollback deveria recusar: ${nome}`,
       );
-      await c.query(ROLLBACK);
-    });
-    assert.match(
-      r?.message ?? "(desfez)",
-      /B1_BASELINE_DIVERGENT/,
-      "rollback deveria recusar corpo divergente",
-    );
+    }
     assert.deepEqual(await foto(c), base);
   });
+}
+
+// ---------------------------------------------------------------------------
+// (g) a porta de troca
+// ---------------------------------------------------------------------------
+const ANTIGO = LOJA_A.dominio_publico;
+const NOVO = "novo-a.l1570.teste";
+const WWW_NOVO = "www.novo-a.l1570.teste";
+/** O preparo (P1 do roteiro): o endereço novo e o www dele encaminham para a loja A. */
+async function preparo(c) {
+  await semente(c);
+  await encaminhar(c, NOVO, LOJA_A.id, "novo-em-preparo");
+  await encaminhar(c, WWW_NOVO, LOJA_A.id, "www");
+}
+/** As duas tabelas que a troca escreve, lidas como o dono. */
+async function retrato(c) {
+  const l = await c.query(
+    "SELECT md5(string_agg(to_jsonb(f)::text, '|' ORDER BY f.id)) AS h FROM public.frota_lojas f",
+  );
+  const e = await c.query(
+    `SELECT md5(string_agg(to_jsonb(f)::text, '|' ORDER BY f.host)) AS h FROM ${TABELA} f`,
+  );
+  return { lojas: l.rows[0].h, enderecos: e.rows[0].h };
+}
+const principal = async (c, id) =>
+  (
+    await c.query(
+      "SELECT dominio_publico FROM public.frota_lojas WHERE id = $1",
+      [id],
+    )
+  ).rows[0]?.dominio_publico;
+const trocar = (c, de, para, extra = {}) =>
+  c.query(SQL_TROCA, [
+    extra.id ?? LOJA_A.id,
+    extra.ref ?? LOJA_A.project_ref,
+    de,
+    para,
+    "motivo" in extra ? extra.motivo : "a loja ganhou dominio proprio",
+    "validade" in extra ? extra.validade : "30 minutes",
+  ]);
+async function portaDeTroca(c) {
+  // Catálogo: SECURITY INVOKER, search_path vazio; ninguém além do dono executa.
+  const cat = (
+    await c.query(
+      `SELECT p.prosecdef, p.proconfig::text AS config, pg_get_function_result(p.oid) AS r,
+              (SELECT count(*)::int FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g WHERE g.grantee <> p.proowner) AS outros,
+              has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
+              has_function_privilege('authenticated', p.oid, 'EXECUTE') AS autenticado,
+              has_function_privilege('service_role', p.oid, 'EXECUTE') AS servico
+         FROM pg_proc p WHERE p.oid = to_regprocedure($1)`,
+      [TROCA],
+    )
+  ).rows[0];
+  assert.deepEqual(
+    cat,
+    {
+      prosecdef: false,
+      config: '{"search_path=\\"\\""}',
+      r: "TABLE(id text, nome text, dominio_publico text, dominio_anterior text)",
+      outros: 0,
+      anon: false,
+      autenticado: false,
+      servico: false,
+    },
+    "catálogo da porta de troca: SECURITY INVOKER, search_path vazio, só o dono executa",
+  );
+  await preparo(c);
+  for (const papel of PAPEIS) {
+    const e = await tentar(c, async () => {
+      await c.query(`SET LOCAL ROLE ${papel}`);
+      await trocar(c, ANTIGO, NOVO);
+    });
+    assert.equal(e?.code, "42501", `${papel} não executa a porta de troca`);
+  }
+
+  // Cada recusa: o código certo e NADA escrito.
+  await encaminhar(c, "outra.l1570.teste", LOJA_B.id, "antigo");
+  const antes = await retrato(c);
+  const recusas = [
+    [
+      "validade vencida",
+      ANTIGO,
+      NOVO,
+      { validade: "-1 second" },
+      /FROTA_DOMINIO_INSTRUCAO_VENCIDA/,
+    ],
+    [
+      "validade NULL",
+      ANTIGO,
+      NOVO,
+      { validade: null },
+      /FROTA_DOMINIO_INSTRUCAO_VENCIDA/,
+    ],
+    [
+      "validade de mais de 1 h",
+      ANTIGO,
+      NOVO,
+      { validade: "61 minutes" },
+      /FROTA_DOMINIO_VALIDADE_LONGA/,
+    ],
+    [
+      "de diferente do atual",
+      "outro.l1570.teste",
+      NOVO,
+      {},
+      /FROTA_DOMINIO_DIVERGENTE/,
+    ],
+    [
+      "para que não encaminha",
+      ANTIGO,
+      "nada.l1570.teste",
+      {},
+      /FROTA_DOMINIO_SEM_PREPARO/,
+    ],
+    [
+      "para que encaminha para OUTRA loja",
+      ANTIGO,
+      "outra.l1570.teste",
+      {},
+      /FROTA_DOMINIO_SEM_PREPARO/,
+    ],
+    [
+      "para que é o principal de outra loja",
+      ANTIGO,
+      LOJA_B.dominio_publico,
+      {},
+      /FROTA_DOMINIO_SEM_PREPARO/,
+    ],
+    ["de = para", ANTIGO, ANTIGO, {}, /FROTA_DOMINIO_SEM_MUDANCA/],
+    [
+      "para malformado (maiúscula)",
+      ANTIGO,
+      "Novo-a.l1570.teste",
+      {},
+      /FROTA_DOMINIO_HOST_INVALIDO/,
+    ],
+    [
+      "para malformado (porta)",
+      ANTIGO,
+      "novo-a.l1570.teste:8080",
+      {},
+      /FROTA_DOMINIO_HOST_INVALIDO/,
+    ],
+    [
+      "para malformado (caminho)",
+      ANTIGO,
+      "evil.com/x",
+      {},
+      /FROTA_DOMINIO_HOST_INVALIDO/,
+    ],
+    ["para vazio", ANTIGO, "", {}, /FROTA_DOMINIO_HOST_INVALIDO/],
+    ["para NULL", ANTIGO, null, {}, /FROTA_DOMINIO_HOST_INVALIDO/],
+    ["de malformado", "sem-ponto", NOVO, {}, /FROTA_DOMINIO_HOST_INVALIDO/],
+    ["motivo vazio", ANTIGO, NOVO, { motivo: "   " }, /FROTA_DOMINIO_MOTIVO/],
+    ["motivo NULL", ANTIGO, NOVO, { motivo: null }, /FROTA_DOMINIO_MOTIVO/],
+    [
+      "motivo de mais de 200",
+      ANTIGO,
+      NOVO,
+      { motivo: "m".repeat(201) },
+      /FROTA_DOMINIO_MOTIVO/,
+    ],
+    [
+      "loja que não existe",
+      ANTIGO,
+      NOVO,
+      { id: "nao-existe" },
+      /FROTA_DOMINIO_LOJA_NAO_ENCONTRADA/,
+    ],
+    [
+      "ref de outra loja",
+      ANTIGO,
+      NOVO,
+      { ref: LOJA_B.project_ref },
+      /FROTA_DOMINIO_LOJA_NAO_ENCONTRADA/,
+    ],
+  ];
+  for (const [nome, de, para, extra, esperado] of recusas) {
+    const e = await tentar(c, () => trocar(c, de, para, extra));
+    assert.match(e?.message ?? "(trocou)", esperado, `recusa: ${nome}`);
+    assert.deepEqual(await retrato(c), antes, `recusa sem escrever: ${nome}`);
+  }
+
+  // A troca: o preparado sai da tabela, vira o principal; o antigo entra como antigo; o www do novo e o endereço da B ficam.
+  const r = (await trocar(c, ANTIGO, NOVO)).rows;
+  assert.deepEqual(
+    r,
+    [
+      {
+        id: LOJA_A.id,
+        nome: LOJA_A.nome,
+        dominio_publico: NOVO,
+        dominio_anterior: ANTIGO,
+      },
+    ],
+    "a troca devolve a loja com o endereço novo e o anterior",
+  );
+  assert.equal(await principal(c, LOJA_A.id), NOVO, "o principal é o novo");
+  assert.deepEqual(
+    (await enderecos(c)).map((l) => [l.host, l.loja_id, l.motivo]),
+    [
+      [ANTIGO, LOJA_A.id, "antigo"],
+      ["outra.l1570.teste", LOJA_B.id, "antigo"],
+      [WWW_NOVO, LOJA_A.id, "www"],
+    ],
+    "o antigo entra como antigo; o novo sai da tabela; o www do novo e o da outra loja ficam",
+  );
+  // O porteiro: o antigo e o www do novo encaminham para o novo; o novo não encaminha (é o principal).
+  await segredo(c);
+  assert.deepEqual(destinos(await comoAnon(c, ANTIGO, CHAVE)), [NOVO]);
+  assert.deepEqual(destinos(await comoAnon(c, WWW_NOVO, CHAVE)), [NOVO]);
+  assert.deepEqual(await comoAnon(c, NOVO, CHAVE), []);
+
+  // A troca invertida (o desfazer do roteiro): o roteamento volta ao de antes. O motivo do novo passa a ser antigo (não guarda o
+  // "em preparo") e criado_em/quem são os do momento da volta — o que importa ao porteiro é a mesma resposta para cada host.
+  const r2 = (await trocar(c, NOVO, ANTIGO, { motivo: "volta por prova" }))
+    .rows;
+  assert.deepEqual(
+    r2.map((l) => [l.dominio_publico, l.dominio_anterior]),
+    [[ANTIGO, NOVO]],
+  );
+  assert.equal(await principal(c, LOJA_A.id), ANTIGO, "o principal volta");
+  assert.deepEqual(
+    (await enderecos(c)).map((l) => [l.host, l.loja_id]),
+    [
+      [NOVO, LOJA_A.id],
+      ["outra.l1570.teste", LOJA_B.id],
+      [WWW_NOVO, LOJA_A.id],
+    ],
+    "os mesmos hosts encaminham para a mesma loja de antes da troca",
+  );
+  assert.deepEqual(destinos(await comoAnon(c, NOVO, CHAVE)), [ANTIGO]);
+  assert.deepEqual(destinos(await comoAnon(c, WWW_NOVO, CHAVE)), [ANTIGO]);
+  assert.deepEqual(await comoAnon(c, ANTIGO, CHAVE), []);
+}
+
+/** Uma falha no meio (depois de apagar o preparado, o UPDATE esbarra no UNIQUE de dominio_publico) desfaz as três escritas. */
+async function falhaNoMeio(c) {
+  await preparo(c);
+  // A outra loja passa a ter o NOVO como principal por UPDATE direto (a tabela nova não vigia frota_lojas): o preparado continua lá.
+  await c.query(
+    "UPDATE public.frota_lojas SET dominio_publico = $1 WHERE id = $2",
+    [NOVO, LOJA_B.id],
+  );
+  const antes = await retrato(c);
+  const e = await tentar(c, () => trocar(c, ANTIGO, NOVO));
+  assert.equal(
+    e?.code,
+    "23505",
+    "o UPDATE esbarra no UNIQUE de dominio_publico",
+  );
+  assert.deepEqual(
+    await retrato(c),
+    antes,
+    "nada ficou: o preparado não sumiu e o principal não mudou",
+  );
+  assert.deepEqual(
+    (await enderecos(c)).map((l) => l.host),
+    [NOVO, WWW_NOVO],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// (h) duas conexões: a mesma troca duas vezes ao mesmo tempo
+// ---------------------------------------------------------------------------
+async function concorrencia(c, url) {
+  // A semente é COMITADA (a outra conexão precisa vê-la) e sai no fim: o clone é exclusivo desta prova.
+  await c.query("BEGIN");
+  await preparo(c);
+  await c.query("COMMIT");
+  const outro = new Client({ connectionString: url });
+  await outro.connect();
+  try {
+    await c.query("BEGIN");
+    await trocar(c, ANTIGO, NOVO);
+    // A segunda troca espera a linha da loja (FOR UPDATE) presa pela primeira.
+    await outro.query("SET statement_timeout = '20s'");
+    const segunda = outro.query(SQL_TROCA, [
+      LOJA_A.id,
+      LOJA_A.project_ref,
+      ANTIGO,
+      NOVO,
+      "a mesma troca, de novo",
+      "30 minutes",
+    ]);
+    const resultado = segunda.then(
+      () => null,
+      (e) => e,
+    );
+    await new Promise((r) => setTimeout(r, 500));
+    const esperando = (
+      await c.query(
+        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%frota_trocar_dominio%'",
+      )
+    ).rows[0].n;
+    assert.equal(esperando, 1, "a segunda troca espera a primeira");
+    await c.query("COMMIT");
+    const e = await resultado;
+    assert.match(
+      e?.message ?? "(trocou duas vezes)",
+      /FROTA_DOMINIO_DIVERGENTE/,
+      "a segunda troca relê o endereço já trocado e é recusada",
+    );
+    assert.equal(await principal(c, LOJA_A.id), NOVO);
+    assert.deepEqual(
+      (await enderecos(c)).map((l) => [l.host, l.motivo]),
+      [
+        [ANTIGO, "antigo"],
+        [WWW_NOVO, "www"],
+      ],
+      "uma troca só ficou",
+    );
+  } finally {
+    await outro.end();
+    await c.query("ROLLBACK").catch(() => {});
+    await c.query(`DELETE FROM ${TABELA} WHERE loja_id IN ($1, $2)`, [
+      LOJA_A.id,
+      LOJA_B.id,
+    ]);
+    await c.query("DELETE FROM public.frota_lojas WHERE id IN ($1, $2)", [
+      LOJA_A.id,
+      LOJA_B.id,
+    ]);
+  }
 }
 
 async function main() {
@@ -822,6 +1201,17 @@ async function main() {
     await provar(
       "rollback comum (2x) tira as funções e preserva a tabela; recusa corpo divergente; destrutivo exige o comum",
       () => rollbackComum(c),
+    );
+    await provar(
+      "porta de troca: só o dono; 19 recusas sem escrever; as três escritas; a troca invertida volta o roteamento",
+      () => desfeita(c, () => portaDeTroca(c)),
+    );
+    await provar("falha no meio da troca desfaz as três escritas", () =>
+      desfeita(c, () => falhaNoMeio(c)),
+    );
+    await provar(
+      "duas conexões: a segunda troca igual espera e é recusada pelo endereço já trocado",
+      () => concorrencia(c, url),
     );
     console.log(`\no-endereco-antigo-encaminha-viva: ${provas} provas ok`);
     anexarAoSummary(
