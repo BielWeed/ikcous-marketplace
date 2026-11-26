@@ -3526,6 +3526,8 @@ const ROL_DA_192B = [
 // Lote 193 (20261560000000, o infinito nao entra no banco: CHECKs que recusam Infinity e -Infinity na taxa de entrega local, no preco
 // proprio da variacao e no valor do cupom, separados das restricoes da 20261400000000). A 193a prova as tres restricoes com a regra
 // exata (4 itens); a 193b prova que as tres ainda NAO existem e a base do pre-voo (as colunas numeric e preco_venda COM precisao) (5).
+// A 193m (medicao, so contagens, rol fechado com ok = contagem 0; NAO e' prova do portao) conta os infinitos JA GUARDADOS em cada
+// coluna, para rodar em cada loja ANTES do apply: contagem > 0 faz a guarda da migration recusar a loja (4 itens).
 const ROL_DA_193A = [
   "controle: catalogo publico visivel",
   "store_config: CHECK store_config_local_delivery_fee_finito (sem Infinity nem -Infinity na taxa de entrega local) existe",
@@ -3539,9 +3541,16 @@ const ROL_DA_193B = [
   "coupons.value: e numeric e o CHECK coupons_value_finito ainda NAO existe",
   "produtos.preco_venda: e numeric COM precisao (o tipo ja recusa infinito; a base do pre-voo)",
 ];
+const ROL_DA_193M = [
+  "controle: a RLS nao vale para quem leu em store_config, product_variants e coupons (a contagem e da loja inteira)",
+  "store_config.local_delivery_fee: linhas com Infinity ou -Infinity ja guardado",
+  "product_variants.price_override: linhas com Infinity ou -Infinity ja guardado (NULL nao conta)",
+  "coupons.value: linhas com Infinity ou -Infinity ja guardado",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "193a-conferir-o-infinito-nao-entra-no-banco-aplicado": ROL_DA_193A,
   "193b-antes-o-infinito-nao-entra-no-banco-ausente": ROL_DA_193B,
+  "193m-medir-infinitos-guardados": ROL_DA_193M,
   "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado": ROL_DA_192A,
   "192b-antes-o-admin-copia-e-apaga-as-fotos-ausente": ROL_DA_192B,
   "188a-conferir-o-livro-de-registro-aplicado": ROL_DA_188A,

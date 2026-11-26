@@ -344,6 +344,7 @@ on:
       - "scripts/publicacao/consultas/192b-antes-o-admin-copia-e-apaga-as-fotos-ausente.sql"
       - "scripts/publicacao/consultas/193a-conferir-o-infinito-nao-entra-no-banco-aplicado.sql"
       - "scripts/publicacao/consultas/193b-antes-o-infinito-nao-entra-no-banco-ausente.sql"
+      - "scripts/publicacao/consultas/193m-medir-infinitos-guardados.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -662,6 +663,7 @@ on:
       - "scripts/publicacao/consultas/192b-antes-o-admin-copia-e-apaga-as-fotos-ausente.sql"
       - "scripts/publicacao/consultas/193a-conferir-o-infinito-nao-entra-no-banco-aplicado.sql"
       - "scripts/publicacao/consultas/193b-antes-o-infinito-nao-entra-no-banco-ausente.sql"
+      - "scripts/publicacao/consultas/193m-medir-infinitos-guardados.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1703,7 +1705,7 @@ jobs:
       # direta), tambem sem a 400; finitos, enorme e NULL de variacao seguem; NaN segue recusado pela 400; preco_venda recusa pelo
       # tipo (numeric(10,2)). Linha antiga infinita IMPEDE a migration (guarda B1_BASELINE_DIVERGENT; corrida pega pelo ADD
       # validado). Mutantes da regra e da guarda, NOT VALID de volta, reaplicar, rollback, pre-voo, falha no meio, lock_timeout e
-      # consultas 193a/193b EXECUTADAS. CLONE proprio.
+      # consultas 193a/193b/193m EXECUTADAS (a 193m conta o infinito ja guardado). CLONE proprio.
       - name: Prova viva de que o infinito nao entra no banco (migration 20261560000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-infinito-nao-entra-no-banco-viva.cjs

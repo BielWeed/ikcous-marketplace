@@ -324,3 +324,109 @@ Deno.test("1560: publicacao — lote unico (193a/193b), rol fechado, consultas s
   const { VERIFICACOES } = require("../scripts/db-apply.cjs");
   assert.equal(new Map(Object.entries(VERIFICACOES)).get(NOME), undefined);
 });
+
+// A medicao 193m: quantos valores infinitos JA ESTAO guardados nas tres colunas, em cada loja, ANTES do apply (a guarda da
+// migration recusaria a loja). Rol fechado com `ok` (contagem = 0), so contagens, a mesma regra da guarda; NAO e' portao.
+const M = "193m-medir-infinitos-guardados";
+const ITENS_193M = [
+  "controle: a RLS nao vale para quem leu em store_config, product_variants e coupons (a contagem e da loja inteira)",
+  "store_config.local_delivery_fee: linhas com Infinity ou -Infinity ja guardado",
+  "product_variants.price_override: linhas com Infinity ou -Infinity ja guardado (NULL nao conta)",
+  "coupons.value: linhas com Infinity ou -Infinity ja guardado",
+];
+Deno.test("1560: a medicao 193m — rol fechado so de contagens, a mesma regra da guarda, no menu e no rpc-ci, fora dos lotes", async () => {
+  const {
+    ROL_FECHADO_POR_CONSULTA,
+    contarStatements,
+    listarConsultas,
+    veredictoDaConsulta,
+  } = require("../scripts/publicacao/conferir-banco.cjs");
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    new URL("scripts/frota/publicar-release.mjs", DIR).href
+  );
+  assert.ok(listarConsultas().includes(M), `falta a consulta ${M}`);
+  const sql = lerRepo(`scripts/publicacao/consultas/${M}.sql`);
+  const semComentario = codigo(sql);
+  assert.equal(contarStatements(sql), 1);
+  assert.match(semComentario.trim(), /^WITH\b/);
+  assert.doesNotMatch(
+    limpo(sql),
+    /\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|LOCK|SET|BEGIN|COMMIT|INTO)\b/i,
+  );
+  // rol fechado: o mesmo rol no conferir-banco e no portao, item por item no texto
+  assert.deepEqual(
+    new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(M),
+    ITENS_193M,
+  );
+  assert.ok(CONSULTAS_DE_ROL_FECHADO.has(M));
+  for (const item of ITENS_193M) assert.ok(sql.includes(`'${item}'`), item);
+  // so contagens: toda leitura de tabela da loja e' um count(*) com a regra EXATA da guarda (NULL, NaN e finito nao contam)
+  const guarda = migration.slice(
+    migration.indexOf(`DO $guarda_${VERSAO}$`),
+    migration.indexOf(`DO $restricoes_${VERSAO}$`),
+  );
+  assert.equal(
+    (semComentario.match(/\bFROM\s+public\./gi) ?? []).length,
+    ALVOS.length,
+  );
+  for (const a of ALVOS) {
+    const leitura = `(SELECT count(*) FROM public.${a.tabela} WHERE NOT (${a.regra}))::text`;
+    assert.ok(semComentario.includes(leitura), `193m: ${a.tabela}`);
+    assert.ok(
+      guarda.includes(`FROM public.${a.tabela} WHERE NOT (${a.regra})`),
+      `guarda: ${a.tabela}`,
+    );
+  }
+  assert.doesNotMatch(
+    semComentario,
+    /\b(code|id|nome|name|store_name|description)\b\s*(,|FROM|::)/i,
+  );
+  assert.ok(semComentario.includes("COALESCE(vivo = esperado, false) AS ok"));
+  // o veredito: tudo 0 = ok_false=0 com rol=ok; uma coluna com 1 = ok_false=1, ainda rol=ok (a resposta veio inteira)
+  const linhas = ITENS_193M.map((item, i) => ({
+    item,
+    esperado: i === 0 ? "sim" : "0",
+    vivo: i === 0 ? "sim" : "0",
+    ok: true,
+  }));
+  const veredito = (l) =>
+    veredictoDaConsulta({
+      consulta: M,
+      ref: "aaaaaaaaaaaaaaaaaaaa",
+      linhas: l,
+    });
+  assert.ok(
+    veredito(linhas).endsWith("linhas=4 ok_false=0 ok_nao_booleano=0 rol=ok"),
+  );
+  const comUm = linhas.map((l, i) =>
+    i === 1 ? { ...l, vivo: "1", ok: false } : l,
+  );
+  assert.ok(
+    veredito(comUm).endsWith("linhas=4 ok_false=1 ok_nao_booleano=0 rol=ok"),
+  );
+  assert.ok(veredito(linhas.slice(1)).endsWith("rol=invalido"));
+  // menu, rpc-ci (as duas listas de paths) e a prova viva que a EXECUTA
+  assert.ok(
+    lerRepo(".github/workflows/conferir-banco-da-loja.yml").includes(
+      `- ${M}\n`,
+    ),
+  );
+  assert.equal(
+    lerRepo(".github/workflows/rpc-ci.yml").split(
+      `"scripts/publicacao/consultas/${M}.sql"`,
+    ).length - 1,
+    2,
+  );
+  assert.ok(lerRepo(PROVA_VIVA).includes(`"${M}"`));
+  // medicao, nao portao: nenhum lote do canais-de-backend.json a cita (a decisao de tirar da release e' de quem le)
+  const canais = JSON.parse(lerRepo("scripts/frota/canais-de-backend.json"));
+  for (const p of canais.provasDeObjetos)
+    assert.ok(
+      ![
+        p.consulta,
+        p.ausenciaConfirmadaPor,
+        ...(p.conferenciasAntesDoApply ?? []),
+      ].includes(M),
+      p.consulta,
+    );
+});

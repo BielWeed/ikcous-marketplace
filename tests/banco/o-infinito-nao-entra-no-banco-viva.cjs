@@ -25,6 +25,9 @@
  *  MIGRATION   reaplicar (2x, CRLF, ja validada) e' no-op (mesmo OID); rollback tira so as 3 novas, 2x no-op; pre-voo recusa SEM
  *              escrever (homonima, coluna renomeada, preco_venda sem precisao); conferencia final recusa cada estrago; pre-voo do
  *              rollback recusa o que nao e' dele; consultas 193a/193b EXECUTADAS nos dois estados e com defeito plantado.
+ *  MEDICAO     a 193m (infinitos JA guardados, so contagens) EXECUTADA: 0/ok nos dois estados limpos; a taxa infinita gravada ANTES
+ *              do apply da 1 e ok=false so na linha dela (e a migration se recusa); conta -Infinity e 'inf', nao conta NaN, NULL,
+ *              negativo nem finito enorme (a mesma regra da guarda); papel com a RLS valendo reprova o controle.
  *  ATOMICIDADE conexao SEM BEGIN: falha no meio (3a restricao), guarda recusando e conferencia sabotada deixam NENHUMA das 3; gravacao
  *              em voo faz a migration FALHAR LIMPA no lock_timeout e depois aplicar.
  *
@@ -50,6 +53,15 @@ const NOME_400 = "20261400000000_valores_negativos_nao_entram_no_banco.sql";
 const ROLLBACK_400 = P.lerMigration(`rollback-manual-${NOME_400}`);
 const A193 = "193a-conferir-o-infinito-nao-entra-no-banco-aplicado";
 const B193 = "193b-antes-o-infinito-nao-entra-no-banco-ausente";
+const M193 = "193m-medir-infinitos-guardados";
+const ITEM_193M = {
+  controle:
+    "controle: a RLS nao vale para quem leu em store_config, product_variants e coupons (a contagem e da loja inteira)",
+  taxa: "store_config.local_delivery_fee: linhas com Infinity ou -Infinity ja guardado",
+  variacao:
+    "product_variants.price_override: linhas com Infinity ou -Infinity ja guardado (NULL nao conta)",
+  cupom: "coupons.value: linhas com Infinity ou -Infinity ja guardado",
+};
 
 // Ordem de criacao na migration: a mesma ordem de trava da compra (store_config, variacoes, cupons).
 const ALVOS = {
@@ -374,6 +386,16 @@ const dados = async () =>
             (SELECT coalesce(md5(string_agg(x::text, '|' ORDER BY x.id::text)), '') FROM public.product_variants x) AS v,
             (SELECT coalesce(md5(string_agg(x::text, '|' ORDER BY x.id::text)), '') FROM public.coupons x) AS c`,
   );
+/** A medicao 193m EXECUTADA: confere o rol (P.consulta) e devolve os itens reprovados e a contagem viva de cada coluna. */
+async function medir193m() {
+  const reprovados = await P.consulta(M193);
+  const linhas = (await P.conexao().query(P.lerConsulta(M193))).rows;
+  const vivo = {};
+  for (const n of NOMES)
+    vivo[n] = linhas.find((l) => l.item === ITEM_193M[n]).vivo;
+  return { reprovados, vivo };
+}
+const ZERO_193M = { taxa: "0", variacao: "0", cupom: "0" };
 const trocarRegra = (alvo, regra) => {
   const { tabela, ck } = ALVOS[alvo];
   return `ALTER TABLE public.${tabela} DROP CONSTRAINT ${ck};
@@ -626,6 +648,11 @@ prova(
         "UPDATE public.product_variants SET price_override = NULL WHERE id = $1",
         [VARIACAO],
       );
+      // a medicao 193m conta o MESMO que a guarda: Infinity na taxa (1), -Infinity e 'inf' no cupom (2); NaN, NULL, negativo e
+      // enorme nao contam
+      const m = await medir193m();
+      assert.deepEqual(m.reprovados, [ITEM_193M.cupom, ITEM_193M.taxa].sort());
+      assert.deepEqual(m.vivo, { taxa: "1", variacao: "0", cupom: "2" });
       const r = await P.recusa(MIGRATION, /B1_BASELINE_DIVERGENT/);
       assert.ok(r.erro.includes(`${rotulo("taxa")} (1 linha`), r.erro);
       assert.ok(r.erro.includes(`${rotulo("cupom")} (2 linha`), r.erro);
@@ -1100,6 +1127,11 @@ prova(
       async () => {
         assert.deepEqual(await P.consulta(A193), [], "193a no estado DEPOIS");
         assert.deepEqual(await P.consulta(B193), ITENS_DOS_CKS_193B);
+        assert.deepEqual(
+          await medir193m(),
+          { reprovados: [], vivo: ZERO_193M },
+          "193m no estado DEPOIS",
+        );
       },
       async () => {
         await semear();
@@ -1110,6 +1142,11 @@ prova(
       async () => {
         assert.deepEqual(await P.consulta(B193), [], "193b no estado ANTES");
         assert.deepEqual(await P.consulta(A193), ITENS_DOS_CKS_193A);
+        assert.deepEqual(
+          await medir193m(),
+          { reprovados: [], vivo: ZERO_193M },
+          "193m no estado ANTES",
+        );
       },
       async () => {
         await semear();
@@ -1156,6 +1193,65 @@ prova(
         await P.conexao().query(
           trocarRegra("taxa", ALVOS.taxa.def.slice(7, -1)),
         );
+      },
+    );
+  },
+);
+
+// ---- medicao 193m, EXECUTADA: o que ela diz ANTES do apply e' o que a guarda da migration faz ----------------------------------
+prova(
+  "medicao 193m: limpa da 0/ok; com a taxa infinita gravada ANTES do apply so a linha da taxa da 1 e ok=false e a migration se recusa; corrigida, 0 e aplica",
+  async () => {
+    await P.emTransacao(
+      async () => {
+        assert.equal(await aplicado(), false, "o estado ANTES nao montou");
+        assert.deepEqual(await medir193m(), {
+          reprovados: [],
+          vivo: ZERO_193M,
+        });
+        await P.conexao().query(
+          "UPDATE public.store_config SET local_delivery_fee = 'Infinity' WHERE id = 1",
+        );
+        assert.deepEqual(await medir193m(), {
+          reprovados: [ITEM_193M.taxa],
+          vivo: { taxa: "1", variacao: "0", cupom: "0" },
+        });
+        // a linha que a 193m acusou e' a que a guarda recusa
+        const r = await P.recusa(MIGRATION, /B1_BASELINE_DIVERGENT/);
+        assert.ok(r.erro.includes(`${rotulo("taxa")} (1 linha`), r.erro);
+        assert.equal(await aplicado(), false);
+        await plantar("taxa", "10");
+        assert.deepEqual(await medir193m(), {
+          reprovados: [],
+          vivo: ZERO_193M,
+        });
+        assert.equal(await P.aplicar(MIGRATION), null);
+        assert.equal(await aplicado(), true);
+      },
+      async () => {
+        await semear();
+        await antes();
+      },
+    );
+    // a RLS valendo para quem leu (authenticated le as tres tabelas sob RLS): o controle reprova, porque a contagem dela pode
+    // nao ser a da loja inteira; nunca um "tudo 0 e ok"
+    await P.emTransacao(
+      async () => {
+        const r = await P.tentar(
+          "authenticated",
+          P.lerConsulta(M193),
+          [],
+          ADMIN,
+        );
+        assert.ok(r.linhas, r.erro);
+        assert.deepEqual(
+          r.linhas.filter((l) => l.ok !== true).map((l) => l.item),
+          [ITEM_193M.controle],
+        );
+      },
+      async () => {
+        await semear();
+        await antes();
       },
     );
   },

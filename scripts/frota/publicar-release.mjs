@@ -902,6 +902,7 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "192b-antes-o-admin-copia-e-apaga-as-fotos-ausente",
   "193a-conferir-o-infinito-nao-entra-no-banco-aplicado",
   "193b-antes-o-infinito-nao-entra-no-banco-ausente",
+  "193m-medir-infinitos-guardados",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
