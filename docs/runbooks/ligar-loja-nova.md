@@ -35,11 +35,12 @@ autorização.
 | 5 | Agente | `criar-projeto`: cria o projeto da loja na conta dela | comando pronto |
 | 6 | Agente | `banco`: instala o banco inteiro | comando pronto |
 | 7 | Agente | `ficha`: confere a ficha da loja e gera o texto do cadastro | comando pronto |
+| 7b | Agente | `dominio`: grava o domínio da loja na ficha (sem ele a vitrine fica em manutenção) | comando pronto |
 | 8 | Agente | segredos da loja | **ainda não automático**: espere o C2 |
 | 9 | Agente | cadastro na frota (`lojas.json`, canais, caderneta) | **em construção**: espere o B5/C2 |
 | 10 | Agente | publicar as functions | **ainda não automático** (script avulso; depende do passo 9) |
 | 11 | Agente | login da loja (endereços e gancho de e-mail desligado) | **ainda não automático** (script avulso) |
-| 12 | Agente | domínio, marca e chave do plano | **ainda não automático**: espere o C2 |
+| 12 | Agente | marca e chave do plano (o domínio virou o passo 7b) | **ainda não automático**: espere o C2 |
 | 13 | Lojista | **Tela 3, parte A**: se cadastra NA LOJA com o mesmo e-mail | — |
 | 14 | Dono | `primeira-admin`: ela vira administradora | script pronto |
 | 15 | Agente | `definir-dono`: ela vira a dona da loja | **em construção**: espere o C3 |
@@ -47,7 +48,7 @@ autorização.
 | 17 | Agente | ligar o gancho de e-mail e subir o limite de e-mails | **lacuna conhecida** |
 | 18 | Agente | `conferir`: a loja está pronta para vender? | **em construção**: espere o C3 |
 
-**Hoje (26/11/2026) o caminho só anda sozinho até o passo 7.** Do 8 em diante, cada passo diz o
+**Hoje (26/11/2026) o caminho só anda sozinho até o passo 7b.** Do 8 em diante, cada passo diz o
 que existe e o que falta. Os roteiros manuais das lojas antigas **não servem** para a loja nova:
 eles usam token fixo no repositório, chave de serviço ou o painel do projeto, e a IKCOUS não tem
 nada disso na conta da lojista (ver [Lacunas conhecidas](#lacunas-conhecidas-26112026)).
@@ -446,6 +447,38 @@ começando por letra).
     esperado. Confira antes de cadastrar.
   - `não achei UMA chave publishable`: rode de novo. Se repetir, leve ao programador.
 
+### Passo 5b — `dominio` (linha 7b da tabela)
+
+**O que faz:** grava o domínio da loja, `<slug>.vercel.app`, na ficha (`public.store_config`,
+coluna `dominio_publico` da linha `id = 1`). **Nada mais grava esse domínio numa loja nova:** a
+ficha nasce com ele vazio (migration `20261540000000`), e com ele vazio a vitrine responde "Esta
+loja está em manutenção" (o porteiro não acha a loja) e o `identidade-bootstrap.mjs --alvo-novo`
+recusa. O comentário daquela migration diz que "quem o grava é o instalador", e isso **não é
+verdade**: o instalador do banco não grava. Quem grava é este passo (a migration já foi publicada
+e não se edita; a correção fica aqui).
+
+```powershell
+node scripts/frota/nova-loja.mjs dominio --loja <slug> --aplicar
+```
+
+Ele lê a ficha antes. Só com o domínio **vazio** manda UMA escrita, que só grava se o domínio
+continuar vazio na hora (nunca sobrescreve), e relê depois.
+
+- **SIM:** `a ficha agora declara o domínio <slug>.vercel.app` (gravou e conferiu) ou `a ficha já
+  declara o domínio` (já estava; nada foi gravado). Rodar de novo é seguro.
+- **NÃO:**
+  - `rode ficha --aplicar até dar SIM antes do dominio`: falta o passo 5.
+  - `a ficha já declara OUTRO domínio (<valor>)`: alguém já gravou outro endereço nesta loja. Ele
+    **não** sobrescreve. Pare e leve ao programador: trocar o domínio de uma loja não é deste
+    comando.
+  - `o banco recusou o UPDATE por permissão (SQLSTATE 42501)`: a trava
+    `dominio_publico_so_muda_pela_frota` não deixou. Nada foi gravado. **Não** grave pelo SQL
+    Editor nem com chave de serviço; leve ao programador (a prova viva
+    `tests/banco/o-nova-loja-grava-o-dominio-viva.cjs` mostra que a sessão da Management API
+    passa, mas não mede uma loja real).
+- **INCERTO:** a resposta da escrita ou a releitura se perdeu. Rode o mesmo comando de novo: ele
+  lê antes e não escreve duas vezes.
+
 ### Passo 14 — `primeira-admin` (no terminal do dono)
 
 Este script **já existe** e roda sozinho (fora do comando `nova-loja.mjs`). Ele vem **depois** que
@@ -540,7 +573,11 @@ perdeu nunca vira pedido pago.
 
 ### Passo 9 — Cadastro na frota — em construção
 
-O script `cadastro-da-loja.mjs` **ainda não existe** (tarefa B5; o passo entra no comando no C2).
+O script `scripts/frota/cadastro-da-loja.mjs` **existe** (tarefa B5), mas o passo `cadastro` do
+`nova-loja.mjs` ainda recusa (cadastrar trava a publicação de todas as lojas até o portão ler loja
+OAuth). Ele só mexe em arquivos do repositório (`lojas.json`, workflows, canais) e **imprime** o SQL
+da caderneta `frota_lojas`; não grava nada no banco da loja, nem o domínio da ficha (esse é o passo
+5b, `dominio`).
 **Não dá para usar numa loja nova o roteiro manual** (passos 1 a 3 da seção "Loja assinante nova"
 de [producao-unica-fonte.md](producao-unica-fonte.md)). Ele foi escrito para loja com **token fixo
 no repositório**:
@@ -622,7 +659,9 @@ node scripts/frota/login-da-loja-nova.mjs --projeto <ref> --loja <slug> --domini
 **Por que o gancho nasce desligado:** ligado antes do Gmail, todo e-mail de login falharia,
 inclusive a confirmação da conta da lojista.
 
-### Passo 12 — Domínio, marca e chave do plano — ainda não automático
+### Passo 12 — Marca e chave do plano — ainda não automático
+
+O domínio da ficha saiu daqui: é o passo 5b (`dominio`), já no comando.
 
 **Não dá para usar numa loja nova o roteiro manual** dos passos 6 e 6A da seção "Loja assinante
 nova" de [producao-unica-fonte.md](producao-unica-fonte.md). Cada pedaço dele pede um acesso que a
@@ -631,7 +670,8 @@ IKCOUS não tem na conta da lojista:
   `SUPABASE_ACCESS_TOKEN_<LOJA>` do repositório (`instalar-chave-da-loja.yml`, linhas 174-175). A
   loja nova não tem esse segredo;
 - **domínio da ficha (`dominio_publico`):** o roteiro manda gravar pelo SQL Editor do projeto da
-  loja. O projeto é da lojista, e a IKCOUS não entra no painel dela;
+  loja. O projeto é da lojista, e a IKCOUS não entra no painel dela. **Na loja nova use o passo
+  5b (`dominio`)**, que grava pela autorização OAuth;
 - **marca (passo 6A):** o `scripts/identidade-bootstrap.mjs` exige a chave de serviço da loja
   (`SUPABASE_SERVICE_ROLE_KEY`, linha 471), que a IKCOUS não tem.
 
@@ -767,6 +807,7 @@ Colou o código e deu INCERTO? Não cole o mesmo código de novo. Gere um link n
 | `criar-projeto` | O comando **nunca apaga projeto**. Apagar ou pausar é feito pela lojista, no painel dela, e é decisão do dono. |
 | `banco` | **Não tem desfazer.** 115 das migrations não se repetem, e não existe "desinstalar". Numa loja sem venda, o caminho é apagar o projeto e começar de novo (decisão do dono). |
 | `ficha` | Não tem o que desfazer: só lê e imprime. |
+| `dominio` | **Sem comando de desfazer.** Ele só grava num domínio vazio e nunca troca um domínio existente. Domínio errado numa loja nova: leve ao programador. |
 | `segredos` | Não se aplica hoje: o passo 8 espera o C2. O script nunca substitui. Se gravar só metade, o relatório dele manda apagar os segredos no painel do projeto (Edge Functions > Secrets), e esse painel é da lojista: a IKCOUS não entra nele. O C2 tem de trazer esse conserto por outro caminho. |
 | `functions` | Sem comando de desfazer. Numa loja sem venda, uma function errada se corrige publicando de novo (`--aplicar --substituir`). |
 | `login` | Sem comando de desfazer. O gancho nasce desligado, então nada deixa de funcionar. |
@@ -786,14 +827,14 @@ no painel do projeto dela):
 - **segredos (passo 8):** `scripts/frota/segredos-da-loja.mjs` pede `SUPABASE_ACCESS_TOKEN` quando
   roda sozinho, e o token da lojista não sai do cofre. O conserto de "metade gravada" é no painel
   do projeto, que é da lojista. Espere o C2.
-- **cadastro (passo 9):** `cadastro-da-loja.mjs` não existe. O roteiro manual
+- **cadastro (passo 9):** `cadastro-da-loja.mjs` existe, mas o passo `cadastro` do `nova-loja.mjs`
+  ainda recusa (o portão não lê loja OAuth). O roteiro manual
   (`producao-unica-fonte.md`, "Loja assinante nova", passos 1 a 3) pede o segredo fixo
   `SUPABASE_ACCESS_TOKEN_<LOJA>` no repositório e confere pelo `conferir-banco-da-loja.yml`, que usa
   esse segredo. Espere o B5/C2.
 - **functions (passo 10):** depende do cadastro. Espere o B5/C2.
-- **domínio, marca e chave do plano (passo 12):** a chave do plano vai pelo
-  `instalar-chave-da-loja.yml` (segredo fixo, linhas 174-175); o domínio, pelo SQL Editor do projeto;
-  a marca, pelo `scripts/identidade-bootstrap.mjs`, que exige a chave de serviço da loja (linha
+- **marca e chave do plano (passo 12):** a chave do plano vai pelo
+  `instalar-chave-da-loja.yml` (segredo fixo, linhas 174-175); a marca, pelo `scripts/identidade-bootstrap.mjs`, que exige a chave de serviço da loja (linha
   471). Espere o C2.
 - **definir-dono (passo 15):** não existe; a receita manual (seção 3.3 de `definir-o-dono-da-loja.md`)
   é no SQL Editor do projeto. Espere o C3.

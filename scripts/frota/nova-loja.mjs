@@ -4,8 +4,8 @@
 /**
  * nova-loja.mjs — o comando ASSISTIDO que abre uma loja nova passo a passo
  * (plano nova-loja de 26/11/2026, tarefas C1, C2 e C3; o desenho vem do L4b).
- * Nesta versão: abrir, receber, criar-projeto, banco, ficha, segredos,
- * functions, login, primeira-admin, definir-dono, trocar-dono (a fase 1, o
+ * Nesta versão: abrir, receber, criar-projeto, banco, ficha, dominio,
+ * segredos, functions, login, primeira-admin, definir-dono, trocar-dono (a fase 1, o
  * pedido e o link; e a fase 2, --receber, a troca com o código da dona) e
  * conferir. cadastro, marca e chave-do-plano têm o nome
  * guardado e recusam (NÃO, sem rede): dependem de a release alcançar loja
@@ -18,6 +18,7 @@
  *   criar-projeto  --org <slug da organização da lojista>
  *   banco
  *   ficha          [--nome <apelido>]
+ *   dominio        (grava <slug>.vercel.app em store_config.dominio_publico)
  *   segredos       (segredos-da-loja.mjs, B1)
  *   cadastro       (aguardando: cadastrar trava a publicação de todas as lojas)
  *   functions      (functions-da-loja.mjs, B2: só com HEAD == topo da release)
@@ -122,6 +123,13 @@
  *  - ficha confere store_config id = 1 (semeada pela migration
  *    20261540000000) e GERA, sem executar, o SQL da linha em frota_lojas e a
  *    entrada de lojas.json para o passo de cadastro (B5);
+ *  - dominio (26/11/2026) é o ÚNICO que grava store_config.dominio_publico
+ *    numa loja nova (sem ele o porteiro responde 503 e o identidade-bootstrap
+ *    --alvo-novo recusa): lê a ficha, e só com o domínio VAZIO manda UM
+ *    UPDATE guardado (`AND dominio_publico IS NULL`: nunca sobrescreve) e
+ *    relê. Igual ao esperado = SIM (sem escrever, se já estava); outro valor
+ *    = NÃO (diz qual, não toca); a trava dominio_publico_so_muda_pela_frota
+ *    (42501) = NÃO; resposta perdida ou releitura caída = INCERTO;
  *  - veredito de todo passo: SIM, NÃO ou INCERTO. INCERTO nunca vira SIM, e
  *    nenhuma mensagem leva token, código, segredo ou corpo cru de resposta.
  */
@@ -185,6 +193,7 @@ export const PASSOS = Object.freeze([
   "criar-projeto",
   "banco",
   "ficha",
+  "dominio",
   "segredos",
   "cadastro",
   "functions",
@@ -248,7 +257,7 @@ const STATUS_SEM_VOLTA = new Set([
 ]);
 export const MARCA_DA_FICHA = "ficha_da_loja_20261540000000";
 /** Só leitura: a ficha id = 1, a marca da migration 20261540000000 e o
- * domínio (o cadastro grava o domínio depois). */
+ * domínio (quem o grava é o passo dominio, logo depois da ficha). */
 export const SQL_FICHA =
   "SELECT (SELECT count(*) FROM public.store_config WHERE id = 1)::int AS ficha, obj_description('public.store_config'::regclass, 'pg_class') AS marca, (SELECT dominio_publico FROM public.store_config WHERE id = 1) AS dominio_publico;";
 
@@ -293,6 +302,8 @@ export const CAMPOS_DO_ESTADO = Object.freeze({
     total: inteiro,
   }),
   ficha: Object.freeze({}),
+  // só o veredito: o domínio sai do slug, nunca do estado
+  dominio: Object.freeze({}),
   segredos: Object.freeze({}),
   functions: Object.freeze({}),
   login: Object.freeze({}),
@@ -1205,7 +1216,7 @@ async function passoFicha(pedido, d) {
   });
   d.saida.out(
     [
-      `Ficha conferida: store_config id = 1 com a marca ${MARCA_DA_FICHA}; dominio_publico ${l.dominio_publico === null ? "vazio (o cadastro grava o domínio)" : "já preenchido"}.`,
+      `Ficha conferida: store_config id = 1 com a marca ${MARCA_DA_FICHA}; dominio_publico ${l.dominio_publico === null ? "vazio (o próximo passo, dominio --aplicar, grava o domínio)" : "já preenchido"}.`,
       "SQL da caderneta (NÃO EXECUTADO; é do passo cadastro, no banco onde a caderneta da frota mora):",
       gerado.sql,
       `Entrada de scripts/frota/lojas.json (NÃO GRAVADA${gerado.jaTem ? "; já está igual no arquivo" : ""}; o cadastro grava e roda lojas-nos-workflows.cjs --escrever):`,
@@ -1249,6 +1260,173 @@ async function fecharPasso(d, slug, passo, r, repetir) {
     );
   }
   return r;
+}
+
+// ─── dominio ────────────────────────────────────────────────────────────────
+
+/**
+ * A ÚNICA escrita do passo dominio: UMA instrução (atômica sozinha: erro do
+ * Postgres = nada gravado). A guarda `AND dominio_publico IS NULL` faz o
+ * UPDATE nunca sobrescrever um domínio que alguém gravou entre a leitura e
+ * a escrita (o veredito vem da releitura). Sem SET ROLE: a trava
+ * dominio_publico_so_muda_pela_frota (20261140000000/20261150000000) deixa
+ * passar a sessão SEM papel de usuário no JWT e com o GUC role fora de
+ * anon/authenticated (conexão direta: 'none'); prova viva em
+ * tests/banco/o-nova-loja-grava-o-dominio-viva.cjs. O host sai do slug
+ * (RE_PROJETO: só minúsculas, dígitos e hífen), mesmo assim por literal().
+ */
+export function sqlDoDominio(slug) {
+  return `UPDATE public.store_config SET dominio_publico = ${literal(dominioDaLoja(slug))} WHERE id = 1 AND dominio_publico IS NULL;`;
+}
+
+const REPETIR_O_DOMINIO = (slug) =>
+  `Repetir node scripts/frota/nova-loja.mjs dominio --loja ${slug} --aplicar é seguro: ele lê antes, e o domínio já gravado dá SIM sem escrever.`;
+
+/** O erro do UPDATE → resultado. Só um erro do PRÓPRIO Postgres (SQLSTATE no
+ * corpo) prova que a instrução não gravou; o resto é INCERTO. */
+function resultadoDoErroDoDominio(e, slug) {
+  const sqlstate =
+    e instanceof ErroDaGestao && e.codigo === "HTTP" ? e.sqlstate : undefined;
+  if (typeof sqlstate !== "string") {
+    return resultado(
+      INCERTO,
+      `a resposta do UPDATE não diz se gravou (${porque(e)}). ${REPETIR_O_DOMINIO(slug)}`,
+    );
+  }
+  if (sqlstate === "42501") {
+    return resultado(
+      NAO,
+      "o banco recusou o UPDATE por permissão (SQLSTATE 42501): o esperado é a trava dominio_publico_so_muda_pela_frota (DOMINIO_PUBLICO_SO_MUDA_PELA_FROTA), que só deixa gravar quem não tem papel de usuário no JWT (anon/authenticated); a resposta da API não traz o texto do erro, então pode ser também falta de privilégio na tabela. Nada foi gravado. Esta API não passou como sessão da frota: não improvise outro caminho (nem SQL Editor, nem chave de serviço); volte a decisão ao programador.",
+    );
+  }
+  if (sqlstate === "23514") {
+    return resultado(
+      NAO,
+      `o banco recusou o domínio ${dominioDaLoja(slug)} pelo CHECK de store_config (SQLSTATE 23514); nada foi gravado.`,
+    );
+  }
+  return resultado(
+    NAO,
+    `o banco recusou o UPDATE (SQLSTATE ${sqlstate}); nada foi gravado.`,
+  );
+}
+
+/** O que a ficha diz do domínio: { l } (a linha conferida) ou { r } (o
+ * resultado de parar). Só leitura. */
+async function lerDominio(gestao, ref, quando) {
+  let linhas;
+  try {
+    linhas = await gestao.consultarBanco(ref, SQL_FICHA, {
+      somenteLeitura: true,
+    });
+  } catch (erro) {
+    return {
+      r: resultado(
+        INCERTO,
+        `não consegui ler a ficha ${quando}: ${porque(erro)}`,
+      ),
+    };
+  }
+  const l = linhaDaFicha(linhas);
+  if (!l) {
+    return {
+      r: resultado(
+        INCERTO,
+        `a leitura da ficha ${quando} voltou fora do formato.`,
+      ),
+    };
+  }
+  if (l.ficha !== 1) {
+    return {
+      r: resultado(
+        NAO,
+        "a ficha (public.store_config id = 1) não existe: rode ficha --aplicar até dar SIM antes do dominio.",
+      ),
+    };
+  }
+  return { l };
+}
+
+const outroDominio = (valor, esperado) =>
+  `a ficha já declara OUTRO domínio (${textoSeguro(valor, 80)}), não ${esperado}: não sobrescrevo. Confira de quem é esta loja; trocar o domínio de uma loja é decisão do programador, nunca deste comando.`;
+
+async function passoDominio(pedido, d) {
+  const { slug } = pedido;
+  const e = await d.estado.ler(slug);
+  if (e?.passos?.ficha?.veredito !== SIM) {
+    return resultado(
+      NAO,
+      "rode ficha --aplicar até dar SIM antes do dominio. Nada foi lido.",
+    );
+  }
+  const pre = await projetoPronto(d, slug, "dominio");
+  if (pre.falta) return resultado(NAO, pre.falta);
+  const naoCabe = slugQueNaoCabe(slug);
+  if (naoCabe) return resultado(NAO, naoCabe);
+  const esperado = dominioDaLoja(slug);
+  const { gestao } = contexto(pedido, d);
+  const fechar = (r) =>
+    fecharPasso(d, slug, "dominio", r, REPETIR_O_DOMINIO(slug));
+
+  const antes = await lerDominio(gestao, pre.ref, "antes de gravar");
+  if (antes.r) {
+    return await fechar(
+      resultado(antes.r.veredito, `${antes.r.mensagem} Nada foi gravado.`),
+    );
+  }
+  if (antes.l.dominio_publico === esperado) {
+    return await fechar(
+      resultado(
+        SIM,
+        `a ficha já declara o domínio ${esperado}; nada foi gravado.`,
+      ),
+    );
+  }
+  if (antes.l.dominio_publico !== null) {
+    return await fechar(
+      resultado(NAO, outroDominio(antes.l.dominio_publico, esperado)),
+    );
+  }
+
+  d.saida.out(
+    `dominio: a ficha está com o domínio vazio. Plano: UM UPDATE que só grava ${esperado} se continuar vazio, e a releitura.`,
+  );
+  try {
+    await gestao.consultarBanco(pre.ref, sqlDoDominio(slug));
+  } catch (erro) {
+    return await fechar(resultadoDoErroDoDominio(erro, slug));
+  }
+  const depois = await lerDominio(gestao, pre.ref, "depois do UPDATE");
+  if (depois.r) {
+    // o UPDATE respondeu sem erro: só a releitura diz o que ficou, e ela
+    // não veio (ou veio estranha): nunca SIM, nunca NÃO definitivo
+    return await fechar(
+      resultado(
+        INCERTO,
+        `o UPDATE respondeu sem erro, mas ${depois.r.mensagem} Sem a releitura não digo SIM. ${REPETIR_O_DOMINIO(slug)}`,
+      ),
+    );
+  }
+  const agora = depois.l.dominio_publico;
+  if (agora === esperado) {
+    return await fechar(
+      resultado(
+        SIM,
+        `a ficha agora declara o domínio ${esperado} (conferido por releitura): o porteiro abre a vitrine nesse endereço.`,
+      ),
+    );
+  }
+  if (agora !== null) {
+    // alguém gravou outro valor entre a leitura e o UPDATE: a guarda não
+    // deixou sobrescrever
+    return await fechar(resultado(NAO, outroDominio(agora, esperado)));
+  }
+  return await fechar(
+    resultado(
+      INCERTO,
+      `o UPDATE respondeu sem erro, mas a releitura ainda acha o domínio vazio. ${REPETIR_O_DOMINIO(slug)}`,
+    ),
+  );
 }
 
 // ─── segredos ───────────────────────────────────────────────────────────────
@@ -2783,6 +2961,7 @@ const PENDENTES = Object.freeze(Object.keys(AGUARDANDO));
 const ITENS_DO_PROJETO = Object.freeze([
   "banco",
   "ficha",
+  "dominio",
   "segredos",
   "reconciliação",
   "functions",
@@ -2900,26 +3079,42 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
     );
   }
 
-  // ficha: store_config id = 1 com a marca da migration 20261540000000
+  // ficha: store_config id = 1 com a marca da migration 20261540000000; e
+  // dominio: a ficha declara <slug>.vercel.app (sem ele, 503 na vitrine)
   try {
     const l = linhaDaFicha(await leitura.consultarBanco(ref, SQL_FICHA));
-    if (!l)
+    if (!l) {
       item("ficha", INCERTO, "a leitura da ficha voltou fora do formato.");
-    else if (l.ficha !== 1)
+      item("dominio", INCERTO, "a leitura da ficha voltou fora do formato.");
+    } else if (l.ficha !== 1) {
       item(
         "ficha",
         NAO,
         "public.store_config id = 1 não existe: sem a ficha a loja fica em manutenção (503).",
       );
-    else if (l.marca !== MARCA_DA_FICHA)
-      item(
-        "ficha",
-        INCERTO,
-        "a ficha id = 1 existe, mas sem a marca da migration 20261540000000: conferir quem a criou.",
-      );
-    else item("ficha", SIM, "store_config id = 1 com a marca da migration.");
+      item("dominio", NAO, "sem a ficha não há onde declarar o domínio.");
+    } else {
+      if (l.marca !== MARCA_DA_FICHA)
+        item(
+          "ficha",
+          INCERTO,
+          "a ficha id = 1 existe, mas sem a marca da migration 20261540000000: conferir quem a criou.",
+        );
+      else item("ficha", SIM, "store_config id = 1 com a marca da migration.");
+      const esperado = dominioDaLoja(pedido.slug);
+      if (l.dominio_publico === esperado)
+        item("dominio", SIM, `a ficha declara ${esperado}.`);
+      else if (l.dominio_publico === null)
+        item(
+          "dominio",
+          NAO,
+          `a ficha está com o domínio vazio: a vitrine fica em manutenção (503). Rode node scripts/frota/nova-loja.mjs dominio --loja ${pedido.slug} --aplicar.`,
+        );
+      else item("dominio", NAO, outroDominio(l.dominio_publico, esperado));
+    }
   } catch (erro) {
     item("ficha", INCERTO, `não consegui ler a ficha: ${porque(erro)}`);
+    item("dominio", INCERTO, `não consegui ler a ficha: ${porque(erro)}`);
   }
 
   // segredos do B1: só NOMES (o segredos-da-loja descarta o digest que a API
@@ -3268,6 +3463,14 @@ async function ensaio(pedido, d) {
       `${ENSAIO} leria store_config id = 1 (só leitura) e a chave publishable, e geraria o SQL de frota_lojas e a entrada de lojas.json sem executar.`,
     );
   }
+  if (passo === "dominio") {
+    if (passos.ficha?.veredito !== SIM)
+      return resultado(NAO, `${ENSAIO} rode ficha até dar SIM antes.`);
+    return resultado(
+      INCERTO,
+      `${ENSAIO} leria store_config id = 1 (só leitura); com o domínio vazio, mandaria UM UPDATE que só grava ${dominioDaLoja(slug)} se continuar vazio, e releria. Domínio igual = SIM sem gravar; outro domínio = NÃO, sem sobrescrever.`,
+    );
+  }
   if (passo === "primeira-admin") {
     // nem o e-mail é pedido: sem --aplicar não há o que fazer com ele
     if (passos.banco?.veredito !== SIM)
@@ -3339,6 +3542,7 @@ const EXECUTORES = Object.freeze({
   "criar-projeto": passoCriarProjeto,
   banco: passoBanco,
   ficha: passoFicha,
+  dominio: passoDominio,
   segredos: passoSegredos,
   functions: passoFunctions,
   login: passoLogin,

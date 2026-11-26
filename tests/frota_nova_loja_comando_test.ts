@@ -228,6 +228,15 @@ function bancoFalso({
   bloqueada = false,
   // só a transação vê o bloqueio (aconteceu depois da leitura)
   bloqueadaNaEscrita = false,
+  // store_config.dominio_publico da ficha id = 1
+  dominio = null,
+  // passo dominio: outro valor gravado por fora ENTRE a leitura e o UPDATE
+  dominioNaEscrita = undefined,
+  // passo dominio: o UPDATE sem resposta (gateway) ou recusado pela trava
+  escritaDoDominioCai = false,
+  travaDoDominio = false,
+  // passo dominio: a N-ésima leitura de SQL_FICHA cai
+  leituraDaFichaCaiNa = null,
 } = {}) {
   const b = {
     alvo,
@@ -244,6 +253,13 @@ function bancoFalso({
     promocaoCai,
     bloqueada,
     bloqueadaNaEscrita,
+    dominio,
+    dominioNaEscrita,
+    escritaDoDominioCai,
+    travaDoDominio,
+    leituraDaFichaCaiNa,
+    leiturasDaFicha: 0,
+    escritasDoDominio: 0,
     falharEstadoNa: null,
     leiturasDoEstado: 0,
     tabelas: 0,
@@ -290,13 +306,34 @@ function bancoFalso({
         return [];
       }
       if (sql === SQL_FICHA) {
+        b.leiturasDaFicha += 1;
+        if (b.leiturasDaFicha === b.leituraDaFichaCaiNa)
+          throw Object.assign(new Error("caiu"), { http: 503 });
         return [
           {
             ficha: b.ficha,
             marca: b.marcaDaFicha,
-            dominio_publico: null,
+            dominio_publico: b.dominio,
           },
         ];
+      }
+      // o passo dominio: o UPDATE com a MESMA semântica do Postgres (a
+      // guarda `AND dominio_publico IS NULL` decide se sobrescreve)
+      const u =
+        /^UPDATE public\.store_config SET dominio_publico = '([a-z0-9.-]+)' WHERE id = 1( AND dominio_publico IS NULL)?;$/.exec(
+          sql,
+        );
+      if (u) {
+        b.escritasDoDominio += 1;
+        if (b.dominioNaEscrita !== undefined) b.dominio = b.dominioNaEscrita;
+        if (b.escritaDoDominioCai)
+          throw Object.assign(new Error("gateway"), { http: 504 });
+        if (b.travaDoDominio)
+          throw Object.assign(new Error("DOMINIO_PUBLICO_SO_MUDA_PELA_FROTA"), {
+            sqlstate: "42501",
+          });
+        if (b.ficha === 1 && (!u[2] || b.dominio === null)) b.dominio = u[1];
+        return [];
       }
       const admins = () => (b.alvo === "admin" ? 1 : 0) + b.outrasAdmins;
       if (sql === SQL_ADMINS) return [{ admins: admins(), nas_duas: admins() }];
@@ -710,6 +747,7 @@ const PASSOS_COM_ENSAIO = [
   "criar-projeto",
   "banco",
   "ficha",
+  "dominio",
   "segredos",
   "functions",
   "login",
@@ -1098,6 +1136,162 @@ Deno.test("ficha: linha sem a marca da migration é INCERTO (nunca SIM)", async 
   });
   const r = await executarPasso(pedido("ficha"), amb.deps);
   assertEquals(r.veredito, "INCERTO");
+});
+
+// ─── dominio: a ficha declara o domínio da loja nova ────────────────────────
+// Sem store_config.dominio_publico o porteiro responde 503 (sem-loja) e o
+// identidade-bootstrap --alvo-novo recusa: nada mais o grava numa loja nova.
+
+const DOMINIO = `${SLUG}.vercel.app`;
+// o texto EXATO, escrito à mão (não importado): mudar a guarda reprova aqui
+const UPDATE_DO_DOMINIO = `UPDATE public.store_config SET dominio_publico = '${DOMINIO}' WHERE id = 1 AND dominio_publico IS NULL;`;
+const escritasDoDominio = (amb) =>
+  amb.api.banco.consultas.filter((q) =>
+    q.startsWith("UPDATE public.store_config"),
+  ).length;
+const consultasDesde = (amb, n) =>
+  amb.api.chamadas
+    .slice(n)
+    .filter((c) => c.caminho.endsWith("/database/query"));
+
+/** Até a ficha SIM (o passo dominio exige a ficha conferida). */
+async function ateDominio(o = {}) {
+  const amb = await ateFicha(o);
+  const f = await executarPasso(pedido("ficha"), amb.deps);
+  assertEquals(f.veredito, "SIM", f.mensagem);
+  return amb;
+}
+
+Deno.test("dominio: ficha com o domínio vazio = manda EXATAMENTE o UPDATE guardado (sem read_only), relê (read_only) e dá SIM", async () => {
+  const amb = await ateDominio();
+  const n = amb.api.chamadas.length;
+  const m = amb.api.banco.consultas.length;
+  const r = await executarPasso(pedido("dominio"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertStringIncludes(r.mensagem, DOMINIO);
+  assertEquals(amb.api.banco.dominio, DOMINIO);
+  // lê, grava, relê: nesta ordem, só estas três consultas
+  assertEquals(amb.api.banco.consultas.slice(m), [
+    SQL_FICHA,
+    UPDATE_DO_DOMINIO,
+    SQL_FICHA,
+  ]);
+  assertEquals(
+    consultasDesde(amb, n).map((c) => c.somenteLeitura),
+    [true, false, true],
+    "só o UPDATE vai sem read_only",
+  );
+  const e = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+  assertEquals(e.passos.dominio.veredito, "SIM");
+});
+
+Deno.test("dominio: rodar 2x = SIM nas duas, e o segundo não escreve nada", async () => {
+  const amb = await ateDominio();
+  const r1 = await executarPasso(pedido("dominio"), amb.deps);
+  assertEquals(r1.veredito, "SIM", r1.mensagem);
+  const r2 = await executarPasso(pedido("dominio"), amb.deps);
+  assertEquals(r2.veredito, "SIM", r2.mensagem);
+  assertEquals(escritasDoDominio(amb), 1);
+  assertEquals(amb.api.banco.dominio, DOMINIO);
+});
+
+Deno.test("dominio: a ficha já declara ESTE domínio = SIM sem nenhuma escrita", async () => {
+  const amb = await ateDominio({
+    apiOpcoes: { banco: bancoFalso({ dominio: DOMINIO }) },
+  });
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("dominio"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(escritasDoDominio(amb), 0);
+  const novas = consultasDesde(amb, n);
+  assertEquals(novas.length, 1);
+  assertEquals(novas[0].somenteLeitura, true);
+});
+
+Deno.test("dominio: a ficha já declara OUTRO domínio = NÃO, sem escrita, dizendo qual valor está lá", async () => {
+  const amb = await ateDominio({
+    apiOpcoes: { banco: bancoFalso({ dominio: "outra-loja.vercel.app" }) },
+  });
+  const r = await executarPasso(pedido("dominio"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "outra-loja.vercel.app");
+  assertStringIncludes(r.mensagem, "não sobrescrev");
+  assertEquals(escritasDoDominio(amb), 0);
+  assertEquals(amb.api.banco.dominio, "outra-loja.vercel.app");
+});
+
+Deno.test("dominio: OUTRO domínio gravado entre a leitura e o UPDATE = NÃO, e a guarda do UPDATE não sobrescreve", async () => {
+  // a corrida: a leitura vê vazio, mas quando o UPDATE chega já há outro
+  // valor. Só o `AND dominio_publico IS NULL` impede a sobrescrita.
+  const amb = await ateDominio({
+    apiOpcoes: {
+      banco: bancoFalso({ dominioNaEscrita: "outra-loja.vercel.app" }),
+    },
+  });
+  const r = await executarPasso(pedido("dominio"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "outra-loja.vercel.app");
+  assertEquals(escritasDoDominio(amb), 1);
+  assertEquals(amb.api.banco.dominio, "outra-loja.vercel.app");
+});
+
+Deno.test("dominio: o UPDATE sem resposta (gateway) = INCERTO, nunca SIM", async () => {
+  const amb = await ateDominio({
+    apiOpcoes: { banco: bancoFalso({ escritaDoDominioCai: true }) },
+  });
+  const r = await executarPasso(pedido("dominio"), amb.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assertStringIncludes(r.mensagem, `dominio --loja ${SLUG} --aplicar`);
+  const e = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+  assertEquals(e.passos.dominio.veredito, "INCERTO");
+});
+
+Deno.test("dominio: a releitura cai depois do UPDATE = INCERTO (sem ela não digo SIM)", async () => {
+  // 1ª leitura de SQL_FICHA = a do passo ficha; 2ª = a do dominio; 3ª = a releitura
+  const amb = await ateDominio({
+    apiOpcoes: { banco: bancoFalso({ leituraDaFichaCaiNa: 3 }) },
+  });
+  const r = await executarPasso(pedido("dominio"), amb.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assertEquals(escritasDoDominio(amb), 1);
+});
+
+Deno.test("dominio: a leitura antes da escrita cai = INCERTO e nada é escrito", async () => {
+  const amb = await ateDominio({
+    apiOpcoes: { banco: bancoFalso({ leituraDaFichaCaiNa: 2 }) },
+  });
+  const r = await executarPasso(pedido("dominio"), amb.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assertEquals(escritasDoDominio(amb), 0);
+});
+
+Deno.test("dominio: a trava dominio_publico_so_muda_pela_frota recusa (42501) = NÃO com orientação, nada gravado", async () => {
+  const amb = await ateDominio({
+    apiOpcoes: { banco: bancoFalso({ travaDoDominio: true }) },
+  });
+  const r = await executarPasso(pedido("dominio"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "DOMINIO_PUBLICO_SO_MUDA_PELA_FROTA");
+  assertStringIncludes(r.mensagem, "42501");
+  assertEquals(amb.api.banco.dominio, null);
+});
+
+Deno.test("dominio: sem a ficha SIM no estado = NÃO antes de qualquer rede", async () => {
+  const amb = await ateFicha();
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("dominio"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "ficha");
+  assertEquals(amb.api.chamadas.length, n);
+});
+
+Deno.test("dominio: vem logo depois da ficha na lista de passos", () => {
+  assertEquals(PASSOS.indexOf("dominio"), PASSOS.indexOf("ficha") + 1);
+  assert(PASSOS.indexOf("dominio") < PASSOS.indexOf("marca"));
+  assertEquals(
+    lerArgumentos(["dominio", "--loja", SLUG, "--aplicar"]).passo,
+    "dominio",
+  );
 });
 
 // ─── estado sem segredo e log sem segredo ───────────────────────────────────
@@ -2203,7 +2397,14 @@ Deno.test("vereditoGeral: SIM só com todos SIM; INCERTO nunca vira SIM; lista v
 /** Todos os passos ligados, cada um com SIM. */
 async function ateConferir(o = {}) {
   const amb = await ateADona(o);
-  for (const passo of ["segredos", "functions", "login", "definir-dono"]) {
+  for (const passo of [
+    "ficha",
+    "dominio",
+    "segredos",
+    "functions",
+    "login",
+    "definir-dono",
+  ]) {
     const r = await executarPasso(pedido(passo), amb.deps);
     assertEquals(r.veredito, "SIM", `${passo}: ${r.mensagem}`);
   }
@@ -2224,6 +2425,7 @@ Deno.test("conferir: todos os passos ligados dão SIM item a item; só cadastro,
     "projeto",
     "banco",
     "ficha",
+    "dominio",
     "segredos",
     "reconciliação",
     "functions",
@@ -2263,7 +2465,18 @@ Deno.test("conferir: todos os passos ligados dão SIM item a item; só cadastro,
   assert(!texto.includes(EMAIL));
 });
 
-Deno.test("conferir: segredo faltando, 0 admin, sem functions, login, nem dono, e reconciliação que não rodou = NÃO com o nome do que falta", async () => {
+Deno.test("conferir: a ficha declarando OUTRO domínio = item dominio NÃO com o valor que está lá; só leitura", async () => {
+  const amb = await ateFicha({
+    apiOpcoes: { banco: bancoFalso({ dominio: "outra-loja.vercel.app" }) },
+  });
+  const r = await executarPasso(pedido("conferir"), amb.deps);
+  const d = r.itens.find((i) => i.item === "dominio");
+  assertEquals(d.veredito, "NÃO", d.detalhe);
+  assertStringIncludes(d.detalhe, "outra-loja.vercel.app");
+  assertEquals(escritasDoDominio(amb), 0);
+});
+
+Deno.test("conferir: segredo faltando, 0 admin, sem domínio, functions, login, nem dono, e reconciliação que não rodou = NÃO com o nome do que falta", async () => {
   const amb = await ateFicha({
     apiOpcoes: {
       segredos: ["MP_CHAVES_ENCRYPTION_KEY"],
@@ -2273,6 +2486,11 @@ Deno.test("conferir: segredo faltando, 0 admin, sem functions, login, nem dono, 
   const r = await executarPasso(pedido("conferir"), amb.deps);
   const v = porItem(r);
   assertEquals(v.segredos, "NÃO");
+  assertEquals(v.dominio, "NÃO");
+  assertStringIncludes(
+    r.itens.find((i) => i.item === "dominio").detalhe,
+    `dominio --loja ${SLUG} --aplicar`,
+  );
   assertEquals(v.admin, "NÃO");
   assertEquals(v.reconciliação, "NÃO");
   assertEquals(v.functions, "NÃO");

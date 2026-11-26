@@ -1693,6 +1693,14 @@ jobs:
       - name: Prova viva da loja nova que nasce com a ficha (migration 20261540000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nova-nasce-com-a-ficha-viva.cjs
+      # Sem migration: a ESCRITA do passo dominio do nova-loja (sqlDoDominio de scripts/frota/nova-loja.mjs: UPDATE de
+      # store_config.dominio_publico com a guarda AND dominio_publico IS NULL). Banco montado pela fila: a ficha nasce com o
+      # dominio NULL (o defeito); como authenticated (admin real) o texto cai na trava (42501 DOMINIO_PUBLICO_SO_MUDA_PELA_FROTA);
+      # pela sessao sem JWT nem SET ROLE (como o pg-meta) grava 1 linha e a leitura anonima de v_store_config devolve o dominio;
+      # repetir = 0 linha; outro dominio nao e sobrescrito (mutante sem a guarda sobrescreve). CLONE proprio.
+      - name: Prova viva do passo dominio do nova-loja (store_config.dominio_publico)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-nova-loja-grava-o-dominio-viva.cjs
       # Migration 20261530000000 (a loja grande nao trava o balcao nem os avisos): a porta leve buscar_clientes_do_balcao (so o
       # authenticated, guardas is_admin + is_admin_atual, o filtro da get_admin_customers_paged letra por letra, sem ler pedido) e os
       # indices de produtos (data_cadastro DESC, id) e do historico (new_status, created_at DESC). Diferencial contra a porta antiga no
