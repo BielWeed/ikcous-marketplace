@@ -2064,7 +2064,7 @@ export async function publicarRelease(opcoes, deps) {
   });
   const producaoDepois = pos.vercel?.producaoOficial ?? null;
   const ok = pos.ok === true && producaoDepois === deploymentId;
-  const acordou = lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario);
+  const acordou = lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario, sha);
   linhas.push(
     "",
     "## 6. Conferência da frota depois do promote",
@@ -2133,9 +2133,10 @@ export async function publicarRelease(opcoes, deps) {
  * REDE DE SEGURANÇA SECUNDÁRIA: o porteiro guarda a decisão "fora do ar" por até 60 s, então um acordar recente pode não aparecer
  * aqui. A guarda principal é o `--depois-de-acordar` do estado-da-loja.mjs, obrigatório depois de rodar a instrução de acordar.
  * Devolve { lojas: [{ref, estado, dominios, shaAntes}], erro } — `erro` quando havia loja fora do ar e a conferência não trouxe
- * resultados legíveis (nunca "nenhuma acordou" no escuro).
+ * resultados legíveis (nunca "nenhuma acordou" no escuro). `shaAntes` = a release que os endereços dela serviam no inventário,
+ * ou null quando ela não diz qual instrução a acordou (ver o comentário no laço).
  */
-export function lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario) {
+export function lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario, sha) {
   if (!foraDoAr.length) return { lojas: [], erro: null };
   if (!Array.isArray(pos?.resultados))
     return {
@@ -2152,7 +2153,10 @@ export function lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario) {
       .map((r) => r.dominio)
       .sort();
     if (!dominios.length) continue;
-    // A release que o front servia nos endereços dela antes do promote: é a do --sha de uma instrução de acordar impressa antes.
+    // A release que o front servia nos endereços dela no inventário. Só vale como --sha da instrução se for UMA, legível e DIFERENTE
+    // da release que está sendo publicada: numa 2ª rodada do --promover (a 1ª promoveu e a conferência falhou) o inventário já serve
+    // esta release, mas a instrução rodada no meio pode ter sido impressa para a anterior; sugerir --sha = esta release faria o
+    // --depois-de-acordar dizer OK sem conferir nada. Nesse caso, e nos ambíguos, null: o operador preenche com a instrução de verdade.
     const shas = new Set(
       (inventario.sondas ?? [])
         .filter((sonda) => l.dominios.includes(sonda.dominio))
@@ -2164,17 +2168,20 @@ export function lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario) {
       estado: l.estado,
       dominios,
       shaAntes:
-        shas.size === 1 && RE_SHA.test(String(shaAntes)) ? shaAntes : null,
+        shas.size === 1 && RE_SHA.test(String(shaAntes)) && shaAntes !== sha
+          ? shaAntes
+          : null,
     });
   }
   return { lojas, erro: null };
 }
 
 /**
- * O --depois-de-acordar de uma loja que acordou na publicação. --sha e --base = a release servida antes do promote: o estado-da-loja.mjs
- * só imprime instrução para a release em produção, então a da corrida foi impressa para ela, com a prontidão provada até ali. Mesmo que
- * a instrução fosse mais velha, a prontidão para a release atual confere o ledger INTEIRO e todas as functions; só a prova fresca de
- * objetos fica restrita às migrations novas desde a base. O id da loja não está na sondagem (só o ref): fica para preencher pelo --ver.
+ * O --depois-de-acordar de uma loja que acordou na publicação. Com `shaAntes` (a release servida no inventário, diferente da que se
+ * publica), --sha e --base = ela: o estado-da-loja.mjs só imprime instrução para a release em produção, então a da corrida, rodada entre
+ * o inventário e o promote, foi impressa para ela. Mesmo que a instrução fosse mais velha, a prontidão para a release atual confere o
+ * ledger INTEIRO e todas as functions; só a prova fresca de objetos fica restrita às migrations novas desde a base. Sem `shaAntes`,
+ * marcadores: o operador copia --sha e --base da instrução que rodou. O id da loja não está na sondagem (só o ref): sai do --ver.
  */
 function comandoDepoisDeAcordarNaPublicacao(l) {
   const sha = l.shaAntes ?? "<--sha da instrução de acordar>";

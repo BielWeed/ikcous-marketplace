@@ -414,6 +414,7 @@ async function depoisDeAcordar(a, deps) {
     deps,
     daProntidao,
     saida,
+    { jaNoAr: true },
   );
   if (pronta) {
     erros.push(
@@ -450,8 +451,17 @@ export function semCaminhoDeVolta(a, deps) {
   return `RECUSADO: a loja ${a.loja} (${a.ref}) não tem canal de backend em scripts/frota/canais-de-backend.json: sem canal não há como conferir nem consertar o banco dela, e uma loja que não se acorda não se põe para dormir nem se encerra (cadastre o canal antes)`;
 }
 
-/** --acordar: a loja só volta se estiver pronta para a release atual, com base = a release em que dormiu. */
-async function conferirProntidao(a, deps, erros, saida) {
+/**
+ * --acordar: a loja só volta se estiver pronta para a release atual, com base = a release em que dormiu. `jaNoAr` (--depois-de-acordar):
+ * a mesma régua, com o texto de quem já está no ar (o caminho é consertar o banco ou adormecê-la, não "acordar de novo").
+ */
+async function conferirProntidao(
+  a,
+  deps,
+  erros,
+  saida,
+  { jaNoAr = false } = {},
+) {
   const canais = deps.canais;
   if (soFront(a, deps)) {
     erros.push(
@@ -492,7 +502,9 @@ async function conferirProntidao(a, deps, erros, saida) {
     const naoProntas = pront.funcoes.filter((f) => f.estado === "NAO_PRONTA");
     if (pront.problemas.length === 0 && naoProntas.length === 0) return true;
     erros.push(
-      `NÃO PRONTA: a loja ${a.loja} (${a.ref}) dormiu na release ${a.base} e não está pronta para a ${a.sha}. Nada foi impresso para o banco da caderneta; primeiro o conserto abaixo (um passo por vez), depois rode este comando de novo.`,
+      jaNoAr
+        ? `NÃO PRONTA: a loja ${a.loja} (${a.ref}) JÁ está no ar servindo a ${a.sha}, e o banco dela (conferido desde a ${a.base}) não está pronto para essa release. O caminho é consertar o banco (os comandos abaixo, um passo por vez, rodando este comando de novo até sair OK) ou pôr a loja para dormir de novo com o --adormecer acima.`
+        : `NÃO PRONTA: a loja ${a.loja} (${a.ref}) dormiu na release ${a.base} e não está pronta para a ${a.sha}. Nada foi impresso para o banco da caderneta; primeiro o conserto abaixo (um passo por vez), depois rode este comando de novo.`,
       ...pront.problemas.map((p) => `- ${p}`),
       ...naoProntas.map((f) => `- function ${f.nome}: ${f.motivo}`),
       ...ctx.problemas.map((p) => `- ${p.alvo}: ${p.motivo}`),
@@ -501,7 +513,9 @@ async function conferirProntidao(a, deps, erros, saida) {
     return false;
   } catch (e) {
     erros.push(
-      `RECUSADO: a prontidão da loja ${a.loja} não foi lida (${e?.message ?? e}): sem ela a loja não acorda`,
+      jaNoAr
+        ? `FALHOU: a prontidão da loja ${a.loja} não foi lida (${e?.message ?? e}): a loja JÁ está no ar e nada prova que o banco dela está pronto; rode este comando de novo ou ponha a loja para dormir com o --adormecer acima`
+        : `RECUSADO: a prontidão da loja ${a.loja} não foi lida (${e?.message ?? e}): sem ela a loja não acorda`,
     );
     return false;
   }

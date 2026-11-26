@@ -677,18 +677,28 @@ Deno.test("O CASO QUE DÓI: depois de acordar a release mudou (B trouxe migratio
   const cmds = r.saida.filter((l) => l.startsWith("gh "));
   assert(cmds.length >= 1, r.saida.join("\n"));
   for (const c of cmds) assertStringIncludes(c, '-f "projeto=loja-teste"');
+  // A loja JÁ está no ar: nada do texto do --acordar ("não acorda", "nada foi impresso").
+  assertStringIncludes(erros, "JÁ está no ar");
+  assert(!erros.includes("Nada foi impresso"), erros);
+  assert(!erros.includes("não acorda"), erros);
 });
 
-Deno.test("depois de acordar, prontidão ilegível (rede) com a release mudada: falha (1), nunca OK", async () => {
-  const { d } = deps({
-    producao: SHA_B,
-    release: { falhaNoLedger: new Error("ECONNRESET") },
-  });
-  const r = await executar(DEPOIS, d);
-  assertEquals(r.codigo, 1);
-  const erros = r.erros.join("\n");
-  assertStringIncludes(erros, "CRÍTICO");
-  assert(!/^OK/m.test(erros), erros);
+Deno.test("depois de acordar, prontidão ilegível (ledger ou árvore da release) com a release mudada: falha (1), nunca OK, com o texto de quem JÁ está no ar", async () => {
+  for (const release of [
+    { falhaNoLedger: new Error("ECONNRESET") },
+    { falhaNasMigrations: new Error("git falhou") },
+  ]) {
+    const { d } = deps({ producao: SHA_B, release });
+    const r = await executar(DEPOIS, d);
+    const nome = JSON.stringify(Object.keys(release));
+    assertEquals(r.codigo, 1, nome);
+    const erros = r.erros.join("\n");
+    assertStringIncludes(erros, "CRÍTICO");
+    assert(!/^OK/m.test(erros), erros);
+    assertStringIncludes(erros, "JÁ está no ar");
+    assert(!erros.includes("sem ela a loja não acorda"), erros);
+    assert(!erros.includes("Nada foi impresso"), erros);
+  }
 });
 
 Deno.test("depois de acordar, produção ilegível: falha (1), nunca OK, e a prontidão nem começa", async () => {
