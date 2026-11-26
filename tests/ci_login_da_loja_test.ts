@@ -1,4 +1,5 @@
 // @ts-nocheck
+/* eslint-disable security/detect-object-injection -- dublês de teste: chaves de constantes e mapas fechados do próprio arquivo. */
 /* eslint-disable security/detect-non-literal-require -- importa só o script local constante sob teste. */
 /**
  * scripts/publicacao/login-da-loja.cjs (26/11/2026): as ações `conferir` (só
@@ -20,16 +21,19 @@
  */
 import { createHmac } from "node:crypto";
 import { createRequire } from "node:module";
+import { parse } from "https://deno.land/std@0.177.0/encoding/yaml.ts";
 import { fromFileUrl, join } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
   assert,
   assertEquals,
+  assertMatch,
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const require = createRequire(import.meta.url);
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
 const SCRIPT = join(RAIZ, "scripts/publicacao/login-da-loja.cjs");
+const WORKFLOW = join(RAIZ, ".github/workflows/login-da-loja.yml");
 const mod = require(SCRIPT);
 const regras = require(
   join(RAIZ, "scripts/publicacao/login-da-loja-regras.cjs"),
@@ -509,4 +513,75 @@ Deno.test("acertar mascara smtp_pass e o segredo do hook ANTES de qualquer saíd
   await rodar(c, "acertar");
   for (const s of [TOKEN, SMTP_PASS, HOOK_HASH]) assert(c.mascaras.includes(s));
   semVazamento(c);
+});
+
+// ---------------------------------------------------------------------------
+// o workflow
+// ---------------------------------------------------------------------------
+Deno.test("workflow: só dispatch, contents:read, SHA e ação antes do checkout, ações pinadas, segredo só no último passo e cada loja vê só o seu", async () => {
+  const doc = parse(Deno.readTextFileSync(WORKFLOW));
+  assertEquals(Object.keys(doc.on), ["workflow_dispatch"]);
+  const inputs = doc.on.workflow_dispatch.inputs;
+  assertEquals(Object.keys(inputs).sort(), ["acao", "expected_sha", "projeto"]);
+  assertEquals(inputs.projeto.type, "choice");
+  assertEquals(inputs.projeto.options, ["ikcous-publicada", "savy"]);
+  assertEquals(inputs.acao.type, "choice");
+  assertEquals(inputs.acao.options, ["conferir", "acertar"]);
+  assertEquals(inputs.acao.default, "conferir");
+  assertEquals(inputs.expected_sha.required, true);
+  assertEquals(doc.permissions, { contents: "read" });
+  assertEquals(doc.concurrency["cancel-in-progress"], false);
+  for (const job of Object.values(doc.jobs))
+    assertEquals(job.permissions, undefined, "job não alarga permissão");
+  const passos = Object.values(doc.jobs)[0].steps;
+  assert(!JSON.stringify(passos[0]).includes("secrets."));
+  for (const [projeto, acao, sha, codigo] of [
+    ["savy", "conferir", SHA, 0],
+    ["ikcous-publicada", "acertar", SHA.toUpperCase(), 0],
+    ["savy", "acertar", "c".repeat(40), 1],
+    ["savy", "conferir", "", 1],
+    ["savy", "medir", SHA, 1],
+    ["savy", "", SHA, 1],
+    ["Loja Nova", "conferir", SHA, 1],
+  ]) {
+    const r = await new Deno.Command("bash", {
+      args: ["-c", passos[0].run],
+      env: {
+        PATH: Deno.env.get("PATH") ?? "",
+        PROJETO: projeto,
+        ACAO: acao,
+        EXPECTED_SHA: sha,
+        GITHUB_SHA: SHA,
+      },
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assertEquals(r.code, codigo, `${projeto}/${acao}/${sha}`);
+  }
+  for (const p of passos) {
+    if (p.uses) assertMatch(p.uses, /^[\w/-]+@[a-f0-9]{40}$/);
+    assert(!String(p.run ?? "").includes("${{"), "entrada interpolada em run:");
+  }
+  const checkout = passos.find((p) => p.uses?.startsWith("actions/checkout@"));
+  assertEquals(checkout.with["persist-credentials"], false);
+  assertEquals(checkout.with.ref, "${{ github.sha }}");
+  const iCadastro = passos.findIndex((p) =>
+    String(p.name ?? "").startsWith("Confere a loja no cadastro"),
+  );
+  const ultimo = passos.at(-1);
+  assert(iCadastro > 0 && iCadastro < passos.length - 1);
+  assertEquals(ultimo.run, "node scripts/publicacao/login-da-loja.cjs");
+  assertEquals(
+    passos.filter((p) => JSON.stringify(p).includes("secrets.")).length,
+    1,
+  );
+  for (const [nome, projeto] of [
+    ["SUPABASE_ACCESS_TOKEN_IKCOUS", "ikcous-publicada"],
+    ["SUPABASE_ACCESS_TOKEN_SAVY", "savy"],
+  ])
+    assertEquals(
+      ultimo.env[nome],
+      `\${{ inputs.projeto == '${projeto}' && secrets.${nome} || '' }}`,
+    );
+  assert(!("SUPABASE_ACCESS_TOKEN" in ultimo.env), "nunca o segredo legado");
 });
