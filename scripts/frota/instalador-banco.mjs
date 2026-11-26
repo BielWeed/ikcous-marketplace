@@ -574,7 +574,8 @@ function recusaDaRetomadaSemPrivilegios({ papelDono, faltando }) {
  *
  * @returns {estado: "OK"|"ENSAIO"|"NADA_A_FAZER"|"JA_INSTALADA"|"RECUSADO"|
  *          "FALHOU"|"ESTADO_DESCONHECIDO", mensagem, aplicados?, aplicaria?,
- *          arquivo?, codigo?, fase?}
+ *          arquivo?, codigo?, fase?, releituraFalhou?}  (releituraFalhou: os
+ *          envios voltaram sem erro e a releitura da conferência falhou)
  */
 export async function instalar(cliente, plano, opcoes = {}) {
   const aplicar = opcoes?.aplicar === true;
@@ -730,6 +731,9 @@ export async function instalar(cliente, plano, opcoes = {}) {
     return {
       estado: "FALHOU",
       fase: "conferência",
+      // a releitura não aconteceu: o que os envios fizeram não foi visto
+      // (o nova-loja.mjs diz INCERTO, não NÃO)
+      releituraFalhou: true,
       aplicados,
       mensagem: `FALHOU ao conferir o ledger depois de aplicar (${String(e?.message ?? e).slice(0, 300)}): os ${aplicados.length} envios voltaram sem erro, mas sem a conferência não digo OK.`,
     };

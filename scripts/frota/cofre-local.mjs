@@ -174,7 +174,9 @@ function caminhoReal(p) {
   };
 }
 
-function exigirPastaSegura(pasta) {
+/** Pasta absoluta, fora deste repositório e de qualquer árvore git; devolve o
+ * caminho resolvido. Exportada para o estado do nova-loja.mjs (mesma regra). */
+export function exigirPastaSegura(pasta) {
   if (typeof pasta !== "string" || pasta === "" || !path.isAbsolute(pasta)) {
     throw new ErroDoCofre(
       "Cofre: a pasta do cofre tem de ser um caminho absoluto.",

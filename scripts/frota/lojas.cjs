@@ -13,7 +13,11 @@
  *    fora do menu) e, de novo, um passo antes de qualquer segredo roda
  *    `node scripts/frota/lojas.cjs validar "$PROJETO"` — recusa com "loja
  *    desconhecida" ANTES de qualquer segredo ser lido (só o último passo vê segredo);
- *  - o NOME do segredo de cada loja mora em `segredoDoToken`, validado por regex.
+ *  - o NOME do segredo de cada loja mora em `segredoDoToken`, validado por regex;
+ *  - `acesso: "oauth"` (só assinante) marca a loja cujo token é renovado no
+ *    cofre do PC do dono e gravado no GitHub só durante a sessão de publicação;
+ *    sem o campo, `acesso` normaliza para "cli". O gerador de workflows não lê
+ *    este campo (os YAML não mudam com ele).
  *
  * O QUE ESTE ARQUIVO NÃO FAZ (de propósito): imprimir o valor de nenhum segredo
  * (`exigir-segredo` só confere que o da loja pedida não está vazio), nem montar
@@ -57,7 +61,15 @@ const CAMPOS_DE_LOJA = Object.freeze([
   "segredoDoToken",
   "functionsNomeadas",
   "refDasFunctions",
+  "acesso",
 ]);
+/** De onde o portão lê a loja. Sem o campo no lojas.json, é "cli" (o login do
+ * CLI do Supabase do dono, como sempre); "oauth" é a loja aberta pelo nova-loja,
+ * cujo acesso mora no cofre do PC do dono e só vale dentro da sessão de
+ * publicação. O único valor que se ESCREVE é "oauth": "cli" escrito à mão é
+ * recusado, para o padrão nunca ter duas grafias. */
+const ACESSO_OAUTH = "oauth";
+const ACESSO_PADRAO = "cli";
 const CAMPOS_LEGIVEIS_NO_CLI = Object.freeze([
   "classe",
   "segredoDoToken",
@@ -145,6 +157,8 @@ function validarCadastro(bruto) {
         throw erroDoCadastro(
           `${projeto}: functionsNomeadas só existe em assinante`,
         );
+      if (Object.hasOwn(l, "acesso"))
+        throw erroDoCadastro(`${projeto}: acesso só existe em assinante`);
     } else {
       if (l.segredoDoToken === SEGREDO_LEGADO)
         throw erroDoCadastro(
@@ -156,6 +170,10 @@ function validarCadastro(bruto) {
         );
       if (Object.hasOwn(l, "refDasFunctions"))
         throw erroDoCadastro(`${projeto}: refDasFunctions só existe em legado`);
+      if (Object.hasOwn(l, "acesso") && l.acesso !== ACESSO_OAUTH)
+        throw erroDoCadastro(
+          `${projeto}: acesso só aceita "${ACESSO_OAUTH}" (sem o campo, a loja é lida pelo CLI)`,
+        );
       if (segredosVistos.has(l.segredoDoToken))
         throw erroDoCadastro(
           `${projeto}: o segredo ${l.segredoDoToken} já é de ${segredosVistos.get(l.segredoDoToken)} (um segredo por loja)`,
@@ -180,6 +198,7 @@ function validarCadastro(bruto) {
       segredoDoToken: l.segredoDoToken,
       functionsNomeadas: l.classe === "assinante" ? l.functionsNomeadas : false,
       refDasFunctions: l.refDasFunctions ?? l.ref,
+      acesso: l.acesso ?? ACESSO_PADRAO,
     });
   }
   return Object.freeze({ lojas: Object.freeze(lojas) });
@@ -223,6 +242,12 @@ function refsPorProjeto(cadastro = carregarLojas()) {
  * imprimiram: "sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — …"). */
 function semAcessoDaLoja(l) {
   return `sem acesso legítimo à ${l.apelido} por ${l.segredoDoToken} — bloqueio concreto`;
+}
+
+/** A parada do `exigir-segredo` de uma loja OAuth: o token dela só existe no
+ * GitHub enquanto a sessão de publicação está aberta (ela grava e apaga). */
+function semAcessoDaLojaOAuth(l) {
+  return `${semAcessoDaLoja(l)} — loja OAuth: dispare dentro da sessão de publicação (publicar-release.mjs --sessao)`;
 }
 
 /** `{ projeto: {segredo, semAcesso} }` só das assinantes — o `ALVOS` dos scripts. */
@@ -287,6 +312,7 @@ function cli(
       saida.out(`segredo ${l.segredoDoToken} presente`);
       return 0;
     }
+    if (l.acesso === ACESSO_OAUTH) return falhar(semAcessoDaLojaOAuth(l));
     return falhar(
       l.classe === "assinante"
         ? semAcessoDaLoja(l)
@@ -314,6 +340,8 @@ module.exports = {
   RE_REF,
   RE_SEGREDO,
   SEGREDO_LEGADO,
+  ACESSO_OAUTH,
+  ACESSO_PADRAO,
   textoSeguro,
   listaLegivel,
   validarCadastro,
