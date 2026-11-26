@@ -323,6 +323,8 @@ on:
       - "scripts/publicacao/consultas/182b-antes-o-estado-de-vida-da-loja-ausente.sql"
       - "scripts/publicacao/consultas/183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado.sql"
       - "scripts/publicacao/consultas/183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente.sql"
+      - "scripts/publicacao/consultas/184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado.sql"
+      - "scripts/publicacao/consultas/184b-antes-a-caderneta-fecha-para-o-service-role-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -619,6 +621,8 @@ on:
       - "scripts/publicacao/consultas/182b-antes-o-estado-de-vida-da-loja-ausente.sql"
       - "scripts/publicacao/consultas/183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado.sql"
       - "scripts/publicacao/consultas/183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente.sql"
+      - "scripts/publicacao/consultas/184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado.sql"
+      - "scripts/publicacao/consultas/184b-antes-a-caderneta-fecha-para-o-service-role-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1566,6 +1570,14 @@ jobs:
       - name: Prova viva da porta do estado da loja (migration 20261470000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-muda-de-estado-so-pela-porta-viva.cjs
+      # Migration 20261480000000 (a caderneta fecha para o service_role): REVOKE ALL em frota_lojas e frota_segredo FROM service_role, e
+      # nada mais. Antes o service_role tinha arwdDxtm nas duas (default privilege do schema public); depois SELECT/INSERT/UPDATE/DELETE
+      # como service_role recebem 42501, anon e authenticated continuam sem nada e o anon ainda resolve a loja pelas duas portas;
+      # reaplicar 2x (LF e CRLF); rollback devolve a ACL byte a byte (2x igual); pre-voo recusa estado divergente sem escrever; sem
+      # COMMIT escondido; consultas 184a/184b EXECUTADAS com defeitos plantados; mutantes. CLONE proprio.
+      - name: Prova viva da caderneta fechada para o service_role (migration 20261480000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-caderneta-fecha-para-o-service-role-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam

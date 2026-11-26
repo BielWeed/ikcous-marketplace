@@ -3372,7 +3372,28 @@ const ROL_DA_183B = [
   "frota_estado_historico: a tabela ainda NAO existe",
   "a 20261460000000 esta aplicada: as colunas estado, estado_desde e estado_sha e o CHECK dos tres estados em frota_lojas, e a resolver_loja e a resolver_loja_com_estado com os corpos dela (md5)",
 ];
+// Lote 184 (20261480000000, a caderneta fecha para o service_role: REVOKE ALL em frota_lojas e frota_segredo FROM service_role). A 184a prova
+// o estado novo (6 itens, so catalogo, nenhuma linha da caderneta e lida: o service_role sem nada nas duas, as duas fechadas para PUBLIC/anon/
+// authenticated e as portas do porteiro intactas). A 184b prova o estado de antes que o rollback reproduz (o service_role com TUDO nas duas) e a
+// base que o pre-voo exige (5 itens: o mesmo dono e a 20261460000000 aplicada).
+const ROL_DA_184A = [
+  "controle: catalogo publico visivel",
+  "frota_lojas: service_role sem nenhum privilegio (nenhuma entrada na ACL da tabela nem das colunas; SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES e TRIGGER negados)",
+  "frota_segredo: service_role sem nenhum privilegio (nenhuma entrada na ACL da tabela nem das colunas; SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES e TRIGGER negados)",
+  "frota_lojas e frota_segredo continuam fechadas para PUBLIC, anon e authenticated (tabela comum, RLS ligada, nenhuma politica, nenhum privilegio de tabela nem de coluna)",
+  "resolver_loja e resolver_loja_com_estado: uma so cada, com os corpos da 20261460000000 (md5)",
+  "resolver_loja e resolver_loja_com_estado: SECURITY DEFINER, o mesmo dono de frota_lojas e frota_segredo e EXECUTE so do anon (PUBLIC, authenticated e service_role nao)",
+];
+const ROL_DA_184B = [
+  "controle: catalogo publico visivel",
+  "frota_lojas: service_role ainda com TODOS os privilegios de tabela (o conjunto do dono, concedido pelo dono, sem grant option) e nenhum de coluna",
+  "frota_segredo: service_role ainda com TODOS os privilegios de tabela (o conjunto do dono, concedido pelo dono, sem grant option) e nenhum de coluna",
+  "frota_lojas e frota_segredo existem com o mesmo dono da resolver_loja e da resolver_loja_com_estado",
+  "a 20261460000000 esta aplicada: resolver_loja e resolver_loja_com_estado com os corpos dela (md5)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado": ROL_DA_184A,
+  "184b-antes-a-caderneta-fecha-para-o-service-role-ausente": ROL_DA_184B,
   "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado": ROL_DA_183A,
   "183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente": ROL_DA_183B,
   "182a-conferir-o-estado-de-vida-da-loja-aplicado": ROL_DA_182A,
