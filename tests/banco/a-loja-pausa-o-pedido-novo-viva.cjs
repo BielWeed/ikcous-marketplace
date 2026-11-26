@@ -899,6 +899,511 @@ prova(
   },
 );
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// (5) o gatilho que recusa o pedido NOVO pela vitrine: pedidos reais pela v23 e pela v24, como cliente logado
+// ---------------------------------------------------------------------------------------------------------------------------
+const FRASE_PAUSADA = "Esta loja não está aceitando pedidos agora.";
+const FRASE_MANUTENCAO = "A loja está em manutenção. Tente de novo mais tarde.";
+const U_CLI = "16000000-0000-4000-8000-0000000000c1";
+const U_ADM = "16000000-0000-4000-8000-0000000000a1";
+const U_EX = "16000000-0000-4000-8000-0000000000e1";
+const JWT = (papel) =>
+  JSON.stringify({
+    role: "authenticated",
+    app_metadata: papel ? { role: papel } : {},
+  });
+const QUEM = {
+  cliente: { uid: U_CLI, claims: JWT("customer") },
+  admin: { uid: U_ADM, claims: JWT("admin") },
+  // rebaixado: o JWT ainda diz admin (vale ate expirar), mas auth.users e profiles ja dizem cliente
+  exAdmin: { uid: U_EX, claims: JWT("admin") },
+};
+const PRODUTO = "16000000-0000-4000-8000-000000000001";
+const CUPOM = "P1600CUPOM";
+const CEP_LOCAL = "38500-100";
+const DIGITADO = {
+  street: "Rua Digitada",
+  number: "5",
+  neighborhood: "Centro",
+  city: "Cidade Prova",
+  state: "MG",
+  cep: CEP_LOCAL,
+};
+let seqChave = 0;
+const novaChave = () => {
+  seqChave += 1;
+  return `16000000-0000-4000-8000-${String(seqChave).padStart(12, "0")}`;
+};
+
+/** A loja que vende: atores, configuracao de compra, um produto com estoque e um cupom. Escrita direta do dono, na transacao. */
+async function semearLoja() {
+  for (const [id, meta, papel] of [
+    [U_CLI, "{}", "customer"],
+    [U_ADM, '{"role":"admin"}', "admin"],
+    [U_EX, "{}", "customer"],
+  ]) {
+    await C().query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1::uuid, $1::text || '@1600.teste', $2::jsonb)
+       ON CONFLICT (id) DO UPDATE SET raw_app_meta_data = EXCLUDED.raw_app_meta_data`,
+      [id, meta],
+    );
+    await C().query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Pessoa 1600', $2)
+       ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role`,
+      [id, papel],
+    );
+  }
+  await C().query(
+    `INSERT INTO public.store_config
+       (id, origin_cep, local_cep_range, free_shipping_min, shipping_coverage, enable_coupons,
+        pagamento_online, formas_pagamento_entrega, store_address, enabled_shipping_methods, manutencao)
+     VALUES (1, '38500-000', '38500000-38505000', 0.01, 'national', true,
+        true, ARRAY['pix', 'card', 'cash'], 'Rua da Loja, 100 - Centro', ARRAY['local-delivery', 'store-pickup'], false)
+     ON CONFLICT (id) DO UPDATE
+       SET origin_cep = EXCLUDED.origin_cep, local_cep_range = EXCLUDED.local_cep_range,
+           free_shipping_min = EXCLUDED.free_shipping_min, shipping_coverage = EXCLUDED.shipping_coverage,
+           enable_coupons = EXCLUDED.enable_coupons, pagamento_online = EXCLUDED.pagamento_online,
+           formas_pagamento_entrega = EXCLUDED.formas_pagamento_entrega, store_address = EXCLUDED.store_address,
+           enabled_shipping_methods = EXCLUDED.enabled_shipping_methods, manutencao = false`,
+  );
+  await C().query(
+    "INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, custo, frete_gratis) VALUES ($1, 'Produto 1600', 100, 50, true, 40, false)",
+    [PRODUTO],
+  );
+  await C().query(
+    `INSERT INTO public.coupons (code, type, value, min_purchase, usage_limit, usage_count, valid_until, active)
+     VALUES ($1, 'fixed', 10, 0, 100, 0, NULL, true)`,
+    [CUPOM],
+  );
+}
+/**
+ * Volta a sessao a ser o DONO sem JWT: o P.tentar deixa o JWT e o auth.uid() do ultimo papel na transacao (set_config local), e a trava
+ * dominio_publico_so_muda_pela_frota de store_config olha o claim role.
+ */
+const comoDono = () =>
+  C().query(
+    "SELECT set_config('request.jwt.claims', '', true), set_config('app.rpc.user_id', '', true)",
+  );
+/** A loja com as vendas PAUSADAS por assinatura (todas as 5 chaves). */
+const pausar = async () => {
+  await comoDono();
+  const d = await datasDaPausa();
+  await C().query("DELETE FROM public.assinatura_da_loja");
+  await C().query("DELETE FROM public.assinatura_da_loja_chave");
+  await C().query(
+    "INSERT INTO public.assinatura_da_loja_chave (id, chave_hash) VALUES (1, $1)",
+    [HASH],
+  );
+  await C().query(
+    `INSERT INTO public.assinatura_da_loja (id, plano, status, ciclo, valor_mensal, proxima_cobranca_em, atualizado_em)
+     VALUES (1, 'Pro', 'suspensa', 'mensal', 250, $1::date, now())`,
+    [d.proxima_pagante],
+  );
+  await C().query(
+    `INSERT INTO public.pausa_de_vendas (id, vale_pela_assinatura, ligada_em, suspensa_desde) VALUES (1, true, now(), $1::date)
+     ON CONFLICT (id) DO UPDATE SET vale_pela_assinatura = true, ligada_em = now(), suspensa_desde = EXCLUDED.suspensa_desde`,
+    [d.desde],
+  );
+  assert.equal(
+    await motivo(),
+    "vendas_pausadas",
+    "a semente da pausa nao pausou",
+  );
+};
+const manutencao = async (ligada) => {
+  await comoDono();
+  await C().query(
+    "UPDATE public.store_config SET manutencao = $1 WHERE id = 1",
+    [ligada],
+  );
+};
+
+const SQL_PEDIDO = (rpc) =>
+  `SELECT public.${rpc}($1::jsonb, $2::numeric, 0::numeric, $3::text, NULL::uuid, $4::text,
+     'Comprador Prova', '5534999990000', NULL::text, $5::jsonb, $6::text, 'local-delivery', $7::uuid) AS id`;
+/** Um pedido pela vitrine: v23 (na entrega, 'cash') ou v24 (pelo app, 'online'); com cupom o total e' 90. */
+const comprar = (
+  quem,
+  {
+    rpc = "create_marketplace_order_v24",
+    chave = novaChave(),
+    cupom = null,
+  } = {},
+) =>
+  P.tentar(
+    "authenticated",
+    SQL_PEDIDO(rpc),
+    [
+      JSON.stringify([{ product_id: PRODUTO, variant_id: null, quantity: 1 }]),
+      cupom ? 90 : 100,
+      rpc === "create_marketplace_order_v24" ? "online" : "cash",
+      cupom,
+      JSON.stringify(DIGITADO),
+      CEP_LOCAL,
+      chave,
+    ],
+    QUEM[quem],
+  );
+const idDe = (x) => x.linhas?.[0]?.id ?? null;
+const SQL_BALCAO =
+  "SELECT public.registrar_venda_presencial($1::jsonb, 'cash', NULL::uuid, NULL, NULL, 0::numeric, NULL, $2::uuid) AS r";
+const venderNoBalcao = (quem = "admin") =>
+  P.tentar(
+    "authenticated",
+    SQL_BALCAO,
+    [
+      JSON.stringify([{ product_id: PRODUTO, variant_id: null, quantity: 1 }]),
+      novaChave(),
+    ],
+    QUEM[quem],
+  );
+/** O que uma recusa nao pode ter mexido: pedidos, itens, estoque e o uso do cupom. */
+const livro = async () =>
+  um(
+    `SELECT (SELECT count(*)::int FROM public.marketplace_orders) AS pedidos,
+            (SELECT count(*)::int FROM public.marketplace_order_items) AS itens,
+            (SELECT estoque FROM public.produtos WHERE id = $1) AS estoque,
+            (SELECT usage_count FROM public.coupons WHERE code = $2) AS uso_do_cupom`,
+    [PRODUTO, CUPOM],
+  );
+const recusou = (x, frase) => x.codigo === "P0001" && x.erro === frase;
+
+async function pedidos() {
+  const r = {};
+  const anota = (nome, ok, x) => {
+    r[nome] = ok || JSON.stringify(x);
+  };
+  // CONTROLE: loja normal cria pelas duas
+  for (const rpc of [
+    "create_marketplace_order_v23",
+    "create_marketplace_order_v24",
+  ]) {
+    const x = await comprar("cliente", { rpc });
+    anota(`normal_${rpc.slice(-3)}`, idDe(x) !== null, x);
+  }
+  const xc = await comprar("cliente", { cupom: CUPOM });
+  anota("normalComCupom", idDe(xc) !== null, xc);
+  // o pedido de ANTES da pausa, para a retentativa e para o que ja existe
+  const chaveAntiga = novaChave();
+  const antigo = idDe(await comprar("cliente", { chave: chaveAntiga }));
+  const antigoV23 = idDe(
+    await comprar("cliente", { rpc: "create_marketplace_order_v23" }),
+  );
+
+  // PAUSADA: as duas recusam com a frase exata, e nada muda (pedido, item, estoque, uso do cupom)
+  await pausar();
+  for (const [rpc, cupom] of [
+    ["create_marketplace_order_v23", null],
+    ["create_marketplace_order_v24", null],
+    ["create_marketplace_order_v24", CUPOM],
+  ]) {
+    const antes = await livro();
+    const x = await comprar("cliente", { rpc, cupom });
+    const depois = await livro();
+    anota(
+      `pausada_${rpc.slice(-3)}${cupom ? "_cupom" : ""}`,
+      recusou(x, FRASE_PAUSADA) &&
+        JSON.stringify(antes) === JSON.stringify(depois),
+      { x, antes, depois },
+    );
+  }
+  // pausada: o admin atual TAMBEM e' recusado pela vitrine (sem isencao) e o visitante tambem
+  const xa = await comprar("admin");
+  anota("pausadaAdminRecusado", recusou(xa, FRASE_PAUSADA), xa);
+  // a RETENTATIVA do pedido de antes (mesma chave) devolve o MESMO pedido, sem gemeo
+  const antesRetry = await livro();
+  const retry = await comprar("cliente", { chave: chaveAntiga });
+  anota(
+    "retentativaDevolveOMesmo",
+    antigo !== null &&
+      idDe(retry) === antigo &&
+      JSON.stringify(antesRetry) === JSON.stringify(await livro()),
+    { antigo, retry },
+  );
+  // o BALCAO vende com a vitrine pausada
+  const b1 = await venderNoBalcao();
+  anota("balcaoPausada", !b1.erro, b1);
+  // o que JA EXISTE segue: pagamento confirmado, cancelamento e estorno no pedido de antes
+  // (a cobranca do pedido de antes e' criada agora, depois da pausa: o criar-pagamento so ATUALIZA o pedido, e o gatilho e' so de INSERT)
+  await comoDono();
+  const cobranca = await P.tentar(
+    null,
+    "UPDATE public.marketplace_orders SET gateway_payment_id = 'pagamento-1600' WHERE id = $1",
+    [antigo],
+  );
+  anota("cobrancaDePedidoDeAntes", !cobranca.erro, cobranca);
+  const pago = await P.tentar(
+    "service_role",
+    "SELECT public.confirmar_pagamento($1::uuid, 'pagamento-1600', 'pago') AS r",
+    [antigo],
+  );
+  const pagoNoBanco = await um(
+    "SELECT payment_status FROM public.marketplace_orders WHERE id = $1",
+    [antigo],
+  );
+  anota(
+    "pagamentoDeAntesGrava",
+    !pago.erro && pagoNoBanco?.payment_status === "pago",
+    { pago, pagoNoBanco },
+  );
+  const cancelado = await P.tentar(
+    null,
+    "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
+    [antigoV23],
+  );
+  const estornado = await P.tentar(
+    null,
+    "UPDATE public.marketplace_orders SET payment_status = 'estornado' WHERE id = $1",
+    [antigo],
+  );
+  anota("cancelarEEstornarSeguem", !cancelado.erro && !estornado.erro, {
+    cancelado,
+    estornado,
+  });
+
+  // MANUTENCAO (sem a pausa): cliente recusado; admin atual cria; ex-admin recusado; balcao vende
+  await C().query(
+    "UPDATE public.pausa_de_vendas SET vale_pela_assinatura = false WHERE id = 1",
+  );
+  await manutencao(true);
+  for (const rpc of [
+    "create_marketplace_order_v23",
+    "create_marketplace_order_v24",
+  ]) {
+    const antes = await livro();
+    const x = await comprar("cliente", { rpc });
+    anota(
+      `manutencaoCliente_${rpc.slice(-3)}`,
+      recusou(x, FRASE_MANUTENCAO) &&
+        JSON.stringify(antes) === JSON.stringify(await livro()),
+      x,
+    );
+  }
+  const ma = await comprar("admin");
+  anota("manutencaoAdminCria", idDe(ma) !== null, ma);
+  const mx = await comprar("exAdmin");
+  anota("manutencaoExAdminRecusado", recusou(mx, FRASE_MANUTENCAO), mx);
+  const b2 = await venderNoBalcao();
+  anota("balcaoManutencao", !b2.erro, b2);
+  // manutencao vence a pausa: com as duas, a frase e' a da manutencao
+  await C().query(
+    "UPDATE public.pausa_de_vendas SET vale_pela_assinatura = true WHERE id = 1",
+  );
+  const mp = await comprar("cliente");
+  anota("manutencaoVenceAPausa", recusou(mp, FRASE_MANUTENCAO), mp);
+  // e de volta ao normal: a loja vende de novo no PROXIMO pedido (o "pagou, reabre")
+  await manutencao(false);
+  await C().query(
+    "UPDATE public.assinatura_da_loja SET status = 'ativa' WHERE id = 1",
+  );
+  const reaberta = await comprar("cliente");
+  anota("reabreNoProximoPedido", idDe(reaberta) !== null, reaberta);
+  return r;
+}
+
+prova(
+  "(5) PEDIDO: loja normal cria pela v23 e v24; pausada recusa as duas com a frase exata sem mexer em pedido, item, estoque nem cupom; manutencao recusa cliente e ex-admin e deixa o admin atual; balcao, retentativa, pagamento, cancelamento e estorno seguem",
+  async () => {
+    await P.emTransacao(async () => {
+      const r = await pedidos();
+      assert.deepEqual(vermelhas(r), [], JSON.stringify(r, null, 1));
+    }, semearLoja);
+  },
+);
+
+/** INSERT direto (o dono, canal online) com a chave de um pedido que ja existe: o indice unico age (23505), nao a pausa. */
+async function insertGemeo() {
+  const chave = novaChave();
+  const antigo = idDe(await comprar("cliente", { chave }));
+  await pausar();
+  const gemeo = await P.tentar(
+    null,
+    "INSERT INTO public.marketplace_orders (user_id, customer_name, customer_data, subtotal, total, status, idempotency_key) VALUES ($1, 'Direto', '{}'::jsonb, 100, 100, 'pending', $2::uuid)",
+    [U_CLI, chave],
+  );
+  const novo = await P.tentar(
+    null,
+    "INSERT INTO public.marketplace_orders (user_id, customer_name, customer_data, subtotal, total, status, idempotency_key) VALUES ($1, 'Direto', '{}'::jsonb, 100, 100, 'pending', $2::uuid)",
+    [U_CLI, novaChave()],
+  );
+  const balcaoDireto = await P.tentar(
+    null,
+    "INSERT INTO public.marketplace_orders (user_id, customer_name, customer_data, subtotal, total, status, canal) VALUES ($1, 'Balcao direto', '{}'::jsonb, 100, 100, 'pending', 'presencial') RETURNING id",
+    [U_ADM],
+  );
+  return {
+    atalhoGemeo:
+      (antigo !== null && gemeo.codigo === "23505") || JSON.stringify(gemeo),
+    insertNovoRecusado: recusou(novo, FRASE_PAUSADA) || JSON.stringify(novo),
+    insertPresencialPassa: !balcaoDireto.erro || JSON.stringify(balcaoDireto),
+  };
+}
+
+prova(
+  "(5) ATALHO GEMEO E WHEN DO BALCAO: INSERT com a chave de pedido que ja existe deixa o indice unico agir (23505, o tratamento da v23/v24 devolve o pedido); chave nova e' recusada; canal presencial nem chama o gatilho",
+  async () => {
+    await P.emTransacao(async () => {
+      const r = await insertGemeo();
+      assert.deepEqual(vermelhas(r), [], JSON.stringify(r));
+    }, semearLoja);
+  },
+);
+
+prova(
+  "(5) GATILHO: BEFORE INSERT por linha com o WHEN do balcao, o PRIMEIRO dos BEFORE INSERT de marketplace_orders (antes dos do cupom), SECURITY DEFINER e EXECUTE de ninguem",
+  async () => {
+    await P.emTransacao(async () => {
+      assert.deepEqual(
+        await definicaoDoGatilho(
+          "public.marketplace_orders",
+          "tr_a_loja_aceita_pedido_novo",
+        ),
+        {
+          def: "CREATE TRIGGER tr_a_loja_aceita_pedido_novo BEFORE INSERT ON public.marketplace_orders FOR EACH ROW WHEN ((new.canal IS DISTINCT FROM 'presencial'::text)) EXECUTE FUNCTION public.a_loja_aceita_pedido_novo()",
+          ligado: "O",
+        },
+      );
+      // tgtype: ROW (1) + BEFORE (2) + INSERT (4) = 7. A ordem dos gatilhos do mesmo evento e' a do nome (bytes).
+      const ordem = (
+        await C().query(
+          `SELECT tgname FROM pg_trigger WHERE tgrelid = 'public.marketplace_orders'::regclass AND NOT tgisinternal
+              AND (tgtype & 2) = 2 AND (tgtype & 4) = 4 ORDER BY tgname COLLATE "C"`,
+        )
+      ).rows.map((x) => x.tgname);
+      assert.equal(
+        ordem[0],
+        "tr_a_loja_aceita_pedido_novo",
+        JSON.stringify(ordem),
+      );
+      const f = await um(
+        "SELECT p.prosecdef AS secdef, p.proconfig AS cfg, p.provolatile AS vol FROM pg_proc p WHERE p.oid = to_regprocedure('public.a_loja_aceita_pedido_novo()')",
+      );
+      assert.deepEqual(f, {
+        secdef: true,
+        cfg: ["search_path=public, pg_temp"],
+        vol: "v",
+      });
+      for (const papel of ["anon", "authenticated", "service_role"]) {
+        const x = await um(
+          "SELECT has_function_privilege($1, to_regprocedure('public.a_loja_aceita_pedido_novo()'), 'EXECUTE') AS pode",
+          [papel],
+        );
+        assert.equal(x.pode, false, papel);
+      }
+    });
+  },
+);
+
+prova(
+  "(5) DEFEITO NA LEITURA = VENDE: com o motivo quebrado (erro), a loja pausada CRIA o pedido e sai WARNING; sem o EXCEPTION o defeito derruba (controle)",
+  async () => {
+    const quebrado = `CREATE OR REPLACE FUNCTION public.motivo_da_loja_nao_aceitar_pedido() RETURNS text LANGUAGE plpgsql STABLE SECURITY DEFINER
+      SET search_path = public, pg_temp AS $q$ BEGIN RAISE EXCEPTION 'motivo quebrado de proposito'; END; $q$`;
+    await P.emTransacao(async () => {
+      await pausar();
+      await C().query(quebrado);
+      const avisos = [];
+      const ouvir = (m) => avisos.push(m.message);
+      C().on("notice", ouvir);
+      try {
+        const x = await comprar("cliente");
+        assert.ok(idDe(x) !== null, JSON.stringify(x));
+        assert.ok(
+          avisos.some(
+            (m) =>
+              /a_loja_aceita_pedido_novo/.test(m) &&
+              /motivo quebrado de proposito/.test(m),
+          ),
+          JSON.stringify(avisos),
+        );
+      } finally {
+        C().removeListener("notice", ouvir);
+      }
+    }, semearLoja);
+    await P.emTransacao(async () => {
+      await pausar();
+      await C().query(quebrado);
+      const semGuarda = trocar(
+        textoDe(MIGRATION, "a_loja_aceita_pedido_novo"),
+        "  EXCEPTION WHEN OTHERS THEN\n",
+        "  EXCEPTION WHEN division_by_zero THEN\n",
+      );
+      await C().query(semGuarda);
+      const x = await comprar("cliente");
+      assert.equal(x.erro, "motivo quebrado de proposito", JSON.stringify(x));
+    }, semearLoja);
+  },
+);
+
+/** [nome, trocas, roteiro ('pedidos' | 'gemeo'), expectativa que TEM de ficar vermelha] */
+const MUTANTES_GATILHO = [
+  [
+    "sem o atalho gemeo",
+    [
+      [
+        "IF NEW.idempotency_key IS NOT NULL\n     AND EXISTS",
+        "IF false\n     AND EXISTS",
+      ],
+    ],
+    "gemeo",
+    "atalhoGemeo",
+  ],
+  [
+    "manutencao sem isencao do admin atual",
+    [["IF v_admin_atual THEN", "IF false THEN"]],
+    "pedidos",
+    "manutencaoAdminCria",
+  ],
+  [
+    "isencao so pelo JWT (ex-admin passa)",
+    [
+      [
+        "COALESCE(public.is_admin() AND public.is_admin_atual(), false)",
+        "COALESCE(public.is_admin(), false)",
+      ],
+    ],
+    "pedidos",
+    "manutencaoExAdminRecusado",
+  ],
+  [
+    "pausa com isencao do admin",
+    [
+      [
+        "ELSIF v_motivo = 'vendas_pausadas' THEN",
+        "ELSIF v_motivo = 'vendas_pausadas' AND NOT COALESCE(public.is_admin() AND public.is_admin_atual(), false) THEN",
+      ],
+    ],
+    "pedidos",
+    "pausadaAdminRecusado",
+  ],
+  [
+    "pausada nao recusa",
+    [["ELSIF v_motivo = 'vendas_pausadas' THEN", "ELSIF false THEN"]],
+    "pedidos",
+    "pausada_v24",
+  ],
+];
+prova(
+  "(5) MUTANTES DO GATILHO: cada sabotagem fica vermelha na expectativa certa",
+  async () => {
+    const original = textoDe(MIGRATION, "a_loja_aceita_pedido_novo");
+    for (const [nome, trocas, roteiro, alvo] of MUTANTES_GATILHO) {
+      const texto = trocas.reduce(
+        (t, [de, para]) => trocar(t, de, para),
+        original,
+      );
+      await P.emTransacao(async () => {
+        await C().query(texto);
+        const r = roteiro === "gemeo" ? await insertGemeo() : await pedidos();
+        assert.ok(
+          vermelhas(r).includes(alvo),
+          `mutante "${nome}" nao ficou vermelho em ${alvo}: ${vermelhas(r).join(",")}`,
+        );
+      }, semearLoja);
+    }
+  },
+);
+
 (async () => {
   await P.conectar();
   try {

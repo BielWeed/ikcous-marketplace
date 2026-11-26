@@ -233,3 +233,45 @@ Deno.test("20261600: o motivo le manutencao primeiro, exige as 5 chaves (ligada,
   );
   assert(!/GRANT[^;]*motivo_da_loja_nao_aceitar_pedido/.test(codigo));
 });
+
+Deno.test("20261600: o gatilho do pedido novo - atalho gemeo primeiro, leitura do motivo protegida (defeito = vende), manutencao isenta so o admin atual, pausa sem isencao, as frases exatas", () => {
+  const f = funcaoDe(migration, "a_loja_aceita_pedido_novo");
+  assertStringIncludes(
+    f,
+    "a_loja_aceita_pedido_novo()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path = public, pg_temp\n",
+  );
+  const corpo = semComentario(f.slice(f.indexOf("AS $function$")));
+  const ordem = [
+    "IF NEW.idempotency_key IS NOT NULL\n     AND EXISTS (SELECT 1 FROM public.marketplace_orders WHERE idempotency_key = NEW.idempotency_key) THEN\n    RETURN NEW;",
+    "    v_motivo := public.motivo_da_loja_nao_aceitar_pedido();\n  EXCEPTION WHEN OTHERS THEN\n    RAISE WARNING 'a_loja_aceita_pedido_novo:",
+    "IF v_motivo = 'manutencao' THEN",
+    "v_admin_atual := COALESCE(public.is_admin() AND public.is_admin_atual(), false);",
+    "RAISE EXCEPTION 'A loja está em manutenção. Tente de novo mais tarde.' USING ERRCODE = 'P0001';",
+    "ELSIF v_motivo = 'vendas_pausadas' THEN",
+    "RAISE EXCEPTION 'Esta loja não está aceitando pedidos agora.' USING ERRCODE = 'P0001';",
+  ];
+  let ultimo = -1;
+  for (const trecho of ordem) {
+    const i = corpo.indexOf(trecho);
+    assert(i > ultimo, `fora de ordem ou ausente: ${trecho}`);
+    ultimo = i;
+  }
+  // a frase nunca fala de pagamento nem de assinatura
+  assert(
+    !/pagamento|assinatura|mensalidade/i.test(
+      corpo.match(/RAISE EXCEPTION '[^']*'/g).join(" "),
+    ),
+  );
+  assertStringIncludes(
+    codigo,
+    "REVOKE ALL ON FUNCTION public.a_loja_aceita_pedido_novo() FROM PUBLIC, anon, authenticated, service_role;",
+  );
+  assertStringIncludes(
+    norm(codigo),
+    "CREATE OR REPLACE TRIGGER tr_a_loja_aceita_pedido_novo BEFORE INSERT ON public.marketplace_orders FOR EACH ROW WHEN (NEW.canal IS DISTINCT FROM 'presencial') EXECUTE FUNCTION public.a_loja_aceita_pedido_novo();",
+  );
+  // o nome decide a ordem: antes de todo gatilho BEFORE INSERT do cupom
+  assert(
+    "tr_a_loja_aceita_pedido_novo" < "tr_pedido_com_cupom_exige_a_chave_ligada",
+  );
+});

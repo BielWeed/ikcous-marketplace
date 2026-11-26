@@ -214,3 +214,60 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.motivo_da_loja_nao_aceitar_pedido() FROM PUBLIC, anon, authenticated, service_role;
 COMMENT ON FUNCTION public.motivo_da_loja_nao_aceitar_pedido() IS 'Por que a loja nao aceita pedido NOVO agora: manutencao (store_config.manutencao, vence), vendas_pausadas (pausa_de_vendas ligada, chave da gestao definida, cartao suspensa e hoje em Sao Paulo >= data_da_pausa_de_vendas) ou NULL (aceita). Todo caso duvidoso, inclusive tabela ausente, aceita. EXECUTE de ninguem de aplicacao.';
+
+-- ===== (5) a fechadura na porta do cofre: o pedido NOVO pela vitrine passa por aqui antes de nascer =====
+
+CREATE OR REPLACE FUNCTION public.a_loja_aceita_pedido_novo()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_motivo text;
+  v_admin_atual boolean;
+BEGIN
+  -- O gatilho fica na TABELA (nao em cada funcao que cria pedido): vale para a v23, a v24, a v1 e a v22 (revogadas, ainda presentes), qualquer
+  -- corpo antigo e toda versao futura. O WHEN do gatilho deixa o balcao (canal = 'presencial') de fora: o painel e o balcao seguem vendendo.
+  --
+  -- ATALHO DA RETENTATIVA (identico ao de pedido_com_cupom_so_nasce_para_a_lista, 20261208000000): se este INSERT vai COLIDIR com um pedido
+  -- que ja existe pela chave de compra, nao e' pedido NOVO. O RETURN NEW deixa o indice unico agir: o unique_violation cai no tratamento da
+  -- v23/v24, que devolve o pedido que ja existe ao dono. Recusar aqui trocaria esse retorno pela frase da pausa, e a tela giraria a chave.
+  IF NEW.idempotency_key IS NOT NULL
+     AND EXISTS (SELECT 1 FROM public.marketplace_orders WHERE idempotency_key = NEW.idempotency_key) THEN
+    RETURN NEW;
+  END IF;
+
+  -- DEFEITO NA LEITURA = VENDE: qualquer erro ao ler o motivo vira WARNING e o pedido segue (o que acontece hoje). Parar todas as vendas
+  -- online por um defeito daqui e' o pior caso; vender durante uma pausa e' o resto aceito.
+  BEGIN
+    v_motivo := public.motivo_da_loja_nao_aceitar_pedido();
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'a_loja_aceita_pedido_novo: a leitura do motivo falhou (% %); o pedido segue', SQLSTATE, SQLERRM;
+    v_motivo := NULL;
+  END;
+
+  IF v_motivo = 'manutencao' THEN
+    -- Na manutencao o admin de AGORA (JWT de admin E as duas fontes do papel) testa a loja; cliente e ex-admin nao.
+    v_admin_atual := COALESCE(public.is_admin() AND public.is_admin_atual(), false);
+    IF v_admin_atual THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'A loja está em manutenção. Tente de novo mais tarde.' USING ERRCODE = 'P0001';
+  ELSIF v_motivo = 'vendas_pausadas' THEN
+    -- Sem isencao: nem o admin cria pedido pela vitrine com as vendas pausadas (o balcao segue).
+    RAISE EXCEPTION 'Esta loja não está aceitando pedidos agora.' USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.a_loja_aceita_pedido_novo() FROM PUBLIC, anon, authenticated, service_role;
+COMMENT ON FUNCTION public.a_loja_aceita_pedido_novo() IS 'Gatilho BEFORE INSERT de marketplace_orders (so canal online): recusa o pedido NOVO com a loja em manutencao (exceto o admin atual) ou com as vendas pausadas por assinatura (sem excecao). Retentativa com a chave de um pedido que ja existe passa (o indice unico age). Erro ao ler o motivo = vende (WARNING).';
+
+-- O nome decide a ordem: tr_a_ roda ANTES dos gatilhos do cupom (tr_pedido_com_cupom_*): o cliente ve "loja pausada", nao "cupom invalido".
+CREATE OR REPLACE TRIGGER tr_a_loja_aceita_pedido_novo
+  BEFORE INSERT ON public.marketplace_orders
+  FOR EACH ROW
+  WHEN (NEW.canal IS DISTINCT FROM 'presencial')
+  EXECUTE FUNCTION public.a_loja_aceita_pedido_novo();
