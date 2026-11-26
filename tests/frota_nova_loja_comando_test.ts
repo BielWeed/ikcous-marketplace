@@ -1093,6 +1093,98 @@ Deno.test("A7: a retomada pelo nome RECUSA projeto cujo ref é de loja conhecida
 
 // ─── refresh e renovação ────────────────────────────────────────────────────
 
+// ─── A8: uma guarda só para os passos que escrevem ──────────────────────────
+
+const PASSOS_QUE_ESCREVEM = [
+  "banco",
+  "ficha",
+  "dominio",
+  "segredos",
+  "functions",
+  "login",
+  "primeira-admin",
+  "definir-dono",
+  "trocar-dono",
+  "marca",
+  "chave-do-plano",
+];
+const REF_DE_OUTRA_LOJA = "refdeoutralojaaaaaaa";
+
+/** A org conectada e o estado local da loja ADULTERADO para apontar `ref`. */
+async function comEstadoAdulterado(ref) {
+  const amb = await ambiente();
+  const lojas = structuredClone(LOJAS_BRUTAS);
+  lojas.lojas["outra-loja"] = {
+    ...lojas.lojas.savy,
+    ref: REF_DE_OUTRA_LOJA,
+    segredoDoToken: "SUPABASE_ACCESS_TOKEN_LOJAS",
+  };
+  amb.deps.lojasBrutas = () => structuredClone(lojas);
+  await conectar(amb);
+  await amb.deps.estado.gravar(SLUG, {
+    versao: 1,
+    slug: SLUG,
+    passos: {
+      "criar-projeto": { veredito: "SIM", ref, org: ORG },
+      banco: { veredito: "SIM" },
+      ficha: { veredito: "SIM" },
+    },
+  });
+  return amb;
+}
+
+Deno.test("A8: todo passo que escreve, com o estado local apontando o projeto da IKCOUS, da Savy ou de outra loja do lojas.json = NÃO, sem fetch, sem cofre e sem mexer no estado", async () => {
+  for (const ref of [REF_IKCOUS, REF_SAVY, REF_DE_OUTRA_LOJA]) {
+    const amb = await comEstadoAdulterado(ref);
+    const estadoAntes = await lerArquivoDeEstado(amb.pasta);
+    const n = amb.api.chamadas.length;
+    const g = amb.deps.cofre.gravacoes;
+    const gb = amb.deps.cofreDoBanco.gravacoes;
+    amb.entradas.push(EMAIL, EMAIL, EMAIL, EMAIL);
+    for (const passo of PASSOS_QUE_ESCREVEM) {
+      for (const aplicar of [true, false]) {
+        const r = await executarPasso(pedido(passo, { aplicar }), amb.deps);
+        assertEquals(r.veredito, "NÃO", `${ref} ${passo}: ${r.mensagem}`);
+      }
+    }
+    assertEquals(amb.api.chamadas.length, n, `${ref}: fez fetch`);
+    assertEquals(amb.deps.cofre.gravacoes, g, `${ref}: gravou no cofre`);
+    assertEquals(amb.deps.cofreDoBanco.gravacoes, gb);
+    assertEquals(await lerArquivoDeEstado(amb.pasta), estadoAntes, ref);
+    assertEquals(amb.entradas.length, 4, `${ref}: leu a entrada`);
+  }
+});
+
+Deno.test("A8: a guarda nomeia o motivo, e a PRÓPRIA loja cadastrada (lojas.json e canal dela) passa", async () => {
+  const amb = await comEstadoAdulterado(REF_DE_OUTRA_LOJA);
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertStringIncludes(r.mensagem, REF_DE_OUTRA_LOJA);
+  assertStringIncludes(r.mensagem, "nunca");
+  // a loja já cadastrada: o ref dela no lojas.json e o canal dela não a barram
+  const propria = await ambiente();
+  const lojas = structuredClone(LOJAS_BRUTAS);
+  lojas.lojas["loja-nova"] = {
+    ...lojas.lojas.savy,
+    ref: REF,
+    segredoDoToken: "SUPABASE_ACCESS_TOKEN_LOJAS",
+  };
+  propria.deps.lojasBrutas = () => structuredClone(lojas);
+  propria.deps.canaisBrutos = () => ({
+    canais: { [REF]: { migrations: SLUG, functions: SLUG } },
+  });
+  await conectar(propria);
+  await propria.deps.estado.gravar(SLUG, {
+    versao: 1,
+    slug: SLUG,
+    passos: { "criar-projeto": { veredito: "SIM", ref: REF, org: ORG } },
+  });
+  const ok = await executarPasso(
+    pedido("banco", { aplicar: false }),
+    propria.deps,
+  );
+  assertStringIncludes(ok.mensagem, "ENSAIO");
+});
+
 Deno.test("o refresh novo é gravado no cofre ANTES de o access token ser usado", async () => {
   const amb = await ambiente();
   await conectar(amb);

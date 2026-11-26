@@ -935,17 +935,22 @@ async function passoCriarProjeto(pedido, d) {
 }
 
 /**
- * Os refs que NUNCA são adotados pela retomada por nome: os fixos da IKCOUS e da
- * Savy, todo ref (e refDasFunctions) do lojas.json e todo canal de
- * canais-de-backend.json. Na org central um mesmo token alcança todas as lojas:
- * um projeto alheio chamado ikcous-<slug> não pode virar "a loja nova".
- * Ilegível = ErroDoComando ESTADO_DESCONHECIDO (INCERTO): sem conferir, não adota.
+ * O ref é de OUTRA loja? (null = não é.) Na org central UM token alcança todas
+ * as lojas, a IKCOUS e a Savy inclusive: um projeto alheio nunca é adotado
+ * (criar-projeto) nem escrito (todo passo que escreve, A8). Alheio = os refs
+ * fixos da IKCOUS e da Savy; o ref (ou refDasFunctions) de qualquer OUTRA chave
+ * do lojas.json; um canal de canais-de-backend.json que não é desta loja. A
+ * própria loja já cadastrada passa. Ilegível = ErroDoComando
+ * ESTADO_DESCONHECIDO (INCERTO): sem conferir, não segue.
  */
-function refsDeLojasConhecidas(d) {
-  const refs = new Set(REFS_PROTEGIDOS);
+function refAlheio(d, slug, ref) {
+  if (REFS_PROTEGIDOS.includes(ref))
+    return `o projeto ${ref} é de uma loja que já vende (IKCOUS ou Savy)`;
+  let lojas;
+  let canais;
   try {
-    const lojas = d.lojasBrutas()?.lojas;
-    const canais = d.canaisBrutos()?.canais;
+    lojas = d.lojasBrutas()?.lojas;
+    canais = d.canaisBrutos()?.canais;
     if (
       lojas === null ||
       typeof lojas !== "object" ||
@@ -953,19 +958,40 @@ function refsDeLojasConhecidas(d) {
       typeof canais !== "object"
     )
       throw new Error("forma");
-    for (const l of Object.values(lojas)) {
-      if (typeof l?.ref === "string") refs.add(l.ref);
-      if (typeof l?.refDasFunctions === "string") refs.add(l.refDasFunctions);
-    }
-    for (const ref of Object.keys(canais)) refs.add(ref);
   } catch {
     throw new ErroDoComando(
-      "não consegui ler scripts/frota/lojas.json e canais-de-backend.json para conferir que o projeto achado pelo nome não é de uma loja que já existe; nada foi adotado nem criado.",
+      "não consegui ler scripts/frota/lojas.json e canais-de-backend.json para conferir que o projeto não é de outra loja; nada foi feito.",
       { codigo: ESTADO_DESCONHECIDO },
     );
   }
-  return refs;
+  for (const [nome, l] of Object.entries(lojas)) {
+    if (nome === slug) continue;
+    if (l?.ref === ref || l?.refDasFunctions === ref)
+      return `o projeto ${ref} é da loja ${textoSeguro(nome, 40)} do lojas.json`;
+  }
+  if (Object.hasOwn(canais, ref)) {
+    const c = Reflect.get(canais, ref);
+    if (c?.functions !== slug && c?.migrations !== slug)
+      return `o projeto ${ref} é um canal de outra loja em canais-de-backend.json`;
+  }
+  return null;
 }
+
+/** Os passos que escrevem na loja (ou dependem de escrever): a guarda do
+ * refAlheio vale para todos, antes de rede, entrada, cofre e estado (A8). */
+const PASSOS_QUE_ESCREVEM = Object.freeze([
+  "banco",
+  "ficha",
+  "dominio",
+  "segredos",
+  "functions",
+  "login",
+  "primeira-admin",
+  "definir-dono",
+  "trocar-dono",
+  "marca",
+  "chave-do-plano",
+]);
 
 async function criarProjeto(pedido, d, marca) {
   const { slug } = pedido;
@@ -1015,14 +1041,14 @@ async function criarProjeto(pedido, d, marca) {
         `PARAR: há ${doNome.length} projetos chamados ${nome} na organização ${org}; não sei qual é o da loja. Nada foi criado.`,
       );
     }
-    if (
-      doNome.length === 1 &&
-      RE_REF.test(String(doNome[0].ref)) &&
-      refsDeLojasConhecidas(d).has(doNome[0].ref)
-    ) {
+    const alheio =
+      doNome.length === 1 && RE_REF.test(String(doNome[0].ref))
+        ? refAlheio(d, slug, doNome[0].ref)
+        : null;
+    if (alheio) {
       return resultado(
         NAO,
-        `PARAR: o projeto ${nome} da organização ${org} é o banco de uma loja que já existe (ref ${doNome[0].ref}, no cadastro ou entre as lojas que vendem): nunca adoto. Nada foi feito.`,
+        `PARAR: ${alheio}, e se chama ${nome} na organização ${org}: nunca adoto o banco de outra loja. Nada foi feito.`,
       );
     }
     if (doNome.length === 1 && RE_REF.test(String(doNome[0].ref))) {
@@ -3831,6 +3857,21 @@ export async function executarPasso(pedidoRecebido, deps = {}) {
     }
     if (!r) {
       d = completar(deps);
+      // A8: o estado local apontando o projeto de OUTRA loja para qualquer
+      // passo que escreve, antes de rede, entrada, cofre e estado
+      if (PASSOS_QUE_ESCREVEM.includes(passo)) {
+        const ref = (await d.estado.ler(pedido.slug))?.passos?.["criar-projeto"]
+          ?.ref;
+        const alheio =
+          typeof ref === "string" ? refAlheio(d, pedido.slug, ref) : null;
+        if (alheio)
+          r = resultado(
+            NAO,
+            `PARAR: o estado local da loja ${pedido.slug} aponta um projeto que não é dela (${alheio}): o ${passo} nunca roda nele. Nada foi feito.`,
+          );
+      }
+    }
+    if (!r) {
       if (pedido.aplicar !== true) {
         r = await ensaio(pedido, d);
       } else {
