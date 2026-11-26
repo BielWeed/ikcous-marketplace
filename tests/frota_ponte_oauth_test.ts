@@ -19,9 +19,10 @@
  *    com matarTokenNoFechar faz uma última renovação (P6b) DEPOIS de apagar;
  *  - colaborador com escrita além do dono: recusa abrir (mudança 6);
  *  - o adaptador real do gh: lê `gh auth token` UMA vez (só memória), grava
- *    com `gh secret set` pelo stdin sem quebra de linha e sem shell, apaga e
- *    lista com fetch dentro do processo (mudança 2), e nunca toca segredo de
- *    loja que não é OAuth;
+ *    com `gh secret set --env` pelo stdin sem quebra de linha e sem shell,
+ *    apaga e lista com fetch dentro do processo (mudança 2), e nunca toca
+ *    segredo de loja que não é OAuth (a gaveta de cada loja, T1-T6 do
+ *    PLANO-AMBIENTE-POR-LOJA, tem o teste dela: frota_ponte_ambiente_test);
  *  - canário: nenhum token aparece em mensagem, argumento, resultado nem no
  *    process.env.
  *
@@ -227,7 +228,7 @@ function ghFalso(
     async listar() {
       log.push("listar");
       if (falhas.listar) throw new ErroDaPonte("gh falso: lista falhou");
-      return [...segredos.keys()];
+      return { nomes: [...segredos.keys()], sobrasNoRepositorio: [] };
     },
     async definir(nome, valor, opcoes = {}) {
       log.push(`definir:${nome}`);
@@ -812,7 +813,7 @@ Deno.test("fechar: apaga TODOS mesmo com o primeiro apagar falhando, solta trava
   assertEquals(r1.naoApagados, [
     {
       nome: NOME_A,
-      comando: `gh secret delete ${NOME_A} --app actions --repo ${REPO}`,
+      comando: `gh secret delete ${NOME_A} --env loja-loja-a --repo ${REPO}`,
     },
   ]);
   assertEquals(s.estado, "fechada");
@@ -1091,6 +1092,7 @@ Deno.test("gh real: entrar lê `gh auth token` UMA vez, sem shell, e o token só
     json(204),
     json(204),
     json(200, { total_count: 0, secrets: [] }),
+    json(200, { total_count: 0, environments: [] }),
   );
   const gh = ghReal(sp, f);
   await gh.entrar();
@@ -1109,7 +1111,7 @@ Deno.test("gh real: entrar lê `gh auth token` UMA vez, sem shell, e o token só
   assertEquals(sp.chamadas[0].opcoes.shell, false);
   assertEquals(
     f.chamadas[0].url,
-    `https://api.github.com/repos/${REPO}/actions/secrets/${NOME_A}`,
+    `https://api.github.com/repos/${REPO}/environments/loja-loja-a/secrets/${NOME_A}`,
   );
   assertEquals(f.chamadas[0].init.method, "DELETE");
   assertEquals(f.chamadas[0].init.redirect, "manual");
@@ -1148,17 +1150,19 @@ Deno.test("gh real: entrar sem login, sem gh ou com saída estranha recusa sem e
 });
 
 Deno.test("gh real: definir passa o valor SÓ pelo stdin, sem quebra de linha, args na ordem do plano", async () => {
-  const sp = spawnFalso({ codigo: 0 });
-  const gh = ghReal(sp, fetchGh());
+  const sp = spawnFalso({ saida: TOKEN_GH }, { codigo: 0 });
+  // a gaveta da loja já existe (o GET dela responde 200)
+  const gh = ghReal(sp, fetchGh(json(200, { name: "loja-loja-a" })));
+  await gh.entrar();
   await gh.definir(NOME_A, CANARIO_A);
-  const c = sp.chamadas[0];
+  const c = sp.chamadas[1];
   assertEquals(c.cmd, "gh");
   assertEquals(c.args, [
     "secret",
     "set",
     NOME_A,
-    "--app",
-    "actions",
+    "--env",
+    "loja-loja-a",
     "--repo",
     REPO,
   ]);
@@ -1170,13 +1174,16 @@ Deno.test("gh real: definir passa o valor SÓ pelo stdin, sem quebra de linha, a
 });
 
 Deno.test("gh real: definir que falha não ecoa o valor nem o token que o gh imprimir", async () => {
-  const sp = spawnFalso({
-    codigo: 1,
-    erro: `HTTP 403: ${CANARIO_A} ghp_${"9".repeat(36)}`,
-  });
-  const e = await pegarErro(() =>
-    ghReal(sp, fetchGh()).definir(NOME_A, CANARIO_A),
+  const sp = spawnFalso(
+    { saida: TOKEN_GH },
+    {
+      codigo: 1,
+      erro: `HTTP 403: ${CANARIO_A} ghp_${"9".repeat(36)}`,
+    },
   );
+  const gh = ghReal(sp, fetchGh(json(200, {})));
+  await gh.entrar();
+  const e = await pegarErro(() => gh.definir(NOME_A, CANARIO_A));
   assert(e instanceof ErroDaPonte);
   assert(e.message.includes("HTTP 403"), e.message);
   assertSemCanario(e, "erro do definir");
@@ -1184,15 +1191,19 @@ Deno.test("gh real: definir que falha não ecoa o valor nem o token que o gh imp
 });
 
 Deno.test("gh real: definir com sinal abortado mata o gh e recusa", async () => {
-  const sp = spawnFalso({ travar: true });
+  const sp = spawnFalso({ saida: TOKEN_GH }, { travar: true });
   const controle = new AbortController();
-  const p = ghReal(sp, fetchGh()).definir(NOME_A, CANARIO_A, {
+  const gh = ghReal(sp, fetchGh(json(200, {})));
+  await gh.entrar();
+  const p = gh.definir(NOME_A, CANARIO_A, {
     sinal: controle.signal,
   });
-  setTimeout(() => controle.abort(), 0);
+  // espera o gh secret set começar (depois do GET da gaveta) para abortar
+  while (sp.chamadas.length < 2) await esperarMs(1);
+  controle.abort();
   const e = await pegarErro(() => p);
   assert(e instanceof ErroDaPonte);
-  assert(sp.chamadas[0].mortoCom !== null, "o gh não foi morto");
+  assert(sp.chamadas[1].mortoCom !== null, "o gh não foi morto");
 });
 
 Deno.test("gh real: nunca toca segredo que não é de loja OAuth (nem spawn nem fetch)", async () => {
@@ -1228,19 +1239,21 @@ Deno.test("gh real: apagar só aceita 204; 404 e 5xx sobem (quem decide é a lis
   }
 });
 
-Deno.test("gh real: listar pagina até o total e devolve só os nomes", async () => {
+Deno.test("gh real: listar pagina os segredos do repositório até o total (o OAuth de lá é sobra)", async () => {
   const pagina1 = Array.from({ length: 100 }, (_, i) => ({
     name: `SEGREDO_${i}`,
   }));
   const f = fetchGh(
     json(200, { total_count: 101, secrets: pagina1 }),
     json(200, { total_count: 101, secrets: [{ name: NOME_A }] }),
+    json(200, { total_count: 0, environments: [] }),
   );
   const gh = ghReal(spawnFalso({ saida: TOKEN_GH }), f);
   await gh.entrar();
-  const nomes = await gh.listar();
-  assertEquals(nomes.length, 101);
-  assertEquals(nomes.at(-1), NOME_A);
+  assertEquals(await gh.listar(), {
+    nomes: [],
+    sobrasNoRepositorio: [NOME_A],
+  });
   assertEquals(
     f.chamadas[0].url,
     `https://api.github.com/repos/${REPO}/actions/secrets?per_page=100&page=1`,
@@ -1477,13 +1490,18 @@ Deno.test("escala: a faxina avulsa também apaga com concorrência limitada", as
 const SEM_CORPO = (status, headers = {}, corpo = null) =>
   new Response(corpo, { status, headers });
 
+/** As 3 leituras do listar com NOME_A na gaveta da loja-a: o repositório
+ * (vazio), a lista de gavetas e a gaveta. */
+const listaComA = () => [
+  json(200, { total_count: 0, secrets: [] }),
+  json(200, { total_count: 1, environments: [{ name: "loja-loja-a" }] }),
+  json(200, { total_count: 1, secrets: [{ name: NOME_A }] }),
+];
+
 /** faxina avulsa de NOME_A com o gh REAL, fetch roteirizado e relógio dublê. */
 async function faxinaComLimite(...respostasDoDelete) {
   const dormidas = [];
-  const f = fetchGh(
-    json(200, { total_count: 1, secrets: [{ name: NOME_A }] }),
-    ...respostasDoDelete,
-  );
+  const f = fetchGh(...listaComA(), ...respostasDoDelete);
   const gh = ghReal(spawnFalso({ saida: TOKEN_GH }), f, {
     agora: () => AGORA,
   });
@@ -1541,7 +1559,7 @@ Deno.test("limite do GitHub: teto de tentativas — depois dele, o nome fica em 
   const { r, dormidas, deletes } = await faxinaComLimite(
     ...limites,
     // a lista que confere o que falhou: o nome continua lá
-    json(200, { total_count: 1, secrets: [{ name: NOME_A }] }),
+    ...listaComA(),
   );
   assertEquals(deletes, TENTATIVAS_NO_LIMITE);
   assertEquals(dormidas.length, TENTATIVAS_NO_LIMITE - 1);
@@ -1549,7 +1567,7 @@ Deno.test("limite do GitHub: teto de tentativas — depois dele, o nome fica em 
   assertEquals(r.naoApagados, [
     {
       nome: NOME_A,
-      comando: `gh secret delete ${NOME_A} --app actions --repo ${REPO}`,
+      comando: `gh secret delete ${NOME_A} --env loja-loja-a --repo ${REPO}`,
     },
   ]);
 });
@@ -1559,7 +1577,7 @@ Deno.test("limite do GitHub: espera maior que o teto não pendura (não espera e
     SEM_CORPO(429, {
       "retry-after": String(ESPERA_MAXIMA_NO_LIMITE_MS / 1000 + 1),
     }),
-    json(200, { total_count: 1, secrets: [{ name: NOME_A }] }),
+    ...listaComA(),
   );
   assertEquals(longo.dormidas, []);
   assertEquals(longo.deletes, 1);
@@ -1569,7 +1587,7 @@ Deno.test("limite do GitHub: espera maior que o teto não pendura (não espera e
   );
   const proibido = await faxinaComLimite(
     SEM_CORPO(403, {}, JSON.stringify({ message: "Resource not accessible" })),
-    json(200, { total_count: 1, secrets: [{ name: NOME_A }] }),
+    ...listaComA(),
   );
   assertEquals(proibido.dormidas, []);
   assertEquals(proibido.deletes, 1);

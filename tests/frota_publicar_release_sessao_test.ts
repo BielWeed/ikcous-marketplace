@@ -192,9 +192,12 @@ function lerRegistroSync(registro) {
 }
 
 /**
- * O GitHub: colaboradores, lista de segredos e DELETE. O estado dos segredos
- * é a história (o `secret set` do registro do gh dublê e os DELETE daqui),
- * na ordem do relógio: é o `gh secret list` que o teste confere no fim.
+ * O GitHub: colaboradores, segredos do repositório, gavetas (environments,
+ * PLANO-AMBIENTE-POR-LOJA), segredos de cada gaveta e DELETE. O segredo de
+ * loja OAuth mora na gaveta dela (`loja-<projeto>`); o resto, no
+ * repositório. O estado dos segredos é a história (o `secret set` do
+ * registro do gh dublê e os DELETE daqui), na ordem do relógio: é o
+ * `gh secret list` que o teste confere no fim.
  */
 function githubFalso(
   registro,
@@ -203,8 +206,25 @@ function githubFalso(
     escrita = ["dono-falso"],
     apagarFalha = [],
     segurarApagar = false,
+    cadastro,
   } = {},
 ) {
+  const gavetaDe = new Map(
+    Object.entries(cadastro.lojas)
+      .filter(([, l]) => l.acesso === "oauth")
+      .map(([p, l]) => [l.segredoDoToken, `loja-${p}`]),
+  );
+  const gavetas = new Set(
+    existentes.filter((n) => gavetaDe.has(n)).map((n) => gavetaDe.get(n)),
+  );
+  const segredosEm = (lista) =>
+    new Response(
+      JSON.stringify({
+        total_count: lista.length,
+        secrets: lista.map((name) => ({ name })),
+      }),
+      { status: 200 },
+    );
   const apagados = [];
   const chamadas = [];
   let soltar = () => {};
@@ -253,21 +273,40 @@ function githubFalso(
       );
     }
     if (metodo === "GET" && u.pathname === `/repos/${REPO}/actions/secrets`) {
-      const nomes = noGitHub();
+      return segredosEm(noGitHub().filter((n) => !gavetaDe.has(n)));
+    }
+    if (metodo === "GET" && u.pathname === `/repos/${REPO}/environments`) {
       return new Response(
         JSON.stringify({
-          total_count: nomes.length,
-          secrets: nomes.map((name) => ({ name })),
+          total_count: gavetas.size,
+          environments: [...gavetas].map((name) => ({ name })),
         }),
         { status: 200 },
       );
     }
-    const m = new RegExp(`^/repos/${REPO}/actions/secrets/([A-Z0-9_]+)$`).exec(
+    const g = new RegExp(`^/repos/${REPO}/environments/([a-z0-9-]+)$`).exec(
       u.pathname,
     );
+    if (g && metodo === "GET") {
+      return new Response("{}", { status: gavetas.has(g[1]) ? 200 : 404 });
+    }
+    if (g && metodo === "PUT") {
+      gavetas.add(g[1]);
+      return new Response("{}", { status: 200 });
+    }
+    const gs = new RegExp(
+      `^/repos/${REPO}/environments/([a-z0-9-]+)/secrets$`,
+    ).exec(u.pathname);
+    if (gs && metodo === "GET") {
+      if (!gavetas.has(gs[1])) return new Response("{}", { status: 404 });
+      return segredosEm(noGitHub().filter((n) => gavetaDe.get(n) === gs[1]));
+    }
+    const m = new RegExp(
+      `^/repos/${REPO}/environments/([a-z0-9-]+)/secrets/([A-Z0-9_]+)$`,
+    ).exec(u.pathname);
     if (metodo === "DELETE" && m) {
-      const nome = m[1];
-      const existia = noGitHub().includes(nome);
+      const nome = m[2];
+      const existia = gavetaDe.get(nome) === m[1] && noGitHub().includes(nome);
       const falha = apagarFalha.includes(nome);
       const registroDoApagar = { nome, t: Date.now(), efetivo: false };
       apagados.push(registroDoApagar);
@@ -389,7 +428,7 @@ async function comSessao(op, corpo) {
     await Deno.writeTextFile(registro, "");
     await Deno.writeTextFile(duble, GH_DUBLE);
     const cadastro = op.cadastro ?? cadastroCom();
-    const github = githubFalso(registro, op.github);
+    const github = githubFalso(registro, { ...op.github, cadastro });
     const spawns = [];
     const gh = criarGhReal({
       repo: REPO,
@@ -1107,8 +1146,24 @@ Deno.test("sessão 6 (canário): o valor nunca vai no argv nem no env do gh; vai
       assertEquals(
         sets.map((r) => r.args),
         [
-          ["secret", "set", NOME_TESTE, "--app", "actions", "--repo", REPO],
-          ["secret", "set", NOME_DOIS, "--app", "actions", "--repo", REPO],
+          [
+            "secret",
+            "set",
+            NOME_TESTE,
+            "--env",
+            "loja-loja-teste",
+            "--repo",
+            REPO,
+          ],
+          [
+            "secret",
+            "set",
+            NOME_DOIS,
+            "--env",
+            "loja-loja-dois",
+            "--repo",
+            REPO,
+          ],
         ],
       );
       assertEquals(
@@ -1459,7 +1514,7 @@ Deno.test("--faxina avulsa: segredo que não sai volta com o comando exato e sa�
       assertEquals(codigo, 1);
       assertStringIncludes(
         m.texto(),
-        `gh secret delete ${NOME_DOIS} --app actions --repo ${REPO}`,
+        `gh secret delete ${NOME_DOIS} --env loja-loja-dois --repo ${REPO}`,
       );
     },
   );
@@ -1683,7 +1738,7 @@ function ghEmMemoria(cadastro) {
       return ["dono-falso"];
     },
     async listar() {
-      return [...segredos];
+      return { nomes: [...segredos], sobrasNoRepositorio: [] };
     },
     async definir(nome) {
       if (!permitidos.has(nome)) throw new Error("nome recusado");

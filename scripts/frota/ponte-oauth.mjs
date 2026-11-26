@@ -12,14 +12,17 @@
 //      fechar não pode depender de processo filho, que a janela fechada mata);
 //   2. recusa se alguém além do dono tem escrita no repositório (mudança 6:
 //      quem escreve lê todo segredo por um workflow);
-//   3. faxina: apaga todo segredo de loja OAuth DO CADASTRO que sobrou;
+//   3. faxina: apaga todo segredo de loja OAuth DO CADASTRO que sobrou na
+//      gaveta dela; sobra no nível do REPOSITÓRIO (legado) não se apaga: a
+//      sessão não abre (FAXINA_INCOMPLETA) e o comando vai na limpeza;
 //   4. renova cada loja UMA vez (renovarComTravaLonga: a trava fica presa);
 //      a loja cuja renovação falha (trava de outro comando, SemAcesso, 429,
 //      rede) fica FORA desta sessão (`foraDaSessao`, com o erro) e as outras
 //      seguem;
 //   5. confere o prazo de cada uma antes de gravar QUALQUER segredo: sem prazo
 //      ou curta, fica fora (a trava dela solta na hora);
-//   6. grava cada segredo (gh secret set, valor pelo stdin).
+//   6. grava cada segredo na gaveta da loja (garante a gaveta; gh secret set
+//      --env loja-<projeto>, valor pelo stdin).
 //   Nenhuma loja sobrou, falha no canal do GitHub (passos 1-3 e 6) ou sinal:
 //   apaga TODOS os nomes OAuth do cadastro (como a faxina: o gh pode ter
 //   gravado e dito que falhou), solta todas as travas e o erro sobe com
@@ -39,8 +42,12 @@
 // (retry-after, x-ratelimit-reset ou 1 min) e tenta de novo, até
 // TENTATIVAS_NO_LIMITE e nunca mais que ESPERA_MAXIMA_NO_LIMITE_MS por vez.
 //
-// "APAGADO" só com prova: DELETE 204, ou um DELETE que falhou e a lista do
-// repositório mostra que o nome não está lá. 404 sozinho não prova (é também
+// GAVETA (PLANO-AMBIENTE-POR-LOJA): o segredo de cada loja OAuth mora no
+// GitHub Environment `loja-<projeto>`, nunca no nível do repositório (que só
+// guarda 100 segredos e travava a frota em ~92 lojas OAuth).
+//
+// "APAGADO" só com prova: DELETE 204, ou um DELETE que falhou e a lista das
+// gavetas mostra que o nome não está lá. 404 sozinho não prova (é também
 // a resposta do GitHub para quem não tem acesso).
 //
 // SEGREDOS: nenhum token (OAuth ou do gh) vai em mensagem, argumento, env de
@@ -188,8 +195,33 @@ function escolherLojas(todas, pedidas) {
   });
 }
 
-const comandoApagar = (gh, nome) =>
+/** O comando à mão para o segredo da loja, na gaveta dela. */
+const comandoApagar = (gh, loja) =>
+  `gh secret delete ${loja.nome} --env ${loja.ambiente} --repo ${gh.repo}`;
+
+/** O comando à mão para a SOBRA no nível do repositório (legado: a ponte
+ * antiga gravava ali). A ponte não apaga lá; só acusa. */
+const comandoApagarDoRepositorio = (gh, nome) =>
   `gh secret delete ${nome} --app actions --repo ${gh.repo}`;
+
+/** O que o gh.listar devolve, conferido: `{ nomes, sobrasNoRepositorio }`,
+ * dois arrays de texto. Qualquer outra forma lança (nunca vira "nada"). */
+function exigirLista(lista) {
+  if (
+    lista === null ||
+    typeof lista !== "object" ||
+    !Array.isArray(lista.nomes) ||
+    !Array.isArray(lista.sobrasNoRepositorio) ||
+    !lista.nomes.every((n) => typeof n === "string") ||
+    !lista.sobrasNoRepositorio.every((n) => typeof n === "string")
+  ) {
+    throw new ErroDaPonte(
+      "Ponte: a lista de segredos do gh veio num formato que eu não reconheço.",
+      { codigo: "RESPOSTA_INVALIDA" },
+    );
+  }
+  return lista;
+}
 
 const dormirDeVerdade = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
@@ -244,41 +276,61 @@ async function apagarUm(gh, nome, dormir) {
 }
 
 /**
- * Apaga os nomes, no máximo CONCORRENCIA_DO_GITHUB ao mesmo tempo (o GitHub
- * limita pedidos simultâneos e pontos por minuto). O que falhou é conferido
- * UMA vez na lista do repositório: ausente = apagado; presente ou lista que
- * falha = naoApagados. Nunca lança.
+ * Apaga o segredo de cada loja da gaveta dela, no máximo
+ * CONCORRENCIA_DO_GITHUB ao mesmo tempo (o GitHub limita pedidos simultâneos
+ * e pontos por minuto). O que falhou é conferido UMA vez na lista das gavetas
+ * (só as dos que falharam): ausente = apagado; presente, lista que falha ou
+ * lista fora do formato = naoApagados. Só o que falhou volta. Nunca lança.
  */
-async function apagarTodos(gh, nomes, dormir) {
-  const falharam = await comLimite(nomes, CONCORRENCIA_DO_GITHUB, (n) =>
-    apagarUm(gh, n, dormir),
+async function apagarTodos(gh, lojas, dormir) {
+  const falharam = await comLimite(lojas, CONCORRENCIA_DO_GITHUB, (l) =>
+    apagarUm(gh, l.nome, dormir),
   );
-  let falhos = nomes.filter((_, i) => falharam.has(i));
+  let falhos = lojas.filter((_, i) => falharam.has(i));
   if (falhos.length > 0) {
     try {
-      const existentes = new Set(await gh.listar());
-      falhos = falhos.filter((n) => existentes.has(n));
+      const { nomes } = exigirLista(await gh.listar(falhos.map((l) => l.nome)));
+      const existentes = new Set(nomes);
+      falhos = falhos.filter((l) => existentes.has(l.nome));
     } catch {
       // sem lista, nada do que falhou se prova apagado
     }
   }
   return {
-    apagados: nomes.filter((n) => !falhos.includes(n)),
-    naoApagados: falhos.map((nome) => ({
-      nome,
-      comando: comandoApagar(gh, nome),
+    apagados: lojas.filter((l) => !falhos.includes(l)).map((l) => l.nome),
+    naoApagados: falhos.map((l) => ({
+      nome: l.nome,
+      comando: comandoApagar(gh, l),
     })),
   };
 }
 
-/** A faxina com o gh já entrado: só os nomes OAuth que existem. */
+/**
+ * A faxina com o gh já entrado: apaga das gavetas só os nomes OAuth que estão
+ * lá. A SOBRA no nível do repositório (legado) não se apaga: volta em
+ * naoApagados com o comando do repositório, e em `sobras`.
+ */
 async function faxinarEntrado(todas, gh, dormir) {
-  const existentes = new Set(await gh.listar());
-  return apagarTodos(
+  const lista = exigirLista(await gh.listar());
+  const existentes = new Set(lista.nomes);
+  const noRepo = new Set(lista.sobrasNoRepositorio);
+  const r = await apagarTodos(
     gh,
-    todas.map((l) => l.nome).filter((n) => existentes.has(n)),
+    todas.filter((l) => existentes.has(l.nome)),
     dormir,
   );
+  const sobras = todas.map((l) => l.nome).filter((n) => noRepo.has(n));
+  return {
+    apagados: r.apagados,
+    naoApagados: [
+      ...r.naoApagados,
+      ...sobras.map((nome) => ({
+        nome,
+        comando: comandoApagarDoRepositorio(gh, nome),
+      })),
+    ],
+    sobras,
+  };
 }
 
 function exigirGh(gh) {
@@ -329,7 +381,8 @@ export async function faxinar({ cadastro, gh, dormir = dormirDeVerdade } = {}) {
   exigirDormir(dormir);
   await gh.entrar();
   try {
-    return await faxinarEntrado(todas, gh, dormir);
+    const { apagados, naoApagados } = await faxinarEntrado(todas, gh, dormir);
+    return { apagados, naoApagados };
   } finally {
     await esquecer(gh);
   }
@@ -483,6 +536,8 @@ export async function abrirSessao({
   /** as lojas que ficaram fora desta sessão, com o erro de cada uma */
   const fora = [];
   const tentados = new Set();
+  /** as sobras no nível do repositório que a faxina achou (só se acusam) */
+  let sobras = [];
   let entrou = false;
   let renovacaoEmVoo;
   try {
@@ -503,9 +558,13 @@ export async function abrirSessao({
     }
     // ---- 3. faxina de toda loja OAuth do cadastro
     const fax = await espera.esperar(faxinarEntrado(todas, gh, dormir));
+    sobras = fax.sobras;
     if (fax.naoApagados.length > 0) {
+      const legado = sobras.length
+        ? ` ${sobras.join(", ")} sobrou no nível do REPOSITÓRIO (a ponte antiga gravava ali; esta só apaga nas gavetas): apague à mão com o comando da limpeza.`
+        : "";
       throw new ErroDaPonte(
-        `Ponte: a faxina não conseguiu apagar ${fax.naoApagados.map((x) => x.nome).join(", ")}; a sessão não abre.`,
+        `Ponte: a faxina não conseguiu apagar ${fax.naoApagados.map((x) => x.nome).join(", ")}; a sessão não abre.${legado}`,
         { codigo: "FAXINA_INCOMPLETA" },
       );
     }
@@ -577,12 +636,15 @@ export async function abrirSessao({
     espera.conferir();
   } catch (e) {
     const apagou = entrou
-      ? await apagarTodos(
-          gh,
-          todas.map((l) => l.nome),
-          dormir,
-        )
+      ? await apagarTodos(gh, todas, dormir)
       : { apagados: [], naoApagados: [] };
+    // a sobra no repositório não sai pela ponte: vai com o comando à mão
+    for (const nome of sobras) {
+      apagou.naoApagados.push({
+        nome,
+        comando: comandoApagarDoRepositorio(gh, nome),
+      });
+    }
     // só o token que foi ao GitHub (segredo tentado) é renovado de novo
     const { tokensNaoMortos, travasPresas } = await matarESoltar(
       presas,
@@ -613,7 +675,7 @@ export async function abrirSessao({
   // ---- a sessão aberta (só as lojas que renovaram com prazo)
   const tokens = new Map(presas.map(([l, h]) => [l.ref, h.accessToken]));
   const validaAte = Math.min(...presas.map(([, h]) => h.expiraEm));
-  const nomes = presas.map(([l]) => l.nome);
+  const daGaveta = presas.map(([l]) => l);
   const foraDaSessao = congelarFora(fora, daSessao);
   let estado = "aberta";
   let fechando = null;
@@ -623,13 +685,13 @@ export async function abrirSessao({
     tokens.clear();
     let apagou = {
       apagados: [],
-      naoApagados: nomes.map((nome) => ({
-        nome,
-        comando: comandoApagar(gh, nome),
+      naoApagados: daGaveta.map((l) => ({
+        nome: l.nome,
+        comando: comandoApagar(gh, l),
       })),
     };
     try {
-      apagou = await apagarTodos(gh, nomes, dormir);
+      apagou = await apagarTodos(gh, daGaveta, dormir);
     } catch {
       // nunca lança: o valor pessimista acima (nada apagado) é o que vale, e
       // o dono recebe os comandos para apagar à mão
@@ -722,8 +784,8 @@ function redigir(texto, segredos) {
 }
 
 /**
- * O gh de verdade. Grava com `gh secret set` (o gh cifra com a chave pública
- * do repositório), o valor pelo stdin. Apaga, lista e confere colaboradores
+ * O gh de verdade. Grava com `gh secret set --env` (o gh cifra com a chave
+ * pública da gaveta da loja), o valor pelo stdin. Apaga, lista e confere colaboradores
  * com fetch DENTRO do processo, com o token lido uma vez de `gh auth token`:
  * fechar a janela mata os filhos do console, e o apagar não pode depender de
  * um. Só mexe em segredo de loja OAuth do cadastro.
@@ -752,6 +814,7 @@ export function criarGhReal({
   const oauth = lojasOAuthDo(cadastro);
   const permitidos = new Set(oauth.map((l) => l.nome));
   const gavetas = new Set(oauth.map((l) => l.ambiente));
+  const gavetaDoNome = new Map(oauth.map((l) => [l.nome, l.ambiente]));
   let emMemoria = null;
   let entrando = null;
 
@@ -936,6 +999,17 @@ export function criarGhReal({
     }
   }
 
+  /** `{ total_count, secrets: [{ name }] }` (repositório ou gaveta). */
+  function extrairSegredos(c) {
+    return c !== null &&
+      typeof c === "object" &&
+      Array.isArray(c.secrets) &&
+      Number.isInteger(c.total_count) &&
+      c.secrets.every((s) => typeof s?.name === "string")
+      ? { itens: c.secrets.map((s) => s.name), total: c.total_count }
+      : null;
+  }
+
   async function paginas(caminho, onde, extrair) {
     const itens = [];
     for (let pagina = 1; pagina <= TETO_PAGINAS; pagina++) {
@@ -1033,38 +1107,107 @@ export function criarGhReal({
         .filter((l) => l !== null);
     },
 
-    /** Os NOMES dos segredos de Actions do repositório. */
-    async listar() {
+    /**
+     * Os segredos de loja OAuth do cadastro (todas, ou só `nomes`) que estão
+     * na gaveta de cada uma, e as SOBRAS: segredo de loja OAuth no nível do
+     * repositório (legado da ponte antiga; acusado, nunca apagado aqui). Lê
+     * os segredos do repositório, a lista de gavetas e só as gavetas que
+     * existem, CONCORRENCIA_DO_GITHUB por vez. Qualquer leitura que falha ou
+     * vem torta lança: nunca vira "nada lá".
+     * @returns {Promise<{ nomes: string[], sobrasNoRepositorio: string[] }>}
+     */
+    async listar(nomes) {
+      if (nomes !== undefined) {
+        if (!Array.isArray(nomes)) {
+          throw new ErroDaPonte("Ponte: listar recebe uma lista de nomes.", {
+            codigo: "PEDIDO_INVALIDO",
+          });
+        }
+        for (const n of nomes) exigirNome(n);
+      }
       exigirToken();
-      return paginas(
-        `/repos/${repo}/actions/secrets`,
-        "GitHub GET segredos",
-        (c) =>
-          c !== null &&
-          typeof c === "object" &&
-          Array.isArray(c.secrets) &&
-          Number.isInteger(c.total_count) &&
-          c.secrets.every((s) => typeof s?.name === "string")
-            ? { itens: c.secrets.map((s) => s.name), total: c.total_count }
-            : null,
+      const alvo =
+        nomes === undefined
+          ? oauth
+          : oauth.filter((l) => nomes.includes(l.nome));
+      const doRepo = new Set(
+        await paginas(
+          `/repos/${repo}/actions/secrets`,
+          "GitHub GET segredos do repositório",
+          extrairSegredos,
+        ),
       );
+      const existentes = new Set(
+        (
+          await paginas(
+            `/repos/${repo}/environments`,
+            "GitHub GET gavetas",
+            (c) =>
+              c !== null &&
+              typeof c === "object" &&
+              Array.isArray(c.environments) &&
+              Number.isInteger(c.total_count) &&
+              c.environments.every((g) => typeof g?.name === "string")
+                ? {
+                    itens: c.environments.map((g) => g.name),
+                    total: c.total_count,
+                  }
+                : null,
+          )
+        ).map((g) => g.toLowerCase()), // o GitHub não diferencia a caixa
+      );
+      const presentes = new Set();
+      const erros = [];
+      await comLimite(
+        alvo.filter((l) => existentes.has(l.ambiente)),
+        CONCORRENCIA_DO_GITHUB,
+        async (l) => {
+          try {
+            const naGaveta = await paginas(
+              `${caminhoDaGaveta(l.ambiente)}/secrets`,
+              `GitHub GET segredos da gaveta ${l.ambiente}`,
+              extrairSegredos,
+            );
+            if (naGaveta.includes(l.nome)) presentes.add(l.nome);
+          } catch (e) {
+            erros.push(e);
+          }
+        },
+      );
+      if (erros.length > 0) throw erros[0];
+      return {
+        nomes: alvo.map((l) => l.nome).filter((n) => presentes.has(n)),
+        sobrasNoRepositorio: oauth
+          .map((l) => l.nome)
+          .filter((n) => doRepo.has(n)),
+      };
     },
 
-    /** DELETE; só 204 é sucesso. Recusa pelo limite de pedidos sobe com
-     * codigo LIMITE_DO_GITHUB e `esperarMs` (quanto o GitHub pediu). */
+    /** DELETE na gaveta da loja; só 204 é sucesso. 404 sobe (segredo ou
+     * gaveta que não existe, ou token que não enxerga o repositório: só a
+     * lista prova que saiu). Recusa pelo limite de pedidos sobe com codigo
+     * LIMITE_DO_GITHUB e `esperarMs` (quanto o GitHub pediu). */
     async apagar(nome) {
       exigirNome(nome);
       exigirToken();
-      const onde = `GitHub DELETE ${nome}`;
+      const ambiente = gavetaDoNome.get(nome);
+      const onde = `GitHub DELETE ${nome} da gaveta ${ambiente}`;
       const r = await api(
         "DELETE",
-        `/repos/${repo}/actions/secrets/${nome}`,
+        `${caminhoDaGaveta(ambiente)}/secrets/${nome}`,
         onde,
       );
+      if (r.status === 404) {
+        throw new ErroDaPonte(
+          `Ponte: ${onde} respondeu HTTP 404: o segredo ou a gaveta não existe (ou o token não enxerga o repositório).`,
+          { codigo: "HTTP", status: 404 },
+        );
+      }
       if (r.status !== 204) throw erroDaResposta(onde, r);
     },
 
-    /** `gh secret set NOME --app actions --repo R`, valor pelo stdin sem quebra de linha. */
+    /** Garante a gaveta da loja e grava com `gh secret set NOME --env
+     * loja-x --repo R`, o valor pelo stdin sem quebra de linha. */
     async definir(nome, valor, { sinal } = {}) {
       exigirNome(nome);
       if (typeof valor !== "string" || !/^[\x21-\x7e]{1,4096}$/.test(valor)) {
@@ -1075,8 +1218,17 @@ export function criarGhReal({
           },
         );
       }
+      const ambiente = gavetaDoNome.get(nome);
+      await garantirAmbiente(ambiente);
+      // o sinal pode ter caído enquanto a gaveta era garantida: o gh nem roda
+      if (sinal?.aborted) {
+        throw new ErroDaPonte(
+          `Ponte: gh secret set ${nome} interrompido antes de rodar.`,
+          { codigo: "ABERTURA_INTERROMPIDA" },
+        );
+      }
       const r = await rodar(
-        ["secret", "set", nome, "--app", "actions", "--repo", repo],
+        ["secret", "set", nome, "--env", ambiente, "--repo", repo],
         {
           entrada: valor,
           sinal,
