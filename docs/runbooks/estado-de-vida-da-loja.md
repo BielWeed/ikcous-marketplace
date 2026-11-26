@@ -94,13 +94,23 @@ pagar. "Dia 0" é o vencimento da mensalidade ou o fim do teste.
 - **Enquanto a "pausa de vendas" não existir no servidor**, a loja adormecida continua aceitando
   pedido de quem já estava com ela aberta ou com o app guardado no aparelho, e perde o painel.
   Por isso, hoje, adormecer exige as quatro consultas zeradas, e isso vale também para encerrar.
+  Desde o PR #1932, a aba que abre ou recarrega a loja descobre que ela fechou: o Service Worker
+  apaga as páginas guardadas e manda as abas recarregarem. A brecha que fica é o **app vivo**: a
+  aba já aberta que só navega por dentro do app não pede página nova, então só recebe o aviso
+  quando outra abertura bate no porteiro, e só recarrega se tiver o receptor
+  (`instalarReceptorDaLojaFechada`, no `main.tsx`). A aba aberta antes da versão com o receptor,
+  ou num navegador sem Service Worker, segue vendendo até alguém recarregar; com pagamento ou
+  envio de pedido em curso, a recarga fica para o próximo momento seguro (`recarregarSeSeguro`).
 
 ## Quando adormecer uma loja de teste que não pagou
 
 - **Quem avisa e quando.** O app de gestão de assinantes mostra a loja no grupo "Testes vencidos
-  sem pagamento", com a frase "fecha em DD/MM (se não houver pedido em aberto)". O dia de fechar é
-  o fim do teste + 3 dias. Antes dele, não se adormece.
-- **Quem roda.** Nesse dia, quem opera (a sessão, por ordem do dono, ou o dono) roda o
+  sem pagamento", com a frase "pausa os pedidos em DD/MM". O dia da pausa é o fim do teste + 4
+  dias; se cair na sexta, no sábado ou no domingo, passa para a segunda. Do dia da pausa até o
+  dia 29, a loja aparece na lista "Os pedidos deveriam estar pausados desde DD/MM" (a pausa ainda
+  é manual). Só a partir do dia 30 ela vai para a lista de adormecer. Antes do dia 30, não se
+  adormece.
+- **Quem roda.** Do dia 30 em diante, quem opera (a sessão, por ordem do dono, ou o dono) roda o
   `--adormecer` da seção seguinte com `--motivo "por <nome>: teste vencido sem pagamento"`.
 - **Antes, conferir que não há pedido em aberto.** O comando não olha os pedidos (ele só fala com
   a caderneta). Pelo MCP, no banco **da loja** (o `--ref` dela, não o da caderneta), rode esta
@@ -259,6 +269,46 @@ curl.exe -sI "https://<domínio da loja>/"
 
 Se vier diferente depois de 2 minutos, rode o `--ver` e confira o estado gravado.
 
+## Banco pausado pelo Supabase
+
+Isto **não** é o estado `adormecida` de cima (que é decisão nossa, na caderneta). Aqui quem desligou foi
+o próprio Supabase: no plano grátis, o projeto da loja é **pausado** depois de uma semana sem atividade
+no banco, e a loja para de funcionar até alguém restaurá-lo.
+
+- **Como reconhecer.** O app de gestão mostra a loja como `pausada`. No painel do Supabase, o projeto
+  aparece pausado, com o botão "Restore project".
+- **O comando** (só no PC do dono, que é onde fica o cofre com o acesso da loja):
+
+```powershell
+node scripts/frota/acordar-projeto.mjs --loja "<nome da loja no scripts/frota/lojas.json>" --motivo "gestao mostrou pausada em 26/11"
+```
+
+  - `--loja` tem de estar em `scripts/frota/lojas.json`, e a loja tem de ter o acesso OAuth no cofre
+    deste PC (o que o passo de autorizar a loja grava). Sem isso, o comando para antes de pedir qualquer
+    coisa ao Supabase e manda usar o plano B. **Hoje (27/11) isso vale para todas as lojas:** IKCOUS e
+    Savy usam segredo do GitHub (que não se lê do PC) e nenhuma loja entrou por OAuth ainda; até a
+    primeira loja OAuth, o caminho real é o plano B (o dono clica em "Restore project" no painel).
+  - `--motivo` vai para o registro que o comando imprime (3 a 200 caracteres, só letras, números,
+    espaço e `. , : ; ( ) / -`).
+  - `--esperar-min N` (opcional): quanto tempo ele acompanha o projeto voltar. Padrão 10, máximo 30.
+- **O que ele faz.** Lê o status do projeto. Se estiver pausado (`INACTIVE`), pede o restore **uma vez**
+  e confere o status a cada 15 segundos até `ACTIVE_HEALTHY`. Se já estiver voltando (`RESTORING` ou
+  `COMING_UP`), só espera. Ele nunca pede o restore duas vezes na mesma execução, nem quando o pedido
+  fica sem resposta.
+- **Saída do comando:**
+
+| Saída | O que quer dizer | O que fazer |
+|---|---|---|
+| `0` | a loja acordou, ou já estava acordada | nada; em 1 a 2 minutos a gestão deixa de mostrá-la como `pausada` |
+| `1` | parou ou recusou: acesso do cofre ausente ou recusado (401/403), status estranho, Supabase recusou o restore (402 = plano ou fatura da lojista) | ler a mensagem; quase sempre é o plano B |
+| `2` | uso errado (faltou `--loja` ou `--motivo`, ou `--esperar-min` fora de 1 a 30) | corrigir o comando |
+| `3` | o tempo acabou antes de `ACTIVE_HEALTHY` | **não rode de novo na hora**: o restore pode estar em andamento. Confira no painel do Supabase (o link sai na mensagem) |
+
+- **Plano B:** a lojista entra no painel do Supabase dela, abre o projeto da loja e clica em
+  **"Restore project"**. Leva alguns minutos.
+- **Loja `adormecida` continua acordada no Supabase** (decisão do sócio, 26/11/2026): o vigia mantém o
+  banco dela ativo até a loja ser **encerrada**. Só a loja `encerrada` deixa de ser mantida.
+
 ## Se a porta recusar
 
 | Mensagem começa com | O que fazer |
@@ -278,7 +328,15 @@ reabrir). O histórico guarda as duas linhas. Nunca apague linha do histórico.
 
 ## O banco da caderneta: a vitrine antiga sem escrita anônima
 
-O banco onde a caderneta mora hoje é o projeto antigo `dekxabvqdsuukijblazl`. Ele não recebe as
+O banco da caderneta é o de `IKCOUS_FROTA_URL`. Até a virada descrita em
+[a caderneta muda de banco](caderneta-muda-de-banco.md), é o projeto antigo `dekxabvqdsuukijblazl`; depois
+dela, é o banco da IKCOUS (`cafkrminfnokvgjqtkle`), que recebe as migrations pelo canal como qualquer loja, e
+todo comando desta página (`estado-da-loja.mjs` incluído) roda lá. Esta seção vale **só para o
+`dekxabvqdsuukijblazl`**: depois da virada o script abaixo fica aposentado (o pré-voo dele reconhece "o banco
+da caderneta" pela caderneta semeada, e o banco da IKCOUS também passa a tê-la; lá a ACL já é a das lojas e o
+REVOKE não muda nada, mas não há motivo para rodá-lo).
+
+O projeto antigo não recebe as
 migrations dos canais, e a view `public.vw_produtos_public` dele ficou aberta para escrita com a chave
 pública (nas lojas, a 20260821000100 e a 20261090000000 já a fecharam). O conserto é um script à
 parte, **não** migration, em `scripts/frota/banco-da-caderneta/`. Pelo MCP, **só** com `execute_sql`
@@ -292,13 +350,18 @@ migrations do projeto):
    chamada. O pré-voo recusa com `B1_BASELINE_DIVERGENT` (e nada é gravado) se o banco não tiver a
    caderneta semeada (`frota_lojas` e `frota_segredo` com linha: é o que separa o dekxab de uma loja,
    que tem as tabelas vazias e a mesma ACL da view) ou se a ACL não for a medida nem a já aplicada; o
-   pós-voo recusa com `POSVOO_VITRINE_ANTIGA` se o resultado não for o esperado. O rollback tem a mesma
-   trava do banco certo.
+   pós-voo recusa com `POSVOO_VITRINE_ANTIGA` se o resultado não for o esperado. Numa loja o aplicar não
+   abre nada (o REVOKE ali não muda a ACL, que já é a das lojas).
 3. **Depois:** a mesma consulta do passo 1. Esperado: as 5 linhas com `ok = true`.
 
 **Desfazer:** `begin;` + `scripts/frota/banco-da-caderneta/rollback-manual-vitrine-antiga-sem-escrita-anonima.sql`
 + `commit;`, pelo `execute_sql`. Ele devolve a ACL medida, byte a byte, e **reabre o furo**; depois
-dele, a consulta do passo 1 volta a mostrar o retrato de antes.
+dele, a consulta do passo 1 volta a mostrar o retrato de antes. Por reabrir o furo, a trava dele é mais
+forte que a do aplicar: a caderneta semeada não basta (o plano copia a caderneta para a CAF). Antes de
+tudo ele recusa (`B1_BASELINE_DIVERGENT`) banco sem `supabase_migrations.schema_migrations` e banco de
+loja: o que registra a `20261090000000` ou a `20261500000000` (o portão de release exige toda versão no
+registro de cada loja assinante; o dekxab não recebe migrations de canal) ou tem a tabela
+`public.saude_da_reconciliacao`. Só depois confere a caderneta semeada.
 
 ## Rollback das migrations (ordem)
 
@@ -311,6 +374,10 @@ dele, a consulta do passo 1 volta a mostrar o retrato de antes.
    histórico; confirmação `APAGAR`) e, só depois do comum da 20261470, o
    `rollback-manual-destrutivo-20261460000000_...` (tira as colunas; o Postgres recusa enquanto o
    gatilho existir).
+5. No banco onde a caderneta de produção mora, os destrutivos e o `rollback-manual-20261141000000` recusam
+   com `CADERNETA_SEMEADA` (e não apagam nada) enquanto houver linha na caderneta, mesmo com o `APAGAR`; só
+   com o dono e `SET LOCAL ikcous.apagar_caderneta = 'sim';` na mesma transação
+   ([a caderneta muda de banco](caderneta-muda-de-banco.md)).
 
 Veja também: [produção — fonte única](producao-unica-fonte.md) ·
 [modo manutenção da loja](modo-manutencao-da-loja.md) ·

@@ -304,3 +304,29 @@ Deno.test("prova de catalogo: lote de UMA migration em provasDeObjetos (182a dep
     "run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-tem-estado-de-vida-viva.cjs",
   );
 });
+
+Deno.test("rollback destrutivo: com caderneta semeada RECUSA (CADERNETA_SEMEADA) depois das travas dele e antes do ALTER; so apaga com ikcous.apagar_caderneta = 'sim'", () => {
+  // Plano caderneta-fora-do-dekxab (26/11/2026), T4: o banco da IKCOUS passa a guardar a caderneta de PRODUÇÃO; o destrutivo
+  // rodado lá apagaria o estado de cada loja da frota. A confirmação APAGAR deste arquivo não basta: é preciso a da caderneta.
+  const iDono = destrutivo.indexOf("ESTADO_DE_VIDA_SO_COM_O_DONO");
+  const iComum = destrutivo.indexOf("ESTADO_DE_VIDA_ROLLBACK_COMUM_PRIMEIRO");
+  const ini = destrutivo.indexOf("DO $caderneta_semeada$");
+  const fim = destrutivo.indexOf("END $caderneta_semeada$;");
+  const iAlter = destrutivo.indexOf("ALTER TABLE public.frota_lojas");
+  assert(ini >= 0 && fim > ini, "bloco da caderneta semeada presente");
+  assert(
+    iDono < ini && iComum < ini,
+    "as travas do arquivo vem antes (a mensagem delas nao muda)",
+  );
+  assert(fim < iAlter, "a trava vem antes do ALTER");
+  const bloco = destrutivo.slice(ini, fim);
+  assertStringIncludes(
+    bloco,
+    "IF COALESCE(current_setting('ikcous.apagar_caderneta', true), '') = 'sim' THEN",
+  );
+  assertStringIncludes(bloco, "RAISE EXCEPTION 'CADERNETA_SEMEADA:");
+  assertStringIncludes(
+    destrutivo,
+    "SET LOCAL ikcous.apagar_caderneta = 'sim';",
+  );
+});

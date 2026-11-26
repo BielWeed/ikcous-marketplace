@@ -927,21 +927,21 @@ Deno.test("loja nova só por dado (workflows): o gerador acrescenta SÓ a linha 
     const atual = Deno.readTextFileSync(join(DIR_WF, nome));
     const comNova = gerador.sincronizar(atual, nova);
     assert(comNova !== atual, `${nome}: a loja nova devia gerar uma linha`);
-    // só linhas ACRESCENTADAS (a cadeia de publicar-functions e o grupo POR BANCO
-    // de aplicar/ledger são uma linha reescrita, com a loja nova no mapa)
+    // só linhas ACRESCENTADAS (a cadeia de publicar-functions é uma linha
+    // reescrita, com a loja nova). O grupo POR BANCO de aplicar/ledger NÃO
+    // muda: desde o C2 da frota de 300 (26/11/2026) o mapa dele só guarda as
+    // lojas que dividem banco, e a loja nova tem banco próprio
+    // (tests/frota_grupo_do_banco_test.ts).
     const a = atual.split("\n");
     const n = comNova.split("\n");
     const novasLinhas = n.filter((l) => !a.includes(l));
-    const GRUPO_DO_BANCO = "group: banco-da-loja-${{ fromJSON('";
     assert(
       novasLinhas.length >= 1 &&
         novasLinhas.every(
           (l) =>
             l.includes(SEGREDO_NOVO) ||
             l.includes("SUPABASE_ACCESS_TOKEN: ${{") ||
-            l === `          - ${NOVA}` ||
-            (l.includes(GRUPO_DO_BANCO) &&
-              l.includes(`"${NOVA}":"${REF_NOVA}"`)),
+            l === `          - ${NOVA}`,
         ),
       `${nome}: linhas novas inesperadas:\n${novasLinhas.join("\n")}`,
     );
@@ -957,15 +957,14 @@ Deno.test("loja nova só por dado (workflows): o gerador acrescenta SÓ a linha 
         l,
         `inputs.projeto == '${NOVA}' && secrets.${SEGREDO_NOVO}`,
       );
-    // nenhuma linha de hoje some, exceto a cadeia única de publicar-functions e
-    // o grupo por banco (reescritos com a nova)
+    // nenhuma linha de hoje some, exceto a cadeia única de publicar-functions
+    // (reescrita com a nova)
     const sumiram = a.filter((l) => !n.includes(l));
     assert(
-      sumiram.every(
-        (l) =>
-          l.includes(
-            "SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada'",
-          ) || l.includes(GRUPO_DO_BANCO),
+      sumiram.every((l) =>
+        l.includes(
+          "SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada'",
+        ),
       ),
       `${nome}: linhas sumiram`,
     );

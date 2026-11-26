@@ -86,9 +86,15 @@
  *   node scripts/frota/publicar-release.mjs --sessao --sha <40hex> --deployment <dpl_…> [--json <arquivo>]
  *   node scripts/frota/publicar-release.mjs --faxina
  * Saída: 0 = pronto (ensaio) ou publicado e conferido; 1 = bloqueado ou
- * conferência pós-promote falhou; 2 = uso errado. Na --sessao e na --faxina,
- * 1 também quando o fechar não confirmou que TODOS os segredos das lojas OAuth
- * saíram do GitHub (SAIDA_SEGREDO_NAO_APAGADO): 0 só com o GitHub limpo.
+ * conferência pós-promote falhou; 2 = uso errado; 3 = publicado, mas a
+ * conferência pós-promote ficou INCERTA: o único problema foi version.json que
+ * tropeçou (rede, tempo esgotado, 5xx) nem depois das novas tentativas da
+ * sonda, em endereço cuja página respondeu e que a Vercel diz apontar para o
+ * deployment promovido (sem "FALHOU." e sem o rollback: conferir de novo; ver
+ * soEnderecosSemResposta). 404, não-JSON, página ou loja sem resposta = 1.
+ * Na --sessao e na --faxina, 1 também quando o fechar não confirmou que TODOS
+ * os segredos das lojas OAuth saíram do GitHub (SAIDA_SEGREDO_NAO_APAGADO): 0
+ * só com o GitHub limpo.
  */
 
 import { execFile, execFileSync } from "node:child_process";
@@ -110,6 +116,8 @@ import { criarAcessoOAuth } from "./acesso-oauth.mjs";
 import { CofreTravado, ErroDoCofre, criarCofreDpapi } from "./cofre-local.mjs";
 import {
   CABECALHOS_DE_PRIMEIRA_ABERTURA,
+  CLASSES_SEM_FALHA,
+  ESPERAS_DA_NOVA_TENTATIVA_MS,
   conferirFrota,
   criarExecutorVercel,
   inventariar,
@@ -161,6 +169,8 @@ const CLASSES_ACEITAS_ANTES = new Set([
 ]);
 /** Achados de loja fora do ar por decisão (L8): não bloqueiam a publicação. */
 const CLASSES_FORA_DO_AR = new Set(["ADORMECIDA", "ENCERRADA"]);
+/** Saída quando o pós-promote só não sabe (endereço sem resposta): nem 0 nem 1. */
+export const CODIGO_INCERTO = 3;
 
 export function lerCanais(caminho = path.join(AQUI, "canais-de-backend.json")) {
   const c = JSON.parse(readFileSync(caminho, "utf8"));
@@ -305,6 +315,12 @@ export async function conferirCandidato({
     // (qualquer valor: o endereço do candidato nao e uma loja). Sem o
     // cabecalho o middleware nao rodou -- e uma release com o porteiro
     // quebrado derrubaria TODAS as lojas depois da promocao.
+    // O selo sozinho nao basta: o 503 `banco-indisponivel` tambem o traz. A
+    // caderneta da frota tem de ter RESPONDIDO ao candidato -- `miss` (o
+    // endereco do candidato nao e loja, o caso normal) ou `hit`. `erro`
+    // (caderneta fora do ar, chave errada), `ausente` (variaveis
+    // IKCOUS_FROTA_* faltando) ou sem o cabecalho: promover este deploy
+    // derrubaria todas as lojas, que nascem sem ficha no deploy novo.
     try {
       const res = await fetchImpl(`https://${d.url}/?t=${Date.now()}`, {
         cache: "no-store",
@@ -313,9 +329,15 @@ export async function conferirCandidato({
         signal: AbortSignal.timeout(15000),
       });
       await res.text();
-      if (!res.headers.get("x-ikcous-porteiro"))
+      const porteiro = res.headers.get("x-ikcous-porteiro");
+      const caderneta = res.headers.get("x-ikcous-caderneta");
+      if (!porteiro)
         problemas.push(
           `candidato respondeu a "/" (HTTP ${res.status}) sem x-ikcous-porteiro: o middleware (porteiro) não carregou na borda`,
+        );
+      else if (caderneta !== "miss" && caderneta !== "hit")
+        problemas.push(
+          `candidato respondeu a "/" (HTTP ${res.status}, x-ikcous-porteiro ${celula(porteiro)}) ${caderneta === null ? "sem x-ikcous-caderneta" : `com x-ikcous-caderneta=${celula(caderneta)}`}, esperado miss ou hit: a caderneta da frota não respondeu ao candidato (variáveis IKCOUS_FROTA_* erradas ou faltando, ou o banco da caderneta fora do ar); promover este deploy derrubaria todas as lojas`,
         );
     } catch (e) {
       problemas.push(`"/" do candidato não lida: ${e.message}`);
@@ -522,6 +544,55 @@ export function problemasAntesDoPromote(conferencia, sha) {
       );
   }
   return saida;
+}
+
+/**
+ * DEPOIS do promote: o ÚNICO problema da conferência é endereço cujo
+ * version.json TROPEÇOU (rede, tempo esgotado, 5xx) em todas as novas
+ * tentativas da sonda? Devolve esses endereços, em ordem, ou null quando há
+ * QUALQUER outro problema ou quando a conferência não traz o que é preciso
+ * para provar isso: na dúvida é FALHOU, nunca "incerto" no escuro. Decide por
+ * ACHADO, nunca pela `classe` (INALCANCAVEL é mais grave que ENDERECO_ANTIGO e
+ * esconderia a versão velha) e pela MARCA de tropeço que a sonda pôs no
+ * achado (`tropecouEm`), nunca pelo texto do motivo. Viram FALHOU:
+ * - resposta que contradiz (404, index.html no lugar do JSON): `classificar`
+ *   também a põe em INALCANCAVEL, mas é release sem version.json ou vitrine
+ *   servindo a SPA no caminho — errado, não "não sei";
+ * - tropeço da página "/" (o isolamento — LOJA_TROCADA — daquele endereço não
+ *   foi conferido) ou da sonda de redirecionamento (o canônico não foi);
+ * - loja cadastrada que não foi sondada em NENHUM endereço;
+ * - endereço sem resposta que a Vercel não diz apontar para `deploymentId`:
+ *   sem version.json, essa é a única prova de que ele serve a release.
+ */
+export function soEnderecosSemResposta(pos, deploymentId) {
+  if (pos?.ok === true || !Array.isArray(pos?.resultados)) return null;
+  if (typeof deploymentId !== "string" || !deploymentId) return null;
+  if (pos.vercel?.ok !== true || pos.inventario?.completo !== true) return null;
+  const cobertura = pos.cobertura;
+  if (
+    !Array.isArray(cobertura?.lojasNaoSondadas) ||
+    !Array.isArray(cobertura?.dominiosNaoSondados) ||
+    cobertura.lojasNaoSondadas.length ||
+    cobertura.dominiosNaoSondados.length
+  )
+    return null;
+  const semResposta = new Set();
+  for (const r of pos.resultados) {
+    if (CLASSES_SEM_FALHA.has(r?.classe)) continue;
+    const achados = Array.isArray(r?.achados) ? r.achados : [];
+    if (
+      r.classe !== "INALCANCAVEL" ||
+      !achados.length ||
+      !achados.every(
+        (a) => a?.classe === "INALCANCAVEL" && a.tropecouEm === "version.json",
+      ) ||
+      r.deploymentId !== deploymentId
+    )
+      return null;
+    semResposta.add(r.dominio);
+  }
+  if (!semResposta.size) return null;
+  return [...semResposta].sort();
 }
 
 // ------------------------------------------------------------------ etapa 3: migrations
@@ -2683,6 +2754,13 @@ export async function publicarRelease(opcoes, deps) {
   });
   const producaoDepois = pos.vercel?.producaoOficial ?? null;
   const ok = pos.ok === true && producaoDepois === deploymentId;
+  // Endereço que só não respondeu não é prova de release errada: sem
+  // "FALHOU." e sem o rollback da frota inteira (que assustava o dono à toa).
+  const semResposta =
+    ok || producaoDepois !== deploymentId
+      ? null
+      : soEnderecosSemResposta(pos, deploymentId);
+  const incerto = semResposta !== null;
   const acordou = lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario, sha);
   linhas.push(
     "",
@@ -2695,7 +2773,16 @@ export async function publicarRelease(opcoes, deps) {
     linhas.push(
       `Produção oficial depois: \`${producaoDepois}\` (esperado \`${deploymentId}\`).`,
     );
-  if (!ok) {
+  if (incerto) {
+    linhas.push(
+      "",
+      `**INCERTO.** O version.json de ${semResposta.length} endereço(s) não respondeu (rede, tempo esgotado ou erro 5xx) nem depois de ${ESPERAS_DA_NOVA_TENTATIVA_MS.length + 1} tentativas: ${semResposta.join(", ")}. A página inicial deles respondeu (isolamento conferido), a Vercel diz que apontam para o deployment promovido, a produção oficial é ele e nenhum outro problema apareceu. Isto sozinho não pede voltar a frota; confira de novo com:`,
+      "```",
+      `node scripts/frota/conferir-frota.mjs --sha ${sha} --vercel`,
+      "```",
+      "Se continuarem sem responder, vira falha da conferência: siga a Saida 3 em docs/runbooks/producao-unica-fonte.md.",
+    );
+  } else if (!ok) {
     linhas.push(
       "",
       "**FALHOU.** Se houver LOJA_TROCADA (isolamento), voltar AGORA a frota inteira:",
@@ -2705,9 +2792,10 @@ export async function publicarRelease(opcoes, deps) {
       "Depois de um rollback a atribuição automática de domínios fica desligada até o próximo promote.",
     );
   }
-  const bloqueiosDepois = ok
-    ? []
-    : [{ alvo: "frota", motivo: "conferência pós-promote falhou" }];
+  const bloqueiosDepois =
+    ok || incerto
+      ? []
+      : [{ alvo: "frota", motivo: "conferência pós-promote falhou" }];
   if (acordou.erro || acordou.lojas.length) {
     linhas.push(
       "",
@@ -2734,8 +2822,11 @@ export async function publicarRelease(opcoes, deps) {
     if (acordou.erro)
       bloqueiosDepois.push({ alvo: "frota", motivo: acordou.erro });
   }
+  let codigo = 0;
+  if (bloqueiosDepois.length) codigo = 1;
+  else if (incerto) codigo = CODIGO_INCERTO;
   return {
-    codigo: bloqueiosDepois.length ? 1 : 0,
+    codigo,
     relatorio: linhas.join("\n"),
     bloqueios: bloqueiosDepois,
     notasDaVersao,

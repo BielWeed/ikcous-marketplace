@@ -566,7 +566,7 @@ jobs:
     # grupo é por banco (banco-da-loja-<ref>, gerado do cadastro).
     concurrency:
       # LOJAS-GRUPO-DO-BANCO-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
-      group: banco-da-loja-${{ fromJSON('{"loja":"cafkrminfnokvgjqtkle","sandbox":"lofznuxcvezrhxsgjqyg","ikcous-publicada":"cafkrminfnokvgjqtkle","savy":"gnjsrucsmjkajijrakzr"}')[inputs.projeto] || 'sem-cadastro' }}
+      group: banco-da-loja-${{ fromJSON('{"loja":"ikcous-publicada"}')[inputs.projeto] || inputs.projeto }}
       # LOJAS-GRUPO-DO-BANCO-FIM
       cancel-in-progress: false
       # queue: max (não o default "single"): sem isto, um segundo LEDGER

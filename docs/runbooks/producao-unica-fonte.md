@@ -159,8 +159,8 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       `canais-de-backend.json`, o que o workflow aceita (um teste exige que as duas concordem).
       **Desfazer a `send-order-confirmation`:** NAO e disparar o workflow no SHA antigo (o
       workflow daquele commit recusa a function nas duas lojas). E `git revert` dos commits do
-      texto num commit NOVO do ramo principal e publicar esse SHA pelo caminho normal. So a
-      IKCOUS guarda o retrato "ANTES"; na Savy, anote a versao no ar antes de publicar.
+      texto num commit NOVO do ramo principal e publicar esse SHA pelo caminho normal. O retrato
+      "ANTES" de cada loja fica no resumo do proprio run (ver a pre-condicao abaixo).
       **Mais cinco functions pelo nome (desde 13/10/2026, decisao do dono):** `calculate-shipping`,
       `notify-new-order`, `send-otp-email`, `melhor-envio-etiqueta` e `send-push` tambem estao em
       `functionsPublicaveis` e no workflow, **so na IKCOUS e na Savy e so pelo nome** (o apelido
@@ -171,24 +171,37 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       como para as financeiras (banco → functions → front). O workflow nunca passa
       `--no-verify-jwt`: o `verify_jwt` de cada uma e o de `supabase/config.toml` (a
       `notify-new-order` e `verify_jwt = false`; as outras quatro, `true`).
-      **PRE-CONDICAO DE PUBLICACAO das cinco (e de qualquer function deste passo), em CADA loja,
-      ANTES do primeiro comando:**
-      1. Medir o que esta no ar na IKCOUS (`cafkrminfnokvgjqtkle`) E na Savy
-         (`gnjsrucsmjkajijrakzr`): `supabase functions list --project-ref <ref>` com o token da
-         propria loja (IKCOUS: `SUPABASE_ACCESS_TOKEN_IKCOUS`; Savy: `SUPABASE_ACCESS_TOKEN_SAVY`).
-         Na IKCOUS o proprio workflow grava essa lista no resumo do run ("No ar ANTES"; o modo
-         `functions=listar` mede sem publicar nada). **Na Savy o workflow NAO guarda foto do
-         antes**: a medicao e a mao, e e dela que sai o desfazer.
-      2. Anotar, por function e por loja, a **versao e o `updated_at`** que a lista mostra. Para o
-         conteudo (o que de fato roda), quando o CLI deixar: `supabase functions download <nome>
-         --project-ref <ref>` numa pasta temporaria FORA do repositorio, e anotar o sha256 dos
-         arquivos baixados. Se o download nao for possivel naquela maquina, anote so versao e data
-         e diga no registro que o conteudo nao foi medido (a lista sozinha nao identifica o
-         bundle).
-      3. So depois disso disparar o comando do ensaio. O desfazer de cada uma e o mesmo da
-         `send-order-confirmation`: NAO e disparar o workflow no SHA antigo, e sim `git revert`
-         num commit NOVO do ramo principal e publicar esse SHA pelo caminho normal; a versao
-         anotada acima e o que se compara depois.
+      **PRE-CONDICAO DE PUBLICACAO das cinco (e de qualquer function deste passo), em CADA loja:
+      o registro do que estava no ar ANTES.** Desde 26/11/2026 o proprio `publicar-functions.yml`
+      faz esse registro em TODA loja que ele publica (IKCOUS, Savy, qualquer assinante nova do
+      cadastro, e tambem `loja`/`sandbox`): antes do primeiro deploy, o passo "Lista o que esta no
+      ar ANTES" roda `supabase functions list --project-ref <ref>` com o MESMO token que o deploy
+      daquela loja usa, e grava a lista (versao e `updated_at` de cada function) no resumo do run.
+      **Se essa lista falhar, o run para ali e nada e publicado naquela loja** (sem registro nao
+      ha desfazer); o motivo aparece em vermelho no proprio passo. Nao ha mais medicao a mao por
+      loja. Na IKCOUS, o modo `functions=listar` continua medindo sem publicar nada.
+      1. **Achar o registro (passo a passo):** no GitHub, abra o repositorio, clique na aba
+         **Actions** (no alto da pagina). Na coluna da esquerda, clique em **Publicar edge
+         functions (Supabase)**. Na lista do meio, clique no run daquela publicacao (pela data e
+         hora). Vai abrir a pagina **Summary** do run, com um quadro do job "Publica em <loja>"
+         (confira que e a loja certa). Role a pagina para baixo, abaixo desse quadro: ali esta o
+         **resumo**, com o titulo **"No ar ANTES em `<ref>`"** e, embaixo,
+         a tabela de functions (nome, versao, data). Essa tabela E o registro oficial do desfazer
+         daquela loja naquela release. Se o resumo nao tiver "No ar ANTES", o run nao publicou
+         nada naquela loja (o passo vermelho diz por que).
+         **Se o run teve Re-run, use o registro da tentativa 1.** O Re-run grava um "No ar
+         ANTES" NOVO, que ja traz a(s) function(s) que a tentativa 1 publicou antes de falhar:
+         esse registro NAO serve para desfazer. Na pagina do run, use o seletor de tentativa no
+         alto (aparece **"Attempt #N"** quando houve Re-run), escolha **"Attempt #1"** e leia o
+         resumo dali. Pelo terminal: `gh run view <id> --attempt 1 --log` e procure o passo
+         "Lista o que esta no ar ANTES" (o registro fica so no resumo e no log; nao ha artefato).
+      2. O registro automatico cobre a **versao e o `updated_at`**. A lista sozinha nao identifica
+         o bundle: se a release pedir o conteudo (o que de fato roda), meca a mais, quando o CLI
+         deixar, `supabase functions download <nome> --project-ref <ref>` numa pasta temporaria
+         FORA do repositorio, e anote o sha256 dos arquivos baixados.
+      3. O desfazer de cada uma e o mesmo da `send-order-confirmation`: NAO e disparar o workflow
+         no SHA antigo, e sim `git revert` num commit NOVO do ramo principal e publicar esse SHA
+         pelo caminho normal; a versao do registro "No ar ANTES" e o que se compara depois.
       Nas duas lojas, o caminho central tambem publica `credenciais-email` e `auth-send-email`,
       somente pelo nome. **Se a release mudar qualquer OUTRA function** (fora dessas treze), a loja
       fica PARADA pelo nome, sem comando: canal novo ou publicacao separada e decisao do dono.
@@ -1955,6 +1968,20 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    Ele repete todo o portao, chama `vercel promote` UMA vez e roda a conferencia da frota com o
    SHA (versao, isolamento e canonico de TODOS os enderecos, e a producao oficial = o deployment
    promovido). Saida 0 = publicado e conferido.
+
+   Saida 3 (**INCERTO**) = publicado, mas a conferencia nao conseguiu ler o `version.json` de
+   algum endereco: o pedido tropecou (rede, tempo esgotado ou 5xx) nas 3 tentativas da sonda
+   (cada endereco morto custa ~52 s: 3 x 15 s de tempo esgotado + pausas de 2 s e 5 s). So sai 3
+   quando todo o resto foi provado: a pagina inicial desses enderecos respondeu (isolamento
+   conferido), a Vercel diz que eles apontam para o deployment promovido, a producao oficial e
+   ele e nenhum outro achado apareceu. Por si so, a Saida 3 NAO pede rollback. Rode o
+   `node scripts/frota/conferir-frota.mjs --sha <sha40> --vercel` que o relatorio imprime; se
+   sair 0, esta publicado e conferido. Se o endereco continuar sem responder, escale para FALHOU:
+   trate como conferencia pos-promote que falhou (Saida 1) e siga o [rollback](#rollback) com o
+   `producaoAnterior` do PRIMEIRO JSON.
+   Nunca e Saida 3: `version.json` que responde 404 ou HTML no lugar do JSON, pagina inicial ou
+   loja inteira sem resposta, ou endereco que a Vercel nao liga ao deployment promovido — isso
+   sai 1 (FALHOU).
 
    Saida 1 com a secao "PRIORIDADE ALTA — loja que acordou durante a publicação" (texto exato do relatorio) NAO pede
    rollback da frota: uma loja que estava fora do ar acordou no meio da publicacao e nao passou

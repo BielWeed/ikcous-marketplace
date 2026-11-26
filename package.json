@@ -1,7 +1,7 @@
 {
   "name": "ikcous-marketplace",
   "private": true,
-  "version": "1.5.239",
+  "version": "1.5.240",
   "description": "Marketplace IKCOUS — PWA de catálogo, carrinho e pedidos, com painel do lojista, sobre Supabase.",
   "repository": {
     "type": "git",
@@ -117,7 +117,7 @@
     "tailwindcss-animate": "^1.0.7",
     "terser": "^5.51.2",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.71.1",
+    "typescript-eslint": "^8.73.0",
     "vite": "^7.3.6",
     "vite-plugin-pwa": "^2.0.0",
     "vitest": "^4.1.10"

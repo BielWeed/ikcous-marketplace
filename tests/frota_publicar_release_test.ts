@@ -48,6 +48,7 @@ import {
   problemasAntesDoPromote,
   publicarRelease,
   resumoEmJson,
+  soEnderecosSemResposta,
   verifyJwtDoConfig,
   versoesAplicadas,
   workflowSoGanhouLojas,
@@ -403,6 +404,16 @@ function deps(ajuste = {}) {
     pedidosAoCandidato: [],
     semPorteiroNoCandidato: false,
     falhaNaRaizDoCandidato: false,
+    // O "/" do candidato (endereço .vercel.app que não é loja): o porteiro
+    // pergunta à caderneta, ela não conhece o endereço e o 503 `sem-loja` sai
+    // com `x-ikcous-caderneta: miss`. Um teste troca a resposta inteira aqui.
+    raizDoCandidato: {
+      status: 503,
+      headers: {
+        "x-ikcous-porteiro": "sem-loja",
+        "x-ikcous-caderneta": "miss",
+      },
+    },
     classesAntes: [
       { dominio: "savycollection.vercel.app", classe: "ENDERECO_ANTIGO" },
       { dominio: "ickous-marketplace.vercel.app", classe: "OK" },
@@ -449,10 +460,12 @@ function deps(ajuste = {}) {
         throw new TypeError("fetch failed");
       if (u.pathname === "/")
         return new Response("<html></html>", {
-          status: estado.semPorteiroNoCandidato ? 200 : 503,
+          status: estado.semPorteiroNoCandidato
+            ? 200
+            : estado.raizDoCandidato.status,
           headers: estado.semPorteiroNoCandidato
             ? {}
-            : { "x-ikcous-porteiro": "sem-loja" },
+            : estado.raizDoCandidato.headers,
         });
       return new Response(estado.versaoCandidato, { status: 200 });
     },
@@ -2074,6 +2087,68 @@ for (const [nome, ajuste, trecho] of [
     "sem x-ikcous-porteiro",
   ],
   [
+    "candidato cujo '/' volta com o porteiro mas sem x-ikcous-caderneta",
+    {
+      raizDoCandidato: {
+        status: 503,
+        headers: { "x-ikcous-porteiro": "sem-loja" },
+      },
+    },
+    "sem x-ikcous-caderneta",
+  ],
+  [
+    "candidato cujo '/' volta com x-ikcous-caderneta: erro",
+    {
+      raizDoCandidato: {
+        status: 503,
+        headers: {
+          "x-ikcous-porteiro": "sem-loja",
+          "x-ikcous-caderneta": "erro",
+        },
+      },
+    },
+    "x-ikcous-caderneta=erro",
+  ],
+  [
+    "candidato cujo '/' volta com x-ikcous-caderneta: ausente (variaveis da frota faltando)",
+    {
+      raizDoCandidato: {
+        status: 503,
+        headers: {
+          "x-ikcous-porteiro": "discorda",
+          "x-ikcous-caderneta": "ausente",
+        },
+      },
+    },
+    "x-ikcous-caderneta=ausente",
+  ],
+  [
+    "candidato cujo '/' e o 503 banco-indisponivel do porteiro (caderneta fora do ar)",
+    {
+      raizDoCandidato: {
+        status: 503,
+        headers: {
+          "x-ikcous-porteiro": "banco-indisponivel",
+          "x-ikcous-caderneta": "erro",
+        },
+      },
+    },
+    "a caderneta da frota não respondeu ao candidato",
+  ],
+  [
+    "candidato cujo '/' volta com x-ikcous-caderneta de valor desconhecido",
+    {
+      raizDoCandidato: {
+        status: 503,
+        headers: {
+          "x-ikcous-porteiro": "sem-loja",
+          "x-ikcous-caderneta": "MISS",
+        },
+      },
+    },
+    "x-ikcous-caderneta=MISS",
+  ],
+  [
     "candidato cujo '/' nao responde (rede)",
     { falhaNaRaizDoCandidato: true },
     '"/" do candidato não lida',
@@ -2108,6 +2183,55 @@ Deno.test("endereço que não é loja legível nem esperado: bloqueia", async ()
   const r = await executar(d, true);
   assertEquals(r.codigo, 1);
   assert(r.bloqueios.some((b) => b.motivo.includes("estranho.vercel.app")));
+});
+
+// A caderneta respondeu ao candidato: `miss` (endereço que não é loja, o caso
+// normal) ou `hit` (a caderneta conhece o endereço). Os dois passam.
+for (const [nome, raizDoCandidato] of [
+  [
+    "miss",
+    {
+      status: 503,
+      headers: {
+        "x-ikcous-porteiro": "sem-loja",
+        "x-ikcous-caderneta": "miss",
+      },
+    },
+  ],
+  [
+    "hit",
+    {
+      status: 200,
+      headers: { "x-ikcous-porteiro": "ok", "x-ikcous-caderneta": "hit" },
+    },
+  ],
+]) {
+  Deno.test(`candidato cujo '/' volta com x-ikcous-caderneta: ${nome} — passa e promove`, async () => {
+    const { d, chamadas } = deps({ raizDoCandidato });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 0, r.relatorio);
+    assertEquals(chamadas.promover, [DPL]);
+  });
+}
+
+Deno.test("o 503 banco-indisponivel do candidato explica em português por que não promove", async () => {
+  const { d, chamadas } = deps({
+    raizDoCandidato: {
+      status: 503,
+      headers: {
+        "x-ikcous-porteiro": "banco-indisponivel",
+        "x-ikcous-caderneta": "erro",
+      },
+    },
+  });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover, []);
+  const motivo = r.bloqueios.map((b) => String(b.motivo)).join("\n");
+  assertStringIncludes(motivo, "HTTP 503");
+  assertStringIncludes(motivo, "x-ikcous-porteiro banco-indisponivel");
+  assertStringIncludes(motivo, "esperado miss ou hit");
+  assertStringIncludes(motivo, "derrubaria todas as lojas");
 });
 
 Deno.test("candidato: o GET '/' leva Sec-Fetch-Dest: document + Sec-Fetch-Mode: navigate e o version.json, nao", async () => {
@@ -2147,9 +2271,16 @@ function releaseComSondasReais({
   falha = false,
   foraDoAr = new Map(),
   lojasExtras = [],
+  // ({ hostname, pathname, depois }) => Response | Error | undefined: troca a
+  // resposta de um pedido (Error = falha de rede); undefined = a de sempre.
+  responder = null,
+  // a produção oficial que a Vercel diz ter DEPOIS do promote
+  producaoDepois = DPL,
 }) {
   const { d, chamadas } = deps();
   const conferencias = [];
+  // As pausas da nova tentativa da sonda: anotadas, nunca dormidas.
+  const esperas = [];
   d.politica = {
     ...d.politica,
     enderecosEsperados: [],
@@ -2176,7 +2307,11 @@ function releaseComSondasReais({
       const depois = chamadas.promover.length > 0;
       const deploymentId = depois ? DPL : DPL_ANTERIOR;
       if (caminho.startsWith("/v9/projects/"))
-        return { targets: { production: { id: deploymentId } } };
+        return {
+          targets: {
+            production: { id: depois ? producaoDepois : DPL_ANTERIOR },
+          },
+        };
       if (!caminho.startsWith("/v4/aliases?projectId="))
         throw new Error(`consulta inesperada: ${caminho}`);
       return {
@@ -2188,8 +2323,18 @@ function releaseComSondasReais({
         pagination: { next: null },
       };
     },
+    esperar: async (ms) => {
+      esperas.push(ms);
+    },
     fetchImpl: async (url) => {
       const { hostname, pathname } = new URL(url);
+      const trocada = responder?.({
+        hostname,
+        pathname,
+        depois: chamadas.promover.length > 0,
+      });
+      if (trocada instanceof Error) throw trocada;
+      if (trocada) return trocada;
       // Página própria do porteiro (L8): loja adormecida/encerrada, sem banco.
       const parada = foraDoAr.get(hostname);
       if (parada) {
@@ -2233,7 +2378,7 @@ function releaseComSondasReais({
     conferencias.push(r);
     return r;
   };
-  return { d, chamadas, conferencias };
+  return { d, chamadas, conferencias, esperas };
 }
 
 for (const fase of ["antes", "depois"]) {
@@ -2308,6 +2453,385 @@ Deno.test("pós-promote com frota falhando: código 1 e rollback exato para a pr
   const r = await executar(d, true);
   assertEquals(r.codigo, 1);
   assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+});
+
+// ---- endereço que não responde: nova tentativa da sonda e o estado INCERTO
+// Um tropeço de rede à toa em 1 de 300-600 endereços não pode bloquear o
+// ensaio (75-150 min refeitos) nem, depois do promote, imprimir "FALHOU." e o
+// rollback da frota inteira. Antes do promote o lado seguro continua: o que
+// segue sem responder depois das novas tentativas bloqueia.
+
+const TODOS = [DOM_IKCOUS, DOM_SAVY, DOM_SAVY_EXTRA];
+const semRede = () => new TypeError("fetch failed");
+
+/** O endereço `dominio` falha a rede nas `vezes` primeiras chamadas de `caminho` (Infinity = sempre), na fase pedida. */
+function tropeca(dominio, { caminho = "/version.json", vezes, fase }) {
+  let n = 0;
+  return ({ hostname, pathname, depois }) => {
+    if (hostname !== dominio || pathname !== caminho) return undefined;
+    if ((fase === "depois") !== depois) return undefined;
+    n++;
+    return n <= vezes ? semRede() : undefined;
+  };
+}
+
+Deno.test("antes do promote: tropeço ÚNICO de rede num endereço se recupera na nova tentativa e não bloqueia", async () => {
+  const { d, chamadas, conferencias, esperas } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: tropeca(DOM_SAVY_EXTRA, { vezes: 1, fase: "antes" }),
+  });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(conferencias[0].ok, true, conferencias[0].relatorio);
+  assertEquals(esperas, [2000]);
+});
+
+Deno.test("antes do promote: 3 falhas seguidas = INALCANCAVEL e BLOQUEIA (lado seguro), sem promote", async () => {
+  const { d, chamadas, esperas } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: tropeca(DOM_SAVY_EXTRA, {
+      vezes: Number.POSITIVE_INFINITY,
+      fase: "antes",
+    }),
+  });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover, []);
+  const b = r.bloqueios.find((x) => x.alvo === "frota (antes do promote)");
+  assert(b, JSON.stringify(r.bloqueios));
+  assertStringIncludes(b.motivo, `${DOM_SAVY_EXTRA}: INALCANCAVEL`);
+  assertEquals(esperas, [2000, 5000]);
+});
+
+Deno.test("pós-promote: o ÚNICO problema é endereço que não respondeu (3 tentativas) = INCERTO, código 3, sem FALHOU nem rollback, com o comando de conferir de novo", async () => {
+  const { d, chamadas, conferencias } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: tropeca(DOM_SAVY_EXTRA, {
+      vezes: Number.POSITIVE_INFINITY,
+      fase: "depois",
+    }),
+  });
+  const r = await executar(d, true);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(conferencias.at(-1).ok, false);
+  assertEquals(r.codigo, 3, r.relatorio);
+  assert(!r.relatorio.includes("FALHOU"), r.relatorio);
+  assert(!r.relatorio.includes("vercel rollback"), r.relatorio);
+  assertStringIncludes(r.relatorio, "**INCERTO.**");
+  assertStringIncludes(r.relatorio, DOM_SAVY_EXTRA);
+  assertStringIncludes(
+    r.relatorio,
+    `node scripts/frota/conferir-frota.mjs --sha ${SHA} --vercel`,
+  );
+  assertEquals(r.bloqueios, []);
+});
+
+Deno.test("pós-promote: loja que não respondeu em NENHUM endereço (cobertura) é FALHOU, nunca INCERTO: o isolamento dela não foi conferido", async () => {
+  const fora = [DOM_SAVY, DOM_SAVY_EXTRA].map((dom) =>
+    tropeca(dom, {
+      caminho: "/",
+      vezes: Number.POSITIVE_INFINITY,
+      fase: "depois",
+    }),
+  );
+  const { d, conferencias } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: (p) => fora.map((f) => f(p)).find(Boolean),
+  });
+  const r = await executar(d, true);
+  assertStringIncludes(
+    conferencias.at(-1).relatorio,
+    "a loja Savy está cadastrada mas não foi sondada",
+  );
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
+  assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+  assert(!r.relatorio.includes("INCERTO"), r.relatorio);
+});
+
+// O INCERTO só cobre TROPEÇO (rede, tempo esgotado, 5xx) do version.json. O
+// que RESPONDE e contradiz (404, index.html no lugar do JSON) é release
+// errada: release sem version.json ou vitrine servindo a SPA no caminho.
+const vitrineQueResponde =
+  (alvos, fazer) =>
+  ({ hostname, pathname, depois }) =>
+    depois && alvos.includes(hostname) && pathname === "/version.json"
+      ? fazer()
+      : undefined;
+const http404 = () => new Response("Not Found", { status: 404 });
+const indexHtml = () =>
+  new Response("<!doctype html><title>IKCOUS</title>", {
+    status: 200,
+    headers: { "content-type": "text/html" },
+  });
+
+for (const [nome, alvos, fazer] of [
+  ["404 no version.json de UM endereço", [DOM_SAVY_EXTRA], http404],
+  ["404 no version.json de TODOS os endereços", TODOS, http404],
+  ["index.html (HTTP 200) no lugar do version.json", TODOS, indexHtml],
+  ["index.html (HTTP 200) num endereço só", [DOM_SAVY_EXTRA], indexHtml],
+]) {
+  Deno.test(`pós-promote: ${nome} = FALHOU com rollback, nunca INCERTO`, async () => {
+    const { d, chamadas, conferencias } = releaseComSondasReais({
+      aliasesAntes: TODOS,
+      aliasesDepois: TODOS,
+      responder: vitrineQueResponde(alvos, fazer),
+    });
+    const r = await executar(d, true);
+    assertEquals(chamadas.promover, [DPL]);
+    // a conferência põe isso na classe INALCANCAVEL: quem separa é o tropeço
+    for (const x of conferencias
+      .at(-1)
+      .resultados.filter((x) => alvos.includes(x.dominio)))
+      assertEquals(x.classe, "INALCANCAVEL", x.dominio);
+    assertEquals(r.codigo, 1, r.relatorio);
+    assertStringIncludes(r.relatorio, "**FALHOU.**");
+    assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+    assert(!r.relatorio.includes("INCERTO"), r.relatorio);
+    assertEquals(r.bloqueios.length, 1, JSON.stringify(r.bloqueios));
+  });
+}
+
+Deno.test("pós-promote: version.json que só estoura o TEMPO (3 tentativas), com a página e a Vercel conferidas = INCERTO, código 3", async () => {
+  const { d, conferencias, esperas } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: vitrineQueResponde(
+      [DOM_SAVY_EXTRA],
+      () => new DOMException("signal timed out", "TimeoutError"),
+    ),
+  });
+  const r = await executar(d, true);
+  const extra = conferencias
+    .at(-1)
+    .resultados.find((x) => x.dominio === DOM_SAVY_EXTRA);
+  assertEquals(extra.achados, [
+    {
+      classe: "INALCANCAVEL",
+      motivo: "version.json: timeout",
+      tropecouEm: "version.json",
+    },
+  ]);
+  assertEquals(r.codigo, 3, r.relatorio);
+  assertStringIncludes(r.relatorio, "**INCERTO.**");
+  assert(!r.relatorio.includes("FALHOU"), r.relatorio);
+  assert(!r.relatorio.includes("vercel rollback"), r.relatorio);
+  assertEquals(r.bloqueios, []);
+  assertEquals(esperas.slice(-2), [2000, 5000]);
+});
+
+Deno.test("pós-promote: a página '/' de UM endereço não respondeu (isolamento dele não conferido) = FALHOU, mesmo com a loja sondada por outro endereço", async () => {
+  const { d, conferencias } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: tropeca(DOM_SAVY_EXTRA, {
+      caminho: "/",
+      vezes: Number.POSITIVE_INFINITY,
+      fase: "depois",
+    }),
+  });
+  const r = await executar(d, true);
+  const pos = conferencias.at(-1);
+  assertEquals(pos.cobertura.lojasNaoSondadas, []);
+  const extra = pos.resultados.find((x) => x.dominio === DOM_SAVY_EXTRA);
+  assertEquals(extra.classe, "INALCANCAVEL");
+  assert(
+    extra.achados.every((a) => a.tropecouEm === "/"),
+    JSON.stringify(extra.achados),
+  );
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
+  assert(!r.relatorio.includes("INCERTO"), r.relatorio);
+});
+
+Deno.test("soEnderecosSemResposta: só devolve a lista quando NADA além de version.json que TROPEÇOU reprova, e o endereço aponta para o deployment promovido; na dúvida, null (FALHOU)", () => {
+  const sem = (dominio) => ({
+    dominio,
+    classe: "INALCANCAVEL",
+    deploymentId: DPL,
+    achados: [
+      {
+        classe: "INALCANCAVEL",
+        motivo: "version.json: timeout",
+        tropecouEm: "version.json",
+      },
+    ],
+  });
+  const okDe = (dominio) => ({
+    dominio,
+    classe: "OK",
+    deploymentId: DPL,
+    achados: [],
+  });
+  const base = {
+    ok: false,
+    resultados: [okDe("a.app"), sem("c.app"), sem("b.app")],
+    vercel: { ok: true },
+    inventario: { completo: true },
+    cobertura: { lojasNaoSondadas: [], dominiosNaoSondados: [] },
+  };
+  assertEquals(soEnderecosSemResposta(base, DPL), ["b.app", "c.app"]);
+  const comAchado = (achado) => ({
+    ...base,
+    resultados: [okDe("a.app"), { ...sem("b.app"), achados: [achado] }],
+  });
+  const nulos = {
+    "conferência ok": { ...base, ok: true },
+    "sem resultados": { ...base, resultados: undefined },
+    "vercel não lida": { ...base, vercel: { ok: false } },
+    "inventário incompleto": { ...base, inventario: { completo: false } },
+    "sem cobertura estruturada": { ...base, cobertura: undefined },
+    "endereço sumiu depois do promote": {
+      ...base,
+      cobertura: { lojasNaoSondadas: [], dominiosNaoSondados: ["d.app"] },
+    },
+    "loja inteira sem resposta (não sondada)": {
+      ...base,
+      cobertura: {
+        lojasNaoSondadas: [{ ref: SAVY, nome: "Savy" }],
+        dominiosNaoSondados: [],
+      },
+    },
+    "nenhum endereço sem resposta": { ...base, resultados: [okDe("a.app")] },
+    "outra classe": {
+      ...base,
+      resultados: [
+        ...base.resultados,
+        {
+          ...okDe("e.app"),
+          classe: "ENDERECO_ANTIGO",
+          achados: [{ classe: "ENDERECO_ANTIGO" }],
+        },
+      ],
+    },
+    "INALCANCAVEL sem achado": {
+      ...base,
+      resultados: [
+        {
+          dominio: "b.app",
+          classe: "INALCANCAVEL",
+          deploymentId: DPL,
+          achados: [],
+        },
+      ],
+    },
+    "404 (respondeu: não é tropeço)": comAchado({
+      classe: "INALCANCAVEL",
+      motivo: "version.json respondeu HTTP 404",
+    }),
+    "não é JSON (respondeu: não é tropeço)": comAchado({
+      classe: "INALCANCAVEL",
+      motivo: "version.json não é JSON",
+    }),
+    "tropeço da página '/' (isolamento não conferido)": comAchado({
+      classe: "INALCANCAVEL",
+      motivo: "amostra 1 da página: timeout",
+      tropecouEm: "/",
+    }),
+    "tropeço da sonda de redirecionamento (canônico não conferido)": comAchado({
+      classe: "INALCANCAVEL",
+      motivo: "sonda de redirecionamento: timeout",
+      tropecouEm: "redirecionamento",
+    }),
+    "tropecouEm que não é o nome do pedido": comAchado({
+      classe: "INALCANCAVEL",
+      motivo: "version.json: timeout",
+      tropecouEm: true,
+    }),
+    "endereço sem resposta que aponta para OUTRO deployment": {
+      ...base,
+      resultados: [
+        okDe("a.app"),
+        { ...sem("b.app"), deploymentId: DPL_ANTERIOR },
+      ],
+    },
+    "endereço sem resposta sem deployment na Vercel": {
+      ...base,
+      resultados: [okDe("a.app"), { ...sem("b.app"), deploymentId: null }],
+    },
+  };
+  for (const [nome, pos] of Object.entries(nulos))
+    assertEquals(soEnderecosSemResposta(pos, DPL), null, nome);
+  assertEquals(
+    soEnderecosSemResposta(base, undefined),
+    null,
+    "sem o deployment promovido",
+  );
+});
+
+Deno.test("pós-promote: endereço sem resposta mas a produção oficial NÃO virou o deployment promovido = FALHOU, nunca INCERTO", async () => {
+  const { d, conferencias } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    producaoDepois: DPL_ANTERIOR,
+    responder: tropeca(DOM_SAVY_EXTRA, {
+      vezes: Number.POSITIVE_INFINITY,
+      fase: "depois",
+    }),
+  });
+  const r = await executar(d, true);
+  // a conferência só reprova pelo endereço sem resposta; quem pega é a produção
+  const naoOk = conferencias.at(-1).resultados.filter((x) => x.classe !== "OK");
+  assertEquals(
+    naoOk.map((x) => [x.dominio, x.classe]),
+    [[DOM_SAVY_EXTRA, "INALCANCAVEL"]],
+  );
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
+  assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+  assert(!r.relatorio.includes("INCERTO"), r.relatorio);
+});
+
+Deno.test("pós-promote: versão errada (mesmo junto de endereço sem resposta) = FALHOU com rollback, código 1", async () => {
+  const velha = ({ hostname, pathname, depois }) =>
+    depois && hostname === DOM_SAVY && pathname === "/version.json"
+      ? new Response(versao(OUTRO))
+      : undefined;
+  const sumiu = tropeca(DOM_SAVY_EXTRA, {
+    vezes: Number.POSITIVE_INFINITY,
+    fase: "depois",
+  });
+  for (const [nome, responder] of [
+    ["só versão errada", velha],
+    ["versão errada + sem resposta", (p) => velha(p) ?? sumiu(p)],
+  ]) {
+    const { d } = releaseComSondasReais({
+      aliasesAntes: TODOS,
+      aliasesDepois: TODOS,
+      responder,
+    });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, `${nome}\n${r.relatorio}`);
+    assertStringIncludes(r.relatorio, "**FALHOU.**", nome);
+    assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+    assert(!r.relatorio.includes("INCERTO"), nome);
+  }
+});
+
+Deno.test("pós-promote: endereço cuja classe é INALCANCAVEL mas que TAMBÉM serve versão velha (achado escondido pela gravidade) = FALHOU", async () => {
+  const { d, conferencias } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    responder: ({ hostname, pathname, depois }) => {
+      if (!depois || hostname !== DOM_SAVY_EXTRA) return undefined;
+      return pathname === "/version.json"
+        ? new Response(versao(OUTRO))
+        : semRede();
+    },
+  });
+  const r = await executar(d, true);
+  const extra = conferencias
+    .at(-1)
+    .resultados.find((x) => x.dominio === DOM_SAVY_EXTRA);
+  assertEquals(extra.classe, "INALCANCAVEL");
+  assert(extra.achados.some((a) => a.classe === "ENDERECO_ANTIGO"));
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
 });
 
 Deno.test("pós-promote com produção oficial que não virou o deployment: falha", async () => {

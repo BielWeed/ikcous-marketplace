@@ -353,6 +353,8 @@ on:
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
+      - "scripts/frota/banco-da-caderneta/caderneta-impressao-digital.sql"
+      - "scripts/frota/banco-da-caderneta/copiar-caderneta-gerar.sql"
   push:
     branches: [develop, claude/app-major-upgrade-wmc8x2]
     paths:
@@ -670,6 +672,8 @@ on:
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
+      - "scripts/frota/banco-da-caderneta/caderneta-impressao-digital.sql"
+      - "scripts/frota/banco-da-caderneta/copiar-caderneta-gerar.sql"
   workflow_dispatch:
 
 permissions:
@@ -1633,6 +1637,16 @@ jobs:
       - name: Prova viva da caderneta que confere a chave sem bcrypt por chamada (migration 20261490000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-caderneta-confere-a-chave-sem-bcrypt-viva.cjs
+      # A caderneta muda de banco (plano caderneta-fora-do-dekxab, 26/11/2026; scripts/frota/banco-da-caderneta, sem migration nova):
+      # DOIS bancos efemeros (o clone e um segundo do mesmo molde). A impressao digital (so leitura) da a mesma resposta para a mesma
+      # caderneta e muda so o bloco do que divergiu, sem hash, atalho nem dado de loja; o gerador da copia (so leitura na origem)
+      # gera o texto que, no destino, deixa a digital igual exceto o atalho, as portas respondendo igual como anon, 2x recusa, e
+      # recusa sem gravar destino com linha, sem a 20261490, sem gatilho e origem vazia; mutantes do gerador. Os rollbacks que apagam
+      # a caderneta (20261141 e destrutivos da 20261460/20261470) recusam caderneta com linha (CADERNETA_SEMEADA) e apagam vazia ou
+      # com ikcous.apagar_caderneta = 'sim'. CLONE proprio + banco de destino proprio.
+      - name: Prova viva da caderneta que muda de banco (impressao digital, copia e rollbacks que a apagam)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-caderneta-muda-de-banco-viva.cjs
       # Migration 20261500000000 (a loja registra a saude da reconciliacao): a tabela saude_da_reconciliacao (linha unica, RLS sem politica,
       # nada para PUBLIC/anon/authenticated/service_role), a porta saude_da_reconciliacao_registrar (so service_role) e a leitura publica
       # saude_da_loja() (anon e authenticated, idade calculada no banco, nenhuma contagem de pagamento). Contador zera na boa e soma na ruim,

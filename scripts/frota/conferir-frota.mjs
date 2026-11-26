@@ -347,11 +347,48 @@ const chaveDaAmostra = (p) =>
 export const CAMINHO_DA_SONDA_DE_REDIRECT = "/produto/frota-conferencia";
 
 /**
+ * Pausas antes de cada NOVA tentativa de um pedido da sonda que TROPEÇOU (erro
+ * de rede, tempo esgotado ou 5xx no version.json): 2 novas tentativas, 3 no
+ * total. Com 300-600 endereços x 4 pedidos, um tropeço à toa virava
+ * INALCANCAVEL, bloqueava o ensaio antes do promote e, depois dele, imprimia
+ * "FALHOU." com o rollback da frota inteira (caça de 26/11/2026). Custo de um
+ * endereço morto (todo pedido estoura o tempo): ~52 s por vaga da sonda
+ * (3 x 15 s de timeout + 2 s + 5 s de pausa).
+ */
+export const ESPERAS_DA_NOVA_TENTATIVA_MS = Object.freeze([2000, 5000]);
+const esperarDeVerdade = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Faz `pedido(n)` (n = 0 na 1ª vez; 1, 2… nas novas) e repete SÓ enquanto o
+ * resultado vier com `tropecou: true` e houver espera na lista. Resposta que
+ * contradiz (404, não-JSON, versão velha, página 503) volta sem `tropecou` e
+ * fica como veio: repetir até dar "ok" mascararia o defeito. Devolve o
+ * resultado da última tentativa feita.
+ */
+async function comNovasTentativas(pedido, esperas, esperar) {
+  let r = await pedido(0);
+  for (let n = 0; r.tropecou === true && n < esperas.length; n++) {
+    await esperar(esperas[n]);
+    r = await pedido(n + 1);
+  }
+  return r;
+}
+
+// O carimbo da nova tentativa é outro: não cai na mesma resposta guardada.
+const carimbo = (base, n) => (n === 0 ? `${base}` : `${base}-n${n}`);
+
+/**
  * Sonda UM endereço: 1x version.json e AMOSTRAS x "/" (em paralelo, para
  * cair em instâncias diferentes do porteiro). `ficha` resume a página:
  * { status, caderneta, titulo, refs, publicUrl, estavel } (das amostras que
  * responderam). Com `redirecionamento: true` faz também 1 GET em
  * CAMINHO_DA_SONDA_DE_REDIRECT?y=1&t=... e registra status + Location.
+ * Cada pedido que tropeça é refeito SOZINHO (os que responderam não se
+ * repetem), com as pausas de `esperasDeNovaTentativaMs`; `esperar` é
+ * injetável para teste não dormir de verdade. O erro que sobra de um tropeço
+ * fica MARCADO (`versaoTropecou`; `errosPaginaTropecouEm[i]` = "/" ou
+ * "redirecionamento" para `errosPagina[i]`, null se não foi tropeço): quem
+ * decide "não sei" contra "errado" lê a marca, nunca o texto do erro.
  */
 export async function sondarEndereco(dominio, opcoes = {}) {
   const {
@@ -361,13 +398,19 @@ export async function sondarEndereco(dominio, opcoes = {}) {
     timeoutMs = 15000,
     amostras = AMOSTRAS,
     redirecionamento = false,
+    esperasDeNovaTentativaMs = ESPERAS_DA_NOVA_TENTATIVA_MS,
+    esperar = esperarDeVerdade,
   } = opcoes;
+  const tentar = (pedido) =>
+    comNovasTentativas(pedido, esperasDeNovaTentativaMs, esperar);
   const sonda = {
     dominio,
     versao: null,
     erroVersao: null,
+    versaoTropecou: false,
     ficha: null,
     errosPagina: [],
+    errosPaginaTropecouEm: [],
     amostras: [],
     redirecionamento: null,
   };
@@ -379,24 +422,33 @@ export async function sondarEndereco(dominio, opcoes = {}) {
       ...(headers ? { headers } : {}),
     });
   const versao = (async () => {
-    try {
-      const res = await pedir("/version.json", agora);
-      if (res.status !== 200) {
-        sonda.erroVersao = `version.json respondeu HTTP ${res.status}`;
-        return;
+    const r = await tentar(async (n) => {
+      try {
+        const res = await pedir("/version.json", carimbo(agora, n));
+        if (res.status !== 200)
+          return {
+            // 5xx é o servidor tropeçando; 404 e afins são resposta.
+            tropecou: res.status >= 500 && res.status <= 599,
+            erro: `version.json respondeu HTTP ${res.status}`,
+          };
+        return validarVersao(await res.text());
+      } catch (e) {
+        return {
+          tropecou: true,
+          erro: `version.json: ${descreverErroDeRede(e)}`,
+        };
       }
-      const v = validarVersao(await res.text());
-      if (v.erro) sonda.erroVersao = v.erro;
-      else sonda.versao = v.versao;
-    } catch (e) {
-      sonda.erroVersao = `version.json: ${descreverErroDeRede(e)}`;
-    }
+    });
+    if (r.erro) {
+      sonda.erroVersao = r.erro;
+      sonda.versaoTropecou = r.tropecou === true;
+    } else sonda.versao = r.versao;
   })();
-  const paginas = Array.from({ length: amostras }, async (_, i) => {
+  const amostraDaPagina = async (i, n) => {
     try {
       const res = await pedir(
         "/",
-        `${agora}-${i}`,
+        carimbo(`${agora}-${i}`, n),
         CABECALHOS_DE_PRIMEIRA_ABERTURA,
       );
       const html = await res.text();
@@ -416,29 +468,47 @@ export async function sondarEndereco(dominio, opcoes = {}) {
         chavePublica: extrairChavePublica(html),
       };
     } catch (e) {
-      return { erro: `amostra ${i + 1} da página: ${descreverErroDeRede(e)}` };
+      return {
+        tropecou: true,
+        erro: `amostra ${i + 1} da página: ${descreverErroDeRede(e)}`,
+      };
     }
-  });
+  };
+  const paginas = Array.from({ length: amostras }, (_, i) =>
+    tentar((n) => amostraDaPagina(i, n)),
+  );
   const redirect = (async () => {
     if (!redirecionamento) return;
-    const pedido = `${CAMINHO_DA_SONDA_DE_REDIRECT}?y=1&t=${agora}`;
-    try {
-      const res = await fetchImpl(urlDe(modelo, dominio, pedido), {
-        cache: "no-store",
-        redirect: "manual",
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      await res.text();
-      sonda.redirecionamento = {
-        status: res.status,
-        location: res.headers.get("location"),
-        pedido,
-      };
-    } catch (e) {
-      sonda.errosPagina.push(
-        `sonda de redirecionamento: ${descreverErroDeRede(e)}`,
+    const r = await tentar(async (n) => {
+      // O pedido QUE RESPONDEU é o que o Location tem de preservar.
+      const pedido = `${CAMINHO_DA_SONDA_DE_REDIRECT}?y=1&t=${carimbo(agora, n)}`;
+      try {
+        const res = await fetchImpl(urlDe(modelo, dominio, pedido), {
+          cache: "no-store",
+          redirect: "manual",
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        await res.text();
+        return {
+          redirecionamento: {
+            status: res.status,
+            location: res.headers.get("location"),
+            pedido,
+          },
+        };
+      } catch (e) {
+        return {
+          tropecou: true,
+          erro: `sonda de redirecionamento: ${descreverErroDeRede(e)}`,
+        };
+      }
+    });
+    if (r.erro) {
+      sonda.errosPagina.push(r.erro);
+      sonda.errosPaginaTropecouEm.push(
+        r.tropecou === true ? "redirecionamento" : null,
       );
-    }
+    } else sonda.redirecionamento = r.redirecionamento;
   })();
   const [, , ...resultados] = await Promise.all([versao, redirect, ...paginas]);
   // A chave publicável fica na sonda, fora das amostras e da ficha: não entra
@@ -450,9 +520,10 @@ export async function sondarEndereco(dominio, opcoes = {}) {
       sonda.chavePublica ??= chavePublica;
       return a;
     });
-  sonda.errosPagina.push(
-    ...resultados.filter((r) => r.erro).map((r) => r.erro),
-  );
+  for (const r of resultados.filter((x) => x.erro)) {
+    sonda.errosPagina.push(r.erro);
+    sonda.errosPaginaTropecouEm.push(r.tropecou === true ? "/" : null);
+  }
   if (sonda.amostras.length) {
     const primeira = sonda.amostras[0];
     sonda.ficha = {
@@ -1039,9 +1110,24 @@ export function classificar(alvo, sonda, ctx) {
     }
   }
 
-  // 2) Alcance.
-  if (sonda.erroVersao) add("INALCANCAVEL", sonda.erroVersao);
-  for (const e of sonda.errosPagina ?? []) add("INALCANCAVEL", e);
+  // 2) Alcance. Erro que veio de TROPEÇO marcado pela sonda leva `tropecouEm`
+  // (o pedido); sem a marca, é resposta que contradiz (404, não-JSON) ou sonda
+  // que não diz, e fica sem — o lado seguro para quem lê depois.
+  const alcance = (motivo, tropecouEm) =>
+    achados.push({
+      classe: "INALCANCAVEL",
+      motivo,
+      ...(tropecouEm ? { tropecouEm } : {}),
+    });
+  if (sonda.erroVersao)
+    alcance(
+      sonda.erroVersao,
+      sonda.versaoTropecou === true ? "version.json" : null,
+    );
+  (sonda.errosPagina ?? []).forEach((e, i) => {
+    const em = sonda.errosPaginaTropecouEm?.[i];
+    alcance(e, em === "/" || em === "redirecionamento" ? em : null);
+  });
 
   // 3) Versão servida.
   const vercel = ctx.vercel;
@@ -1431,6 +1517,8 @@ export async function inventariar(politica, opcoes = {}) {
     fetchImpl = fetch,
     agora = Date.now(),
     concorrencia = 6,
+    esperasDeNovaTentativaMs = ESPERAS_DA_NOVA_TENTATIVA_MS,
+    esperar = esperarDeVerdade,
   } = opcoes;
   const esperados = politica.enderecosEsperados.map((e) => e.dominio);
   const obrigatorios = [...esperados, ...enderecosExtras];
@@ -1488,6 +1576,8 @@ export async function inventariar(politica, opcoes = {}) {
       fetchImpl,
       agora,
       redirecionamento: redirecionam.has(d),
+      esperasDeNovaTentativaMs,
+      esperar,
     }),
   );
   return { origem, completo, motivoParcial, dominios, vercel, sondas };
@@ -1763,14 +1853,23 @@ export async function conferirFrota(politica, opcoes = {}) {
       .map((r) => r.foraDoAr?.ref ?? refDaLojaSondada(r.ficha)),
   );
   const dominiosSondados = new Set(resultados.map((r) => r.dominio));
+  // Estruturado para quem decide depois do promote (publicar-release.mjs):
+  // loja não sondada porque nenhum endereço dela respondeu é "não sei", não
+  // "errado"; endereço que sumiu do inventário é errado.
+  const cobertura = {
+    lojasNaoSondadas: lojasObrigatorias.filter(
+      ({ ref }) => !refsSondados.has(ref),
+    ),
+    dominiosNaoSondados: dominiosDeLojasAntes.filter(
+      (dominio) => !dominiosSondados.has(dominio),
+    ),
+  };
   const problemasDeCobertura = [
     ...problemasLojasNaoSondadas(lojasObrigatorias, refsSondados),
-    ...dominiosDeLojasAntes
-      .filter((dominio) => !dominiosSondados.has(dominio))
-      .map(
-        (dominio) =>
-          `${dominio}: endereço de loja sondado antes do promote, mas não depois`,
-      ),
+    ...cobertura.dominiosNaoSondados.map(
+      (dominio) =>
+        `${dominio}: endereço de loja sondado antes do promote, mas não depois`,
+    ),
   ];
   const ok =
     problemasDeCobertura.length === 0 &&
@@ -1797,6 +1896,7 @@ export async function conferirFrota(politica, opcoes = {}) {
     },
     grupos,
     resultados,
+    cobertura,
     vercel: vercelInfo,
     relatorio,
   };
@@ -1827,7 +1927,7 @@ function lerArgumentos(argv) {
 const USO =
   "Uso: node scripts/frota/conferir-frota.mjs --sha <40hex> [--json <arquivo>] [--vercel] [--enderecos <arquivo>]";
 
-// `deps` ({ fetchImpl, executorVercel }) existe só para teste: injeta o I/O.
+// `deps` ({ fetchImpl, executorVercel, esperar }) existe só para teste: injeta o I/O.
 export async function main(
   argv = process.argv.slice(2),
   env = process.env,
@@ -1853,6 +1953,7 @@ export async function main(
       Number(env.FROTA_TIMEOUT_MS) > 0 ? Number(env.FROTA_TIMEOUT_MS) : 15000,
     ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
     ...(deps.executorVercel ? { executorVercel: deps.executorVercel } : {}),
+    ...(deps.esperar ? { esperar: deps.esperar } : {}),
   });
   console.log(resultado.relatorio);
   if (env.GITHUB_STEP_SUMMARY)
