@@ -1273,7 +1273,10 @@ function depsDoPortao({ mudaPagamento = false } = {}) {
       new URL(url).pathname === "/"
         ? new Response("<html></html>", {
             status: 503,
-            headers: { "x-ikcous-porteiro": "sem-loja" },
+            headers: {
+              "x-ikcous-porteiro": "sem-loja",
+              "x-ikcous-caderneta": "miss",
+            },
           })
         : new Response(
             JSON.stringify({
