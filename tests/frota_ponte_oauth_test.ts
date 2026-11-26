@@ -296,8 +296,8 @@ const abrir = (m, extra = {}) =>
 
 Deno.test("lojasOAuthDo: só as lojas oauth, com nome do segredo vindo do cadastro", () => {
   assertEquals(lojasOAuthDo(cadastro()), [
-    { projeto: "loja-a", ref: REF_A, nome: NOME_A },
-    { projeto: "loja-b", ref: REF_B, nome: NOME_B },
+    { projeto: "loja-a", ref: REF_A, nome: NOME_A, ambiente: "loja-loja-a" },
+    { projeto: "loja-b", ref: REF_B, nome: NOME_B, ambiente: "loja-loja-b" },
   ]);
 });
 

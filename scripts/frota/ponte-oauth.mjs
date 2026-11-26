@@ -83,10 +83,18 @@ export class ErroDaPonte extends ErroDaGestao {
 }
 
 /**
+ * A GAVETA da loja (PLANO-AMBIENTE-POR-LOJA): o GitHub Environment que guarda
+ * o segredo dela. O repositório só guarda 100 segredos; uma gaveta por loja
+ * tira esse teto. Os workflows declaram a mesma gaveta (`loja-<projeto>`).
+ */
+export const ambienteDaLoja = (projeto) => `loja-${projeto}`;
+
+/**
  * As lojas OAuth do cadastro, com o nome do segredo VINDO do cadastro, nunca
- * derivado. Qualquer desvio lança: um cadastro torto nunca vira "nenhuma
- * loja" nem deixa a ponte mexer no segredo de uma loja pelo CLI.
- * @returns {Array<{ projeto: string, ref: string, nome: string }>}
+ * derivado, e a gaveta de cada uma. Qualquer desvio lança: um cadastro torto
+ * nunca vira "nenhuma loja" nem deixa a ponte mexer no segredo de uma loja
+ * pelo CLI.
+ * @returns {Array<{ projeto: string, ref: string, nome: string, ambiente: string }>}
  */
 export function lojasOAuthDo(cadastro) {
   const lojas = cadastro?.lojas;
@@ -136,7 +144,14 @@ export function lojasOAuthDo(cadastro) {
     }
     vistos.add(nome);
     refs.add(l.ref);
-    saida.push(Object.freeze({ projeto, ref: l.ref, nome }));
+    saida.push(
+      Object.freeze({
+        projeto,
+        ref: l.ref,
+        nome,
+        ambiente: ambienteDaLoja(projeto),
+      }),
+    );
   }
   return saida;
 }
@@ -734,7 +749,9 @@ export function criarGhReal({
       },
     );
   }
-  const permitidos = new Set(lojasOAuthDo(cadastro).map((l) => l.nome));
+  const oauth = lojasOAuthDo(cadastro);
+  const permitidos = new Set(oauth.map((l) => l.nome));
+  const gavetas = new Set(oauth.map((l) => l.ambiente));
   let emMemoria = null;
   let entrando = null;
 
@@ -746,6 +763,18 @@ export function criarGhReal({
       );
     }
   }
+
+  function exigirAmbiente(ambiente) {
+    if (typeof ambiente !== "string" || !gavetas.has(ambiente)) {
+      throw new ErroDaPonte(
+        "Ponte: o gh só mexe na gaveta (environment) de loja OAuth do cadastro.",
+        { codigo: "NOME_RECUSADO" },
+      );
+    }
+  }
+
+  const caminhoDaGaveta = (ambiente) =>
+    `/repos/${repo}/environments/${encodeURIComponent(ambiente)}`;
 
   function exigirToken() {
     if (emMemoria === null) {
@@ -827,8 +856,9 @@ export function criarGhReal({
     });
   }
 
-  /** GET/DELETE na API do GitHub com o token em memória. */
-  async function api(metodo, caminho, onde) {
+  /** GET/PUT/DELETE na API do GitHub com o token em memória. `corpo` vai
+   * em JSON (só o PUT da gaveta usa). */
+  async function api(metodo, caminho, onde, corpo) {
     const t = exigirToken();
     let r;
     try {
@@ -842,7 +872,11 @@ export function criarGhReal({
             accept: "application/vnd.github+json",
             authorization: `Bearer ${t}`,
             "x-github-api-version": "2022-11-28",
+            ...(corpo === undefined
+              ? {}
+              : { "content-type": "application/json" }),
           },
+          ...(corpo === undefined ? {} : { body: JSON.stringify(corpo) }),
         },
         prazoMs,
         onde,
@@ -856,6 +890,42 @@ export function criarGhReal({
       );
     }
     return r;
+  }
+
+  /** O erro de uma resposta que não é a esperada: recusa pelo LIMITE de
+   * pedidos sobe com codigo LIMITE_DO_GITHUB e `esperarMs` (quanto o GitHub
+   * pediu); qualquer outra, com codigo HTTP. */
+  function erroDaResposta(onde, { status, headers, texto }) {
+    const esperarMs = esperaDoLimite(status, headers, texto, agora);
+    if (esperarMs === null) {
+      return new ErroDaPonte(`Ponte: ${onde} respondeu HTTP ${status}.`, {
+        codigo: "HTTP",
+        status,
+      });
+    }
+    const e = new ErroDaPonte(
+      `Ponte: ${onde} respondeu HTTP ${status}: limite de pedidos do GitHub (pediu ${Math.ceil(esperarMs / 1000)} s).`,
+      { codigo: "LIMITE_DO_GITHUB", status },
+    );
+    e.esperarMs = esperarMs;
+    return e;
+  }
+
+  /** A gaveta da loja existe depois disto: GET 200 não faz nada; GET 404
+   * cria com PUT {} (o `gh secret set --env` NÃO cria: falha com 404,
+   * medido em 26/11). Só gaveta de loja OAuth do cadastro, conferida antes
+   * da rede. */
+  async function garantirAmbiente(ambiente) {
+    exigirAmbiente(ambiente);
+    exigirToken();
+    const caminho = caminhoDaGaveta(ambiente);
+    const onde = `GitHub GET gaveta ${ambiente}`;
+    const r = await api("GET", caminho, onde);
+    if (r.status === 200) return;
+    if (r.status !== 404) throw erroDaResposta(onde, r);
+    const ondePut = `GitHub PUT gaveta ${ambiente}`;
+    const p = await api("PUT", caminho, ondePut, {});
+    if (p.status !== 200) throw erroDaResposta(ondePut, p);
   }
 
   function jsonOuNull(texto) {
@@ -930,6 +1000,8 @@ export function criarGhReal({
       emMemoria = null;
     },
 
+    garantirAmbiente,
+
     /** Quem tem push, maintain ou admin, em todas as afiliações. */
     async comEscrita() {
       exigirToken();
@@ -984,26 +1056,12 @@ export function criarGhReal({
       exigirNome(nome);
       exigirToken();
       const onde = `GitHub DELETE ${nome}`;
-      const { status, texto, headers } = await api(
+      const r = await api(
         "DELETE",
         `/repos/${repo}/actions/secrets/${nome}`,
         onde,
       );
-      if (status !== 204) {
-        const esperarMs = esperaDoLimite(status, headers, texto, agora);
-        if (esperarMs === null) {
-          throw new ErroDaPonte(`Ponte: ${onde} respondeu HTTP ${status}.`, {
-            codigo: "HTTP",
-            status,
-          });
-        }
-        const e = new ErroDaPonte(
-          `Ponte: ${onde} respondeu HTTP ${status}: limite de pedidos do GitHub (pediu ${Math.ceil(esperarMs / 1000)} s).`,
-          { codigo: "LIMITE_DO_GITHUB", status },
-        );
-        e.esperarMs = esperarMs;
-        throw e;
-      }
+      if (r.status !== 204) throw erroDaResposta(onde, r);
     },
 
     /** `gh secret set NOME --app actions --repo R`, valor pelo stdin sem quebra de linha. */
