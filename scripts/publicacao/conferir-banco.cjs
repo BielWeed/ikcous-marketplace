@@ -3523,7 +3523,25 @@ const ROL_DA_192B = [
   "rls_admin_atual(): corpo da 20261197000000, SECURITY DEFINER, EXECUTE de authenticated e nao de anon (a base do pre-voo)",
   "storage.objects: existe com RLS ligada (a base do pre-voo)",
 ];
+// Lote 193 (20261560000000, o infinito nao entra no banco: CHECKs que recusam Infinity e -Infinity na taxa de entrega local, no preco
+// proprio da variacao e no valor do cupom, separados das restricoes da 20261400000000). A 193a prova as tres restricoes com a regra
+// exata (4 itens); a 193b prova que as tres ainda NAO existem e a base do pre-voo (as colunas numeric e preco_venda COM precisao) (5).
+const ROL_DA_193A = [
+  "controle: catalogo publico visivel",
+  "store_config: CHECK store_config_local_delivery_fee_finito (sem Infinity nem -Infinity na taxa de entrega local) existe",
+  "product_variants: CHECK product_variants_price_override_finito (sem Infinity nem -Infinity no preco proprio da variacao; NULL segue valendo) existe",
+  "coupons: CHECK coupons_value_finito (sem Infinity nem -Infinity no valor do cupom) existe",
+];
+const ROL_DA_193B = [
+  "controle: catalogo publico visivel",
+  "store_config.local_delivery_fee: e numeric e o CHECK store_config_local_delivery_fee_finito ainda NAO existe",
+  "product_variants.price_override: e numeric e o CHECK product_variants_price_override_finito ainda NAO existe",
+  "coupons.value: e numeric e o CHECK coupons_value_finito ainda NAO existe",
+  "produtos.preco_venda: e numeric COM precisao (o tipo ja recusa infinito; a base do pre-voo)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "193a-conferir-o-infinito-nao-entra-no-banco-aplicado": ROL_DA_193A,
+  "193b-antes-o-infinito-nao-entra-no-banco-ausente": ROL_DA_193B,
   "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado": ROL_DA_192A,
   "192b-antes-o-admin-copia-e-apaga-as-fotos-ausente": ROL_DA_192B,
   "188a-conferir-o-livro-de-registro-aplicado": ROL_DA_188A,
