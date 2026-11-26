@@ -617,6 +617,23 @@ describe("Notificações v5 — funções preservadas", () => {
     expect(container?.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it("pedidos esperando cortados: diz que sao os mais antigos e manda ver o resto em Pedidos (26/11/2026)", async () => {
+    // Black Friday com mais pedidos a preparar que o teto: a lista traz os
+    // mais antigos (os que mais urgem) e a tela precisa dizer que ha mais.
+    LISTAS_CORTADAS = ["pedido"];
+    await montar();
+
+    const aviso = container?.querySelector('[data-lista-cortada="pedido"]');
+    expect(aviso?.textContent).toContain(
+      "Há mais pedidos esperando você do que cabem nesta tela",
+    );
+    expect(aviso?.textContent).toContain("os mais antigos");
+    expect(aviso?.textContent).toContain("Pedidos");
+    expect(aviso?.textContent).not.toContain("undefined");
+    expect(aviso?.querySelector("button")).toBeNull();
+    expect(container?.querySelector('[role="alert"]')).toBeNull();
+  });
+
   it("lista cortada: o rodape nao afirma 'no total' (a conta seria falsa); sem corte, continua 'no total'", async () => {
     await montar();
     expect(container?.textContent).toContain("4 avisos no total");

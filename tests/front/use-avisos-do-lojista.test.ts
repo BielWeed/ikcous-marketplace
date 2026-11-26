@@ -1645,3 +1645,77 @@ describe("useAvisosDoLojista — a lista acompanha o sino (08/11/2026)", () => {
     expect(tabelasConsultadas.length).toBe(consultasAntes);
   });
 });
+
+// 26/11/2026: a consulta dos pedidos "esperando voce" nao tinha teto, ordem nem
+// contagem. O servidor corta sozinho em 1.000, em ordem qualquer: numa Black
+// Friday com mais de 1.000 pedidos a preparar, o MAIS ANTIGO (o que mais urge)
+// podia ficar de fora, e a tela nao dizia que havia mais. Mesmo mecanismo das
+// outras fontes: teto, ordem, `count: "exact"` e `listasCortadas`.
+describe("useAvisosDoLojista — mais pedidos esperando do que o teto (26/11/2026)", () => {
+  function pedidos(quantidade: number) {
+    return Array.from({ length: quantidade }, (_, i) => ({
+      ...pedidoDeExemplo(),
+      id: `ped-${i}`,
+    }));
+  }
+
+  function consultaDosPedidosPendentes() {
+    return CONSULTAS_DE_PEDIDOS.find((calls) =>
+      calls.some((c) => c[0] === "in" && c[1] === "status"),
+    );
+  }
+
+  it("pede os 100 MAIS ANTIGOS primeiro, com a contagem exata", async () => {
+    await montarSonda();
+
+    const consulta = consultaDosPedidosPendentes();
+    expect(consulta).toContainEqual([
+      "select",
+      "id, customer_name, total, created_at",
+      { count: "exact" },
+    ]);
+    expect(consulta).toContainEqual([
+      "order",
+      "created_at",
+      { ascending: true },
+    ]);
+    expect(consulta).toContainEqual(["limit", 100]);
+  });
+
+  it("100 pedidos lidos de 1.500: mostra os 100 e marca a lista como cortada, sem acusar falha", async () => {
+    RESPOSTA_PEDIDOS = { data: pedidos(100), count: 1500, error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.filter((a) => a.tipo === "pedido")).toHaveLength(100);
+    expect(atual().listasCortadas).toEqual(["pedido"]);
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("controle: contagem igual ao que veio nao e lista cortada", async () => {
+    RESPOSTA_PEDIDOS = { data: pedidos(100), count: 100, error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().listasCortadas).toEqual([]);
+  });
+
+  it("sem contagem na resposta: lista cheia (100) e tratada como cortada, lista curta nao", async () => {
+    RESPOSTA_PEDIDOS = { data: pedidos(100), error: null };
+    const cheia = await montarSonda();
+    expect(cheia.atual().listasCortadas).toEqual(["pedido"]);
+
+    RESPOSTA_PEDIDOS = { data: pedidos(99), error: null };
+    const curta = await montarSonda();
+    expect(curta.atual().listasCortadas).toEqual([]);
+  });
+
+  it("pedidos fora do ar: a fonte falha e nao vira lista cortada", async () => {
+    RESPOSTA_PEDIDOS = { data: null, error: { message: "caiu" } };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toContain("pedido");
+    expect(atual().listasCortadas).toEqual([]);
+  });
+});
