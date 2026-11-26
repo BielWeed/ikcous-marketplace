@@ -413,6 +413,8 @@ on:
           - 191b-antes-a-loja-nova-nasce-com-a-ficha-ausente
           - 190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado
           - 190b-antes-a-loja-grande-nao-trava-o-balcao-ausente
+          - 192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado
+          - 192b-antes-o-admin-copia-e-apaga-as-fotos-ausente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

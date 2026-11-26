@@ -1452,6 +1452,160 @@ Deno.test("deriva antiga (arquivo que a release não mudou) aparece mas não blo
   assertStringIncludes(r.relatorio, "deriva antiga");
 });
 
+// Loja nova (L1b do plano nova-loja, 26/11/2026): a function que FALTA na loja
+// e que a release não mudou continua DERIVA_ANTIGA (não bloqueia), mas agora
+// ganha o comando de publicar — antes nenhum comando saía e a loja nova nunca
+// recebia as functions.
+const CMD_WEBHOOK_SAVY = `gh workflow run publicar-functions.yml --ref "${canais.ramoDaRelease}" -f "projeto=savy" -f "functions=webhook-mercadopago" -f "expected_sha=${TOPO}"`;
+
+/** O pacote no ar da loja `ref` SEM as functions `nomes` (sem o `delete`). */
+function tirarDoAr(estado, ref, ...nomes) {
+  estado.noAr[ref] = Object.fromEntries(
+    Object.entries(estado.noAr[ref]).filter(([n]) => !nomes.includes(n)),
+  );
+}
+
+for (const promover of [false, true]) {
+  Deno.test(`function AUSENTE e inalterada (publicável): não bloqueia e o relatório imprime o comando de publicar (${promover ? "promove" : "ensaio"})`, async () => {
+    const { d, estado, chamadas } = deps();
+    tirarDoAr(estado, SAVY, "webhook-mercadopago");
+    const r = await executar(d, promover);
+    assertEquals(r.codigo, 0, r.relatorio);
+    assertEquals(chamadas.promover, promover ? [DPL] : []);
+    assert(
+      !r.bloqueios.some((b) => b.motivo.includes("webhook-mercadopago")),
+      JSON.stringify(r.bloqueios),
+    );
+    // a falta aparece na seção da loja
+    assertStringIncludes(
+      r.relatorio,
+      "- deriva antiga (não bloqueia esta release): webhook-mercadopago — não publicada nesta loja",
+    );
+    // e o comando sai, uma vez, só para a loja que não tem a function
+    assertEquals(comandosGh(r.relatorio), [CMD_WEBHOOK_SAVY]);
+    // nada foi baixado da function que não existe
+    assert(!chamadas.baixar.includes(`${SAVY}:webhook-mercadopago`));
+  });
+}
+
+Deno.test("function AUSENTE e inalterada que o canal NÃO publica: não bloqueia, sem comando gh, e o relatório diz por quê", async () => {
+  const { d, estado } = deps();
+  tirarDoAr(estado, SAVY, "calculate-shipping");
+  const r = await executar(d);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), []);
+  assertStringIncludes(
+    r.relatorio,
+    "functions calculate-shipping faltam nesta loja",
+  );
+  assert(
+    !r.relatorio.includes("mudaram na release"),
+    "a falta inalterada não pode ser descrita como mudança da release",
+  );
+});
+
+Deno.test("deriva antiga de function PRESENTE (conteúdo velho, release não mudou): continua sem comando algum", async () => {
+  const { d, estado } = deps();
+  estado.noAr[SAVY]["webhook-mercadopago"] = new Map([
+    ["supabase/functions/webhook-mercadopago/index.ts", "wh-antigo"],
+  ]);
+  const r = await executar(d);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertStringIncludes(r.relatorio, "deriva antiga");
+  assertEquals(comandosGh(r.relatorio), []);
+  assert(!r.relatorio.includes("faltam nesta loja"));
+});
+
+Deno.test("function AUSENTE inalterada + outra que mudou na release: bloqueia SÓ pela que mudou e UM comando publica as duas, na ordem do SHA", async () => {
+  const { d, estado } = deps();
+  tirarDoAr(estado, SAVY, "criar-pagamento", "webhook-mercadopago");
+  const r = await executar(d);
+  assertEquals(r.codigo, 1);
+  const motivosSavy = r.bloqueios
+    .filter((b) => b.alvo.includes(SAVY))
+    .map((b) => b.motivo);
+  assertEquals(motivosSavy, [
+    "function criar-pagamento: não publicada nesta loja",
+  ]);
+  assertEquals(comandosGh(r.relatorio), [
+    `gh workflow run publicar-functions.yml --ref "${canais.ramoDaRelease}" -f "projeto=savy" -f "functions=criar-pagamento,webhook-mercadopago" -f "expected_sha=${TOPO}"`,
+  ]);
+});
+
+Deno.test("comandosDeConserto: function AUSENTE inalterada respeita as mesmas travas (banco antes; topo de functions igual; canal que publica)", () => {
+  const loja = { titulo: "Savy", ref: SAVY };
+  const canal = canais.canais[SAVY];
+  const ctx = {
+    ramo: canais.ramoDaRelease,
+    topo: TOPO,
+    topoBancoIgual: true,
+    topoFunctionsIgual: true,
+    nomesPorVersao: new Map(),
+  };
+  const ausente = {
+    nome: "webhook-mercadopago",
+    estado: "DERIVA_ANTIGA",
+    motivo: "não publicada nesta loja",
+    ausente: true,
+  };
+  const pront = (extra = {}) => ({
+    lotes: [],
+    funcoes: [ausente],
+    bancoPronto: true,
+    ...extra,
+  });
+  const gh = (cmds) => cmds.filter((l) => l.startsWith("gh "));
+  // controle: tudo certo → um comando
+  assertEquals(gh(comandosDeConserto(loja, pront(), canal, ctx)), [
+    CMD_WEBHOOK_SAVY,
+  ]);
+  // banco não pronto → nenhum comando, o aviso de ordem
+  const semBanco = comandosDeConserto(
+    loja,
+    pront({ bancoPronto: false }),
+    canal,
+    ctx,
+  );
+  assertEquals(gh(semBanco), []);
+  assertStringIncludes(semBanco.join("\n"), "SÓ depois do banco pronto");
+  // topo com functions diferentes → nenhum comando
+  assertEquals(
+    gh(
+      comandosDeConserto(loja, pront(), canal, {
+        ...ctx,
+        topoFunctionsIgual: false,
+      }),
+    ),
+    [],
+  );
+  // sem topo lido → nenhum comando
+  assertEquals(
+    gh(comandosDeConserto(loja, pront(), canal, { ...ctx, topo: null })),
+    [],
+  );
+  // DERIVA_ANTIGA SEM a marca de ausente (function presente com conteúdo
+  // velho) → nenhum comando: o comportamento antigo desse estado não muda
+  assertEquals(
+    comandosDeConserto(
+      loja,
+      pront({ funcoes: [{ ...ausente, ausente: undefined }] }),
+      canal,
+      ctx,
+    ),
+    [],
+  );
+  // EM_DIA com ausente:true (dado incoerente) também não vira comando
+  assertEquals(
+    comandosDeConserto(
+      loja,
+      pront({ funcoes: [{ ...ausente, estado: "EM_DIA" }] }),
+      canal,
+      ctx,
+    ),
+    [],
+  );
+});
+
 Deno.test("verify_jwt diferente do config.toml: bloqueia", async () => {
   const { d, estado } = deps();
   estado.verifyJwt = { "webhook-mercadopago": true };
@@ -3406,6 +3560,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "188a-conferir-o-livro-de-registro-aplicado",
     "191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado",
     "190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado",
+    "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
   ]);

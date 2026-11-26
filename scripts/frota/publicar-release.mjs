@@ -820,6 +820,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "191b-antes-a-loja-nova-nasce-com-a-ficha-ausente",
   "190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado",
   "190b-antes-a-loja-grande-nao-trava-o-balcao-ausente",
+  "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado",
+  "192b-antes-o-admin-copia-e-apaga-as-fotos-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
@@ -1554,10 +1556,14 @@ export async function prontidaoDaLoja(loja, canal, ctx) {
             normalizar(esperadosBase.get(c) ?? null) !== normalizar(v),
         ) ||
         esperadosBase.size !== esperadosSha.size;
+      // `ausente` separa a function que FALTA na loja da deriva de uma function
+      // presente com conteúdo velho: só a que falta ganha comando de publicar
+      // mesmo sem bloquear (loja nova; ver comandosDeConserto).
       r.funcoes.push({
         nome,
         estado: mudou ? "NAO_PRONTA" : "DERIVA_ANTIGA",
         motivo: "não publicada nesta loja",
+        ausente: true,
       });
       continue;
     }
@@ -1685,7 +1691,25 @@ export function comandosDeConserto(loja, pront, canal, ctx) {
       `# ${quem} — PARADO, sem comando: functions ${fora.join(", ")} mudaram na release, mas o canal ${canal.functions} só publica ${[...publicaveis].join(", ") || "(nenhuma declarada)"} — decisão do dono antes de publicar`,
     );
   }
-  const funcoes = naoProntas.filter((n) => publicaveis.has(n));
+  // A function que FALTA na loja e que a release não mudou (DERIVA_ANTIGA com
+  // `ausente`) não bloqueia, mas também ganha o comando: sem ele a loja nova
+  // nunca recebia as functions. Mesmas travas das não prontas (canal que
+  // publica, banco antes, topo igual). A deriva de function PRESENTE continua
+  // sem comando.
+  const ausentes = pront.funcoes
+    .filter((x) => x.estado === "DERIVA_ANTIGA" && x.ausente === true)
+    .map((x) => x.nome);
+  const ausentesFora = ausentes.filter((n) => !publicaveis.has(n));
+  if (ausentesFora.length) {
+    cmds.push(
+      `# ${quem} — sem comando: functions ${ausentesFora.join(", ")} faltam nesta loja (a release não as mudou; não bloqueiam), mas o canal ${canal.functions} só publica ${[...publicaveis].join(", ") || "(nenhuma declarada)"} — decisão do dono antes de publicar`,
+    );
+  }
+  // Na ordem de pront.funcoes (a do SHA): sem ausentes, a lista é a de antes.
+  const aPublicar = new Set([...naoProntas, ...ausentes]);
+  const funcoes = pront.funcoes
+    .map((x) => x.nome)
+    .filter((n) => aPublicar.has(n) && publicaveis.has(n));
   if (funcoes.length) {
     if (!pront.bancoPronto) {
       cmds.push(
@@ -2060,6 +2084,18 @@ export async function publicarRelease(opcoes, deps) {
       });
     const c = comandosDeConserto(loja, pront, canal, ctxConserto);
     if (c.length) consertos.push(...c, "");
+  }
+  // Sem bloqueio, o único conserto possível é o de function que FALTA numa loja
+  // e que a release não mudou (não bloqueia): os comandos saem aqui, porque a
+  // seção 4 só os imprime quando há bloqueio.
+  if (!bloqueios.length && consertos.length) {
+    linhas.push(
+      "Functions que faltam em loja (NÃO bloqueiam esta release: a release não as mudou). Para publicá-las:",
+      "```",
+      ...consertos,
+      "```",
+      "",
+    );
   }
 
   // 4. portão
