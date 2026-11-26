@@ -41,7 +41,10 @@ const PRAZO_PADRAO_MS = 30_000;
  * login (as CAMPOS_URLS de scripts/publicacao/login-da-loja-regras.cjs) e o
  * Send Email Hook (as CAMPOS_HOOK de scripts/publicacao/ativar-email-do-login.cjs).
  * Tipos da spec `UpdateAuthConfigBody` (https://api.supabase.com/api/v1-json),
- * sem o `null` que ela aceita: aqui ninguém apaga site_url nem o hook. Qualquer
+ * sem o `null` que ela aceita (aqui `null` é recusado em todas). Só o tipo se
+ * confere: `hook_send_email_enabled: false` e texto vazio ("") passam, então
+ * desligar o hook ou esvaziar o endereço dele É possível por aqui. O `site_url`
+ * vazio quem barra é o servidor (a spec exige `pattern: ^[^,]+$`). Qualquer
  * outra chave (smtp_*, mailer_*, external_*, hook_* de outro gancho) é recusada
  * ANTES da rede.
  */

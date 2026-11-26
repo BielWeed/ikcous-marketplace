@@ -2085,10 +2085,12 @@ export async function publicarRelease(opcoes, deps) {
   }
   // Sem bloqueio, o único conserto possível é o de function que FALTA numa loja
   // e que a release não mudou (não bloqueia): os comandos saem aqui, porque a
-  // seção 4 só os imprime quando há bloqueio.
+  // seção 4 só os imprime quando há bloqueio. Quando o bloco só tem linhas
+  // "# … sem comando" (canal que não publica, topo diferente), o título não
+  // promete comando.
   if (!bloqueios.length && consertos.length) {
     linhas.push(
-      "Functions que faltam em loja (NÃO bloqueiam esta release: a release não as mudou). Para publicá-las:",
+      `Functions que faltam em loja (NÃO bloqueiam esta release: a release não as mudou). ${consertos.some((l) => l.startsWith("gh ")) ? "Para publicá-las:" : "Nenhuma tem comando de publicar daqui; o motivo:"}`,
       "```",
       ...consertos,
       "```",
