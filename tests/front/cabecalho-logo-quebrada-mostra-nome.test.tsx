@@ -8,7 +8,7 @@ vi.mock("@/contexts/StoreContext", () => ({
     config: {
       storeName: "Loja de ensaio",
       logoUrl:
-        "https://exemplo.supabase.co/storage/v1/object/public/fotos/logo.png",
+        "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/fotos/logo.png",
     },
   }),
 }));
