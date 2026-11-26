@@ -6,6 +6,7 @@ SET LOCAL statement_timeout = '30s';
 
 DROP TRIGGER IF EXISTS tr_assinatura_marca_suspensa_desde ON public.assinatura_da_loja;
 DROP FUNCTION IF EXISTS public.marcar_suspensa_desde();
+DROP FUNCTION IF EXISTS public.motivo_da_loja_nao_aceitar_pedido();
 DROP FUNCTION IF EXISTS public.data_da_pausa_de_vendas(date, date, date, date);
 
 NOTIFY pgrst, 'reload schema';

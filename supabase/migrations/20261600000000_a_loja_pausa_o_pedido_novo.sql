@@ -155,3 +155,62 @@ CREATE OR REPLACE TRIGGER tr_assinatura_marca_suspensa_desde
   AFTER INSERT OR UPDATE OF status ON public.assinatura_da_loja
   FOR EACH ROW
   EXECUTE FUNCTION public.marcar_suspensa_desde();
+
+-- ===== (4) o motivo de a loja nao aceitar pedido novo agora: 'manutencao', 'vendas_pausadas' ou NULL (aceita) =====
+
+CREATE OR REPLACE FUNCTION public.motivo_da_loja_nao_aceitar_pedido()
+ RETURNS text
+ LANGUAGE plpgsql
+ STABLE
+ SECURITY DEFINER
+ SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_manutencao boolean;
+  v_vale boolean;
+  v_suspensa_desde date;
+  v_status text;
+  v_teste_ate date;
+  v_proxima date;
+  v_pausa_em date;
+  v_inicio date;
+  v_hoje date := (now() AT TIME ZONE 'America/Sao_Paulo')::date;
+BEGIN
+  -- (a) Manutencao: store_config.manutencao da linha 1 (a que a ferramenta da frota liga). Vence a pausa.
+  SELECT s.manutencao INTO v_manutencao FROM public.store_config s WHERE s.id = 1;
+  IF v_manutencao IS TRUE THEN
+    RETURN 'manutencao';
+  END IF;
+
+  -- (b) Vendas pausadas por assinatura: as 5 chaves JUNTAS. Qualquer uma faltando = aceita (o que acontece hoje).
+  --     Se um rollback tirar uma tabela da porta (20261177000000, 20261399998000) ou a desta migration, aceita, sem erro.
+  IF to_regclass('public.pausa_de_vendas') IS NULL OR to_regclass('public.assinatura_da_loja') IS NULL
+     OR to_regclass('public.assinatura_da_loja_chave') IS NULL THEN
+    RETURN NULL;
+  END IF;
+  -- 1. ligada nesta loja (so o dono do banco grava; Savy e IKCOUS nunca)
+  SELECT p.vale_pela_assinatura, p.suspensa_desde INTO v_vale, v_suspensa_desde FROM public.pausa_de_vendas p WHERE p.id = 1;
+  IF v_vale IS NOT TRUE THEN
+    RETURN NULL;
+  END IF;
+  -- 2. a gestao esta ligada (a chave da porta foi definida)
+  IF NOT EXISTS (SELECT 1 FROM public.assinatura_da_loja_chave) THEN
+    RETURN NULL;
+  END IF;
+  -- 3. o pedido de pausa: status suspensa (atrasada NUNCA pausa: pausar e' decisao manual)
+  SELECT a.status, a.teste_ate, a.proxima_cobranca_em, a.pausa_em INTO v_status, v_teste_ate, v_proxima, v_pausa_em
+    FROM public.assinatura_da_loja a WHERE a.id = 1;
+  IF v_status IS DISTINCT FROM 'suspensa' THEN
+    RETURN NULL;
+  END IF;
+  -- 4 e 5. passou o minimo, o dia da suspensa e o dia prometido pela gestao (nunca antes de pausa_em), em dia util
+  v_inicio := public.data_da_pausa_de_vendas(v_teste_ate, v_proxima, v_suspensa_desde, v_pausa_em);
+  IF v_inicio IS NULL OR v_hoje < v_inicio THEN
+    RETURN NULL;
+  END IF;
+  RETURN 'vendas_pausadas';
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.motivo_da_loja_nao_aceitar_pedido() FROM PUBLIC, anon, authenticated, service_role;
+COMMENT ON FUNCTION public.motivo_da_loja_nao_aceitar_pedido() IS 'Por que a loja nao aceita pedido NOVO agora: manutencao (store_config.manutencao, vence), vendas_pausadas (pausa_de_vendas ligada, chave da gestao definida, cartao suspensa e hoje em Sao Paulo >= data_da_pausa_de_vendas) ou NULL (aceita). Todo caso duvidoso, inclusive tabela ausente, aceita. EXECUTE de ninguem de aplicacao.';

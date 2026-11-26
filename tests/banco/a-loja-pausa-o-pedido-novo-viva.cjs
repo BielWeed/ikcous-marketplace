@@ -606,6 +606,299 @@ prova(
   },
 );
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// (4) o motivo: manutencao, vendas_pausadas ou NULL, lido na hora (as 5 chaves da pausa por assinatura; a manutencao vence)
+// ---------------------------------------------------------------------------------------------------------------------------
+/**
+ * As datas da loja PAUSADA, relativas a hoje (Sao Paulo), para o inicio cair numa SEGUNDA no passado (o fim de semana nunca
+ * empurra para depois de hoje): segunda = a segunda da semana de (hoje - 14). Pagante: proxima = segunda - 11 (10 + 1 = a
+ * segunda). Teste: teste_ate = proxima = segunda - 4 (3 + 1) e pausa_em = a segunda.
+ */
+const datasDaPausa = async () =>
+  um(
+    `WITH h AS (SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date AS hoje),
+          s AS (SELECT hoje, date_trunc('week', hoje - 14)::date AS segunda FROM h)
+     SELECT hoje::text, segunda::text, (segunda - 11)::text AS proxima_pagante, (segunda - 4)::text AS proxima_teste,
+            (segunda - 1)::text AS desde, (hoje + 7)::text AS futuro FROM s`,
+  );
+/**
+ * Poe a loja no estado pedido, por escrita direta do dono (sem a porta): o cartao, a chave e a pausa. `cartao` null = sem linha;
+ * `pausa` null = sem linha. A marca do gatilho roda no INSERT do cartao; a linha da pausa e' escrita DEPOIS (ela manda).
+ */
+async function porLoja({ cartao, chave = true, pausa, manutencao = false }) {
+  await C().query("DELETE FROM public.assinatura_da_loja");
+  await C().query("DELETE FROM public.assinatura_da_loja_chave");
+  await C().query("DELETE FROM public.pausa_de_vendas");
+  await C().query(
+    `INSERT INTO public.store_config (id, manutencao) VALUES (1, $1)
+     ON CONFLICT (id) DO UPDATE SET manutencao = EXCLUDED.manutencao`,
+    [manutencao],
+  );
+  if (chave)
+    await C().query(
+      "INSERT INTO public.assinatura_da_loja_chave (id, chave_hash) VALUES (1, $1)",
+      [HASH],
+    );
+  if (cartao)
+    await C().query(
+      `INSERT INTO public.assinatura_da_loja (id, plano, status, ciclo, valor_mensal, teste_ate, proxima_cobranca_em, pausa_em, atualizado_em)
+       VALUES (1, 'Pro', $1, 'mensal', 250, $2::date, $3::date, $4::date, now())`,
+      [
+        cartao.status,
+        cartao.teste_ate ?? null,
+        cartao.proxima ?? null,
+        cartao.pausa_em ?? null,
+      ],
+    );
+  // a marca do INSERT acima pode ter criado a linha: o estado pedido e' o desta funcao
+  await C().query("DELETE FROM public.pausa_de_vendas");
+  if (pausa)
+    await C().query(
+      "INSERT INTO public.pausa_de_vendas (id, vale_pela_assinatura, ligada_em, suspensa_desde) VALUES (1, $1, now(), $2::date)",
+      [pausa.vale, pausa.desde ?? null],
+    );
+}
+const motivo = async () => {
+  const x = await P.tentar(
+    null,
+    "SELECT public.motivo_da_loja_nao_aceitar_pedido() AS m",
+  );
+  return x.erro ? `ERRO ${x.codigo} ${x.erro}` : x.linhas[0].m;
+};
+/** O estado PAUSADO de pagante (todas as chaves ligadas). `mudar` desliga uma. */
+const pausadaPagante = (d, mudar = {}) => ({
+  cartao: { status: "suspensa", proxima: d.proxima_pagante, ...mudar.cartao },
+  pausa: { vale: true, desde: d.desde, ...mudar.pausa },
+  ...mudar.loja,
+});
+
+async function motivos() {
+  const d = await datasDaPausa();
+  const r = {};
+  const caso = async (nome, estado, esperado) => {
+    await porLoja(estado);
+    const m = await motivo();
+    r[nome] = m === esperado || `${m} (esperado ${esperado})`;
+  };
+  await caso(
+    "normal",
+    { cartao: { status: "ativa", proxima: d.proxima_pagante } },
+    null,
+  );
+  await caso("todasLigadasPagante", pausadaPagante(d), "vendas_pausadas");
+  await caso(
+    "todasLigadasTeste",
+    pausadaPagante(d, {
+      cartao: {
+        teste_ate: d.proxima_teste,
+        proxima: d.proxima_teste,
+        pausa_em: d.segunda,
+      },
+    }),
+    "vendas_pausadas",
+  );
+  // cada chave sozinha desligada: NULL
+  await caso(
+    "semCartao",
+    pausadaPagante(d, { cartao: null, loja: { cartao: null } }),
+    null,
+  );
+  await caso("semChave", pausadaPagante(d, { loja: { chave: false } }), null);
+  await caso("naoLigada", pausadaPagante(d, { pausa: { vale: false } }), null);
+  await caso(
+    "semLinhaDePausa",
+    pausadaPagante(d, { loja: { pausa: null } }),
+    null,
+  );
+  await caso(
+    "atrasada",
+    pausadaPagante(d, { cartao: { status: "atrasada" } }),
+    null,
+  );
+  await caso("ativa", pausadaPagante(d, { cartao: { status: "ativa" } }), null);
+  await caso(
+    "semProxima",
+    pausadaPagante(d, { cartao: { proxima: null } }),
+    null,
+  );
+  await caso(
+    "semSuspensaDesde",
+    pausadaPagante(d, { pausa: { desde: null } }),
+    null,
+  );
+  await caso(
+    "antesDoInicioPausaEm",
+    pausadaPagante(d, { cartao: { pausa_em: d.futuro } }),
+    null,
+  );
+  await caso(
+    "antesDoInicioSuspensa",
+    pausadaPagante(d, { pausa: { desde: d.futuro } }),
+    null,
+  );
+  await caso(
+    "sinalDeTesteSemPausaEm",
+    pausadaPagante(d, {
+      cartao: {
+        teste_ate: d.proxima_teste,
+        proxima: d.proxima_teste,
+        pausa_em: null,
+      },
+    }),
+    null,
+  );
+  // manutencao: vence a pausa e vale sozinha
+  await caso(
+    "manutencao",
+    {
+      cartao: { status: "ativa", proxima: d.proxima_pagante },
+      manutencao: true,
+    },
+    "manutencao",
+  );
+  await caso(
+    "manutencaoVenceAPausa",
+    pausadaPagante(d, { loja: { manutencao: true } }),
+    "manutencao",
+  );
+  await caso(
+    "manutencaoSemCartao",
+    { cartao: null, chave: false, manutencao: true },
+    "manutencao",
+  );
+  return r;
+}
+
+prova(
+  "(4) MOTIVO: cada chave sozinha desligada devolve NULL (sem cartao, sem chave, nao ligada, atrasada, sem proxima, sem suspensa_desde, antes do inicio, sinal de teste sem pausa_em); todas ligadas = vendas_pausadas; manutencao vence",
+  async () => {
+    await P.emTransacao(async () => {
+      const r = await motivos();
+      assert.deepEqual(vermelhas(r), [], JSON.stringify(r));
+    });
+  },
+);
+
+prova(
+  "(4) MOTIVO: as tabelas da porta AUSENTES (rollback simulado na transacao) devolvem NULL sem erro; a manutencao continua valendo",
+  async () => {
+    for (const [rotulo, estrago] of [
+      ["sem a tabela da chave", "DROP TABLE public.assinatura_da_loja_chave"],
+      ["sem o cartao", "DROP TABLE public.assinatura_da_loja CASCADE"],
+      ["sem pausa_de_vendas", "DROP TABLE public.pausa_de_vendas"],
+    ]) {
+      await P.emTransacao(async () => {
+        const d = await datasDaPausa();
+        await porLoja(pausadaPagante(d));
+        assert.equal(await motivo(), "vendas_pausadas", `${rotulo}: controle`);
+        await C().query(estrago);
+        assert.equal(await motivo(), null, rotulo);
+        await C().query(
+          "UPDATE public.store_config SET manutencao = true WHERE id = 1",
+        );
+        assert.equal(await motivo(), "manutencao", `${rotulo}: manutencao`);
+      });
+    }
+  },
+);
+
+prova(
+  "(4) MOTIVO: STABLE, SECURITY DEFINER, search_path fixo, e EXECUTE de ninguem de aplicacao (anon, authenticated e service_role levam 42501)",
+  async () => {
+    await P.emTransacao(async () => {
+      const f = await um(
+        "SELECT p.provolatile AS vol, p.prosecdef AS secdef, p.proconfig AS cfg FROM pg_proc p WHERE p.oid = to_regprocedure('public.motivo_da_loja_nao_aceitar_pedido()')",
+      );
+      assert.deepEqual(f, {
+        vol: "s",
+        secdef: true,
+        cfg: ["search_path=public, pg_temp"],
+      });
+      for (const papel of ["anon", "authenticated", "service_role"]) {
+        const x = await P.tentar(
+          papel,
+          "SELECT public.motivo_da_loja_nao_aceitar_pedido()",
+        );
+        assert.equal(x.codigo, "42501", `${papel}: ${JSON.stringify(x)}`);
+      }
+    });
+  },
+);
+
+/** [nome, trocas, expectativa que TEM de ficar vermelha] */
+const MUTANTES_MOTIVO = [
+  [
+    "atrasada pausa",
+    [
+      [
+        "v_status IS DISTINCT FROM 'suspensa'",
+        "v_status NOT IN ('suspensa', 'atrasada')",
+      ],
+    ],
+    "atrasada",
+  ],
+  [
+    "sem exigir a chave",
+    [
+      [
+        "IF NOT EXISTS (SELECT 1 FROM public.assinatura_da_loja_chave)",
+        "IF false AND NOT EXISTS (SELECT 1 FROM public.assinatura_da_loja_chave)",
+      ],
+    ],
+    "semChave",
+  ],
+  [
+    "sem exigir a pausa ligada",
+    [["IF v_vale IS NOT TRUE THEN", "IF false THEN"]],
+    "naoLigada",
+  ],
+  [
+    "ignora o dia de inicio",
+    [["OR v_hoje < v_inicio", "OR false"]],
+    "antesDoInicioPausaEm",
+  ],
+  [
+    "sem pausa_em na conta (pausa antes do dia prometido)",
+    [["v_suspensa_desde, v_pausa_em)", "v_suspensa_desde, NULL)"]],
+    "antesDoInicioPausaEm",
+  ],
+  [
+    "manutencao ignorada",
+    [["IF v_manutencao IS TRUE THEN", "IF false THEN"]],
+    "manutencaoVenceAPausa",
+  ],
+  [
+    "manutencao de outra linha",
+    [
+      [
+        "FROM public.store_config s WHERE s.id = 1",
+        "FROM public.store_config s WHERE s.id = 2",
+      ],
+    ],
+    "manutencao",
+  ],
+];
+prova(
+  "(4) MUTANTES DO MOTIVO: cada sabotagem fica vermelha na expectativa certa",
+  async () => {
+    const original = textoDe(MIGRATION, "motivo_da_loja_nao_aceitar_pedido");
+    for (const [nome, trocas, alvo] of MUTANTES_MOTIVO) {
+      const texto = trocas.reduce(
+        (t, [de, para]) => trocar(t, de, para),
+        original,
+      );
+      await P.emTransacao(async () => {
+        await C().query(texto);
+        const r = await motivos();
+        assert.ok(
+          vermelhas(r).includes(alvo),
+          `mutante "${nome}" nao ficou vermelho em ${alvo}: ${vermelhas(r).join(",")}`,
+        );
+      });
+    }
+  },
+);
+
 (async () => {
   await P.conectar();
   try {

@@ -195,3 +195,41 @@ Deno.test("20261600: a marca suspensa_desde e' um gatilho AFTER INSERT OR UPDATE
     "CREATE OR REPLACE TRIGGER tr_assinatura_marca_suspensa_desde AFTER INSERT OR UPDATE OF status ON public.assinatura_da_loja FOR EACH ROW EXECUTE FUNCTION public.marcar_suspensa_desde();",
   );
 });
+
+Deno.test("20261600: o motivo le manutencao primeiro, exige as 5 chaves (ligada, chave, suspensa, data com pausa_em) e devolve NULL sem as tabelas da porta", () => {
+  const f = funcaoDe(migration, "motivo_da_loja_nao_aceitar_pedido");
+  assertStringIncludes(
+    f,
+    "motivo_da_loja_nao_aceitar_pedido()\n RETURNS text\n LANGUAGE plpgsql\n STABLE\n SECURITY DEFINER\n SET search_path = public, pg_temp\n",
+  );
+  const corpo = semComentario(f.slice(f.indexOf("AS $function$")));
+  const ordem = [
+    "SELECT s.manutencao INTO v_manutencao FROM public.store_config s WHERE s.id = 1;",
+    "RETURN 'manutencao';",
+    "to_regclass('public.pausa_de_vendas') IS NULL OR to_regclass('public.assinatura_da_loja') IS NULL",
+    "IF v_vale IS NOT TRUE THEN",
+    "IF NOT EXISTS (SELECT 1 FROM public.assinatura_da_loja_chave) THEN",
+    "a.pausa_em INTO v_status, v_teste_ate, v_proxima, v_pausa_em",
+    "IF v_status IS DISTINCT FROM 'suspensa' THEN",
+    "v_inicio := public.data_da_pausa_de_vendas(v_teste_ate, v_proxima, v_suspensa_desde, v_pausa_em);",
+    "IF v_inicio IS NULL OR v_hoje < v_inicio THEN",
+    "RETURN 'vendas_pausadas';",
+  ];
+  let ultimo = -1;
+  for (const trecho of ordem) {
+    const i = corpo.indexOf(trecho);
+    assert(i > ultimo, `fora de ordem ou ausente: ${trecho}`);
+    ultimo = i;
+  }
+  assertStringIncludes(
+    corpo,
+    "v_hoje date := (now() AT TIME ZONE 'America/Sao_Paulo')::date;",
+  );
+  assert(!/'atrasada'/.test(corpo), "atrasada nunca pausa");
+  assert(!/RAISE/.test(corpo), "o motivo nao levanta erro de proposito");
+  assertStringIncludes(
+    codigo,
+    "REVOKE ALL ON FUNCTION public.motivo_da_loja_nao_aceitar_pedido() FROM PUBLIC, anon, authenticated, service_role;",
+  );
+  assert(!/GRANT[^;]*motivo_da_loja_nao_aceitar_pedido/.test(codigo));
+});
