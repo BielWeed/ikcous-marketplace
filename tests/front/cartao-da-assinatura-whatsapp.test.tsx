@@ -121,7 +121,7 @@ it("ativa com a data de hoje ou futura mostra 'Próxima cobrança'", () => {
   expect(tela.textContent).not.toContain("Em aberto desde");
 });
 
-it("em teste mostra 'Teste até' e 'Cliente desde' ao lado da próxima cobrança", () => {
+it("em teste mostra 'Grátis até' (o último dia grátis) e 'Cliente desde' ao lado da próxima cobrança", () => {
   desenhar({
     status: "teste",
     proximaCobrancaEm: "2026-11-20",
@@ -129,8 +129,9 @@ it("em teste mostra 'Teste até' e 'Cliente desde' ao lado da próxima cobrança
     inicioEm: "2026-11-01",
   });
   expect(tela.textContent).toContain("Próxima cobrança");
-  expect(tela.textContent).toContain("Teste até");
-  expect(tela.textContent).toContain("19/11/2026");
+  expect(tela.textContent).toContain("Grátis até");
+  expect(tela.textContent).not.toContain("Teste até");
+  expect(tela.textContent).toContain("18/11/2026");
   expect(tela.textContent).toContain("Cliente desde");
   expect(tela.textContent).toContain("01/11/2026");
 });

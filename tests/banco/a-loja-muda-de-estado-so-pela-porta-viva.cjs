@@ -62,6 +62,10 @@ const ROLLBACK = ler(`rollback-manual-${NOME}`);
 const DESTRUTIVO = ler(`rollback-manual-destrutivo-${NOME}`);
 const ROLLBACK_1460 = ler(`rollback-manual-${NOME_1460}`);
 const DESTRUTIVO_1460 = ler(`rollback-manual-destrutivo-${NOME_1460}`);
+// Os destrutivos (e o rollback da 20261141) recusam caderneta com linha (CADERNETA_SEMEADA) mesmo com o APAGAR: esta prova semeia
+// lojas e, toda vez que confirma o APAGAR, confirma tambem a caderneta (so na transacao dela). A recusa e' provada em
+// a-caderneta-muda-de-banco-viva.cjs.
+const CONFIRMAR_CADERNETA = "SET LOCAL ikcous.apagar_caderneta = 'sim'";
 const CONSULTAS = path.join(__dirname, "../../scripts/publicacao/consultas");
 const A183 = "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado";
 const B183 = "183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente";
@@ -265,6 +269,7 @@ async function voltarAoAntes(c) {
   await c.query(
     "SET LOCAL app.confirmo_apagar_historico_do_estado_da_loja = 'APAGAR'",
   );
+  await c.query(CONFIRMAR_CADERNETA);
   await c.query(DESTRUTIVO);
   assert.equal(await md5Vivo(c, PORTA), null, "base de antes: sem a porta");
   assert.equal(
@@ -1047,6 +1052,7 @@ async function rollbacks(c) {
     await c.query(
       "SET LOCAL app.confirmo_apagar_historico_do_estado_da_loja = 'APAGAR'",
     );
+    await c.query(CONFIRMAR_CADERNETA);
     e = await tentar(c, () => c.query(DESTRUTIVO));
     assert.match(
       e?.message ?? "",
@@ -1087,6 +1093,7 @@ async function rollbacks(c) {
   await desfeita(c, async () => {
     await c.query(ROLLBACK_1460);
     await c.query("SET LOCAL app.confirmo_apagar_estado_de_vida = 'APAGAR'");
+    await c.query(CONFIRMAR_CADERNETA);
     const e = await tentar(c, () => c.query(DESTRUTIVO_1460));
     assert.equal(
       e?.code,
@@ -1129,6 +1136,7 @@ const SABOTAGENS_DA_BASE = [
     [
       ROLLBACK_1460,
       "SET LOCAL app.confirmo_apagar_estado_de_vida = 'APAGAR'",
+      CONFIRMAR_CADERNETA,
       DESTRUTIVO_1460,
     ],
   ],
@@ -1521,6 +1529,7 @@ async function portao(c) {
     await c.query(
       "SET LOCAL app.confirmo_apagar_historico_do_estado_da_loja = 'APAGAR'",
     );
+    await c.query(CONFIRMAR_CADERNETA);
     await c.query(DESTRUTIVO);
     assert.deepEqual(
       await consulta(c, B183),

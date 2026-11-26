@@ -22,7 +22,38 @@
 -- tabela — não há como derrubar a tabela e preservar o dado. Confirmar que
 -- não há outra loja/segredo de produção precisando sobreviver antes de
 -- rodar isto de verdade.
+--
+-- CADERNETA SEMEADA (26/11/2026, plano caderneta-fora-do-dekxab, T3): o
+-- banco da IKCOUS passa a guardar a caderneta de PRODUÇÃO da frota (o
+-- porteiro de todas as lojas lê dela). O bloco abaixo recusa
+-- (CADERNETA_SEMEADA) sem apagar nada se frota_lojas, frota_segredo ou
+-- frota_estado_historico tiver qualquer linha; nos bancos das lojas as três
+-- ficam vazias e o rollback apaga como antes. Apagar a caderneta de verdade
+-- é só com o dono, com a confirmação na MESMA transação:
+--   SET LOCAL ikcous.apagar_caderneta = 'sim';
+-- (SET sem LOCAL ficaria na sessão e confirmaria uma chamada futura que
+-- ninguém pediu). A trava de escrita (SHARE) vale até o fim da transação:
+-- ninguém grava linha entre a conferência e o DROP.
 -- ============================================================================
+
+DO $caderneta_semeada$
+DECLARE
+  v_tabela text;
+  v_tem_linha boolean;
+BEGIN
+  IF COALESCE(current_setting('ikcous.apagar_caderneta', true), '') = 'sim' THEN
+    RETURN;
+  END IF;
+  FOREACH v_tabela IN ARRAY ARRAY['frota_lojas', 'frota_segredo', 'frota_estado_historico'] LOOP
+    IF to_regclass('public.' || v_tabela) IS NOT NULL THEN
+      EXECUTE format('LOCK TABLE public.%I IN SHARE MODE', v_tabela);
+      EXECUTE format('SELECT EXISTS (SELECT 1 FROM public.%I)', v_tabela) INTO v_tem_linha;
+      IF v_tem_linha THEN
+        RAISE EXCEPTION 'CADERNETA_SEMEADA: public.% tem linha - este banco guarda a caderneta da frota e apaga-la tira todas as lojas do ar. Nada foi apagado. So com o dono: SET LOCAL ikcous.apagar_caderneta = ''sim'' na mesma transacao.', v_tabela;
+      END IF;
+    END IF;
+  END LOOP;
+END $caderneta_semeada$;
 
 DROP FUNCTION IF EXISTS public.resolver_loja(text, text);
 DROP TABLE IF EXISTS public.frota_segredo;
