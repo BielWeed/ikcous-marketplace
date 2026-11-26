@@ -9,7 +9,9 @@
 // que o teto para saber se há mais no banco; quando há, a nota, a contagem e
 // as barras vêm da contagem do banco por estrela (só as publicadas), nunca das
 // 20 que a lista trouxe, e "Ver mais avaliações" busca a próxima leva. As
-// perguntas não têm "ver mais" na tela: só o teto, as mais recentes primeiro.
+// perguntas seguem o mesmo padrão (pedem 21): "Ver mais perguntas" relê com um
+// teto 20 maior, e a resposta velha (outro produto, outra conta, segundo
+// clique) nunca governa a tela.
 //
 // Dublê do banco: um construtor encadeável que GUARDA o que foi pedido
 // (tabela, filtros, teto, contagem) e devolve as linhas que o teste escolheu.
@@ -31,6 +33,7 @@ type Pedido = {
   filtros: [string, unknown][];
   limite?: number;
   contagem?: { count?: string; head?: boolean };
+  sinal?: AbortSignal;
 };
 
 const h = vi.hoisted(() => ({
@@ -40,6 +43,10 @@ const h = vi.hoisted(() => ({
   linhas: [] as Record<string, unknown>[],
   // Quantas publicadas de cada nota o banco conta (índice 0 = 1 estrela).
   porNota: [0, 0, 0, 0, 0],
+  // Linhas por produto (quando o teste precisa de dois produtos diferentes).
+  linhasPorProduto: new Map<string, Record<string, unknown>[]>(),
+  // Com portão, a lista só responde quando o teste abrir: é a resposta "em voo".
+  portao: null as Promise<void> | null,
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -62,7 +69,10 @@ vi.mock("@/lib/supabase", () => ({
         pedido.limite = n;
         return builder;
       };
-      builder.abortSignal = () => builder;
+      builder.abortSignal = (sinal: AbortSignal) => {
+        pedido.sinal = sinal;
+        return builder;
+      };
       builder.maybeSingle = () => builder;
       // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
       builder.then = (resolve: (v: unknown) => unknown) => {
@@ -80,8 +90,21 @@ vi.mock("@/lib/supabase", () => ({
           tabela === "questions" ||
           tabela === "vw_questions_public"
         ) {
-          const linhas = h.linhas.slice(0, pedido.limite ?? h.linhas.length);
-          resposta = { data: linhas, error: null };
+          const produto = String(
+            pedido.filtros.find(([c]) => c === "product_id")?.[1],
+          );
+          const todas = h.linhasPorProduto.get(produto) ?? h.linhas;
+          const linhas = todas.slice(0, pedido.limite ?? todas.length);
+          const portao = h.portao;
+          // Como o supabase-js: a leitura cancelada volta com erro de "aborted".
+          const responder = () =>
+            pedido.sinal?.aborted
+              ? {
+                  data: null,
+                  error: { name: "AbortError", message: "aborted" },
+                }
+              : { data: linhas, error: null };
+          resposta = portao ? portao.then(responder) : responder();
         } else if (tabela === "vw_produtos_public") {
           resposta = {
             data: { nome: "Produto", imagem_url: null },
@@ -116,7 +139,7 @@ import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useQuestions } from "@/hooks/useQuestions";
+import { PERGUNTAS_POR_LEITURA, useQuestions } from "@/hooks/useQuestions";
 import { AVALIACOES_POR_LEITURA, useReviews } from "@/hooks/useReviews";
 import { esquecerAvaliacoesGuardadas } from "@/lib/cache-de-avaliacoes";
 
@@ -158,10 +181,10 @@ function avaliacoes(quantas: number) {
   }));
 }
 
-function perguntas(quantas: number) {
+function perguntas(quantas: number, produto = "produto-grande") {
   return Array.from({ length: quantas }, (_, i) => ({
-    id: `q${i + 1}`,
-    product_id: "produto-grande",
+    id: `${produto}-q${i + 1}`,
+    product_id: produto,
     user_id: `u${i + 1}`,
     question: `Pergunta ${i + 1}`,
     created_at: "2026-11-01T12:00:00Z",
@@ -199,6 +222,18 @@ async function montar() {
   });
 }
 
+// Fecha o portão: as leituras da lista ficam em voo até `abrir()`.
+function segurarRespostas() {
+  let abrir = () => {};
+  h.portao = new Promise<void>((resolve) => {
+    abrir = resolve;
+  });
+  return () => {
+    h.portao = null;
+    abrir();
+  };
+}
+
 beforeEach(() => {
   vi.stubGlobal("localStorage", criarLocalStorageFake());
   esquecerAvaliacoesGuardadas();
@@ -207,6 +242,8 @@ beforeEach(() => {
   h.pedidos = [];
   h.linhas = [];
   h.porNota = [0, 0, 0, 0, 0];
+  h.linhasPorProduto = new Map();
+  h.portao = null;
   h.usuario = null;
   avaliacoesAtual = undefined;
   perguntasAtual = undefined;
@@ -309,18 +346,23 @@ describe("avaliações da página do produto vêm com teto", () => {
 });
 
 describe("perguntas da página do produto vêm com teto", () => {
-  it("visitante: as 20 mais recentes", async () => {
+  it("o teto é 20", () => {
+    expect(PERGUNTAS_POR_LEITURA).toBe(20);
+  });
+
+  it("visitante: pede uma a mais que o teto, mostra as 20 mais recentes e diz que há mais", async () => {
     h.linhas = perguntas(30);
     await montar();
     await act(async () => {
       await perguntasAtual?.getQuestionsByProduct("produto-grande");
     });
 
-    expect(pedidosDaLista("vw_questions_public").at(-1)?.limite).toBe(20);
+    expect(pedidosDaLista("vw_questions_public").at(-1)?.limite).toBe(21);
     expect(perguntasAtual?.questions).toHaveLength(20);
+    expect(perguntasAtual?.haMaisPerguntas).toBe(true);
   });
 
-  it("cliente logada: as 20 mais recentes", async () => {
+  it("cliente logada: pede uma a mais que o teto e mostra as 20 mais recentes", async () => {
     h.usuario = { id: "cliente-ficticia" };
     h.linhas = perguntas(30);
     await montar();
@@ -328,7 +370,194 @@ describe("perguntas da página do produto vêm com teto", () => {
       await perguntasAtual?.getQuestionsByProduct("produto-grande");
     });
 
-    expect(pedidosDaLista("questions").at(-1)?.limite).toBe(20);
+    expect(pedidosDaLista("questions").at(-1)?.limite).toBe(21);
     expect(perguntasAtual?.questions).toHaveLength(20);
+    expect(perguntasAtual?.haMaisPerguntas).toBe(true);
+  });
+
+  it("exatamente 20 no banco: não há mais", async () => {
+    h.linhas = perguntas(20);
+    await montar();
+    await act(async () => {
+      await perguntasAtual?.getQuestionsByProduct("produto-grande");
+    });
+
+    expect(perguntasAtual?.questions).toHaveLength(20);
+    expect(perguntasAtual?.haMaisPerguntas).toBe(false);
+  });
+
+  it("'ver mais' relê com o teto 20 maior até a última pergunta", async () => {
+    h.linhas = perguntas(45);
+    await montar();
+    await act(async () => {
+      await perguntasAtual?.getQuestionsByProduct("produto-grande");
+    });
+    await act(async () => {
+      await perguntasAtual?.carregarMaisPerguntas("produto-grande");
+    });
+
+    expect(pedidosDaLista("vw_questions_public").at(-1)?.limite).toBe(41);
+    expect(perguntasAtual?.questions).toHaveLength(40);
+    expect(perguntasAtual?.haMaisPerguntas).toBe(true);
+
+    await act(async () => {
+      await perguntasAtual?.carregarMaisPerguntas("produto-grande");
+    });
+
+    expect(pedidosDaLista("vw_questions_public").at(-1)?.limite).toBe(61);
+    expect(perguntasAtual?.questions).toHaveLength(45);
+    expect(perguntasAtual?.haMaisPerguntas).toBe(false);
+  });
+
+  it("cliente logada: 'ver mais' também sobe o teto da tabela", async () => {
+    h.usuario = { id: "cliente-ficticia" };
+    h.linhas = perguntas(30);
+    await montar();
+    await act(async () => {
+      await perguntasAtual?.getQuestionsByProduct("produto-grande");
+    });
+    await act(async () => {
+      await perguntasAtual?.carregarMaisPerguntas("produto-grande");
+    });
+
+    expect(pedidosDaLista("questions").at(-1)?.limite).toBe(41);
+    expect(perguntasAtual?.questions).toHaveLength(30);
+    expect(perguntasAtual?.haMaisPerguntas).toBe(false);
+  });
+
+  it("dois cliques seguidos: uma leitura só, o teto sobe uma vez e o estado de carregando acompanha", async () => {
+    h.linhas = perguntas(45);
+    await montar();
+    await act(async () => {
+      await perguntasAtual?.getQuestionsByProduct("produto-grande");
+    });
+    const antes = pedidosDaLista("vw_questions_public").length;
+
+    const abrir = segurarRespostas();
+    let primeiro: Promise<void> | undefined;
+    let segundo: Promise<void> | undefined;
+    await act(async () => {
+      primeiro = perguntasAtual?.carregarMaisPerguntas("produto-grande");
+      segundo = perguntasAtual?.carregarMaisPerguntas("produto-grande");
+    });
+    expect(perguntasAtual?.carregandoMaisPerguntas).toBe(true);
+
+    await act(async () => {
+      abrir();
+      await Promise.all([primeiro, segundo]);
+    });
+
+    const depois = pedidosDaLista("vw_questions_public").slice(antes);
+    expect(depois.map((p) => p.limite)).toEqual([41]);
+    expect(perguntasAtual?.questions).toHaveLength(40);
+    expect(perguntasAtual?.carregandoMaisPerguntas).toBe(false);
+  });
+
+  it("'ver mais' de outro produto é ignorado", async () => {
+    h.linhas = perguntas(45);
+    await montar();
+    await act(async () => {
+      await perguntasAtual?.getQuestionsByProduct("produto-grande");
+    });
+    const antes = h.pedidos.length;
+    await act(async () => {
+      await perguntasAtual?.carregarMaisPerguntas("outro-produto");
+    });
+
+    expect(h.pedidos.length).toBe(antes);
+    expect(perguntasAtual?.questions).toHaveLength(20);
+  });
+
+  it("trocar de produto com o 'ver mais' em voo: a resposta velha não governa e o teto volta a 21", async () => {
+    h.linhasPorProduto = new Map([
+      ["produto-grande", perguntas(45, "produto-grande")],
+      ["produto-pequeno", perguntas(3, "produto-pequeno")],
+    ]);
+    await montar();
+    await act(async () => {
+      await perguntasAtual?.getQuestionsByProduct("produto-grande");
+    });
+
+    const abrir = segurarRespostas();
+    let mais: Promise<void> | undefined;
+    let outro: Promise<void> | undefined;
+    await act(async () => {
+      mais = perguntasAtual?.carregarMaisPerguntas("produto-grande");
+    });
+    await act(async () => {
+      outro = perguntasAtual?.getQuestionsByProduct("produto-pequeno");
+    });
+    await act(async () => {
+      abrir();
+      await Promise.all([mais, outro]);
+    });
+
+    expect(pedidosDaLista("vw_questions_public").at(-1)?.limite).toBe(21);
+    expect(perguntasAtual?.questions.map((q) => q.productId)).toEqual([
+      "produto-pequeno",
+      "produto-pequeno",
+      "produto-pequeno",
+    ]);
+    expect(perguntasAtual?.haMaisPerguntas).toBe(false);
+    expect(perguntasAtual?.carregandoMaisPerguntas).toBe(false);
+  });
+
+  it("voltar ao produto grande depois de outro: começa de novo nas 20", async () => {
+    h.linhasPorProduto = new Map([
+      ["produto-grande", perguntas(45, "produto-grande")],
+      ["produto-pequeno", perguntas(3, "produto-pequeno")],
+    ]);
+    await montar();
+    await act(async () => {
+      await perguntasAtual?.getQuestionsByProduct("produto-grande");
+    });
+    await act(async () => {
+      await perguntasAtual?.carregarMaisPerguntas("produto-grande");
+    });
+    await act(async () => {
+      await perguntasAtual?.getQuestionsByProduct("produto-pequeno");
+    });
+    await act(async () => {
+      await perguntasAtual?.getQuestionsByProduct("produto-grande");
+    });
+
+    expect(pedidosDaLista("vw_questions_public").at(-1)?.limite).toBe(21);
+    expect(perguntasAtual?.questions).toHaveLength(20);
+    expect(perguntasAtual?.haMaisPerguntas).toBe(true);
+  });
+
+  it("trocar de conta com o 'ver mais' em voo: a leitura da conta velha não governa e o teto volta a 21", async () => {
+    h.linhas = perguntas(45);
+    await montar();
+    await act(async () => {
+      await perguntasAtual?.getQuestionsByProduct("produto-grande");
+    });
+
+    const abrir = segurarRespostas();
+    let mais: Promise<void> | undefined;
+    await act(async () => {
+      mais = perguntasAtual?.carregarMaisPerguntas("produto-grande");
+    });
+    // Entrou na conta: o hook ganha um getQuestionsByProduct novo, e a página
+    // relê o mesmo produto pela tabela.
+    h.usuario = { id: "cliente-ficticia" };
+    await act(async () => {
+      raiz.render(<Sonda />);
+    });
+    let daConta: Promise<void> | undefined;
+    await act(async () => {
+      daConta = perguntasAtual?.getQuestionsByProduct("produto-grande");
+    });
+    await act(async () => {
+      abrir();
+      await Promise.all([mais, daConta]);
+    });
+
+    expect(pedidosDaLista("questions").at(-1)?.limite).toBe(21);
+    expect(perguntasAtual?.questions).toHaveLength(20);
+    // A visão logada traz o autor; a pública (da leitura velha) não.
+    expect(perguntasAtual?.questions[0]?.userId).toBe("u1");
+    expect(perguntasAtual?.haMaisPerguntas).toBe(true);
+    expect(perguntasAtual?.carregandoMaisPerguntas).toBe(false);
   });
 });

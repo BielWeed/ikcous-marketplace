@@ -153,6 +153,22 @@ async function montar() {
 function lotes(tabela: string) {
   return h.chamadas.filter((c) => c.tabela === tabela).map((c) => c.ids);
 }
+// A página lê 20 perguntas por vez (teto de 26/11/2026): "Ver mais" até a
+// lista trazer todas, e a última leitura (já com todas) é a medida.
+async function lerTodasAsPerguntas(produto: string) {
+  await act(async () => {
+    await perguntas.getQuestionsByProduct(produto);
+  });
+  while (perguntas.haMaisPerguntas) {
+    await act(async () => {
+      await perguntas.carregarMaisPerguntas(produto);
+    });
+  }
+  h.chamadas = [];
+  await act(async () => {
+    await perguntas.getQuestionsByProduct(produto);
+  });
+}
 
 it("na vitrine logada, inclusive para a própria autora, só recebe o nome público", async () => {
   h.user = { id: "user-0" };
@@ -211,9 +227,7 @@ it.each([0, 1, 100, 101, 205])(
     h.user = null;
     h.quantidade = n;
     await montar();
-    await act(async () => {
-      await perguntas.getQuestionsByProduct(`anon-${n}`);
-    });
+    await lerTodasAsPerguntas(`anon-${n}`);
     expect(perguntas.error).toBeNull();
     expect(perguntas.questions).toHaveLength(n);
     expect(perguntas.questions.map((q) => q.answers[0]?.answer)).toEqual(
@@ -227,9 +241,7 @@ it.each([0, 1, 100, 101, 205])(
 it.each([1, 205])("compradores de %i perguntas: reúne os selos", async (n) => {
   h.quantidade = n;
   await montar();
-  await act(async () => {
-    await perguntas.getQuestionsByProduct(`auth-${n}`);
-  });
+  await lerTodasAsPerguntas(`auth-${n}`);
   expect(perguntas.questions).toHaveLength(n);
   expect(perguntas.questions.every((q) => q.isVerified)).toBe(true);
   expect(lotes("marketplace_orders").every((l) => l.length <= 100)).toBe(true);
@@ -252,9 +264,7 @@ it.each([false, true])(
     h.falharLote = !rejeitar;
     h.rejeitarLote = rejeitar;
     await montar();
-    await act(async () => {
-      await perguntas.getQuestionsByProduct("erro-parcial");
-    });
+    await lerTodasAsPerguntas("erro-parcial");
     expect(perguntas.error).toBeNull();
     expect(perguntas.questions).toHaveLength(205);
     expect(perguntas.questions.filter((q) => q.isVerified)).toHaveLength(105);
