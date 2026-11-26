@@ -57,8 +57,12 @@ import {
   SQL_DONO_EXISTE,
   SQL_FICHA,
   criarEstadoEmArquivo,
+  decidirTroca,
   executarPasso,
   lerArgumentos,
+  resultadoDaTroca,
+  sqlDaTroca,
+  sqlTrocarDono,
   vereditoGeral,
 } from "../scripts/frota/nova-loja.mjs";
 import {
@@ -2296,4 +2300,284 @@ Deno.test("conferir: leitura que cai é INCERTO no item (nunca SIM); sem projeto
   assertEquals(r2.veredito, "NÃO");
   assertEquals(porItem(r2).projeto, "NÃO");
   assertEquals(crua.api.chamadas.length, m);
+});
+
+// ─── trocar-dono (T1 do plano de fechar a loja nova): o SQL e a regra ──────
+
+/** A linha de sqlDaTroca de uma troca possível: 1 dono, 1 conta com o
+ * e-mail, admin nas duas fontes, confirmada, e não é a dona de hoje. */
+const linhaDaTroca = (o = {}) => [
+  {
+    donos: 1,
+    contas: 1,
+    confirmada: true,
+    nova_admin: true,
+    e_a_dona: false,
+    ...o,
+  },
+];
+
+Deno.test("trocar-dono: decidirTroca — nova admin nas duas fontes, confirmada e diferente da dona = SIM com escrita", () => {
+  const d = decidirTroca(linhaDaTroca());
+  assertEquals(d.veredito, "SIM", d.mensagem);
+  assertEquals(d.gravar, true);
+});
+
+Deno.test("trocar-dono: decidirTroca — e-mail da dona de hoje (admin nas duas fontes) = SIM SEM escrita", () => {
+  for (const confirmada of [true, false]) {
+    const d = decidirTroca(linhaDaTroca({ e_a_dona: true, confirmada }));
+    assertEquals(d.veredito, "SIM", d.mensagem);
+    assertEquals(d.gravar, false, "regravaria a mesma dona");
+    assertStringIncludes(d.mensagem, "nada foi gravado");
+  }
+});
+
+Deno.test("trocar-dono: decidirTroca — cada recusa é NÃO, sem escrita, com o código IKT e motivo legível", () => {
+  const casos = [
+    ["sem dono atual", { donos: 0 }, "IKT01"],
+    ["nova não é admin nas duas fontes", { nova_admin: false }, "IKT02"],
+    [
+      "é a dona, mas ela não é mais admin nas duas fontes",
+      { e_a_dona: true, nova_admin: false },
+      "IKT02",
+    ],
+    ["e-mail não confirmado", { confirmada: false }, "IKT03"],
+    [
+      "0 contas com o e-mail",
+      { contas: 0, confirmada: false, nova_admin: false },
+      "IKT04",
+    ],
+    ["2 contas com o e-mail", { contas: 2 }, "IKT04"],
+    ["2 donos (fora do desenho: falha a 88c)", { donos: 2 }, "IKT05"],
+  ];
+  for (const [nome, o, codigo] of casos) {
+    const d = decidirTroca(linhaDaTroca(o));
+    assertEquals(d.veredito, "NÃO", `${nome}: ${d.mensagem}`);
+    assertEquals(d.gravar, false, nome);
+    assertEquals(d.codigo, codigo, nome);
+    assertStringIncludes(d.mensagem, "Nada foi gravado", nome);
+    assert(d.mensagem.length > 40, `${nome}: motivo curto demais`);
+  }
+});
+
+Deno.test("trocar-dono: decidirTroca — leitura fora do formato = INCERTO, nunca SIM nem escrita", () => {
+  const [ok] = linhaDaTroca();
+  const semColuna = Object.fromEntries(
+    Object.entries(ok).filter(([k]) => k !== "e_a_dona"),
+  );
+  const foras = [
+    null,
+    undefined,
+    [],
+    {},
+    "SIM",
+    [null],
+    [ok, ok],
+    [semColuna],
+    [{ ...ok, extra: 1 }],
+    [{ ...ok, donos: "1" }],
+    [{ ...ok, contas: -1 }],
+    [{ ...ok, contas: 1.5 }],
+    [{ ...ok, nova_admin: "true" }],
+    [{ ...ok, e_a_dona: null }],
+    [{ ...ok, confirmada: 1 }],
+  ];
+  for (const l of foras) {
+    const d = decidirTroca(l);
+    assertEquals(d.veredito, "INCERTO", JSON.stringify(l));
+    assertEquals(d.gravar, false);
+  }
+});
+
+/** Os literais '...' de um SQL (aspa dobrada = aspa dentro): [início, fim, valor]. */
+function literaisDoSql(sql) {
+  const lits = [];
+  for (let i = 0; i < sql.length; i++) {
+    if (sql.charAt(i) !== "'") continue;
+    let j = i + 1;
+    for (;;) {
+      if (j >= sql.length) throw new Error("literal sem fim");
+      if (sql.charAt(j) === "'" && sql.charAt(j + 1) === "'") j += 2;
+      else if (sql.charAt(j) === "'") break;
+      else j++;
+    }
+    lits.push([i, j + 1, sql.slice(i + 1, j).replaceAll("''", "'")]);
+    i = j;
+  }
+  return lits;
+}
+
+const EMAILS_HOSTIS = [
+  "o'brien@exemplo.test",
+  "a''b'@exemplo.test",
+  "x$$y@exemplo.test",
+  "x$trocar_dono$y@exemplo.test",
+  "a';DELETE;--@exemplo.test",
+  "a;b@exemplo.test",
+];
+
+Deno.test("trocar-dono: e-mail com aspa, $$, $trocar_dono$ ou ponto e vírgula fica DENTRO de um literal só; o resto do SQL é fixo", () => {
+  const BENIGNO = "lojista.falsa@exemplo.test";
+  for (const gerar of [sqlTrocarDono, sqlDaTroca]) {
+    const base = gerar(BENIGNO);
+    const litBase = `'${BENIGNO}'`;
+    assertEquals(base.split(litBase).length, 2, "o e-mail entra uma vez só");
+    for (const email of EMAILS_HOSTIS) {
+      const sql = gerar(email);
+      const lit = `'${email.replaceAll("'", "''")}'`;
+      assertEquals(sql.split(lit).length, 2, `${gerar.name}: ${email}`);
+      // fora do literal, o SQL é exatamente o do e-mail benigno
+      assertEquals(
+        sql.replace(lit, "<L>"),
+        base.replace(litBase, "<L>"),
+        `${gerar.name}: ${email} mudou o SQL fora do literal`,
+      );
+      // e o literal que o leitor de SQL acha é o e-mail inteiro
+      const meu = literaisDoSql(sql).filter(([, , v]) => v === email);
+      assertEquals(meu.length, 1, `${gerar.name}: ${email}`);
+      if (gerar === sqlTrocarDono) {
+        // fora do DO (dollar-quote): na instrução SET LOCAL
+        assert(meu[0][0] < sql.indexOf("DO $trocar_dono$"));
+        assertStringIncludes(
+          sql,
+          `SET LOCAL ikcous.trocar_dono_email = ${lit};\nDO $trocar_dono$`,
+        );
+      }
+    }
+  }
+});
+
+Deno.test("trocar-dono: barra invertida, espaço, quebra de linha ou texto sem @ é recusado antes de virar SQL (sem ecoar)", () => {
+  for (const gerar of [sqlTrocarDono, sqlDaTroca]) {
+    for (const ruim of [
+      "a\\'@exemplo.test",
+      "a\\@exemplo.test",
+      "a b@exemplo.test",
+      "a@exemplo.test\n';COMMIT;--",
+      "sem-arroba",
+      "",
+      "a@b@exemplo.test",
+      `${"a".repeat(250)}@x.test`,
+      null,
+    ]) {
+      const e = assertThrows(() => gerar(ruim));
+      if (typeof ruim === "string" && ruim !== "")
+        assert(!e.message.includes(ruim), "ecoou a entrada");
+    }
+  }
+});
+
+Deno.test("trocar-dono: a transação — BEGIN, papel, travas, LOCK, guardas na ordem, DELETE+INSERT, 88c, COMMIT; uma escrita só", () => {
+  const sql = sqlTrocarDono("lojista.falsa@exemplo.test");
+  const ordem = [
+    "BEGIN ISOLATION LEVEL READ COMMITTED;",
+    "SET LOCAL ROLE postgres;",
+    "SET LOCAL lock_timeout = '10s';",
+    "SET LOCAL ikcous.trocar_dono_email = ",
+    "DO $trocar_dono$",
+    "lower(current_setting('ikcous.trocar_dono_email'))",
+    "PERFORM pg_advisory_xact_lock(hashtext('ikcous.primeira_admin'));",
+    "PERFORM pg_advisory_xact_lock(hashtext('ikcous.definir_dono'));",
+    "LOCK TABLE public.dono_da_loja IN SHARE ROW EXCLUSIVE MODE;",
+    "USING ERRCODE = 'IKT01'",
+    "trocar-dono: mais de um dono",
+    "USING ERRCODE = 'IKT04'",
+    "WHERE d.user_id = v_id",
+    "'ja_era_dona'",
+    "RETURN;",
+    "FOR SHARE OF p;",
+    "USING ERRCODE = 'IKT02'",
+    "USING ERRCODE = 'IKT03'",
+    "DELETE FROM public.dono_da_loja;",
+    "INSERT INTO public.dono_da_loja (user_id) VALUES (v_id);",
+    "trocar-dono: conferencia da 88c falhou",
+    "'trocada'",
+    "$trocar_dono$;",
+    "COMMIT;",
+    "SELECT current_setting('ikcous.trocar_dono_resultado', true) AS resultado;",
+  ];
+  let antes = -1;
+  for (const t of ordem) {
+    const i = sql.indexOf(t, antes + 1);
+    assert(i > antes, `fora de ordem ou ausente: ${t}`);
+    antes = i;
+  }
+  for (const [t, n] of [
+    ["BEGIN ISOLATION", 1],
+    ["COMMIT;", 1],
+    ["DELETE FROM", 1],
+    ["INSERT INTO", 1],
+    ["ROLLBACK", 0],
+    ["UPDATE ", 0],
+  ])
+    assertEquals(sql.split(t).length - 1, n, t);
+  for (const c of ["IKT01", "IKT02", "IKT03", "IKT04", "IKT05"])
+    assertStringIncludes(sql, `ERRCODE = '${c}'`);
+  // a nova dona: a linha travada exige admin nas DUAS fontes do cargo
+  const fim = sql.indexOf("FOR SHARE OF p;");
+  const nova = sql.slice(sql.lastIndexOf(";", fim) + 1, fim);
+  assertStringIncludes(nova, "u.id = v_id");
+  assertStringIncludes(nova, "p.role = 'admin'");
+  assertStringIncludes(nova, "u.raw_app_meta_data ->> 'role' = 'admin'");
+  // a 88c depois do INSERT: 1 linha apagada, 1 inserida, 1 dono, admin nas duas
+  const c88 = sql.slice(
+    sql.indexOf("INSERT INTO public.dono_da_loja"),
+    sql.indexOf("trocar-dono: conferencia da 88c falhou"),
+  );
+  for (const t of [
+    "v_apagadas <> 1",
+    "v_linhas <> 1",
+    "(SELECT count(*) FROM public.dono_da_loja) <> 1",
+    "JOIN auth.users u ON u.id = d.user_id",
+    "p.role = 'admin'",
+    "u.raw_app_meta_data ->> 'role' = 'admin'",
+  ])
+    assertStringIncludes(c88, t);
+});
+
+Deno.test("trocar-dono: a leitura é UMA instrução SELECT, sem escrita, nova_admin pelas duas fontes", () => {
+  const sql = sqlDaTroca("lojista.falsa@exemplo.test");
+  assert(sql.startsWith("WITH "));
+  assertEquals(sql.split(";").length, 2, "mais de uma instrução");
+  for (const t of ["INSERT", "DELETE", "UPDATE", "BEGIN", "COMMIT", "SET "])
+    assert(!sql.includes(t), t);
+  for (const t of [
+    "AS donos",
+    "AS contas",
+    "AS confirmada",
+    "AS nova_admin",
+    "AS e_a_dona",
+    "p.role = 'admin'",
+    "u.raw_app_meta_data ->> 'role' = 'admin'",
+    "lower(u.email)",
+  ])
+    assertStringIncludes(sql, t);
+});
+
+Deno.test("trocar-dono: resultadoDaTroca só aceita o formato exato do GUC (trocada / ja_era_dona); o resto é null", () => {
+  const r = (o) => [{ resultado: JSON.stringify(o) }];
+  assertEquals(
+    resultadoDaTroca(r({ acao: "trocada", donos: 1, apagadas: 1, linhas: 1 })),
+    "trocada",
+  );
+  assertEquals(
+    resultadoDaTroca(
+      r({ acao: "ja_era_dona", donos: 1, apagadas: 0, linhas: 0 }),
+    ),
+    "ja_era_dona",
+  );
+  for (const fora of [
+    r({ acao: "trocada", donos: 1, apagadas: 0, linhas: 1 }),
+    r({ acao: "trocada", donos: 2, apagadas: 1, linhas: 1 }),
+    r({ acao: "ja_era_dona", donos: 1, apagadas: 0, linhas: 1 }),
+    r({ acao: "gravada", donos: 1, apagadas: 1, linhas: 1 }),
+    r({ acao: "trocada", donos: 1, apagadas: 1, linhas: 1, id: "x" }),
+    [{ resultado: "" }],
+    [{ resultado: null }],
+    [{ resultado: "{" }],
+    [{ resultado: "{}", outra: 1 }],
+    [],
+    null,
+  ])
+    assertEquals(resultadoDaTroca(fora), null, JSON.stringify(fora));
 });

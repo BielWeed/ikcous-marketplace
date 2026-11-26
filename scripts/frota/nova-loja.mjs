@@ -80,6 +80,10 @@
  *    falha = INCERTO. Nenhum e-mail: a dona é o id que o banco acha. Só em
  *    loja com estado local (criar-projeto e banco SIM) e NUNCA na IKCOUS nem
  *    na Savy (pelo nome e pelo ref: lojas.json e os refs fixos);
+ *  - trocar-dono (ainda sem passo; só o SQL e a regra, T1 de 26/11):
+ *    sqlDaTroca lê, decidirTroca decide (e-mail da dona de hoje = SIM sem
+ *    gravar; recusas IKT01..IKT05 = NÃO; fora do formato = INCERTO) e
+ *    sqlTrocarDono troca numa transação com as travas do definir-dono;
  *  - conferir é SÓ LEITURA (GET e database/query read_only; não grava nem o
  *    estado local) e dá SIM, NÃO ou INCERTO por item (functions e login pelos
  *    B2/B4 em ensaio sobre a fachada somenteLeitura; reconciliação DEGRADADA
@@ -117,7 +121,10 @@ import {
   planejarInstalacao,
 } from "./instalador-banco.mjs";
 import { configurarLoginNovo } from "./login-da-loja-nova.mjs";
-import { executar as executarPrimeiraAdmin } from "./primeira-admin.mjs";
+import {
+  executar as executarPrimeiraAdmin,
+  literalDoEmail,
+} from "./primeira-admin.mjs";
 import {
   SQL_SAUDE,
   faltandoNo,
@@ -1922,6 +1929,241 @@ async function passoDefinirDono(pedido, d) {
         : "a administradora única já era a dona; nada foi gravado.",
     ),
   );
+}
+
+// ─── trocar-dono: o SQL e a regra (plano de fechar a loja nova, T1) ─────────
+// Trocar a dona redireciona o dinheiro da loja (as chaves de MP e Gmail passam
+// a ser da nova: supabase/functions/_shared/dono-da-loja.ts). O passo que pede
+// a autorização da dona e chama isto é a T2/T3; aqui só o SQL e a decisão.
+
+/** Só leitura, UMA instrução, uma linha, nenhum id nem e-mail na resposta.
+ * O e-mail entra como literal SQL pelo literalDoEmail do primeira-admin
+ * (aspa dobrada; barra invertida, espaço e controle recusados antes de virar
+ * SQL). `contas` = quantas contas têm esse e-mail (sem diferenciar
+ * maiúsculas); `nova_admin` = essa conta é admin nas DUAS fontes do cargo;
+ * `e_a_dona` = essa conta já é a dona cadastrada. */
+export function sqlDaTroca(email) {
+  const lit = literalDoEmail(email);
+  return `WITH alvo AS MATERIALIZED (
+  SELECT lower(${lit}) AS email
+), contas AS MATERIALIZED (
+  SELECT u.id, u.email_confirmed_at IS NOT NULL AS confirmada
+    FROM auth.users u JOIN alvo ON lower(u.email) = alvo.email
+), nas_duas AS MATERIALIZED (
+  SELECT u.id
+    FROM auth.users u JOIN public.profiles p ON p.id = u.id
+   WHERE p.role = 'admin' AND u.raw_app_meta_data ->> 'role' = 'admin'
+)
+SELECT (SELECT count(*) FROM public.dono_da_loja)::int AS donos,
+       (SELECT count(*) FROM contas)::int AS contas,
+       COALESCE((SELECT bool_and(c.confirmada) FROM contas c), false) AS confirmada,
+       EXISTS (SELECT 1 FROM contas c JOIN nas_duas n ON n.id = c.id) AS nova_admin,
+       EXISTS (SELECT 1 FROM contas c JOIN public.dono_da_loja d ON d.user_id = c.id) AS e_a_dona;`;
+}
+
+/**
+ * A escrita: UMA requisição, sem `parameters` (a database/query do OAuth não
+ * os aceita com várias instruções). O e-mail entra SÓ na 4ª instrução, como
+ * literal do literalDoEmail num `SET LOCAL`, FORA do dollar-quote (um e-mail
+ * com `$trocar_dono$` não fecha o DO); o DO o lê por current_setting. O resto
+ * é o molde do SQL_DEFINIR_DONO, e o DO repete TODAS as guardas da leitura:
+ *  - READ COMMITTED + as MESMAS travas do primeira-admin e do definir-dono, na
+ *    mesma ordem (os três se enfileiram sem deadlock) + LOCK TABLE
+ *    dono_da_loja (nenhum INSERT/DELETE à mão corre junto); lock_timeout
+ *    vira 55P03 (nada gravado) antes do prazo do pg-meta;
+ *  - SET LOCAL ROLE postgres: a tabela só é escrita pelo dono dela;
+ *  - a ordem das guardas: sem dono (IKT01) → mais de um dono, fora do desenho
+ *    (IKT05) → 0 ou 2+ contas com o e-mail (IKT04) → a conta já é a dona:
+ *    admin nas duas = ja_era_dona SEM escrita, senão IKT02 → a nova não é
+ *    admin nas duas fontes (IKT02; a linha dela em profiles fica travada FOR
+ *    SHARE até o COMMIT, então um definir_cargo que a rebaixe espera) → e-mail
+ *    não confirmado (IKT03);
+ *  - DELETE da dona de hoje e INSERT da nova; a conferência é o critério da
+ *    88c dentro da transação (1 apagada, 1 inserida, 1 dono, a nova em
+ *    auth.users e admin nas duas fontes), senão IKT05 e nada fica.
+ * O resultado (sem id nem e-mail) volta por um GUC de sessão gravado DENTRO
+ * da transação: só existe se ela comitou. A dona antiga NÃO perde o cargo de
+ * admin aqui (tirar é com a nova, pelo definir_cargo).
+ */
+export function sqlTrocarDono(email) {
+  const lit = literalDoEmail(email);
+  return `BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE postgres;
+SET LOCAL lock_timeout = '10s';
+SET LOCAL ikcous.trocar_dono_email = ${lit};
+DO $trocar_dono$
+DECLARE
+  v_email text := lower(current_setting('ikcous.trocar_dono_email'));
+  v_donos integer;
+  v_contas integer;
+  v_id uuid;
+  v_confirmada boolean;
+  v_apagadas integer := 0;
+  v_linhas integer := 0;
+BEGIN
+  PERFORM set_config('ikcous.trocar_dono_resultado', '', false);
+  PERFORM pg_advisory_xact_lock(hashtext('ikcous.primeira_admin'));
+  PERFORM pg_advisory_xact_lock(hashtext('ikcous.definir_dono'));
+  LOCK TABLE public.dono_da_loja IN SHARE ROW EXCLUSIVE MODE;
+
+  SELECT count(*) INTO v_donos FROM public.dono_da_loja;
+  IF v_donos = 0 THEN
+    RAISE EXCEPTION 'trocar-dono: a loja nao tem dono' USING ERRCODE = 'IKT01';
+  END IF;
+  IF v_donos > 1 THEN
+    RAISE EXCEPTION 'trocar-dono: mais de um dono (fora do desenho)' USING ERRCODE = 'IKT05';
+  END IF;
+  SELECT count(*) INTO v_contas FROM auth.users u WHERE lower(u.email) = v_email;
+  IF v_contas <> 1 THEN
+    RAISE EXCEPTION 'trocar-dono: nenhuma ou mais de uma conta com o e-mail' USING ERRCODE = 'IKT04';
+  END IF;
+  SELECT u.id INTO v_id FROM auth.users u WHERE lower(u.email) = v_email;
+  IF EXISTS (SELECT 1 FROM public.dono_da_loja d WHERE d.user_id = v_id) THEN
+    IF EXISTS (SELECT 1 FROM auth.users u JOIN public.profiles p ON p.id = u.id
+                WHERE u.id = v_id AND p.role = 'admin' AND u.raw_app_meta_data ->> 'role' = 'admin') THEN
+      PERFORM set_config('ikcous.trocar_dono_resultado',
+        json_build_object('acao', 'ja_era_dona', 'donos', v_donos, 'apagadas', 0, 'linhas', 0)::text, false);
+      RETURN;
+    END IF;
+    RAISE EXCEPTION 'trocar-dono: a dona nao e mais admin nas duas fontes' USING ERRCODE = 'IKT02';
+  END IF;
+  SELECT u.email_confirmed_at IS NOT NULL INTO v_confirmada
+    FROM auth.users u JOIN public.profiles p ON p.id = u.id
+   WHERE u.id = v_id AND p.role = 'admin' AND u.raw_app_meta_data ->> 'role' = 'admin'
+     FOR SHARE OF p;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'trocar-dono: a nova nao e admin nas duas fontes' USING ERRCODE = 'IKT02';
+  END IF;
+  IF NOT v_confirmada THEN
+    RAISE EXCEPTION 'trocar-dono: e-mail nao confirmado' USING ERRCODE = 'IKT03';
+  END IF;
+
+  DELETE FROM public.dono_da_loja;
+  GET DIAGNOSTICS v_apagadas = ROW_COUNT;
+  INSERT INTO public.dono_da_loja (user_id) VALUES (v_id);
+  GET DIAGNOSTICS v_linhas = ROW_COUNT;
+
+  IF v_apagadas <> 1 OR v_linhas <> 1 OR (SELECT count(*) FROM public.dono_da_loja) <> 1 OR NOT EXISTS (
+    SELECT 1 FROM public.dono_da_loja d
+      JOIN auth.users u ON u.id = d.user_id
+      JOIN public.profiles p ON p.id = d.user_id
+     WHERE d.user_id = v_id AND p.role = 'admin' AND u.raw_app_meta_data ->> 'role' = 'admin'
+  ) THEN
+    RAISE EXCEPTION 'trocar-dono: conferencia da 88c falhou' USING ERRCODE = 'IKT05';
+  END IF;
+  PERFORM set_config('ikcous.trocar_dono_resultado',
+    json_build_object('acao', 'trocada', 'donos', 1, 'apagadas', v_apagadas, 'linhas', v_linhas)::text, false);
+END
+$trocar_dono$;
+COMMIT;
+SELECT current_setting('ikcous.trocar_dono_resultado', true) AS resultado;`;
+}
+
+/** Cada recusa da troca (SQLSTATE IKT.. de dentro da transação, e a mesma
+ * lida antes por decidirTroca). Nenhuma grava nada. */
+const RECUSAS_DA_TROCA = Object.freeze({
+  IKT01:
+    "a loja ainda não tem dona cadastrada: não há o que trocar. A primeira dona entra pelo definir-dono",
+  IKT02:
+    "a pessoa desse e-mail não é administradora nas duas fontes do cargo (perfil e login): a nova dona tem de ser admin antes, nomeada pela dona de hoje no painel",
+  IKT03:
+    "a pessoa desse e-mail ainda não confirmou o e-mail: peça que abra o link de confirmação e entre na loja uma vez; depois rode de novo",
+  IKT04:
+    "o e-mail não aponta para exatamente uma conta desta loja (nenhuma, ou mais de uma): confira o e-mail com a nova dona; se houver duas contas, pare e avise o programador",
+  IKT05:
+    "a conferência pelo critério da 88c (1 dono, em auth.users, admin nas duas fontes) não fecha: pare e avise o programador",
+});
+
+const COLUNAS_DA_TROCA = "confirmada,contas,donos,e_a_dona,nova_admin";
+
+/** A linha de sqlDaTroca, ou null se veio fora do formato. */
+function linhaDaTroca(linhas) {
+  const l = Array.isArray(linhas) && linhas.length === 1 ? linhas[0] : null;
+  if (
+    l === null ||
+    typeof l !== "object" ||
+    Array.isArray(l) ||
+    Object.keys(l).sort().join(",") !== COLUNAS_DA_TROCA ||
+    !inteiro(l.donos) ||
+    !inteiro(l.contas) ||
+    typeof l.confirmada !== "boolean" ||
+    typeof l.nova_admin !== "boolean" ||
+    typeof l.e_a_dona !== "boolean"
+  ) {
+    return null;
+  }
+  return l;
+}
+
+/**
+ * Pura: o retorno de sqlDaTroca → { veredito, mensagem, gravar, codigo }. A
+ * MESMA ordem de guardas do DO de sqlTrocarDono. Só `gravar: true` leva à
+ * escrita; INCERTO nunca grava nem vira SIM.
+ */
+export function decidirTroca(linhas) {
+  const l = linhaDaTroca(linhas);
+  const nao = (codigo) => ({
+    veredito: NAO,
+    mensagem: `${Reflect.get(RECUSAS_DA_TROCA, codigo)}. Nada foi gravado.`,
+    gravar: false,
+    codigo,
+  });
+  if (!l) {
+    return {
+      veredito: INCERTO,
+      mensagem:
+        "a leitura da dona e da nova dona voltou fora do formato; nada foi gravado.",
+      gravar: false,
+      codigo: null,
+    };
+  }
+  if (l.donos === 0) return nao("IKT01");
+  if (l.donos > 1) return nao("IKT05");
+  if (l.contas !== 1) return nao("IKT04");
+  if (l.e_a_dona) {
+    if (!l.nova_admin) return nao("IKT02");
+    return {
+      veredito: SIM,
+      mensagem:
+        "esse e-mail já é o da dona cadastrada (admin nas duas fontes do cargo); nada foi gravado.",
+      gravar: false,
+      codigo: null,
+    };
+  }
+  if (!l.nova_admin) return nao("IKT02");
+  if (!l.confirmada) return nao("IKT03");
+  return {
+    veredito: SIM,
+    mensagem:
+      "a dona de hoje está cadastrada e a nova é admin nas duas fontes do cargo, com e-mail confirmado",
+    gravar: true,
+    codigo: null,
+  };
+}
+
+/** A linha final de sqlTrocarDono → "trocada" | "ja_era_dona" | null (null =
+ * qualquer coisa fora do exato: INCERTO). */
+export function resultadoDaTroca(linhas) {
+  if (!Array.isArray(linhas) || linhas.length !== 1) return null;
+  const l = linhas[0];
+  if (l === null || typeof l !== "object" || Array.isArray(l)) return null;
+  if (Object.keys(l).join(",") !== "resultado") return null;
+  if (typeof l.resultado !== "string" || l.resultado === "") return null;
+  let r;
+  try {
+    r = JSON.parse(l.resultado);
+  } catch {
+    return null;
+  }
+  if (r === null || typeof r !== "object" || Array.isArray(r)) return null;
+  if (Object.keys(r).sort().join(",") !== "acao,apagadas,donos,linhas")
+    return null;
+  if (r.donos !== 1) return null;
+  if (r.acao === "trocada" && r.apagadas === 1 && r.linhas === 1)
+    return "trocada";
+  if (r.acao === "ja_era_dona" && r.apagadas === 0 && r.linhas === 0)
+    return "ja_era_dona";
+  return null;
 }
 
 /** O que a loja pronta precisa e este comando ainda não faz: aparece como
