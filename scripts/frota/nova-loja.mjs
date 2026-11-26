@@ -5,8 +5,8 @@
  * nova-loja.mjs — o comando ASSISTIDO que abre uma loja nova passo a passo
  * (plano nova-loja de 26/11/2026, tarefas C1, C2 e C3; o desenho vem do L4b).
  * Nesta versão: abrir, receber, criar-projeto, banco, ficha, dominio,
- * segredos, functions, login, primeira-admin, definir-dono, trocar-dono (a fase 1, o
- * pedido e o link; e a fase 2, --receber, a troca com o código da dona) e
+ * segredos, functions, login, primeira-admin, definir-dono, trocar-dono (uma
+ * fase só, pelo acesso da org central, com a dupla confirmação; A15) e
  * conferir. cadastro, marca e chave-do-plano têm o nome
  * guardado e recusam (NÃO, sem rede): dependem de a release alcançar loja
  * só-OAuth (AGUARDANDO; CACA-PORTAO-LE-LOJA-NOVA).
@@ -27,10 +27,8 @@
  *   chave-do-plano (pendente)
  *   primeira-admin (o e-mail da administradora pela ENTRADA, nunca por argumento)
  *   definir-dono   (a administradora única vira a dona; só loja do nova-loja)
- *   trocar-dono    (fase 1: o e-mail da nova dona pela ENTRADA; link novo para
- *                   a dona da conta Supabase)
- *   trocar-dono --receber (fase 2: só o código pela ENTRADA; o e-mail sai do
- *                   cofre da troca; troca, relê e apaga o e-mail do cofre)
+ *   trocar-dono    (o e-mail da nova dona, o nome da loja e as 2 primeiras
+ *                   letras do e-mail da dona de HOJE, tudo pela ENTRADA)
  *   conferir       (só leitura: a lista do que torna a loja pronta)
  *
  * O QUE ESTE ARQUIVO GARANTE (tests/frota_nova_loja_comando_test.ts trava):
@@ -87,39 +85,24 @@
  *    falha = INCERTO. Nenhum e-mail: a dona é o id que o banco acha. Só em
  *    loja com estado local (criar-projeto e banco SIM) e NUNCA na IKCOUS nem
  *    na Savy (pelo nome e pelo ref: lojas.json e os refs fixos);
- *  - trocar-dono (T1, T2 e T3 de 26/11): sqlDaTroca lê, decidirTroca decide
- *    (e-mail da dona de hoje = SIM sem gravar; recusas IKT01..IKT06 = NÃO,
- *    IKT06 = conta nova banida ou apagada no Auth; fora do formato =
- *    INCERTO) e sqlTrocarDono troca numa transação com as travas do
- *    definir-dono. A fase 1 (o passo, com --aplicar) NUNCA escreve no banco:
- *    lê pela autorização guardada e, só com a troca possível, gera um link
- *    NOVO (PKCE) para a dona da conta Supabase autorizar de novo, guarda o
- *    pedido pendente (state, verificador e hora) no cofre DPAPI, como o
- *    abrir, a hora no estado local e o e-mail da nova dona numa entrada
- *    PRÓPRIA do cofre da troca (cifrada, amarrada ao pedidoEm e ao criadoEm
- *    do pendente). A fase 2 (--aplicar --receber) pede SÓ o código, lê o
- *    e-mail do cofre da troca, recusa (NÃO, sem usar o código) pedido
- *    ausente, vencido (PRAZO_DA_TROCA_MS, do pedidoEm) ou trocado por um
- *    abrir posterior; troca o código e, ANTES de o refresh novo ir ao cofre,
- *    confere que o token novo alcança o projeto da loja (senão NÃO, refresh
- *    antigo intacto); roda sqlTrocarDono pelo pg-meta e relê (divergente =
- *    INCERTO). A entrada do e-mail é apagada no fim, em qualquer desfecho.
- *    As recusas de loja são as do definir-dono (IKCOUS, Savy, alvos
- *    legados, loja fora do nova-loja). O e-mail inteiro nunca vai ao estado,
- *    ao cofre da loja, à saída nem à mensagem (o link mostra 2 letras,
- *    ••• e o domínio);
- *  - conferir é SÓ LEITURA (GET e database/query read_only; não grava nem o
- *    estado local) e dá SIM, NÃO ou INCERTO por item (functions e login pelos
- *    B2/B4 em ensaio sobre a fachada somenteLeitura; reconciliação DEGRADADA
- *    é NÃO); o geral é SIM só se TODOS forem SIM, e o que ainda não está
- *    ligado aparece como pendente NÃO;
- *  - toda rodada com --aplicar (conferir incluído) começa apagando do cofre
- *    da troca o e-mail de um pedido de troca VENCIDO ou ilegível (o e-mail
- *    fica no PC por até 30 min); é a única coisa que o conferir apaga, e só
- *    no PC (nada na loja);
- *  - receber recusa (NÃO, sem pedir código) enquanto houver pedido de troca
- *    de dona aberto e no prazo: o código daquele link é do trocar-dono
- *    --receber, que confere o projeto antes de guardar o refresh;
+ *  - trocar-dono (T1 de 26/11 e A15 do plano da org central): sqlDaTroca
+ *    lê, decidirTroca decide (e-mail da dona de hoje = SIM sem gravar;
+ *    recusas IKT01..IKT06 = NÃO, IKT06 = conta nova banida ou apagada no
+ *    Auth; fora do formato = INCERTO) e sqlTrocarDono troca numa transação
+ *    com as travas do definir-dono. Uma fase só, pelo acesso da ORG central
+ *    (a lojista não tem conta técnica; não há link nem código da dona): com
+ *    a troca possível, a DUPLA CONFIRMAÇÃO no terminal — o nome da loja,
+ *    igual ao --loja, e as 2 primeiras letras do e-mail da dona de HOJE,
+ *    conferidas no banco por sqlDaConfirmacao (só leitura; o e-mail não sai
+ *    de lá). Confirmação errada = NÃO sem escrever; conferência que cai =
+ *    INCERTO sem escrever. Só então a transação e a releitura (divergente =
+ *    INCERTO). O estado só ganha o veredito, e só depois que a escrita saiu.
+ *    O pedido escrito da assinante, o canal já cadastrado e as 48 h da outra
+ *    admin (decisão do sócio, D1) são procedimento: runbook ligar-loja-nova,
+ *    "Trocar a dona". As recusas de loja são as do definir-dono (IKCOUS,
+ *    Savy, alvos legados, loja fora do nova-loja). O e-mail inteiro nunca vai
+ *    ao estado, ao cofre, à saída nem à mensagem (sai 2 letras, ••• e o
+ *    domínio);
  *  - ficha confere store_config id = 1 (semeada pela migration
  *    20261540000000) e GERA, sem executar, o SQL da linha em frota_lojas e a
  *    entrada de lojas.json para o passo de cadastro (B5);
@@ -226,13 +209,6 @@ export const AGUARDANDO = Object.freeze({
  * scripts/frota/org-central.json. `abrir`/`receber` por loja não existem mais. */
 const USE_AUTORIZAR =
   "o acesso agora é UM só, da org central (a lojista não tem conta técnica): rode node scripts/frota/nova-loja.mjs autorizar --client-id <id> --redirect <url> --aplicar e depois autorizar --receber --aplicar. Nada foi feito.";
-/** Passos parados DENTRO da branch claude/nova-loja-central até a A15 do plano
- * da org central: o trocar-dono de hoje troca a autorização DA LOJA, que deixou
- * de existir. Fora de PENDENTES do conferir (não é pendência da loja). */
-export const AGUARDANDO_A15 = Object.freeze({
-  "trocar-dono":
-    "aguardando A15: a troca de dona está sendo reescrita para o modelo da org central (sem conta da lojista; pedido escrito e dupla confirmação). Nada foi feito.",
-});
 /** A chave do cofre da autorização da org (nunca o nome de uma loja). */
 const chaveDaOrg = () => carregarOrgCentral().chaveDoCofre;
 
@@ -329,7 +305,9 @@ export const CAMPOS_DO_ESTADO = Object.freeze({
   "primeira-admin": Object.freeze({}),
   // só o veredito: nem o id da dona entra aqui
   "definir-dono": Object.freeze({}),
-  // a hora do pedido de troca (fase 1): nem o e-mail, nem state/verificador
+  // só o veredito; `pedidoEm` é da troca em duas fases (antes da A15): só se
+  // aceita na leitura, para um estado antigo não travar a loja, e a troca
+  // nova substitui a entrada inteira (nunca o grava)
   "trocar-dono": Object.freeze({ pedidoEm: (v) => ehDataIso(v) }),
 });
 
@@ -803,15 +781,6 @@ async function passoReceber(pedido, d) {
     return resultado(
       NAO,
       `a loja ${slug} não tem autorização aberta: rode abrir --aplicar antes.`,
-    );
-  }
-  // o pendente de uma troca de dona aberta é da troca: consumido aqui, o
-  // refresh trocaria sem a conferência do projeto (T3-c) e sem trocar a dona
-  const troca = e?.passos?.["trocar-dono"]?.pedidoEm;
-  if (ehDataIso(troca) && !foraDoPrazo(d.agora(), Date.parse(troca))) {
-    return resultado(
-      NAO,
-      `a loja ${slug} tem um pedido de troca de dona aberto (de ${troca}, vale 30 min): o código desse link é da troca. Use ${proximoDaTroca(slug)}. O código não foi pedido e nada foi feito.`,
     );
   }
   const { acesso } = contexto(pedido, d);
@@ -2021,7 +1990,7 @@ const RECUSA_DA_CONTA_BLOQUEADA =
   "conta bloqueada ou apagada no Supabase: desbloqueie ou escolha outra pessoa";
 
 const TROCAR_E_DA_DONA =
-  "trocar de dono é pedido da dona, pela autorização dela: rode trocar-dono --aplicar (ela autoriza de novo pelo link) e depois trocar-dono --aplicar --receber com o código; este comando não troca nem apaga ninguém";
+  "trocar de dona é pedido por escrito da assinante do contrato (docs/runbooks/ligar-loja-nova.md, Trocar a dona): depois do procedimento, rode trocar-dono --aplicar (pede a dupla confirmação); este comando não troca nem apaga ninguém";
 
 /** Cada recusa de dentro da transação (SQLSTATE IKD..) e a mesma, lida antes. */
 const RECUSAS_DO_DONO = Object.freeze({
@@ -2362,8 +2331,8 @@ async function passoDefinirDono(pedido, d) {
 
 // ─── trocar-dono: o SQL e a regra (plano de fechar a loja nova, T1) ─────────
 // Trocar a dona redireciona o dinheiro da loja (as chaves de MP e Gmail passam
-// a ser da nova: supabase/functions/_shared/dono-da-loja.ts). O passo que pede
-// a autorização da dona e chama isto é a T2/T3; aqui só o SQL e a decisão.
+// a ser da nova: supabase/functions/_shared/dono-da-loja.ts). Quem chama isto
+// é o passo trocar-dono (A15, mais abaixo); aqui só o SQL e a decisão.
 
 /** Só leitura, UMA instrução, uma linha, nenhum id nem e-mail na resposta.
  * O e-mail entra como literal SQL pelo literalDoEmail do primeira-admin
@@ -2624,75 +2593,55 @@ export function resultadoDaTroca(linhas) {
   return null;
 }
 
-// ─── trocar-dono, fase 1: o pedido e o link novo da dona (T2) ───────────────
-// Trocar a dona exige uma autorização NOVA da dona da conta Supabase, na hora
-// (decisão do plano de 26/11): a fase 1 só lê, gera o link (PKCE, o mesmo
-// acesso.abrir do passo abrir) e guarda o pedido pendente. A troca, com o
-// código colado até PRAZO_DA_TROCA_MS depois do pedido, é a fase do código.
-// A troca fica presa à PESSOA (decisão do sócio, 26/11 ~15h): o e-mail da
-// nova dona entra só na fase 1 e fica cifrado (DPAPI) numa entrada PRÓPRIA do
-// pedido, no cofre da troca (d.cofreDaTroca, %LOCALAPPDATA%\ikcous\frota\troca),
-// nunca no registro do abrir; a fase 2 o lê de lá e o apaga no fim.
+// ─── trocar-dono: uma fase só, pelo acesso da org central (A15) ─────────────
+// No modelo da org central (01/12/2026) a lojista não tem conta técnica: o
+// link de autorização da "dona da conta Supabase" deixou de provar alguma
+// coisa (a conta é a da IKCOUS). Decisão do sócio (D1, 26/11): a troca só
+// acontece com o pedido por escrito da ASSINANTE do contrato, confirmado por
+// um canal JÁ cadastrado antes do pedido, e a outra admin avisada com 48 h
+// para contestar. Isso é procedimento (docs/runbooks/ligar-loja-nova.md,
+// "Trocar a dona"). Aqui: a leitura, a dupla confirmação no terminal (o nome
+// da loja e as 2 primeiras letras do e-mail da dona de HOJE, conferidas no
+// banco sem o e-mail sair de lá), a transação e a releitura.
 
-/** Quanto vale o pedido de troca: o código da autorização nova tem de chegar
- * até 30 min depois da hora do pedido (pedidoEm no estado; criadoEm no cofre,
- * gravado depois, então contar de pedidoEm nunca estica o prazo). */
-export const PRAZO_DA_TROCA_MS = 30 * 60_000;
+/** As 2 letras: ASCII visível, sem espaço e sem barra invertida (a aspa vai
+ * dobrada no literal). */
+const RE_LETRAS = /^[!-[\]-~]{2}$/;
 
-/** T3-a: quanto o criadoEm do pedido OAuth (gravado pelo acesso.abrir da fase
- * 1) pode ficar DEPOIS do pedidoEm. Entre os dois só há a trava do cofre e UMA
- * decifragem DPAPI (um PowerShell: de 0,3 s a uns 3 s numa máquina fria); 15 s
- * cobre a máquina lenta com folga. Um abrir nunca corre JUNTO com a fase 1 (a
- * trava do estado da loja), e um abrir feito depois tem criadoEm diferente do
- * guardado na entrada da troca: a igualdade exata fecha o caso, e a janela é a
- * segunda trava. */
-export const COLA_DO_PEDIDO_MS = 15_000;
-
-const pedirATroca = (slug) =>
-  `node scripts/frota/nova-loja.mjs trocar-dono --loja ${slug} --aplicar`;
-/** O comando da fase do código (T3). */
-const proximoDaTroca = (slug) => `${pedirATroca(slug)} --receber`;
-
-/** O app OAuth que o abrir guardou no cofre (client_id, client_secret e
- * retorno): o link novo sai pelo MESMO app, e assim o acesso.abrir mantém o
- * refresh da loja. null = a autorização da loja não está inteira no cofre.
- * Falha do próprio cofre (DPAPI) sobe. Nada daqui é impresso. */
-async function appDoCofre(d, slug) {
-  const texto = await d.cofre.ler(slug);
-  let r;
-  try {
-    r = typeof texto === "string" ? JSON.parse(texto) : null;
-  } catch {
-    r = null;
+/**
+ * Só leitura, UMA instrução, uma linha: `donos` = quantas donas a loja tem;
+ * `confere` = as 2 primeiras letras do e-mail da dona de hoje são `letras`
+ * (sem diferenciar maiúsculas). O e-mail não sai do banco: a resposta é só a
+ * contagem e o booleano. Dona sem e-mail (NULL) = false. LANÇA ErroDoComando
+ * (sem ecoar) se `letras` foge de RE_LETRAS.
+ */
+export function sqlDaConfirmacao(letras) {
+  if (typeof letras !== "string" || !RE_LETRAS.test(letras)) {
+    throw new ErroDoComando(
+      "as letras da confirmação precisam ser exatamente 2 caracteres (letra, dígito ou símbolo, sem espaço nem barra invertida); não são impressas.",
+      { codigo: "LETRAS" },
+    );
   }
+  const lit = `'${letras.replaceAll("'", "''")}'`;
+  return `SELECT (SELECT count(*) FROM public.dono_da_loja)::int AS donos,
+       COALESCE((SELECT bool_and(lower(left(u.email, 2)) = lower(${lit}))
+                   FROM public.dono_da_loja d JOIN auth.users u ON u.id = d.user_id), false) AS confere;`;
+}
+
+/** A linha de sqlDaConfirmacao, ou null se veio fora do formato. */
+function linhaDaConfirmacao(linhas) {
+  const l = Array.isArray(linhas) && linhas.length === 1 ? linhas[0] : null;
   if (
-    r === null ||
-    typeof r !== "object" ||
-    typeof r.clientId !== "string" ||
-    typeof r.clientSecret !== "string" ||
-    typeof r.redirectUri !== "string" ||
-    typeof r.refresh !== "string"
+    l === null ||
+    typeof l !== "object" ||
+    Array.isArray(l) ||
+    Object.keys(l).sort().join(",") !== "confere,donos" ||
+    !inteiro(l.donos) ||
+    typeof l.confere !== "boolean"
   ) {
     return null;
   }
-  return {
-    clientId: r.clientId,
-    clientSecret: r.clientSecret,
-    redirectUri: r.redirectUri,
-  };
-}
-
-/** O criadoEm do pedido pendente que o acesso.abrir acabou de gravar no
- * cofre da loja (null = ilegível). Nada daqui é impresso. */
-async function criadoEmDoPendente(d, slug) {
-  let r;
-  try {
-    r = JSON.parse(await d.cofre.ler(slug));
-  } catch {
-    return null;
-  }
-  const c = r?.pendente?.criadoEm;
-  return Number.isSafeInteger(c) ? c : null;
+  return l;
 }
 
 /**
@@ -2708,246 +2657,15 @@ export function mascararEmail(email) {
   return `${t.slice(0, letras)}•••${t.slice(arroba)}`;
 }
 
-const VERSAO_DA_TROCA = 1;
+const pedirATroca = (slug) =>
+  `node scripts/frota/nova-loja.mjs trocar-dono --loja ${slug} --aplicar`;
 
-/** O texto da entrada da troca → { email, pedidoEm, criadoEm } ou null
- * (fora do formato). */
-function entradaDaTroca(texto) {
-  let r;
-  try {
-    r = JSON.parse(texto);
-  } catch {
-    return null;
-  }
-  if (
-    r === null ||
-    typeof r !== "object" ||
-    Array.isArray(r) ||
-    Object.keys(r).sort().join(",") !== "criadoEm,email,pedidoEm,versao" ||
-    r.versao !== VERSAO_DA_TROCA ||
-    typeof r.email !== "string" ||
-    !Number.isSafeInteger(r.pedidoEm) ||
-    !Number.isSafeInteger(r.criadoEm)
-  ) {
-    return null;
-  }
-  try {
-    literalDoEmail(r.email);
-  } catch {
-    return null;
-  }
-  return r;
-}
-
-/** A entrada do pedido de troca no cofre da troca, ou null (ausente ou fora
- * do formato: as duas recusam igual). Falha do próprio cofre (DPAPI) sobe. */
-async function lerEntradaDaTroca(d, slug) {
-  const texto = await d.cofreDaTroca.ler(slug);
-  return texto === null ? null : entradaDaTroca(texto);
-}
-
-/** Apaga a entrada do e-mail; devolve null ou o aviso (sem o e-mail) de que
- * ela ficou no disco. */
-async function apagarEntradaDaTroca(d, slug) {
-  try {
-    await d.cofreDaTroca.apagar(slug);
-    return null;
-  } catch (erro) {
-    return `Não consegui apagar o e-mail da nova dona do cofre da troca (${porque(erro)}): ele segue cifrado no PC; rode ${pedirATroca(slug)} --receber de novo para apagá-lo.`;
-  }
-}
-
-const foraDoPrazo = (agora, pedidoEm) =>
-  agora < pedidoEm || agora - pedidoEm > PRAZO_DA_TROCA_MS;
-
-/** O e-mail de um pedido de troca vencido (ou ilegível) sai do cofre da troca
- * no começo de TODA rodada com --aplicar da loja, conferir incluído (decisão
- * do sócio: o e-mail fica no PC por até 30 min). Só apaga; nunca grava. Falha
- * do cofre não derruba o passo (a próxima rodada tenta de novo). */
-async function limparTrocaVencida(d, slug) {
-  try {
-    const texto = await d.cofreDaTroca.ler(slug);
-    if (texto === null) return;
-    const velha = entradaDaTroca(texto);
-    if (!velha || foraDoPrazo(d.agora(), velha.pedidoEm))
-      await d.cofreDaTroca.apagar(slug);
-  } catch {
-    // limpeza de cortesia: repete na próxima rodada da loja
-  }
-}
-
-/** T3-a: o pendente do cofre é o que a fase 1 deste pedido gravou. */
-function pendenteDoPedido(pendente, entrada, pedidoEm) {
-  const c = pendente?.criadoEm;
-  return (
-    Number.isSafeInteger(c) &&
-    c === entrada.criadoEm &&
-    c >= pedidoEm &&
-    c - pedidoEm <= COLA_DO_PEDIDO_MS
-  );
-}
-
-const prazoVencido = (slug, pedidoEm) =>
-  `o pedido de troca da loja ${slug} vencia em ${new Date(pedidoEm + PRAZO_DA_TROCA_MS).toISOString()} (30 min depois do pedido): o código não foi usado e a dona NÃO foi trocada. Rode ${pedirATroca(slug)} de novo (sai um link novo).`;
-
-function textoDoPedidoDaTroca(url, slug, pedidoEm, email) {
-  const ate = new Date(pedidoEm + PRAZO_DA_TROCA_MS).toISOString();
-  return [
-    `Pedido de troca de dona da loja ${slug} aberto em ${new Date(pedidoEm).toISOString()}, para a nova dona ${mascararEmail(email)}. A dona AINDA NÃO foi trocada.`,
-    "Mande para a DONA DA CONTA Supabase da loja (quem autorizou a IKCOUS no abrir), e só para ela:",
-    "  1. Abra este link no navegador, entrando na conta Supabase dela:",
-    `     ${url}`,
-    '  2. Na tela "Authorize IKCOUS", confira que a organização marcada é a da loja e toque em "Authorize": é assim que ela confirma que pede a troca.',
-    '  3. Na página seguinte aparece um código com o botão "Copiar". Ela copia e manda para a IKCOUS.',
-    `  O pedido vale 30 min (até ${ate}). Passou disso, rode este comando de novo: sai um link novo e o anterior deixa de valer.`,
-    `Depois, aqui: ${proximoDaTroca(slug)}   (só o código entra pela entrada, quando ele pedir; o e-mail da nova dona já está guardado no cofre da troca)`,
-  ].join("\n");
-}
-
-async function passoTrocarDono(pedido, d) {
-  if (pedido.receber === true) return passoReceberATroca(pedido, d);
-  const { slug } = pedido;
-  const pre = await preDoDono(d, slug, "", "trocar-dono");
-  if (pre.r) return pre.r;
-  const { ref } = pre;
-  // o e-mail só existe nesta variável, no SQL da leitura e, com a troca
-  // possível, na entrada própria do cofre da troca
-  const email = await lerUmaEntrada(
-    d,
-    "Digite o e-mail da NOVA dona (o mesmo com que ela entra NA LOJA) e tecle Enter: ",
-  );
-  let sql;
-  try {
-    sql = sqlDaTroca(email);
-  } catch {
-    return resultado(
-      NAO,
-      "o texto recebido não tem forma de e-mail (uma linha, com @, sem espaço nem barra invertida, até 254 caracteres); não é impresso. Nenhum pedido foi aberto.",
-    );
-  }
-  // defesa na fronteira: nenhuma mensagem leva o e-mail (as de cá não o têm)
-  const semEmail = (veredito, mensagem) =>
-    resultado(veredito, semOEmail([mensagem], email)[0]);
-  const { acesso, gestao } = contexto(pedido, d);
-
-  let decisao;
-  try {
-    const t = await gestao.consultarBanco(ref, SQL_DONO_EXISTE, {
-      somenteLeitura: true,
-    });
-    const tabela =
-      Array.isArray(t) && t.length === 1 && typeof t[0]?.tabela === "boolean"
-        ? t[0].tabela
-        : null;
-    if (tabela === false) return resultado(NAO, SEM_A_TABELA_DO_DONO);
-    decisao =
-      tabela === null
-        ? decidirTroca(null)
-        : decidirTroca(
-            await gestao.consultarBanco(ref, sql, { somenteLeitura: true }),
-          );
-  } catch (erro) {
-    return semEmail(
-      INCERTO,
-      `não consegui ler a dona de hoje e a conta desse e-mail: ${porque(erro)} Nenhum pedido foi aberto.`,
-    );
-  }
-  if (!decisao.gravar) {
-    return semEmail(
-      decisao.veredito,
-      `${decisao.mensagem} Nenhum pedido de troca foi aberto.`,
-    );
-  }
-
-  const app = await appDoCofre(d, slug);
-  if (!app) {
-    return resultado(
-      NAO,
-      `a autorização da loja ${slug} não está inteira no cofre (app e refresh): rode abrir e receber antes. Nenhum pedido foi aberto.`,
-    );
-  }
-  // a hora vem ANTES do acesso.abrir: o criadoEm do cofre nunca é anterior
-  const pedidoEm = d.agora();
-  // PKCE e state novos; o pendente anterior (e o link dele) é substituído
-  const { url } = await acesso.abrir({ slug, ...app });
-  const refazer = `o link NÃO foi impresso e a dona não foi trocada. Rode ${pedirATroca(slug)} de novo (sai outro link).`;
-  // T3-a: a entrada do e-mail leva o criadoEm EXATO deste pendente
-  const criadoEm = await criadoEmDoPendente(d, slug);
-  if (
-    criadoEm === null ||
-    criadoEm < pedidoEm ||
-    criadoEm - pedidoEm > COLA_DO_PEDIDO_MS
-  ) {
-    return resultado(
-      NAO,
-      `o pedido pendente no cofre da loja ${slug} não ficou colado à hora deste pedido (até ${COLA_DO_PEDIDO_MS / 1000} s): ${refazer}`,
-    );
-  }
-  try {
-    await d.cofreDaTroca.gravar(
-      slug,
-      JSON.stringify({ versao: VERSAO_DA_TROCA, email, pedidoEm, criadoEm }),
-    );
-  } catch (erro) {
-    return semEmail(
-      NAO,
-      `${porque(erro)} O e-mail da nova dona não ficou no cofre da troca, e sem ele o pedido não vale: ${refazer}`,
-    );
-  }
-  const em = new Date(pedidoEm).toISOString();
-  try {
-    const e = (await d.estado.ler(slug)) ?? estadoNovo(slug);
-    e.passos["trocar-dono"] = { pedidoEm: em, em };
-    await d.estado.gravar(slug, e);
-  } catch (erro) {
-    const aviso = await apagarEntradaDaTroca(d, slug);
-    return resultado(
-      NAO,
-      `${porque(erro)} O pedido ficou no cofre, mas sem a hora no estado ele não vale: ${refazer}${aviso ? ` ${aviso}` : ""}`,
-    );
-  }
-  d.saida.out(textoDoPedidoDaTroca(url, slug, pedidoEm, email));
-  return resultado(
-    SIM,
-    `pedido de troca guardado no cofre da loja ${slug} (vale 30 min); o link e o próximo comando estão acima. A dona AINDA NÃO foi trocada.`,
-  );
-}
-
-// ─── trocar-dono, fase 2: o código da dona e a troca (T3) ───────────────────
-// --aplicar --receber: só o CÓDIGO entra pela entrada; o e-mail sai do cofre
-// da troca. Ordem: pedido no prazo e o MESMO da fase 1 (T3-a) → o código vira
-// autorização nova, que tem de alcançar o projeto da loja ANTES de o refresh
-// novo ir para o cofre (T3-c) → sqlTrocarDono pelo pg-meta → releitura. A
-// entrada do e-mail é apagada no fim, em QUALQUER desfecho.
-
-/** Depois de o código virar token, não dá para garantir que a autorização
- * anterior da loja segue valendo (o Supabase pode invalidá-la ao emitir outra
- * para o mesmo app: prova P6 pendente). */
-const AVISO_DA_AUTORIZACAO_ANTIGA =
-  "Pode ser que a autorização antiga da loja tenha deixado de valer: se a loja der erro de acesso, peça à dona para autorizar de novo com nova-loja abrir/receber.";
+/** --receber era a fase do código da troca em duas fases (antes da A15). */
+const TROCA_EM_UMA_FASE = (slug) =>
+  `a troca de dona é uma fase só desde a org central (não há link nem código da dona): rode ${pedirATroca(slug)}. Nada foi feito.`;
 
 const repetirATroca = (slug) =>
-  `Para ver quem é a dona agora, rode conferir (só leitura). Repetir a troca exige um pedido novo: ${pedirATroca(slug)}.`;
-
-/** A autorização nova alcança o projeto da loja? (T3-c: GET
- * /v1/projects/{ref} com o access token NOVO, antes de o refresh dele ir ao
- * cofre.) LANÇA ErroDoComando se não. */
-async function conferirAcessoAoProjeto(d, accessToken, ref) {
-  const naoAlcanca = (porQue) =>
-    new ErroDoComando(
-      `a autorização nova não alcança o projeto ${ref} da loja (${porQue}): quem tocou em Authorize não é a dona da organização da loja? O código foi usado e o refresh novo NÃO foi guardado. ${AVISO_DA_AUTORIZACAO_ANTIGA}`,
-      { codigo: "SEM_ACESSO_AO_PROJETO" },
-    );
-  const g = criarClienteGestao({ token: accessToken, fetch: d.fetch });
-  let p;
-  try {
-    p = await g.pedir("projeto", { ref });
-  } catch (erro) {
-    throw naoAlcanca(porque(erro));
-  }
-  if (p === null || typeof p !== "object" || p.ref !== ref)
-    throw naoAlcanca("a leitura devolveu outro projeto");
-}
+  `Para ver quem é a dona agora, rode conferir (só leitura). Repetir ${pedirATroca(slug)} é seguro: ele lê antes, e se a nova já for a dona dá SIM sem gravar.`;
 
 /** O erro da transação da troca → resultado. Só um erro do PRÓPRIO Postgres
  * (SQLSTATE no corpo) prova que o COMMIT não rodou; o resto é INCERTO. */
@@ -2985,91 +2703,126 @@ function resultadoDoErroDaTroca(e, slug) {
   );
 }
 
-/** A fase 2 depois das condições da loja. `segredo.email` recebe o e-mail
- * lido do cofre, para a fronteira o tirar de toda mensagem. */
-async function trocarComOCodigo(pedido, d, ref, segredo) {
-  const { slug } = pedido;
-  const e = await d.estado.ler(slug);
-  const iso = e?.passos?.["trocar-dono"]?.pedidoEm;
-  if (!ehDataIso(iso)) {
-    return resultado(
-      NAO,
-      `a loja ${slug} não tem pedido de troca aberto: rode trocar-dono --aplicar antes (${pedirATroca(slug)}; ele gera o link para a dona). O código não foi pedido e a dona NÃO foi trocada.`,
-    );
-  }
-  const pedidoEm = Date.parse(iso);
-  // o prazo primeiro: a limpeza da rodada já pode ter apagado o e-mail vencido
-  if (foraDoPrazo(d.agora(), pedidoEm))
-    return resultado(NAO, prazoVencido(slug, pedidoEm));
-  const entrada = await lerEntradaDaTroca(d, slug);
-  if (entrada === null || entrada.pedidoEm !== pedidoEm) {
-    return resultado(
-      NAO,
-      `o e-mail da nova dona não está no cofre da troca com a hora deste pedido (apagado, ou de outro pedido): o código não foi pedido e a dona NÃO foi trocada. Rode ${pedirATroca(slug)} de novo.`,
-    );
-  }
-  // o e-mail sai do COFRE, nunca da entrada padrão (decisão do sócio, 26/11)
-  const email = entrada.email;
-  segredo.email = email;
-  const { acesso } = contexto(pedido, d);
-  const colado = await lerUmaEntrada(
-    d,
-    "Cole o código que a dona da conta Supabase mandou (ou o endereço inteiro) e tecle Enter: ",
-  );
-  let novo;
+/** Registra o veredito depois que a escrita SAIU. A entrada inteira é
+ * substituída (um `pedidoEm` da troca em duas fases sai aqui). Estado que não
+ * grava não desfaz o que o banco fez: SIM vira INCERTO. */
+async function fecharATroca(d, slug, r) {
   try {
-    novo = await acesso.receber({
-      slug,
-      colado,
-      // T3-a, antes de o código ser trocado
-      conferirPendente: (pendente) => {
-        if (!pendenteDoPedido(pendente, entrada, pedidoEm)) {
-          throw new ErroDoComando(
-            `o pedido pendente no cofre da loja ${slug} não é o desta troca (houve um abrir ou outro pedido depois da fase 1): o código não foi usado. Rode ${pedirATroca(slug)} de novo.`,
-            { codigo: "PEDIDO_DIVERGENTE" },
-          );
-        }
-        if (foraDoPrazo(d.agora(), pedidoEm)) {
-          throw new ErroDoComando(prazoVencido(slug, pedidoEm), {
-            codigo: "PRAZO_VENCIDO",
-          });
-        }
-      },
-      // T3-c, antes de o refresh novo ir para o cofre
-      conferirAcesso: (accessToken) =>
-        conferirAcessoAoProjeto(d, accessToken, ref),
-    });
+    const e = (await d.estado.ler(slug)) ?? estadoNovo(slug);
+    e.passos["trocar-dono"] = {
+      veredito: r.veredito,
+      em: new Date(d.agora()).toISOString(),
+    };
+    await d.estado.gravar(slug, e);
   } catch (erro) {
-    const r = resultadoDoErro(erro);
-    // as conferências de cá já dizem o que fazer; nas outras falhas o código
-    // pode ter sido trocado: diz que a autorização antiga pode ter caído
     return resultado(
-      r.veredito,
-      erro instanceof ErroDoComando
-        ? `${r.mensagem} A dona NÃO foi trocada.`
-        : `o código não virou uma autorização nova: ${r.mensagem} A dona NÃO foi trocada; para tentar a troca de novo, rode ${pedirATroca(slug)} (sai um link novo). ${AVISO_DA_AUTORIZACAO_ANTIGA}`,
+      r.veredito === SIM ? INCERTO : r.veredito,
+      `${r.mensagem} ${porque(erro)} ${repetirATroca(slug)}`,
     );
   }
+  return r;
+}
+
+/** Depois do e-mail: a leitura, a dupla confirmação, a escrita e a
+ * releitura. Antes da escrita nada vai ao estado; depois dela, sempre. */
+async function trocarADona(pedido, d, ref, email, sqlLeitura) {
+  const { slug } = pedido;
+  const { gestao } = contexto(pedido, d);
+  const nadaEscrito = "nada foi escrito e a dona NÃO foi trocada";
+
+  let decisao;
+  try {
+    const t = await gestao.consultarBanco(ref, SQL_DONO_EXISTE, {
+      somenteLeitura: true,
+    });
+    const tabela =
+      Array.isArray(t) && t.length === 1 && typeof t[0]?.tabela === "boolean"
+        ? t[0].tabela
+        : null;
+    if (tabela === false) return resultado(NAO, SEM_A_TABELA_DO_DONO);
+    decisao =
+      tabela === null
+        ? decidirTroca(null)
+        : decidirTroca(
+            await gestao.consultarBanco(ref, sqlLeitura, {
+              somenteLeitura: true,
+            }),
+          );
+  } catch (erro) {
+    return resultado(
+      INCERTO,
+      `não consegui ler a dona de hoje e a conta desse e-mail: ${porque(erro)} Nada foi escrito.`,
+    );
+  }
+  if (!decisao.gravar) return resultado(decisao.veredito, decisao.mensagem);
+
   const quem = mascararEmail(email);
-  // o access token NOVO, desta autorização; sem renovar de novo
-  const banco = criarClienteGestao({
-    token: novo.accessToken,
-    fetch: d.fetch,
-  });
   d.saida.out(
-    `trocar-dono: a autorização nova da dona alcança o projeto ${ref}, e o refresh dela está no cofre. Trocando a dona para ${quem}: UMA transação (BEGIN; SET LOCAL ROLE postgres; travas; as guardas de novo, com IKT06; DELETE+INSERT em dono_da_loja; conferência pela 88c; COMMIT).`,
+    `trocar-dono: ${decisao.mensagem}. A troca vai fazer de ${quem} a dona da loja ${slug} (projeto ${ref}). Antes, a dupla confirmação: o nome da loja e as 2 primeiras letras do e-mail da dona de HOJE (a do cadastro na gestão).`,
   );
+  const nome = await lerUmaEntrada(
+    d,
+    "Confirmação 1 de 2: digite o nome da loja (o mesmo do --loja) e tecle Enter: ",
+  );
+  if (nome !== slug) {
+    return resultado(
+      NAO,
+      `o nome da loja digitado não é ${slug}: a dupla confirmação falhou e ${nadaEscrito}. Rode de novo com cuidado.`,
+    );
+  }
+  const letras = await lerUmaEntrada(
+    d,
+    "Confirmação 2 de 2: digite as 2 primeiras letras do e-mail da dona de HOJE (a do cadastro na gestão) e tecle Enter: ",
+  );
+  let sqlConfirmacao;
+  try {
+    sqlConfirmacao = sqlDaConfirmacao(letras);
+  } catch (erro) {
+    return resultado(NAO, `${porque(erro)} A troca parou: ${nadaEscrito}.`);
+  }
+  let conf;
+  try {
+    conf = linhaDaConfirmacao(
+      await gestao.consultarBanco(ref, sqlConfirmacao, {
+        somenteLeitura: true,
+      }),
+    );
+  } catch (erro) {
+    return resultado(
+      INCERTO,
+      `não consegui conferir as letras no banco: ${porque(erro)} A troca parou: ${nadaEscrito}.`,
+    );
+  }
+  if (!conf || conf.donos !== 1) {
+    return resultado(
+      INCERTO,
+      `a conferência das letras voltou fora do formato ou a loja não tem UMA dona agora (mudou desde a leitura): ${nadaEscrito}. ${repetirATroca(slug)}`,
+    );
+  }
+  if (!conf.confere) {
+    return resultado(
+      NAO,
+      `as 2 letras não são as do e-mail da dona de hoje desta loja: a dupla confirmação falhou e ${nadaEscrito}. Confira no cadastro da gestão quem é a dona de hoje antes de repetir.`,
+    );
+  }
+
+  d.saida.out(
+    `trocar-dono: dupla confirmação certa. Trocando a dona para ${quem} pelo acesso da org central: UMA transação (BEGIN; SET LOCAL ROLE postgres; travas; as guardas de novo, com IKT06; DELETE+INSERT em dono_da_loja; conferência pela 88c; COMMIT).`,
+  );
+  const fechar = (r) => fecharATroca(d, slug, r);
   let linhas;
   try {
-    linhas = await banco.consultarBanco(ref, sqlTrocarDono(email));
+    linhas = await gestao.consultarBanco(ref, sqlTrocarDono(email));
   } catch (erro) {
-    return resultadoDoErroDaTroca(erro, slug);
+    return await fechar(resultadoDoErroDaTroca(erro, slug));
   }
   const acao = resultadoDaTroca(linhas);
   if (acao === null) {
-    return resultado(
-      INCERTO,
-      `a transação respondeu num formato inesperado: não dá para afirmar que trocou. ${repetirATroca(slug)}`,
+    return await fechar(
+      resultado(
+        INCERTO,
+        `a transação respondeu num formato inesperado: não dá para afirmar que trocou. ${repetirATroca(slug)}`,
+      ),
     );
   }
   // a releitura, fora da transação: a nova é a dona única, admin nas duas
@@ -3077,14 +2830,14 @@ async function trocarComOCodigo(pedido, d, ref, segredo) {
   let l;
   try {
     l = linhaDaTroca(
-      await banco.consultarBanco(ref, sqlDaTroca(email), {
-        somenteLeitura: true,
-      }),
+      await gestao.consultarBanco(ref, sqlLeitura, { somenteLeitura: true }),
     );
   } catch (erro) {
-    return resultado(
-      INCERTO,
-      `a transação respondeu que ${acao === "trocada" ? "trocou" : "ela já era a dona"}, mas a releitura caiu (${porque(erro)}): sem ela não digo SIM. ${repetirATroca(slug)}`,
+    return await fechar(
+      resultado(
+        INCERTO,
+        `a transação respondeu que ${acao === "trocada" ? "trocou" : "ela já era a dona"}, mas a releitura caiu (${porque(erro)}): sem ela não digo SIM. ${repetirATroca(slug)}`,
+      ),
     );
   }
   if (
@@ -3095,49 +2848,50 @@ async function trocarComOCodigo(pedido, d, ref, segredo) {
     !l.nova_admin ||
     l.bloqueada
   ) {
-    return resultado(
-      INCERTO,
-      `a transação respondeu, mas a releitura não confirma ${quem} como a dona única (admin nas duas fontes, conta ativa): algo mudou junto. ${repetirATroca(slug)}`,
+    return await fechar(
+      resultado(
+        INCERTO,
+        `a transação respondeu, mas a releitura não confirma ${quem} como a dona única (admin nas duas fontes, conta ativa): algo mudou junto. ${repetirATroca(slug)}`,
+      ),
     );
   }
-  return resultado(
-    SIM,
-    acao === "trocada"
-      ? `${quem} agora é a dona da loja ${slug} (conferido na releitura: 1 dona, admin nas duas fontes do cargo, conta ativa). As chaves do Mercado Pago e do Gmail passam a ser as dela; a dona antiga continua admin até a nova tirar. Quem estava com o painel aberto recarrega a página (F5).`
-      : `${quem} já era a dona da loja ${slug}; nada foi gravado.`,
+  return await fechar(
+    resultado(
+      SIM,
+      acao === "trocada"
+        ? `${quem} agora é a dona da loja ${slug} (conferido na releitura: 1 dona, admin nas duas fontes do cargo, conta ativa). As chaves do Mercado Pago e do Gmail passam a ser as dela; a dona antiga continua admin até a nova tirar. Quem estava com o painel aberto recarrega a página (F5).`
+        : `${quem} já era a dona da loja ${slug}; nada foi gravado.`,
+    ),
   );
 }
 
-async function passoReceberATroca(pedido, d) {
+async function passoTrocarDono(pedido, d) {
   const { slug } = pedido;
   const pre = await preDoDono(d, slug, "", "trocar-dono");
   if (pre.r) return pre.r;
-  const segredo = { email: "" };
+  // o e-mail só existe nesta variável e nos textos SQL (nunca no estado,
+  // no cofre, na saída nem na mensagem; o que sai é mascararEmail)
+  const email = await lerUmaEntrada(
+    d,
+    "Digite o e-mail da NOVA dona (o mesmo com que ela entra NA LOJA) e tecle Enter: ",
+  );
+  let sqlLeitura;
+  try {
+    sqlLeitura = sqlDaTroca(email);
+  } catch {
+    return resultado(
+      NAO,
+      "o texto recebido não tem forma de e-mail (uma linha, com @, sem espaço nem barra invertida, até 254 caracteres); não é impresso. Nada foi lido nem escrito.",
+    );
+  }
   let r;
   try {
-    r = await trocarComOCodigo(pedido, d, pre.ref, segredo);
+    r = await trocarADona(pedido, d, pre.ref, email, sqlLeitura);
   } catch (erro) {
     r = resultadoDoErro(erro);
   }
-  // a entrada do e-mail sai em QUALQUER desfecho (decisão do sócio, 26/11)
-  const aviso = await apagarEntradaDaTroca(d, slug);
-  let mensagem = aviso ? `${r.mensagem} ${aviso}` : r.mensagem;
-  let { veredito } = r;
-  // o pedido fecha: o estado fica só com o veredito (sem pedidoEm, um
-  // --receber repetido é NÃO sem pedir código)
-  try {
-    const e = (await d.estado.ler(slug)) ?? estadoNovo(slug);
-    e.passos["trocar-dono"] = {
-      veredito,
-      em: new Date(d.agora()).toISOString(),
-    };
-    await d.estado.gravar(slug, e);
-  } catch (erro) {
-    // a troca pode ter sido feita: SIM sem o estado não é SIM
-    if (veredito === SIM) veredito = INCERTO;
-    mensagem = `${mensagem} ${porque(erro)} ${repetirATroca(slug)}`;
-  }
-  return resultado(veredito, semOEmail([mensagem], segredo.email)[0]);
+  // defesa na fronteira: nenhuma mensagem leva o e-mail
+  return resultado(r.veredito, semOEmail([r.mensagem], email)[0]);
 }
 
 /** O que a loja pronta precisa e este comando ainda não faz: aparece como
@@ -3725,18 +3479,13 @@ async function ensaio(pedido, d) {
     );
   }
   if (passo === "trocar-dono") {
-    // nem o e-mail nem o código são pedidos: sem --aplicar não há o que fazer
+    // nem o e-mail nem a confirmação são pedidos: sem --aplicar não há o que
+    // fazer com eles
     const pre = await preDoDono(d, slug, `${ENSAIO} `, "trocar-dono");
     if (pre.r) return pre.r;
-    if (pedido.receber === true) {
-      return resultado(
-        INCERTO,
-        `${ENSAIO} pediria o código que a dona da conta Supabase mandou (só ele, pela entrada), conferiria que o pedido de troca está nos 30 min e é o mesmo da fase 1, trocaria o código por uma autorização nova e conferiria que ela alcança o projeto ${pre.ref} ANTES de guardar o refresh novo no cofre; só então mandaria UMA transação (as guardas de novo, com IKT06; DELETE+INSERT em dono_da_loja; conferência pela 88c; COMMIT) com o e-mail guardado no cofre da troca, releria e apagaria esse e-mail do cofre.`,
-      );
-    }
     return resultado(
       INCERTO,
-      `${ENSAIO} pediria o e-mail da nova dona pela entrada e leria (só leitura) a dona de hoje e a conta desse e-mail no projeto ${pre.ref}; só com a troca possível (dona cadastrada; a nova admin nas duas fontes do cargo, com e-mail confirmado) geraria um link NOVO (PKCE) para a dona da conta Supabase autorizar de novo, guardaria o pedido pendente no cofre DPAPI e a hora dele no estado local. Nada seria escrito no banco.`,
+      `${ENSAIO} pediria o e-mail da nova dona pela entrada e leria (só leitura, pelo acesso da org central) a dona de hoje e a conta desse e-mail no projeto ${pre.ref}; só com a troca possível (dona cadastrada; a nova admin nas duas fontes do cargo, com e-mail confirmado e conta ativa) pediria a dupla confirmação — o nome da loja e as 2 primeiras letras do e-mail da dona de HOJE, conferidas no banco sem ler o e-mail — e só com ela certa mandaria UMA transação (as guardas de novo, com IKT06; DELETE+INSERT em dono_da_loja; conferência pela 88c; COMMIT) e releria. Confirmação errada = NÃO sem escrever.`,
     );
   }
   // conferir
@@ -3788,10 +3537,6 @@ function completar(deps) {
   d.cofreDoBanco ??= criarCofreDpapi({
     pasta: pastaPadraoDoCofreDoBanco(),
   });
-  // o e-mail da nova dona entre as fases do trocar-dono (entrada própria)
-  d.cofreDaTroca ??= criarCofreDpapi({
-    pasta: path.join(path.dirname(pastaPadraoDoCofre()), "troca"),
-  });
   d.estado ??= criarEstadoEmArquivo();
   d.git ??= gitReal();
   return d;
@@ -3835,8 +3580,8 @@ export async function executarPasso(pedidoRecebido, deps = {}) {
       r = resultado(NAO, "--org fora do formato.");
     } else if (Object.hasOwn(AGUARDANDO, passo)) {
       r = resultado(NAO, Reflect.get(AGUARDANDO, passo));
-    } else if (Object.hasOwn(AGUARDANDO_A15, passo)) {
-      r = resultado(NAO, Reflect.get(AGUARDANDO_A15, passo));
+    } else if (passo === "trocar-dono" && pedido.receber === true) {
+      r = resultado(NAO, TROCA_EM_UMA_FASE(pedido.slug));
     } else if (passo !== "autorizar" && slugQueNaoCabe(pedido.slug)) {
       // TODO passo de loja: nome que não cabe no cadastro, que é a chave do
       // cofre da org ou cujo segredo seria o da org, para antes de rede e estado
@@ -3877,7 +3622,6 @@ export async function executarPasso(pedidoRecebido, deps = {}) {
       } else {
         const liberar = await d.estado.travar(pedido.slug);
         try {
-          await limparTrocaVencida(d, pedido.slug);
           r = await EXECUTORES[passo](pedido, d);
         } finally {
           await liberar();
@@ -3944,13 +3688,9 @@ export function lerArgumentos(argv) {
       );
     }
   }
-  if (
-    a.receber === true &&
-    a.passo !== "trocar-dono" &&
-    a.passo !== "autorizar"
-  ) {
+  if (a.receber === true && a.passo !== "autorizar") {
     throw new ErroDoComando(
-      "--receber só existe no autorizar (autorizar --receber --aplicar) e no trocar-dono.",
+      "--receber só existe no autorizar (autorizar --receber --aplicar); a troca de dona é uma fase só (trocar-dono --loja <slug> --aplicar).",
       { codigo: "USO" },
     );
   }
@@ -4010,7 +3750,7 @@ async function principal() {
       e instanceof ErroDoComando ? e.message : "argumentos ilegíveis.",
     );
     console.error(
-      `Uso: node scripts/frota/nova-loja.mjs autorizar [--receber] [--client-id <id> --redirect <url>] --aplicar | <${PASSOS.join("|")}> --loja <slug> [--aplicar] [--receber] [--client-id <id> --redirect <url>] [--org <org>] [--nome <apelido>]`,
+      `Uso: node scripts/frota/nova-loja.mjs autorizar [--receber] [--client-id <id> --redirect <url>] --aplicar | <${PASSOS.join("|")}> --loja <slug> [--aplicar] [--client-id <id> --redirect <url>] [--org <org>] [--nome <apelido>]`,
     );
     return 1;
   }

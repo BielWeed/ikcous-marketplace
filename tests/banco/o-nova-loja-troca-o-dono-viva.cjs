@@ -46,7 +46,12 @@
  *       conexão roda enquanto ela está abortada); depois do ROLLBACK a conexão volta a servir;
  *   (6) CONTROLES: com o texto do script todas as sondas valem; 15 mutantes textuais do SQL (cada guarda tirada, as
  *       travas, o FOR SHARE, o lower, o SET LOCAL ROLE, a guarda IKT06 tirada, antes da do IKT04, com o ban vencido
- *       contando e olhando também a dona de hoje) reprovam AO MENOS a sonda que cada um declara.
+ *       contando e olhando também a dona de hoje) reprovam AO MENOS a sonda que cada um declara;
+ *   (7) a dupla confirmação do passo (A15, uma fase só pelo acesso da org central): sqlDaConfirmacao(letras) só lê
+ *       (transação READ ONLY, dump igual), devolve só `donos` e `confere` (o e-mail não sai do banco), compara as 2
+ *       primeiras letras do e-mail da dona de HOJE sem diferenciar maiúsculas (as da nova não conferem); loja sem dona
+ *       ou dona sem e-mail = false; a aspa vai dobrada e chega inteira; duas donas (chave relaxada só no clone) = uma
+ *       linha sem erro. Controles: sem o lower as maiúsculas deixam de conferir; sem o bool_and duas donas dão 21000.
  *
  * LIMITE DECLARADO: no postgres:17 do CI o papel postgres É superusuário; no Supabase não é (é dono das tabelas de
  * public). Esta prova mostra que a sessão de fora não escreve nada sem o SET LOCAL ROLE e que, com ele, o texto faz o
@@ -122,6 +127,7 @@ let sqlTrocarDono;
 let sqlDaTroca;
 let decidirTroca;
 let resultadoDaTroca;
+let sqlDaConfirmacao;
 let SIM_;
 let NAO_;
 
@@ -1267,10 +1273,116 @@ PROVAS.push({
   },
 });
 
+// ---------------------------------------------------------------------------------------------------------------------
+// (7) a dupla confirmação (A15): sqlDaConfirmacao
+// ---------------------------------------------------------------------------------------------------------------------
+/** sqlDaConfirmacao(letras) numa transação READ ONLY (uma escrita ali seria 25006), com o dump igual antes e depois. */
+async function confirmar(c, letras, gerar = sqlDaConfirmacao) {
+  const antes = await dump(c);
+  await c.query("BEGIN READ ONLY");
+  let r;
+  try {
+    r = await c.query(gerar(letras));
+  } finally {
+    await c.query("ROLLBACK");
+  }
+  assert.deepEqual(
+    await dump(c),
+    antes,
+    "a conferência das letras mudou alguma linha",
+  );
+  return r.rows;
+}
+
+PROVAS.push({
+  nome: "(7) a dupla confirmação (A15): sqlDaConfirmacao só lê (READ ONLY, dump igual), devolve só donos e confere, compara as 2 primeiras letras do e-mail da dona de HOJE sem diferenciar maiúsculas (nunca as da nova), dona sem e-mail ou loja sem dona = false, aspa dobrada chega inteira, duas donas não quebram; controles: sem o lower e sem o bool_and reprovam",
+  corpo: async (c) => {
+    const emails = {
+      [U_DONA]: "Ana.dona@troca.teste",
+      [U_NOVA]: "bia.nova@troca.teste",
+    };
+    await preparar(c, { ...BASE, emails });
+    for (const [letras, confere] of [
+      ["an", true],
+      ["AN", true],
+      ["aN", true],
+      ["bi", false],
+      ["na", false],
+      ["a.", false],
+    ]) {
+      assert.deepEqual(
+        await confirmar(c, letras),
+        [{ donos: 1, confere }],
+        letras,
+      );
+    }
+    // a loja sem dona: nada confere
+    await preparar(c, { papeis: BASE.papeis, emails });
+    assert.deepEqual(await confirmar(c, "an"), [{ donos: 0, confere: false }]);
+    // a dona sem e-mail (conta só de telefone): false, nunca NULL
+    await preparar(c, { ...BASE, emails });
+    await c.query("UPDATE auth.users SET email = NULL WHERE id = $1", [U_DONA]);
+    assert.deepEqual(await confirmar(c, "an"), [{ donos: 1, confere: false }]);
+    // a aspa do literal vai dobrada e chega inteira
+    await preparar(c, {
+      ...BASE,
+      emails: { ...emails, [U_DONA]: "o'brien@troca.teste" },
+    });
+    assert.deepEqual(await confirmar(c, "o'"), [{ donos: 1, confere: true }]);
+    assert.deepEqual(await confirmar(c, "O'"), [{ donos: 1, confere: true }]);
+    // duas donas (fora do desenho, chave relaxada só no clone): uma linha, sem erro; o comando recusa donos != 1
+    await relaxarAChaveDoDono(c);
+    try {
+      await preparar(c, { ...BASE, emails, outroDono: U_CLI });
+      assert.deepEqual(await confirmar(c, "an"), [
+        { donos: 2, confere: false },
+      ]);
+      // controle: sem o bool_and a subconsulta devolve 2 linhas e o Postgres recusa (21000)
+      const semAgregado = (l) =>
+        sqlDaConfirmacao(l).replace(
+          "bool_and(lower(left(u.email, 2)) = lower('an'))",
+          "lower(left(u.email, 2)) = lower('an')",
+        );
+      assert.notEqual(
+        semAgregado("an"),
+        sqlDaConfirmacao("an"),
+        "a âncora do controle sumiu",
+      );
+      await assert.rejects(
+        confirmar(c, "an", semAgregado),
+        (e) => e.code === "21000",
+      );
+    } finally {
+      await restaurarAChaveDoDono(c);
+    }
+    // controle: sem o lower, as letras em maiúsculas deixam de conferir
+    await preparar(c, { ...BASE, emails });
+    const semLower = (l) =>
+      sqlDaConfirmacao(l).replace(
+        `lower(left(u.email, 2)) = lower('${l}')`,
+        `left(u.email, 2) = '${l}'`,
+      );
+    assert.notEqual(
+      semLower("an"),
+      sqlDaConfirmacao("an"),
+      "a âncora do controle sumiu",
+    );
+    assert.deepEqual(await confirmar(c, "an", semLower), [
+      { donos: 1, confere: false },
+    ]);
+  },
+});
+
 async function main() {
   URL_EFEMERA = lerDatabaseUrlEfemera();
   const m = await import(pathToFileURL(SCRIPT).href);
-  ({ sqlTrocarDono, sqlDaTroca, decidirTroca, resultadoDaTroca } = m);
+  ({
+    sqlTrocarDono,
+    sqlDaTroca,
+    decidirTroca,
+    resultadoDaTroca,
+    sqlDaConfirmacao,
+  } = m);
   SIM_ = m.SIM;
   NAO_ = m.NAO;
   for (const [nome, f] of Object.entries({
@@ -1278,6 +1390,7 @@ async function main() {
     sqlDaTroca,
     decidirTroca,
     resultadoDaTroca,
+    sqlDaConfirmacao,
   })) {
     assert.equal(typeof f, "function", `${nome} não é exportada`);
   }
