@@ -44,6 +44,14 @@ const lojasMod = require(LOJAS_CJS);
 const gerador = require(GERADOR_CJS);
 const CADASTRO_REAL = lojasMod.carregarLojas();
 
+// As listas esperadas saem do cadastro (loja nova entra por dado, sem editar
+// teste); a IKCOUS e a cliente real nunca somem de uma delas sem reprovar.
+const AS_QUATRO_DE_SEMPRE = ["loja", "sandbox", "ikcous-publicada", "savy"];
+function exigirIkcousESavy(lista: string[], onde: string) {
+  for (const p of ["ikcous-publicada", "savy"])
+    assert(lista.includes(p), `${onde}: ${p} sumiu (${lista.join(", ")})`);
+}
+
 // O 8º (login-da-loja.yml, 26/11/2026) nasceu já gerado do cadastro.
 const OITO_WORKFLOWS = [
   "aplicar-migrations.yml",
@@ -110,19 +118,35 @@ const docDe = (nome: string) =>
 // ---------------------------------------------------------------------------
 Deno.test("o cadastro de hoje: loja, sandbox, ikcous-publicada e savy, com os refs, segredos e classes de sempre", () => {
   const l = CADASTRO_REAL.lojas;
-  assertEquals(Object.keys(l), ["loja", "sandbox", "ikcous-publicada", "savy"]);
-  assertEquals(lojasMod.refsPorProjeto(CADASTRO_REAL), {
-    loja: "cafkrminfnokvgjqtkle",
-    sandbox: "lofznuxcvezrhxsgjqyg",
-    "ikcous-publicada": "cafkrminfnokvgjqtkle",
-    savy: "gnjsrucsmjkajijrakzr",
-  });
+  // 26/11/2026: a lista sai do cadastro (loja nova entra por dado, sem editar
+  // este teste). Fixo continua: os dois legados primeiro e só eles (loja nova
+  // nunca é `legado`), e as quatro de sempre com os mesmos refs e segredos.
+  const assinantesDoCadastro = lojasMod
+    .assinantes(CADASTRO_REAL)
+    .map((x) => x.projeto);
+  exigirIkcousESavy(assinantesDoCadastro, "assinantes do cadastro");
+  assertEquals(Object.keys(l), ["loja", "sandbox", ...assinantesDoCadastro]);
+  const refs = lojasMod.refsPorProjeto(CADASTRO_REAL);
+  assertEquals(Object.keys(refs), Object.keys(l));
+  assertEquals(
+    Object.fromEntries(AS_QUATRO_DE_SEMPRE.map((p) => [p, refs[p]])),
+    {
+      loja: "cafkrminfnokvgjqtkle",
+      sandbox: "lofznuxcvezrhxsgjqyg",
+      "ikcous-publicada": "cafkrminfnokvgjqtkle",
+      savy: "gnjsrucsmjkajijrakzr",
+    },
+  );
   assertEquals(l.loja.refDasFunctions, "dekxabvqdsuukijblazl");
   assertEquals(l.sandbox.refDasFunctions, "lofznuxcvezrhxsgjqyg");
   assertEquals(l["ikcous-publicada"].refDasFunctions, "cafkrminfnokvgjqtkle");
   assertEquals(l.savy.refDasFunctions, "gnjsrucsmjkajijrakzr");
   assertEquals(
-    Object.values(l).map((x) => [x.projeto, x.classe, x.segredoDoToken]),
+    AS_QUATRO_DE_SEMPRE.map((p) => [
+      l[p].projeto,
+      l[p].classe,
+      l[p].segredoDoToken,
+    ]),
     [
       ["loja", "legado", "SUPABASE_ACCESS_TOKEN"],
       ["sandbox", "legado", "SUPABASE_ACCESS_TOKEN"],
@@ -130,26 +154,35 @@ Deno.test("o cadastro de hoje: loja, sandbox, ikcous-publicada e savy, com os re
       ["savy", "assinante", "SUPABASE_ACCESS_TOKEN_SAVY"],
     ],
   );
-  // as oito functions nomeadas: só IKCOUS e Savy (como antes)
+  // as oito functions nomeadas: IKCOUS e Savy, como antes, e nunca um legado
+  // (a loja nova decide a sua no cadastro)
+  const comNomeadas = Object.values(l)
+    .filter((x) => x.functionsNomeadas)
+    .map((x) => x.projeto);
+  exigirIkcousESavy(comNomeadas, "functionsNomeadas");
+  for (const leg of ["loja", "sandbox"])
+    assert(!comNomeadas.includes(leg), `${leg} não tem functions nomeadas`);
+  // o alvo dos scripts: só as assinantes, e o texto de parada de sempre
+  const alvos = lojasMod.alvosDasAssinantes(CADASTRO_REAL);
+  assertEquals(Object.keys(alvos), assinantesDoCadastro);
   assertEquals(
-    Object.values(l)
-      .filter((x) => x.functionsNomeadas)
-      .map((x) => x.projeto),
-    ["ikcous-publicada", "savy"],
+    {
+      "ikcous-publicada": alvos["ikcous-publicada"],
+      savy: alvos.savy,
+    },
+    {
+      "ikcous-publicada": {
+        segredo: "SUPABASE_ACCESS_TOKEN_IKCOUS",
+        semAcesso:
+          "sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto",
+      },
+      savy: {
+        segredo: "SUPABASE_ACCESS_TOKEN_SAVY",
+        semAcesso:
+          "sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY — bloqueio concreto",
+      },
+    },
   );
-  // o alvo dos scripts: o texto de parada de sempre
-  assertEquals(lojasMod.alvosDasAssinantes(CADASTRO_REAL), {
-    "ikcous-publicada": {
-      segredo: "SUPABASE_ACCESS_TOKEN_IKCOUS",
-      semAcesso:
-        "sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto",
-    },
-    savy: {
-      segredo: "SUPABASE_ACCESS_TOKEN_SAVY",
-      semAcesso:
-        "sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY — bloqueio concreto",
-    },
-  });
 });
 
 Deno.test("os cadastros da frota concordam: todo canal de canais-de-backend.json é uma loja assinante do lojas.json, no mesmo ref e alvo", () => {
@@ -576,21 +609,19 @@ Deno.test("todo workflow por loja tem `projeto` como menu FECHADO (choice) gerad
     assertEquals(p.default, padraoDeSempre[nome], nome);
     assert(p.options.includes(p.default), `${nome}: padrão fora do menu`);
   }
-  // os menus de hoje, literais (o que existia antes do cadastro, exceto a ordem
-  // loja/sandbox no fim do menu de publicar-functions)
+  // a forma dos menus de sempre (o que existia antes do cadastro, exceto a
+  // ordem loja/sandbox no fim do menu de publicar-functions), com as
+  // assinantes lidas do cadastro: IKCOUS e Savy obrigatórias em todos
+  const ass = lojasMod.assinantes(CADASTRO_REAL).map((l) => l.projeto);
+  exigirIkcousESavy(ass, "assinantes do cadastro");
   assertEquals(menuEsperado("aplicar-migrations.yml"), [
     "loja",
     "sandbox",
-    "ikcous-publicada",
-    "savy",
+    ...ass,
   ]);
-  assertEquals(menuEsperado("medir-auth-da-loja.yml"), [
-    "ikcous-publicada",
-    "savy",
-  ]);
+  assertEquals(menuEsperado("medir-auth-da-loja.yml"), ass);
   assertEquals(menuEsperado("publicar-functions.yml"), [
-    "ikcous-publicada",
-    "savy",
+    ...ass,
     "loja",
     "sandbox",
   ]);
@@ -693,21 +724,21 @@ Deno.test("loja nova só por dado (workflows): o gerador acrescenta SÓ a linha 
     const atual = Deno.readTextFileSync(join(DIR_WF, nome));
     const comNova = gerador.sincronizar(atual, nova);
     assert(comNova !== atual, `${nome}: a loja nova devia gerar uma linha`);
-    // só linhas ACRESCENTADAS (a cadeia de publicar-functions e o grupo POR BANCO
-    // de aplicar/ledger são uma linha reescrita, com a loja nova no mapa)
+    // só linhas ACRESCENTADAS (a cadeia de publicar-functions é uma linha
+    // reescrita, com a loja nova). O grupo POR BANCO de aplicar/ledger NÃO
+    // muda: desde o C2 da frota de 300 (26/11/2026) o mapa dele só guarda as
+    // lojas que dividem banco, e a loja nova tem banco próprio
+    // (tests/frota_grupo_do_banco_test.ts).
     const a = atual.split("\n");
     const n = comNova.split("\n");
     const novasLinhas = n.filter((l) => !a.includes(l));
-    const GRUPO_DO_BANCO = "group: banco-da-loja-${{ fromJSON('";
     assert(
       novasLinhas.length >= 1 &&
         novasLinhas.every(
           (l) =>
             l.includes(SEGREDO_NOVO) ||
             l.includes("SUPABASE_ACCESS_TOKEN: ${{") ||
-            l === `          - ${NOVA}` ||
-            (l.includes(GRUPO_DO_BANCO) &&
-              l.includes(`"${NOVA}":"${REF_NOVA}"`)),
+            l === `          - ${NOVA}`,
         ),
       `${nome}: linhas novas inesperadas:\n${novasLinhas.join("\n")}`,
     );
@@ -723,15 +754,14 @@ Deno.test("loja nova só por dado (workflows): o gerador acrescenta SÓ a linha 
         l,
         `inputs.projeto == '${NOVA}' && secrets.${SEGREDO_NOVO}`,
       );
-    // nenhuma linha de hoje some, exceto a cadeia única de publicar-functions e
-    // o grupo por banco (reescritos com a nova)
+    // nenhuma linha de hoje some, exceto a cadeia única de publicar-functions
+    // (reescrita com a nova)
     const sumiram = a.filter((l) => !n.includes(l));
     assert(
-      sumiram.every(
-        (l) =>
-          l.includes(
-            "SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada'",
-          ) || l.includes(GRUPO_DO_BANCO),
+      sumiram.every((l) =>
+        l.includes(
+          "SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada'",
+        ),
       ),
       `${nome}: linhas sumiram`,
     );
@@ -980,9 +1010,14 @@ Deno.test({
         assert(lancou, String(ausente));
       }
 
-      // os quatro scripts de alvo: a loja nova está nos ALVOS, com o segredo do cadastro
+      // os quatro scripts de alvo: a loja nova está nos ALVOS, com o segredo do
+      // cadastro, depois das assinantes de hoje (lidas do lojas.json real)
+      const assDeHoje = lojasMod
+        .assinantes(CADASTRO_REAL)
+        .map((l) => l.projeto);
+      exigirIkcousESavy(assDeHoje, "assinantes do cadastro");
       for (const alvos of [medir.ALVOS, instalar.ALVOS]) {
-        assertEquals(Object.keys(alvos), ["ikcous-publicada", "savy", NOVA]);
+        assertEquals(Object.keys(alvos), [...assDeHoje, NOVA]);
         assertEquals(alvos[NOVA].segredo, SEGREDO_NOVO);
         assertEquals(
           alvos[NOVA].semAcesso,
@@ -1065,7 +1100,7 @@ Deno.test({
         assertStringIncludes(s3.tudo(), "projeto desconhecido");
         assertStringIncludes(
           s3.tudo(),
-          `use ikcous-publicada, savy ou ${NOVA}`,
+          `use ${lojasMod.listaLegivel([...assDeHoje, NOVA])}`,
         );
       }
 

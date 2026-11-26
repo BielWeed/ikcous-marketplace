@@ -23,6 +23,31 @@ BEGIN
   END IF;
 END $destrutivo_20261470000000$;
 
+-- CADERNETA SEMEADA (26/11/2026, plano caderneta-fora-do-dekxab, T4): o banco da IKCOUS passa a guardar a caderneta de PRODUCAO da
+-- frota. Com qualquer linha em frota_lojas, frota_segredo ou frota_estado_historico, este destrutivo recusa (CADERNETA_SEMEADA) sem
+-- apagar nada, mesmo com a confirmacao APAGAR acima: apagaria o historico de estado da frota. Nos bancos das lojas as tres ficam
+-- vazias e nada muda. So com o dono, na mesma transacao, alem do APAGAR:
+--   SET LOCAL ikcous.apagar_caderneta = 'sim';
+-- A trava de escrita (SHARE) vale ate o fim da transacao: ninguem grava linha entre a conferencia e o DROP.
+DO $caderneta_semeada$
+DECLARE
+  v_tabela text;
+  v_tem_linha boolean;
+BEGIN
+  IF COALESCE(current_setting('ikcous.apagar_caderneta', true), '') = 'sim' THEN
+    RETURN;
+  END IF;
+  FOREACH v_tabela IN ARRAY ARRAY['frota_lojas', 'frota_segredo', 'frota_estado_historico'] LOOP
+    IF to_regclass('public.' || v_tabela) IS NOT NULL THEN
+      EXECUTE format('LOCK TABLE public.%I IN SHARE MODE', v_tabela);
+      EXECUTE format('SELECT EXISTS (SELECT 1 FROM public.%I)', v_tabela) INTO v_tem_linha;
+      IF v_tem_linha THEN
+        RAISE EXCEPTION 'CADERNETA_SEMEADA: public.% tem linha - este banco guarda a caderneta da frota e apaga-la tira todas as lojas do ar. Nada foi apagado. So com o dono: SET LOCAL ikcous.apagar_caderneta = ''sim'' na mesma transacao.', v_tabela;
+      END IF;
+    END IF;
+  END LOOP;
+END $caderneta_semeada$;
+
 -- Sem CASCADE: dependente que escapou faz o Postgres recusar em vez de apagar o objeto junto.
 DROP TABLE IF EXISTS public.frota_estado_historico;
 

@@ -38,6 +38,26 @@ const SCRIPT = join(RAIZ, "scripts/publicacao/medir-auth-da-loja.cjs");
 const CONFERIR_BANCO = join(RAIZ, "scripts/publicacao/conferir-banco.cjs");
 const LOJAS_CJS = join(RAIZ, "scripts/frota/lojas.cjs");
 
+// 26/11/2026: o menu e os ALVOS esperados saem do cadastro (loja nova entra
+// por dado, sem editar este teste); a IKCOUS e a cliente real (Savy) nunca
+// somem dele sem reprovar.
+const { assinantes, carregarLojas } = require(LOJAS_CJS);
+const assinantesDoCadastro = (): string[] => {
+  const lista = assinantes(carregarLojas()).map((l) => l.projeto);
+  for (const p of ["ikcous-publicada", "savy"])
+    assert(lista.includes(p), `${p} sumiu das assinantes: ${lista.join(", ")}`);
+  return lista;
+};
+/** A linha de env de cada assinante do cadastro: o segredo DELA, com a guarda
+ * dela ao lado (gerada por scripts/frota/lojas-nos-workflows.cjs). */
+const envDosSegredosDoCadastro = () =>
+  Object.fromEntries(
+    assinantes(carregarLojas()).map((l) => [
+      l.segredoDoToken,
+      `\${{ inputs.projeto == '${l.projeto}' && secrets.${l.segredoDoToken} || '' }}`,
+    ]),
+  );
+
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const REF_CAF = "cafkrminfnokvgjqtkle";
 const SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
@@ -211,7 +231,7 @@ async function verificarWorkflow(yamlCru: string) {
   // LOJAS-OPCOES-ASSINANTES), o mesmo de antes; o passo "Confere a loja no
   // cadastro" recusa de novo a não assinante ANTES do segredo.
   assertEquals(entradas.projeto.type, "choice", "projeto é escolha fechada");
-  assertEquals(entradas.projeto.options, ["ikcous-publicada", "savy"]);
+  assertEquals(entradas.projeto.options, assinantesDoCadastro());
   assertEquals(entradas.projeto.required, true);
   assertEquals(
     entradas.expected_sha.required,
@@ -336,15 +356,27 @@ async function verificarWorkflow(yamlCru: string) {
   );
   assertEquals(comSegredo.length, 1, "um único passo vê segredo");
   assertEquals(comSegredo[0], ultimo, "e é o passo do script");
+  // 26/11/2026: um segredo por assinante do cadastro (loja nova entra por
+  // dado); o da IKCOUS e o da Savy seguem escritos por extenso, cada um com a
+  // guarda da SUA loja
   assertEquals(ultimo.env, {
-    SUPABASE_ACCESS_TOKEN_IKCOUS:
-      "${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}",
-    SUPABASE_ACCESS_TOKEN_SAVY:
-      "${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}",
+    ...envDosSegredosDoCadastro(),
     PROJETO: "${{ inputs.projeto }}",
   });
+  assertEquals(
+    ultimo.env.SUPABASE_ACCESS_TOKEN_IKCOUS,
+    "${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}",
+  );
+  assertEquals(
+    ultimo.env.SUPABASE_ACCESS_TOKEN_SAVY,
+    "${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}",
+  );
   const usos = yaml.match(/secrets[.[]/g) ?? [];
-  assertEquals(usos.length, 2, "exatamente dois segredos referenciados");
+  assertEquals(
+    usos.length,
+    assinantesDoCadastro().length,
+    "um segredo referenciado por assinante, e só",
+  );
   assert(!/secrets\.SUPABASE_ACCESS_TOKEN\s*[}|]/.test(yaml), "sem o legado");
   assert(!/toJSON\(secrets\)|secrets\[/.test(yaml), "sem coleção de segredos");
 }
@@ -713,7 +745,7 @@ Deno.test("o script exporta o necessário e não roda ao ser importado", () => {
   const mod = carregarScript(FONTE_SCRIPT());
   assertEquals(typeof mod.medir, "function");
   assertEquals(typeof mod.main, "function");
-  assertEquals(Object.keys(mod.ALVOS).sort(), ["ikcous-publicada", "savy"]);
+  assertEquals(Object.keys(mod.ALVOS).sort(), assinantesDoCadastro().sort());
 });
 
 Deno.test({

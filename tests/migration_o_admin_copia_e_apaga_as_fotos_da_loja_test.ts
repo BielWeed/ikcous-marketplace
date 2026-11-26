@@ -325,7 +325,7 @@ Deno.test("registro: depois do lote da 20261510000000, menu do conferir-banco-da
   );
 });
 
-Deno.test("POSTERIORES_A_97: as politicas citam rls_admin_atual(), entao a migration fica no FIM das duas listas (admin-atual-viva e pagamentos-rpc-viva) pela definicao unica do modulo -posterior", async () => {
+Deno.test("POSTERIORES_A_97: as politicas citam rls_admin_atual(), entao a migration entra logo depois de A_LOJA_GRANDE nas duas listas (admin-atual-viva e pagamentos-rpc-viva) pela definicao unica do modulo -posterior", async () => {
   const { FOTOS_DA_LOJA } = require(`../${POSTERIOR}`);
   assertEquals(FOTOS_DA_LOJA.nome, NOME);
   assert(Object.isFrozen(FOTOS_DA_LOJA));
@@ -348,6 +348,13 @@ Deno.test("POSTERIORES_A_97: as politicas citam rls_admin_atual(), entao a migra
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l !== "" && !l.startsWith("//"));
-    assertEquals(corpo.at(-1), "FOTOS_DA_LOJA,", `${arq}: ultimo da lista`);
+    // Posicao relativa, nao o fim: a proxima posterior com is_admin_atual() entra depois desta sem quebrar o teste.
+    const iGrande = corpo.indexOf("A_LOJA_GRANDE,");
+    assert(iGrande >= 0, `${arq}: sem A_LOJA_GRANDE`);
+    assertEquals(
+      corpo[iGrande + 1],
+      "FOTOS_DA_LOJA,",
+      `${arq}: logo depois de A_LOJA_GRANDE`,
+    );
   }
 });

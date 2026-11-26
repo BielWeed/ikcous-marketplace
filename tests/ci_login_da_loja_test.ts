@@ -32,6 +32,21 @@ import {
 
 const require = createRequire(import.meta.url);
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
+
+// 26/11/2026: o menu esperado sai do cadastro (loja nova entra por dado, sem
+// editar este teste); a IKCOUS e a cliente real (Savy) nunca somem dele sem
+// reprovar.
+const { assinantes, carregarLojas } = require(
+  join(RAIZ, "scripts/frota/lojas.cjs"),
+);
+const assinantesDoCadastro = (): string[] => {
+  const lista = assinantes(carregarLojas()).map(
+    (l: { projeto: string }) => l.projeto,
+  );
+  for (const p of ["ikcous-publicada", "savy"])
+    assert(lista.includes(p), `${p} sumiu das assinantes: ${lista.join(", ")}`);
+  return lista;
+};
 const SCRIPT = join(RAIZ, "scripts/publicacao/login-da-loja.cjs");
 const WORKFLOW = join(RAIZ, ".github/workflows/login-da-loja.yml");
 const mod = require(SCRIPT);
@@ -524,7 +539,7 @@ Deno.test("workflow: só dispatch, contents:read, SHA e ação antes do checkout
   const inputs = doc.on.workflow_dispatch.inputs;
   assertEquals(Object.keys(inputs).sort(), ["acao", "expected_sha", "projeto"]);
   assertEquals(inputs.projeto.type, "choice");
-  assertEquals(inputs.projeto.options, ["ikcous-publicada", "savy"]);
+  assertEquals(inputs.projeto.options, assinantesDoCadastro());
   assertEquals(inputs.acao.type, "choice");
   assertEquals(inputs.acao.options, ["conferir", "acertar"]);
   assertEquals(inputs.acao.default, "conferir");

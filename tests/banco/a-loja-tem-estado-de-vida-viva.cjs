@@ -63,6 +63,10 @@ const CONSULTAS = path.join(__dirname, "../../scripts/publicacao/consultas");
 const NOME_1470 = "20261470000000_a_loja_muda_de_estado_so_pela_porta.sql";
 const ROLLBACK_1470 = ler(`rollback-manual-${NOME_1470}`);
 const DESTRUTIVO_1470 = ler(`rollback-manual-destrutivo-${NOME_1470}`);
+// Os destrutivos (e o rollback da 20261141) recusam caderneta com linha (CADERNETA_SEMEADA) mesmo com o APAGAR: esta prova semeia
+// lojas e, toda vez que confirma o APAGAR, confirma tambem a caderneta (so na transacao dela). A recusa e' provada em
+// a-caderneta-muda-de-banco-viva.cjs.
+const CONFIRMAR_CADERNETA = "SET LOCAL ikcous.apagar_caderneta = 'sim'";
 const LIGAR_A_PORTA =
   "SELECT set_config('ikcous.frota_estado_pela_porta', 'sim', true)";
 /** Desfaz a 20261470 (comum + destrutivo confirmado) DENTRO da transação do chamador, se ela estiver no banco. */
@@ -77,6 +81,7 @@ async function desfazerAPosterior(c) {
   await c.query(
     "SET LOCAL app.confirmo_apagar_historico_do_estado_da_loja = 'APAGAR'",
   );
+  await c.query(CONFIRMAR_CADERNETA);
   await c.query(DESTRUTIVO_1470);
 }
 const A182 = "182a-conferir-o-estado-de-vida-da-loja-aplicado";
@@ -252,6 +257,7 @@ async function voltarAoAntes(c) {
   await desfazerAPosterior(c);
   await c.query(ROLLBACK);
   await c.query("SET LOCAL app.confirmo_apagar_estado_de_vida = 'APAGAR'");
+  await c.query(CONFIRMAR_CADERNETA);
   await c.query(DESTRUTIVO);
   assert.equal(await temColunaEstado(c), 0, "base de antes: sem as colunas");
   assert.equal(await md5Vivo(c, V1), MD5_V1_ANTIGO);
@@ -543,6 +549,7 @@ async function rollbacks(c) {
       "destrutivo sem confirmação recusa",
     );
     await c.query("SET LOCAL app.confirmo_apagar_estado_de_vida = 'APAGAR'");
+    await c.query(CONFIRMAR_CADERNETA);
     e = await tentar(c, () => c.query(DESTRUTIVO));
     assert.match(
       e?.message ?? "",
@@ -914,6 +921,7 @@ async function portao(c) {
     // depois do destrutivo: a 182b é POSITIVA
     await desfazerAPosterior(c);
     await c.query("SET LOCAL app.confirmo_apagar_estado_de_vida = 'APAGAR'");
+    await c.query(CONFIRMAR_CADERNETA);
     await c.query(DESTRUTIVO);
     assert.deepEqual(
       await consulta(c, B182),

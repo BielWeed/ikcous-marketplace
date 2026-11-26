@@ -1,4 +1,23 @@
 {
+  "1.5.240": {
+    "titulo": "Teste grátis mais claro no painel e loja que não fica travada quando demora",
+    "novidades": [],
+    "correcoes": [
+      "Quando a página da loja demora mais de 5 segundos para chegar, a cliente vê o aviso de manutenção em vez de ficar esperando sem fim ou ver uma página de erro."
+    ],
+    "melhorias": [
+      "No início do painel, o cartão da assinatura em teste grátis mostra o último dia grátis e quantos dias faltam, em vez do dia em que vence a primeira mensalidade."
+    ]
+  },
+  "1.5.239": {
+    "titulo": "Balcão mais rápido em loja grande e produto com muitas avaliações mais leve",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "No balcão, buscar cliente fica rápido mesmo em lojas com muitos clientes e pedidos, sem travar a cada letra digitada, e a busca encontra as mesmas pessoas de antes.",
+      "Na página de um produto com muitas avaliações ou perguntas, a loja deixa de baixar todas de uma vez: começa pelas mais recentes e busca as outras conforme a cliente toca em “Ver mais avaliações” ou “Ver mais perguntas”, e a página abre mais leve. A nota do produto continua contando todas as avaliações."
+    ]
+  },
   "1.5.238": {
     "titulo": "Fotos mais leves, produto do link mais rápido e avisos mais claros",
     "novidades": [],
