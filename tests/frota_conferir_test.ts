@@ -23,6 +23,8 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  COMO_RECUPERAR,
+  GRAVIDADE,
   classificar,
   conferirFrota,
   consultarVercel,
@@ -142,6 +144,21 @@ function responder(m, dominio, caminho, n, busca = "") {
       body: "<html><title>Manutencao</title></html>",
     };
   }
+  if (e.tipo === "foraDoAr") {
+    // Página própria do porteiro para loja adormecida/encerrada (contrato do
+    // Lote 2 do L8): sem script, sem marca e sem ref Supabase no HTML.
+    const headers = { "x-ikcous-caderneta": "hit" };
+    if (e.porteiro !== null) headers["x-ikcous-porteiro"] = e.porteiro;
+    if (e.estado !== null) headers["x-ikcous-estado"] = e.estado;
+    if (e.refPorteiro !== null) headers["x-ikcous-ref"] = e.refPorteiro;
+    if (e.cadernetaVersao)
+      headers["x-ikcous-caderneta-versao"] = e.cadernetaVersao;
+    return {
+      status: e.status,
+      headers,
+      body: "<!DOCTYPE html><html><head><title>Loja fechada</title></head><body><p>Esta loja está fechada no momento.</p></body></html>",
+    };
+  }
   if (e.tipo === "redirecionamento") {
     const headers = { "x-ikcous-caderneta": "hit" };
     if (!e.semLocation) {
@@ -162,6 +179,9 @@ function responder(m, dominio, caminho, n, busca = "") {
       "x-ikcous-caderneta": e.caderneta,
       // O selo do middleware; `semSelo` simula uma borda em que ele nao rodou.
       ...(e.semSelo ? {} : { "x-ikcous-porteiro": e.porteiro ?? "ok" }),
+      ...(e.cadernetaVersao
+        ? { "x-ikcous-caderneta-versao": e.cadernetaVersao }
+        : {}),
     },
     body: html(
       titulo,
@@ -1855,4 +1875,351 @@ Deno.test("conferirFrota: uma loja que responde 200 sem o selo do porteiro repro
   assertEquals(por["savycollection.vercel.app"], "ESTADO_INESPERADO");
   assertEquals(por["ickous-marketplace.vercel.app"], "OK");
   assertStringIncludes(r.relatorio, "x-ikcous-porteiro");
+});
+
+// ------------------------------------------ L8 lote 3: loja fora do ar por decisão
+// Contrato do porteiro (Lote 2 do L8): adormecida = 503 + x-ikcous-porteiro:
+// adormecida; encerrada = 410 + x-ikcous-porteiro: encerrada; as duas com
+// x-ikcous-estado igual e x-ikcous-ref (20 letras minúsculas). O portão só
+// exige quem está ATIVA; qualquer outra combinação continua reprovando.
+
+const DORMINDO = "loja-dormindo.example";
+const REF_DORMINDO = "zzzzzzzzzzzzzzzzzzzz";
+
+/** Página de "/" que o porteiro serve para uma loja fora do ar. */
+const paginaForaDoAr = (estado, extra = {}) => ({
+  status: estado === "encerrada" ? 410 : 503,
+  caderneta: "hit",
+  porteiro: estado,
+  estado,
+  refPorteiro: REF_DORMINDO,
+  titulo: "Loja fechada",
+  refs: [],
+  publicUrl: null,
+  ...extra,
+});
+
+const LOJA_DORMINDO = { dominio: DORMINDO, esperado: null };
+
+function mundoComDormindo(extra = {}) {
+  const mundo = mundoBase();
+  mundo[DORMINDO] = {
+    ...mundo["savycollection.vercel.app"],
+    tipo: "foraDoAr",
+    status: 503,
+    porteiro: "adormecida",
+    estado: "adormecida",
+    refPorteiro: REF_DORMINDO,
+    ...extra,
+  };
+  return mundo;
+}
+
+Deno.test("L8 sondarEndereco: lê x-ikcous-estado, x-ikcous-ref e x-ikcous-caderneta-versao de cada amostra de '/'", async () => {
+  const mundo = mundoComDormindo({ cadernetaVersao: "2" });
+  const s = await sondarEndereco(DORMINDO, { fetchImpl: fetchFalso(mundo) });
+  assertEquals(s.amostras.length, 3);
+  for (const a of s.amostras) {
+    assertEquals(a.status, 503);
+    assertEquals(a.porteiro, "adormecida");
+    assertEquals(a.estado, "adormecida");
+    assertEquals(a.refPorteiro, REF_DORMINDO);
+    assertEquals(a.cadernetaVersao, "2");
+  }
+  assertEquals(s.ficha.estado, "adormecida");
+  assertEquals(s.ficha.refPorteiro, REF_DORMINDO);
+  // Loja ativa sem os cabeçalhos novos: os campos ficam null (nunca "").
+  const ativa = await sondarEndereco("savycollection.vercel.app", {
+    fetchImpl: fetchFalso(mundo),
+  });
+  assertEquals(ativa.ficha.estado, null);
+  assertEquals(ativa.ficha.refPorteiro, null);
+  assertEquals(ativa.ficha.cadernetaVersao, null);
+});
+
+Deno.test("L8 classificar: adormecida (503) = ADORMECIDA e encerrada (410) = ENCERRADA, sem nenhum outro achado", () => {
+  for (const [estado, classe] of [
+    ["adormecida", "ADORMECIDA"],
+    ["encerrada", "ENCERRADA"],
+  ]) {
+    const r = classificar(
+      LOJA_DORMINDO,
+      sonda(DORMINDO, { pagina: paginaForaDoAr(estado) }),
+      CTX,
+    );
+    assertEquals(r.classe, classe, JSON.stringify(r.achados));
+    assertEquals(
+      r.achados.map((a) => a.classe),
+      [classe],
+      JSON.stringify(r.achados),
+    );
+    assertStringIncludes(r.achados[0].motivo, estado);
+    assertStringIncludes(r.achados[0].motivo, REF_DORMINDO);
+  }
+});
+
+Deno.test("L8 classificar: qualquer outra combinação de status/porteiro/estado/ref continua ESTADO_INESPERADO (nunca ADORMECIDA/ENCERRADA nem OK)", () => {
+  const casos = {
+    "503 com porteiro encerrada": {
+      porteiro: "encerrada",
+      estado: "encerrada",
+    },
+    "410 com porteiro adormecida": {
+      status: 410,
+      porteiro: "adormecida",
+      estado: "adormecida",
+    },
+    "porteiro e estado discordam": { estado: "encerrada" },
+    "sem x-ikcous-estado": { estado: null },
+    "sem x-ikcous-porteiro (só o estado)": { porteiro: null },
+    "estado ativa": { estado: "ativa" },
+    "sem x-ikcous-ref": { refPorteiro: null },
+    "ref com 19 letras": { refPorteiro: "z".repeat(19) },
+    "ref com 21 letras": { refPorteiro: "z".repeat(21) },
+    "ref com maiúscula": { refPorteiro: `Z${"z".repeat(19)}` },
+    "ref com dígito": { refPorteiro: `1${"z".repeat(19)}` },
+    "ref vazio": { refPorteiro: "" },
+    "status 500": { status: 500 },
+    "status 200": { status: 200 },
+  };
+  for (const [nome, extra] of Object.entries(casos)) {
+    const r = classificar(
+      LOJA_DORMINDO,
+      sonda(DORMINDO, { pagina: paginaForaDoAr("adormecida", extra) }),
+      CTX,
+    );
+    assertEquals(
+      r.classe,
+      "ESTADO_INESPERADO",
+      `${nome}: ${JSON.stringify(r.achados)}`,
+    );
+    assert(
+      !r.achados.some(
+        (a) => a.classe === "ADORMECIDA" || a.classe === "ENCERRADA",
+      ),
+      nome,
+    );
+  }
+});
+
+Deno.test("L8 classificar: amostras que discordam (uma adormecida, outra encerrada; ou ref diferente) nunca viram fora do ar", () => {
+  const misturadas = classificar(
+    LOJA_DORMINDO,
+    sonda(DORMINDO, {
+      amostras: [
+        paginaForaDoAr("adormecida"),
+        paginaForaDoAr("encerrada"),
+        paginaForaDoAr("adormecida"),
+      ],
+    }),
+    CTX,
+  );
+  assert(
+    !["OK", "ADORMECIDA", "ENCERRADA"].includes(misturadas.classe),
+    misturadas.classe,
+  );
+  const refDiferente = classificar(
+    LOJA_DORMINDO,
+    sonda(DORMINDO, {
+      amostras: [
+        paginaForaDoAr("adormecida"),
+        paginaForaDoAr("adormecida", { refPorteiro: "y".repeat(20) }),
+        paginaForaDoAr("adormecida"),
+      ],
+    }),
+    CTX,
+  );
+  assertEquals(refDiferente.classe, "ESTADO_INESPERADO");
+});
+
+Deno.test("L8 classificar: a loja ativa com 503 banco-indisponivel continua reprovando (não é fora do ar por decisão)", () => {
+  const r = classificar(
+    LOJA,
+    sonda(LOJA.dominio, {
+      pagina: {
+        status: 503,
+        porteiro: "banco-indisponivel",
+        titulo: "Loja em manutenção",
+        refs: [],
+      },
+    }),
+    CTX,
+  );
+  assert(!["OK", "ADORMECIDA", "ENCERRADA"].includes(r.classe), r.classe);
+  // Nem quando um cabeçalho de estado aparece sem o porteiro certo.
+  const r2 = classificar(
+    LOJA,
+    sonda(LOJA.dominio, {
+      pagina: paginaForaDoAr("adormecida", { porteiro: "banco-indisponivel" }),
+    }),
+    CTX,
+  );
+  assertEquals(r2.classe, "ESTADO_INESPERADO");
+});
+
+Deno.test("L8 classificar: loja fora do ar ainda é conferida na versão (SHA velho = ENDERECO_ANTIGO, que é mais grave)", () => {
+  const r = classificar(
+    LOJA_DORMINDO,
+    sonda(DORMINDO, {
+      pagina: paginaForaDoAr("adormecida"),
+      versao: { codeSha: SHA_VELHO },
+    }),
+    CTX,
+  );
+  assertEquals(r.classe, "ENDERECO_ANTIGO");
+  assert(r.achados.some((a) => a.classe === "ADORMECIDA"));
+});
+
+Deno.test("L8 classificar: loja da lista lojasQueNuncaDormem fora do ar = ESTADO_INESPERADO", () => {
+  const ctx = { ...CTX, lojasQueNuncaDormem: new Set([REF_DORMINDO]) };
+  for (const estado of ["adormecida", "encerrada"]) {
+    const r = classificar(
+      LOJA_DORMINDO,
+      sonda(DORMINDO, { pagina: paginaForaDoAr(estado) }),
+      ctx,
+    );
+    assertEquals(r.classe, "ESTADO_INESPERADO", estado);
+    assert(
+      r.achados.some((a) => a.motivo.includes("lojasQueNuncaDormem")),
+      JSON.stringify(r.achados),
+    );
+  }
+});
+
+Deno.test("L8 GRAVIDADE: ADORMECIDA e ENCERRADA ficam entre ESTADO_INESPERADO e OK, e toda classe ruim tem COMO_RECUPERAR", () => {
+  const i = (c) => GRAVIDADE.indexOf(c);
+  assert(i("ENCERRADA") > i("ESTADO_INESPERADO"));
+  assert(i("ADORMECIDA") > i("ESTADO_INESPERADO"));
+  assert(i("ENCERRADA") < i("OK"));
+  assert(i("ADORMECIDA") < i("OK"));
+  assertEquals(GRAVIDADE.at(-1), "OK");
+  for (const c of GRAVIDADE.filter((c) => c !== "OK"))
+    assert(typeof COMO_RECUPERAR[c] === "string" && COMO_RECUPERAR[c], c);
+});
+
+Deno.test("L8 verificarCanonico: página de loja fora do ar (sem publicUrl) não vira CANONICO_INVALIDO", () => {
+  const s = sonda(DORMINDO, { pagina: paginaForaDoAr("adormecida") });
+  assertEquals(verificarCanonico([s]).achados, {});
+});
+
+Deno.test("L8 conferirFrota: loja adormecida não reprova a frota, conta como sondada e aparece em 'Lojas fora do ar por decisão'", async () => {
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundoComDormindo()),
+    enderecosExtras: [DORMINDO],
+    lojasObrigatorias: [
+      { ref: REF.ikcous, nome: "IKCOUS" },
+      { ref: REF.savy, nome: "Savy" },
+      { ref: REF_DORMINDO, nome: "Loja Dormindo" },
+    ],
+  });
+  const por = Object.fromEntries(
+    r.resultados.map((x) => [x.dominio, x.classe]),
+  );
+  assertEquals(por[DORMINDO], "ADORMECIDA");
+  assertEquals(por["savycollection.vercel.app"], "OK");
+  assertEquals(r.ok, true, r.relatorio);
+  assert(!r.relatorio.includes("não foi sondada"), r.relatorio);
+  assertStringIncludes(r.relatorio, "## Lojas fora do ar por decisão");
+  assertStringIncludes(
+    r.relatorio,
+    `- ${DORMINDO}: adormecida (ref ${REF_DORMINDO})`,
+  );
+  const fora = r.resultados.find((x) => x.dominio === DORMINDO).foraDoAr;
+  assertEquals(fora, { estado: "adormecida", ref: REF_DORMINDO });
+});
+
+Deno.test("L8 conferirFrota: encerrada (410) também passa; sem nenhuma, a seção diz 'nenhuma'", async () => {
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(
+      mundoComDormindo({
+        status: 410,
+        porteiro: "encerrada",
+        estado: "encerrada",
+      }),
+    ),
+    enderecosExtras: [DORMINDO],
+  });
+  assertEquals(r.ok, true, r.relatorio);
+  assertStringIncludes(
+    r.relatorio,
+    `- ${DORMINDO}: encerrada (ref ${REF_DORMINDO})`,
+  );
+  const limpo = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundoBase()),
+  });
+  assertEquals(limpo.ok, true, limpo.relatorio);
+  assertStringIncludes(
+    limpo.relatorio,
+    "## Lojas fora do ar por decisão\n\n- nenhuma",
+  );
+});
+
+Deno.test("L8 conferirFrota: a IKCOUS (politica.json lojasQueNuncaDormem) adormecida reprova a frota", async () => {
+  const mundo = mundoBase();
+  mundo["ickous-marketplace.vercel.app"] = {
+    ...mundo["ickous-marketplace.vercel.app"],
+    tipo: "foraDoAr",
+    status: 503,
+    porteiro: "adormecida",
+    estado: "adormecida",
+    refPorteiro: REF.ikcous,
+  };
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundo),
+  });
+  assertEquals(r.ok, false);
+  const ik = r.resultados.find(
+    (x) => x.dominio === "ickous-marketplace.vercel.app",
+  );
+  assertEquals(ik.classe, "ESTADO_INESPERADO", JSON.stringify(ik.achados));
+});
+
+Deno.test("L8 conferirFrota: resposta de loja fora do ar fora do contrato reprova a frota (ESTADO_INESPERADO)", async () => {
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundoComDormindo({ refPorteiro: "curto" })),
+    enderecosExtras: [DORMINDO],
+  });
+  assertEquals(r.ok, false);
+  const d = r.resultados.find((x) => x.dominio === DORMINDO);
+  assertEquals(d.classe, "ESTADO_INESPERADO", JSON.stringify(d.achados));
+  assertEquals(d.foraDoAr, null);
+});
+
+Deno.test("L8 conferirFrota: x-ikcous-caderneta-versao: 1 (porteiro na caderneta antiga) gera AVISO no relatório, sem reprovar sozinho", async () => {
+  const mundo = mundoBase();
+  mundo["savycollection.vercel.app"].cadernetaVersao = "1";
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundo),
+  });
+  assertEquals(r.ok, true, r.relatorio);
+  const aviso = r.relatorio
+    .split("\n")
+    .find((l) => l.includes("x-ikcous-caderneta-versao: 1"));
+  assert(aviso, r.relatorio);
+  assertStringIncludes(aviso, "AVISO");
+  assertStringIncludes(aviso, "savycollection.vercel.app");
+  assert(!aviso.includes("ickous-marketplace.vercel.app,"), aviso);
+  const limpo = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundoBase()),
+  });
+  assert(!limpo.relatorio.includes("x-ikcous-caderneta-versao"));
+});
+
+Deno.test("L8 política: lojasQueNuncaDormem = IKCOUS e Savy, os mesmos refs de canais-de-backend.json", () => {
+  const canais = JSON.parse(
+    Deno.readTextFileSync(join(RAIZ, "scripts/frota/canais-de-backend.json")),
+  );
+  const porNome = Object.fromEntries(
+    Object.entries(canais.canais).map(([ref, c]) => [c.nome, ref]),
+  );
+  const refs = (POLITICA.lojasQueNuncaDormem ?? []).map((l) => l.ref).sort();
+  assertEquals(refs, [porNome.IKCOUS, porNome.Savy].sort());
+  assertEquals(refs, [REF.ikcous, REF.savy].sort());
 });

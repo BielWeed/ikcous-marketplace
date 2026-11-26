@@ -41,9 +41,11 @@ import {
   lerArgumentos,
   lerCanais,
   lerVeredicto,
+  lojasDoInventario,
   migrationsDaRelease,
   problemasAntesDoPromote,
   publicarRelease,
+  resumoEmJson,
   verifyJwtDoConfig,
   versoesAplicadas,
 } from "../scripts/frota/publicar-release.mjs";
@@ -1940,7 +1942,12 @@ const DOM_IKCOUS = "ickous-marketplace.vercel.app";
 const DOM_SAVY = "savycollection.vercel.app";
 const DOM_SAVY_EXTRA = "outra-vitrine.example";
 
-function releaseComSondasReais({ aliasesAntes, aliasesDepois, falha = false }) {
+function releaseComSondasReais({
+  aliasesAntes,
+  aliasesDepois,
+  falha = false,
+  foraDoAr = new Map(),
+}) {
   const { d, chamadas } = deps();
   const conferencias = [];
   d.politica = {
@@ -1982,6 +1989,18 @@ function releaseComSondasReais({ aliasesAntes, aliasesDepois, falha = false }) {
     },
     fetchImpl: async (url) => {
       const { hostname, pathname } = new URL(url);
+      // Página própria do porteiro (L8): loja adormecida/encerrada, sem banco.
+      const parada = foraDoAr.get(hostname);
+      if (parada) {
+        if (pathname === "/version.json") return new Response(versao());
+        return new Response("<title>Loja fechada</title><p>fechada</p>", {
+          status: parada.status,
+          headers: {
+            "x-ikcous-caderneta": "hit",
+            ...parada.headers,
+          },
+        });
+      }
       const loja = lojas.get(hostname);
       if (!loja) throw new Error(`sonda inesperada: ${url}`);
       if (pathname === "/version.json") return new Response(versao());
@@ -12699,4 +12718,356 @@ Deno.test("o download das functions do ar vem pela API: o padrão devolve bundle
   const trecho = texto.slice(inicio, inicio + 1400);
   assertStringIncludes(trecho, '"download"');
   assertStringIncludes(trecho, '"--use-api"');
+});
+
+// ---- L8 lote 3: o portão só exige quem está ATIVA
+// Contrato do porteiro (Lote 2 do L8): adormecida = 503 + x-ikcous-porteiro:
+// adormecida; encerrada = 410 + x-ikcous-porteiro: encerrada; as duas com
+// x-ikcous-estado igual e x-ikcous-ref. Loja fora do ar não passa pela
+// prontidão (nem ledger, nem functions); IKCOUS e Savy nunca dormem.
+
+const DOM_DORMINDO = "loja-dormindo.example";
+
+const cabecalhosForaDoAr = (estado, ref) => ({
+  "x-ikcous-porteiro": estado,
+  "x-ikcous-estado": estado,
+  "x-ikcous-ref": ref,
+});
+
+/** Sonda (formato de sondarEndereco) de uma loja fora do ar, com 3 amostras. */
+function sondaForaDoAr(dominio, ref, estado, sha = SHA) {
+  const amostra = {
+    status: estado === "encerrada" ? 410 : 503,
+    caderneta: "hit",
+    porteiro: estado,
+    estado,
+    refPorteiro: ref,
+    cadernetaVersao: null,
+    titulo: "Loja fechada",
+    refs: [],
+    publicUrl: null,
+  };
+  return {
+    dominio,
+    versao: { codeSha: sha },
+    amostras: [amostra, amostra, amostra],
+    ficha: { ...amostra, estavel: true },
+  };
+}
+
+/** A release com sondas reais e uma 3a loja assinante (NOVA) fora do ar. */
+function releaseComLojaParada({
+  estado = "adormecida",
+  ref = NOVA,
+  dominio = DOM_DORMINDO,
+  nuncaDormem = [{ ref: CAF }, { ref: SAVY }],
+  semListaNuncaDormem = false,
+  aliasesDepois = null,
+} = {}) {
+  // A loja NOVA (e o endereço dela) só existe quando é ela que está parada.
+  const comNova = dominio === DOM_DORMINDO;
+  const aliases = comNova
+    ? [DOM_IKCOUS, DOM_SAVY, DOM_DORMINDO]
+    : [DOM_IKCOUS, DOM_SAVY];
+  const montado = releaseComSondasReais({
+    aliasesAntes: aliases,
+    aliasesDepois: aliasesDepois ?? aliases,
+    foraDoAr: new Map([
+      [
+        dominio,
+        {
+          status: estado === "encerrada" ? 410 : 503,
+          headers: cabecalhosForaDoAr(estado, ref),
+        },
+      ],
+    ]),
+  });
+  const { d } = montado;
+  // A política do harness não tem a lista; só entra quando o cenário pede.
+  if (!semListaNuncaDormem)
+    d.politica = { ...d.politica, lojasQueNuncaDormem: nuncaDormem };
+  if (comNova)
+    d.canais = {
+      ...d.canais,
+      canais: {
+        ...d.canais.canais,
+        [NOVA]: {
+          nome: "Loja Dormindo",
+          migrations: "dormindo",
+          functions: "dormindo",
+          projetosNoMesmoBanco: [],
+          functionsPublicaveis: ["criar-pagamento"],
+        },
+      },
+    };
+  // Espiões da prontidão: toda leitura de backend da loja passa por aqui. Para
+  // a loja NOVA a leitura RESPONDE (ledger em dia, nenhuma function), então o
+  // único sinal de que a prontidão a leu é o espião, nunca uma falha.
+  const lidas = [];
+  const respostaDaNova = {
+    migrationList: async () =>
+      tabelaDoLedger(["20261190000000", "20261192000000"]),
+    listarFuncoes: async () => [],
+    baixarFuncao: async () => [],
+  };
+  for (const nome of ["migrationList", "listarFuncoes", "baixarFuncao"]) {
+    const original = d[nome];
+    d[nome] = (ref, ...resto) => {
+      lidas.push(`${nome}:${ref}`);
+      return ref === NOVA
+        ? respostaDaNova[nome](ref, ...resto)
+        : original(ref, ...resto);
+    };
+  }
+  return { ...montado, lidas };
+}
+
+Deno.test("L8 lojasDoInventario: loja adormecida/encerrada vai para foraDoAr ({ref, estado, dominios}), não vira loja nem problema", () => {
+  const inv = {
+    vercel: { ok: true },
+    completo: true,
+    sondas: [
+      sonda(DOM_IKCOUS, CAF, "IKCOUS"),
+      sondaForaDoAr("b.example", NOVA, "adormecida"),
+      sondaForaDoAr("a.example", NOVA, "adormecida"),
+      sondaForaDoAr("c.example", TESTE, "encerrada"),
+    ],
+  };
+  const r = lojasDoInventario(inv, { enderecosEsperados: [] });
+  assertEquals(r.problemas, []);
+  assertEquals(
+    r.lojas.map((l) => l.ref),
+    [CAF],
+  );
+  assertEquals(r.foraDoAr, [
+    { ref: NOVA, estado: "adormecida", dominios: ["a.example", "b.example"] },
+    { ref: TESTE, estado: "encerrada", dominios: ["c.example"] },
+  ]);
+});
+
+Deno.test("L8 lojasDoInventario: a mesma loja ativa num endereço e fora do ar em outro (ou com dois estados) é problema", () => {
+  const ativaEParada = lojasDoInventario(
+    {
+      vercel: { ok: true },
+      completo: true,
+      sondas: [
+        sonda(DOM_SAVY, SAVY, "Savy"),
+        sondaForaDoAr("outra.example", SAVY, "adormecida"),
+      ],
+    },
+    { enderecosEsperados: [] },
+  );
+  assertEquals(ativaEParada.problemas.length, 1, ativaEParada.problemas);
+  assertStringIncludes(ativaEParada.problemas[0], SAVY);
+  const doisEstados = lojasDoInventario(
+    {
+      vercel: { ok: true },
+      completo: true,
+      sondas: [
+        sondaForaDoAr("a.example", NOVA, "adormecida"),
+        sondaForaDoAr("b.example", NOVA, "encerrada"),
+      ],
+    },
+    { enderecosEsperados: [] },
+  );
+  assertEquals(doisEstados.problemas.length, 1, doisEstados.problemas);
+  assertStringIncludes(doisEstados.problemas[0], NOVA);
+});
+
+for (const estado of ["adormecida", "encerrada"]) {
+  Deno.test(`L8 publicarRelease: loja assinante ${estado} não bloqueia, conta como sondada e a prontidão NUNCA lê o backend dela`, async () => {
+    const { d, chamadas, conferencias, lidas } = releaseComLojaParada({
+      estado,
+    });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 0, r.relatorio);
+    assertEquals(chamadas.promover, [DPL]);
+    assertEquals(
+      conferencias.map((c) => c.ok),
+      [true, true],
+    );
+    // O espião: as lojas ativas foram lidas; a parada, nunca.
+    assert(lidas.includes(`migrationList:${CAF}`), JSON.stringify(lidas));
+    assert(lidas.includes(`migrationList:${SAVY}`), JSON.stringify(lidas));
+    assert(!lidas.some((l) => l.endsWith(`:${NOVA}`)), JSON.stringify(lidas));
+    assert(!chamadas.migrationList.includes(NOVA));
+    assert(!chamadas.baixar.some((b) => b.startsWith(`${NOVA}:`)));
+    assert(!r.relatorio.includes("não foi sondada"), r.relatorio);
+    assert(!r.relatorio.includes("### Loja Dormindo"), r.relatorio);
+    assertStringIncludes(
+      r.relatorio,
+      "## Lojas adormecidas/encerradas (não recebem esta release; ao acordar recebem tudo)",
+    );
+    assertStringIncludes(
+      r.relatorio,
+      `| Loja Dormindo | ${NOVA} | ${estado} | ${DOM_DORMINDO} |`,
+    );
+    assertEquals(r.lojasForaDoAr, [
+      { ref: NOVA, estado, dominios: [DOM_DORMINDO] },
+    ]);
+  });
+}
+
+Deno.test("L8 publicarRelease: sem loja fora do ar a seção existe e diz 'nenhuma'; lojasForaDoAr = []", async () => {
+  const { d } = deps();
+  const r = await executar(d);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertStringIncludes(
+    r.relatorio,
+    "## Lojas adormecidas/encerradas (não recebem esta release; ao acordar recebem tudo)\n\n- nenhuma",
+  );
+  assertEquals(r.lojasForaDoAr, []);
+});
+
+for (const [nome, ref, dominio] of [
+  ["IKCOUS", CAF, DOM_IKCOUS],
+  ["Savy", SAVY, DOM_SAVY],
+]) {
+  Deno.test(`L8 publicarRelease: ${nome} (lojasQueNuncaDormem) fora do ar BLOQUEIA e nada é promovido`, async () => {
+    // O endereço da própria loja responde adormecida. O alvo `${nome} (${ref})`
+    // só sai do bloqueio explícito do portão, não do achado da conferência.
+    const { d, chamadas } = releaseComLojaParada({ ref, dominio });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, r.relatorio);
+    assertEquals(chamadas.promover, []);
+    // O bloqueio explícito do portão (não só o achado da conferência da frota).
+    assert(
+      r.bloqueios.some(
+        (b) =>
+          b.alvo === `${nome} (${ref})` &&
+          b.motivo.includes("lojasQueNuncaDormem"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+  });
+}
+
+Deno.test("L8 publicarRelease: política sem lojasQueNuncaDormem e uma loja fora do ar BLOQUEIA (sem a lista não há como provar que não é a IKCOUS/Savy)", async () => {
+  const { d, chamadas } = releaseComLojaParada({
+    semListaNuncaDormem: true,
+  });
+  assert(!("lojasQueNuncaDormem" in d.politica));
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover, []);
+  assert(
+    r.bloqueios.some((b) => b.motivo.includes("lojasQueNuncaDormem")),
+    JSON.stringify(r.bloqueios),
+  );
+});
+
+Deno.test("L8 publicarRelease: loja ATIVA com 503 banco-indisponivel continua BLOQUEANDO", async () => {
+  const montado = releaseComSondasReais({
+    aliasesAntes: [DOM_IKCOUS, DOM_SAVY],
+    aliasesDepois: [DOM_IKCOUS, DOM_SAVY],
+    foraDoAr: new Map([
+      [
+        DOM_SAVY,
+        { status: 503, headers: { "x-ikcous-porteiro": "banco-indisponivel" } },
+      ],
+    ]),
+  });
+  const { d, chamadas } = montado;
+  d.politica = {
+    ...d.politica,
+    lojasQueNuncaDormem: [{ ref: CAF }, { ref: SAVY }],
+  };
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover, []);
+  assertEquals(r.lojasForaDoAr, []);
+  assertStringIncludes(
+    r.relatorio,
+    "a loja Savy está cadastrada mas não foi sondada",
+  );
+});
+
+Deno.test("L8 publicarRelease: resposta de loja fora do ar FORA do contrato (ref curto) BLOQUEIA", async () => {
+  const montado = releaseComSondasReais({
+    aliasesAntes: [DOM_IKCOUS, DOM_SAVY, DOM_DORMINDO],
+    aliasesDepois: [DOM_IKCOUS, DOM_SAVY, DOM_DORMINDO],
+    foraDoAr: new Map([
+      [
+        DOM_DORMINDO,
+        { status: 503, headers: cabecalhosForaDoAr("adormecida", "curto") },
+      ],
+    ]),
+  });
+  const { d, chamadas } = montado;
+  d.politica = {
+    ...d.politica,
+    lojasQueNuncaDormem: [{ ref: CAF }, { ref: SAVY }],
+  };
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover, []);
+  assertEquals(r.lojasForaDoAr, []);
+});
+
+Deno.test("L8 pós-promote: o endereço da loja parada que some depois do promote reprova", async () => {
+  const { d, chamadas } = releaseComLojaParada({
+    aliasesDepois: [DOM_IKCOUS, DOM_SAVY],
+  });
+  const r = await executar(d, true);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(
+    r.relatorio,
+    `${DOM_DORMINDO}: endereço de loja sondado antes do promote, mas não depois`,
+  );
+});
+
+Deno.test("L8 problemasAntesDoPromote: ADORMECIDA e ENCERRADA passam; ESTADO_INESPERADO junto delas bloqueia", () => {
+  const parada = (classe, extra = []) => ({
+    dominio: "p.example",
+    classe,
+    versao: { codeSha: SHA },
+    achados: [{ classe, motivo: "loja parada por decisão" }, ...extra],
+  });
+  assertEquals(
+    problemasAntesDoPromote(
+      { resultados: [parada("ADORMECIDA"), parada("ENCERRADA")] },
+      SHA,
+    ),
+    [],
+  );
+  assertEquals(
+    problemasAntesDoPromote(
+      {
+        resultados: [
+          { dominio: "p.example", classe: "ADORMECIDA", achados: [] },
+        ],
+      },
+      SHA,
+    ),
+    [],
+  );
+  const r = problemasAntesDoPromote(
+    {
+      resultados: [
+        parada("ESTADO_INESPERADO", [
+          { classe: "ESTADO_INESPERADO", motivo: "lojasQueNuncaDormem" },
+        ]),
+      ],
+    },
+    SHA,
+  );
+  assertEquals(r.length, 1);
+  assertStringIncludes(r[0], "lojasQueNuncaDormem");
+});
+
+Deno.test("L8 --json: o resumo leva lojasForaDoAr (e [] quando não há)", async () => {
+  const { d } = releaseComLojaParada();
+  const r = await executar(d);
+  const json = JSON.parse(resumoEmJson(r, "2026-11-26T00:00:00.000Z"));
+  assertEquals(json.lojasForaDoAr, [
+    { ref: NOVA, estado: "adormecida", dominios: [DOM_DORMINDO] },
+  ]);
+  assertEquals(json.codigo, r.codigo);
+  assertEquals(json.geradoEm, "2026-11-26T00:00:00.000Z");
+  assert(!("relatorio" in json));
+  assertEquals(
+    JSON.parse(resumoEmJson({ codigo: 1, lojas: [] }, "x")).lojasForaDoAr,
+    [],
+  );
 });

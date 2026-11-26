@@ -59,10 +59,22 @@
 //
 // CLASSES (a mais grave vence): LOJA_TROCADA > SUSPEITA_ISOLAMENTO >
 // INALCANCAVEL > ENDERECO_ANTIGO > CANONICO_INVALIDO > BUILD_DIVERGENTE >
-// ESTADO_INESPERADO > OK.
-// SAÍDA: 0 só se TUDO está OK; 1 em qualquer outro caso (inclui pedir --vercel
-// e a consulta falhar); 2 = erro de uso. Inventário PARCIAL (sem --vercel) com
-// tudo OK sai 0, mas o relatório avisa em voz alta que não é a frota inteira.
+// ESTADO_INESPERADO > ENCERRADA > ADORMECIDA > OK.
+// SAÍDA: 0 só se TUDO está OK (ou fora do ar por decisão: ADORMECIDA/ENCERRADA);
+// 1 em qualquer outro caso (inclui pedir --vercel e a consulta falhar); 2 = erro
+// de uso. Inventário PARCIAL (sem --vercel) com tudo OK sai 0, mas o relatório
+// avisa em voz alta que não é a frota inteira.
+//
+// LOJA FORA DO AR POR DECISÃO (L8, estado de vida da loja em frota_lojas): o
+// porteiro responde "/" com uma página própria — adormecida = HTTP 503 e
+// encerrada = HTTP 410, com x-ikcous-porteiro e x-ikcous-estado iguais ao estado
+// e x-ikcous-ref = ref Supabase da loja (20 letras minúsculas). SÓ essa
+// combinação, igual nas 3 amostras, vira ADORMECIDA/ENCERRADA: o portão não
+// exige dela a página de loja, mas o version.json (fora do porteiro) continua
+// conferido. Qualquer outra combinação com esses cabeçalhos é ESTADO_INESPERADO,
+// e loja de politica.json lojasQueNuncaDormem fora do ar também.
+// x-ikcous-caderneta-versao: 1 (porteiro na caderneta antiga, que não conhece o
+// estado) vira AVISO no relatório.
 
 import { execFile } from "node:child_process";
 import {
@@ -84,8 +96,23 @@ export const GRAVIDADE = [
   "CANONICO_INVALIDO",
   "BUILD_DIVERGENTE",
   "ESTADO_INESPERADO",
+  "ENCERRADA",
+  "ADORMECIDA",
   "OK",
 ];
+
+/** Estado de vida (x-ikcous-estado) -> classe; só estes dois são "fora do ar". */
+const CLASSE_FORA_DO_AR = Object.freeze({
+  adormecida: "ADORMECIDA",
+  encerrada: "ENCERRADA",
+});
+/** Classes que não reprovam a frota: a loja está no ar, ou fora por decisão. */
+export const CLASSES_SEM_FALHA = Object.freeze(
+  new Set(["OK", ...Object.values(CLASSE_FORA_DO_AR)]),
+);
+// O HTTP que o porteiro usa para cada estado fora do ar (contrato do L8).
+const STATUS_FORA_DO_AR = Object.freeze({ adormecida: 503, encerrada: 410 });
+const RE_REF_SUPABASE = /^[a-z]{20}$/;
 
 const RE_SHA = /^[0-9a-f]{40}$/;
 const RE_DOMINIO = {
@@ -126,7 +153,11 @@ export const COMO_RECUPERAR = {
     "publicar de novo do mesmo SHA, de worktree limpa (version.json fora do contrato do build: campo ausente ou malformado).",
   INALCANCAVEL: "repetir a conferência; persistindo, abrir o endereço.",
   ESTADO_INESPERADO:
-    "abrir o endereço: ou ele mudou de papel (declarar em scripts/frota/politica.json, enderecosEsperados), ou é uma loja que perdeu a ficha (caderneta).",
+    "abrir o endereço: ou ele mudou de papel (declarar em scripts/frota/politica.json, enderecosEsperados), ou é uma loja que perdeu a ficha (caderneta). Se a resposta traz x-ikcous-porteiro/x-ikcous-estado de loja fora do ar, o porteiro saiu do contrato (503 adormecida / 410 encerrada, estado igual, x-ikcous-ref de 20 letras); se é uma loja de lojasQueNuncaDormem, acordá-la no cadastro (frota_lojas.estado) antes de publicar.",
+  ENCERRADA:
+    "nada a fazer nesta publicação: a loja foi encerrada por decisão (frota_lojas.estado = encerrada) e não recebe a release. Reabrir é decisão do dono, pelo cadastro, depois de conferir a prontidão do backend dela.",
+  ADORMECIDA:
+    "nada a fazer nesta publicação: a loja está adormecida por decisão (frota_lojas.estado = adormecida) e não recebe a release. Ao acordar (cadastro, só depois da prontidão do backend dela) ela recebe tudo o que saiu enquanto dormia.",
 };
 
 export function lerPolitica(caminho = path.join(AQUI, "politica.json")) {
@@ -342,6 +373,11 @@ export async function sondarEndereco(dominio, opcoes = {}) {
         caderneta: res.headers.get("x-ikcous-caderneta"),
         // Quem respondeu: o middleware (`ok`/`sem-loja`/...) ou outra coisa.
         porteiro: res.headers.get("x-ikcous-porteiro"),
+        // Estado de vida da loja (L8): só na página de loja fora do ar.
+        estado: res.headers.get("x-ikcous-estado"),
+        refPorteiro: res.headers.get("x-ikcous-ref"),
+        // "1" = o porteiro caiu na caderneta antiga (resolver_loja, sem estado).
+        cadernetaVersao: res.headers.get("x-ikcous-caderneta-versao"),
         titulo: extrairTitulo(html),
         refs: extrairRefsSupabase(html),
         publicUrl: extrairPublicUrl(html),
@@ -389,6 +425,45 @@ export async function sondarEndereco(dominio, opcoes = {}) {
 }
 
 // ---------------------------------------------------------------- referência e contexto
+
+/**
+ * A resposta de "/" DIZ ser de loja fora do ar (x-ikcous-porteiro ou
+ * x-ikcous-estado = adormecida/encerrada), com qualquer HTTP? Só o que ela
+ * alega; quem prova o contrato é `lojaForaDoAr`. Alegar sem provar é
+ * ESTADO_INESPERADO.
+ */
+export function alegaForaDoAr(ficha) {
+  if (!ficha) return false;
+  return (
+    Object.hasOwn(CLASSE_FORA_DO_AR, String(ficha.porteiro)) ||
+    Object.hasOwn(CLASSE_FORA_DO_AR, String(ficha.estado))
+  );
+}
+
+/**
+ * Loja fora do ar POR DECISÃO, provada pelo contrato do porteiro em TODAS as
+ * amostras de "/": HTTP 503 (adormecida) ou 410 (encerrada), x-ikcous-porteiro
+ * = x-ikcous-estado = o estado, e o mesmo x-ikcous-ref de 20 letras minúsculas.
+ * Devolve { estado, ref } ou null (qualquer outra combinação).
+ */
+export function lojaForaDoAr(sonda) {
+  const ficha = sonda?.ficha;
+  if (!ficha || ficha.estavel === false) return null;
+  const amostras =
+    Array.isArray(sonda.amostras) && sonda.amostras.length
+      ? sonda.amostras
+      : [ficha];
+  const estado = ficha.estado;
+  const ref = ficha.refPorteiro;
+  if (!Object.hasOwn(CLASSE_FORA_DO_AR, String(estado))) return null;
+  if (typeof ref !== "string" || !RE_REF_SUPABASE.test(ref)) return null;
+  const confere = (a) =>
+    a.status === STATUS_FORA_DO_AR[estado] &&
+    a.porteiro === estado &&
+    a.estado === estado &&
+    a.refPorteiro === ref;
+  return amostras.every(confere) ? { estado, ref } : null;
+}
 
 // Valor da maioria ESTRITA (> 50%); null se não há (empate ou nenhum).
 export function maioriaEstrita(valores) {
@@ -511,6 +586,9 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
     const f = s.ficha;
     if (ignorar.has(s.dominio) || !f?.estavel || f.caderneta !== "hit")
       continue;
+    // Página de loja fora do ar (válida ou não) não serve loja, então não tem
+    // canônico a provar: quem a reprova, se for o caso, é `classificar`.
+    if (alegaForaDoAr(f)) continue;
     if (!f.publicUrl) {
       add(s.dominio, "ficha sem publicUrl (cadastro sem dominio_publico)");
       continue;
@@ -564,7 +642,12 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
 // Monta o contexto compartilhado (SHA esperado, identidade da maioria, mapa de deployments).
 export function montarContexto(
   sondas,
-  { sha, vercel = null, ignorarNoCruzamento = new Set() } = {},
+  {
+    sha,
+    vercel = null,
+    ignorarNoCruzamento = new Set(),
+    lojasQueNuncaDormem = new Set(),
+  } = {},
 ) {
   if (!RE_SHA.test(String(sha)))
     throw new Error("--sha precisa ter 40 caracteres hexadecimais");
@@ -593,6 +676,7 @@ export function montarContexto(
         : maioriaEstrita(doGrupo.map((s) => s.versao.codeVersion)),
     cruzado,
     canonicos: canonico.canonicos,
+    lojasQueNuncaDormem,
   };
   if (vercel?.ok) {
     const deployments = doGrupo
@@ -639,7 +723,23 @@ export function classificar(alvo, sonda, ctx) {
         `as ${sonda.amostras.length} amostras de "/" divergem (caderneta/título/ref): ${resumo}`,
       );
     }
-    if (!alvo.esperado) {
+    const fora = alvo.esperado ? null : lojaForaDoAr(sonda);
+    if (fora) {
+      add(
+        CLASSE_FORA_DO_AR[fora.estado],
+        `loja ${fora.estado} por decisão (HTTP ${ficha.status}, x-ikcous-porteiro e x-ikcous-estado: ${fora.estado}, ref ${fora.ref}): não recebe a release`,
+      );
+      if (ctx.lojasQueNuncaDormem?.has(fora.ref))
+        add(
+          "ESTADO_INESPERADO",
+          `a loja ${fora.ref} está em politica.json lojasQueNuncaDormem e respondeu ${fora.estado}`,
+        );
+    } else if (!alvo.esperado && alegaForaDoAr(ficha)) {
+      add(
+        "ESTADO_INESPERADO",
+        `resposta de loja fora do ar fora do contrato (HTTP ${ficha.status}, x-ikcous-porteiro ${ficha.porteiro ?? "(ausente)"}, x-ikcous-estado ${ficha.estado ?? "(ausente)"}, x-ikcous-ref ${ficha.refPorteiro ?? "(ausente)"}${ficha.estavel === false ? ", amostras divergentes" : ""}): esperado 503 adormecida ou 410 encerrada, estado igual e ref de 20 letras minúsculas em todas as amostras`,
+      );
+    } else if (!alvo.esperado) {
       if (ficha.caderneta !== "hit") {
         add(
           "ESTADO_INESPERADO",
@@ -1234,7 +1334,11 @@ export function montarRelatorio({
       "",
     );
   }
-  linhas.push(`**Resultado: ${ok} de ${resultados.length} endereços OK.**`, "");
+  const foraDoAr = resultados.filter((r) => r.foraDoAr);
+  linhas.push(
+    `**Resultado: ${ok} de ${resultados.length} endereços OK${foraDoAr.length ? ` (+ ${foraDoAr.length} fora do ar por decisão)` : ""}.**`,
+    "",
+  );
   if (problemasDeCobertura.length) {
     linhas.push("## Cobertura da frota — FALHOU", "");
     for (const problema of problemasDeCobertura)
@@ -1287,6 +1391,17 @@ export function montarRelatorio({
       `| ${celula(r.dominio)} | ${celula(loja)} | ${r.classe} | ${celula(serve)} | ${celula(http)} | ${celula(dep)} | ${celula(detalhe)} |`,
     );
   }
+  linhas.push("", "## Lojas fora do ar por decisão", "");
+  if (foraDoAr.length === 0) linhas.push("- nenhuma");
+  for (const r of foraDoAr)
+    linhas.push(
+      `- ${celula(r.dominio)}: ${r.foraDoAr.estado} (ref ${r.foraDoAr.ref}) — não recebe esta release; ao acordar recebe tudo`,
+    );
+  const antigas = resultados.filter((r) => r.cadernetaAntiga);
+  if (antigas.length)
+    linhas.push(
+      `- AVISO: o porteiro respondeu pela caderneta antiga (x-ikcous-caderneta-versao: 1) em ${antigas.map((r) => celula(r.dominio)).join(", ")}: ali uma loja adormecida ou encerrada aparece como endereço desconhecido, não como fora do ar. Aplicar a migration do estado de vida no banco onde a caderneta mora.`,
+    );
   linhas.push("", "## Endereço -> deployment", "");
   if (!vercelPedido) {
     linhas.push("endereço→deployment: NÃO CONFERIDO (sem --vercel)");
@@ -1392,6 +1507,9 @@ export async function conferirFrota(politica, opcoes = {}) {
     sha,
     vercel: inventario.vercel,
     ignorarNoCruzamento: new Set(esperados.keys()),
+    lojasQueNuncaDormem: new Set(
+      (politica.lojasQueNuncaDormem ?? []).map((l) => l.ref),
+    ),
   });
   const resultados = inventario.sondas.map((sonda) => {
     const esperado = esperados.get(sonda.dominio) ?? null;
@@ -1409,6 +1527,12 @@ export async function conferirFrota(politica, opcoes = {}) {
       esperado,
       classe,
       achados,
+      // { estado, ref } da loja fora do ar por decisão (contrato provado), ou null.
+      foraDoAr: esperado ? null : lojaForaDoAr(sonda),
+      // O porteiro respondeu pela caderneta antiga (sem estado de vida)?
+      cadernetaAntiga: (sonda.amostras ?? []).some(
+        (a) => a.cadernetaVersao === "1",
+      ),
       versao: sonda.versao,
       ficha: sonda.ficha,
       deploymentId: inventario.vercel?.ok
@@ -1422,10 +1546,11 @@ export async function conferirFrota(politica, opcoes = {}) {
         deploymentEsperado: ctx.vercel?.deploymentEsperado,
       }
     : inventario.vercel;
+  // Loja fora do ar por decisão FOI sondada: a resposta dela provou quem é.
   const refsSondados = new Set(
     resultados
       .filter((r) => !declarados.has(r.dominio))
-      .map((r) => refDaLojaSondada(r.ficha)),
+      .map((r) => r.foraDoAr?.ref ?? refDaLojaSondada(r.ficha)),
   );
   const dominiosSondados = new Set(resultados.map((r) => r.dominio));
   const problemasDeCobertura = [
@@ -1439,7 +1564,7 @@ export async function conferirFrota(politica, opcoes = {}) {
   ];
   const ok =
     problemasDeCobertura.length === 0 &&
-    resultados.every((r) => r.classe === "OK") &&
+    resultados.every((r) => CLASSES_SEM_FALHA.has(r.classe)) &&
     (!pedirVercel || (inventario.vercel?.ok === true && inventario.completo));
   const relatorio = montarRelatorio({
     resultados,

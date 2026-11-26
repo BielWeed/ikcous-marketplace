@@ -5,6 +5,10 @@
     "escopo": "gabriels-projects-5a19f6ee"
   },
   "lojasSemBackendGerenciado": [],
+  "lojasQueNuncaDormem": [
+    { "ref": "cafkrminfnokvgjqtkle", "nome": "IKCOUS" },
+    { "ref": "gnjsrucsmjkajijrakzr", "nome": "Savy" }
+  ],
   "motivoLojasSemBackendGerenciado": "Almeida Store, Brand Meliz e Space Loja dos Kit foram descontinuadas permanentemente pelo dono em 16/10/2026 e saíram do caminho de atualização",
   "enderecosEsperados": [
     {
@@ -44,6 +48,7 @@
     "estado": "manutencao = HTTP 503 + caderneta miss; redirecionamento = HTTP 308. Só política: quais endereços NÃO são loja. Quem é loja e qual loja vem da FICHA que o porteiro serve (cadastro frota_lojas), nunca daqui.",
     "aliasesDePreview": "Aliases automáticos de branch/preview do projeto (não são lojas); a inventariação por --vercel os ignora.",
     "enderecosDeReserva": "SÓ para rodar sem --vercel (CI). Pode ficar velha: por isso a saída diz inventário PARCIAL. A fonte oficial do inventário é a lista de aliases do projeto Vercel (--vercel).",
-    "migrationsForaDaRelease": "Lida pelo orquestrador de publicação; a conferência da frota só a mostra."
+    "migrationsForaDaRelease": "Lida pelo orquestrador de publicação; a conferência da frota só a mostra.",
+    "lojasQueNuncaDormem": "Lojas que NUNCA podem estar adormecidas ou encerradas (L8, frota_lojas.estado): se uma delas responder fora do ar, a conferência da frota reprova (ESTADO_INESPERADO) e o publicar-release BLOQUEIA. Refs iguais aos de canais-de-backend.json."
   }
 }
