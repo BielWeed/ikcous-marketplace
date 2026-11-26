@@ -18,7 +18,14 @@
 // não contam (decisão do sócio, 26/11: o plano grátis dá 100 gravações por
 // mês e ~25 releases por semana as estourariam). Gravar = UM PATCH com
 // `upsert` da chave, o corpo pelo stdin (`vercel api ... --input -`, nunca
-// no argv), e depois relê o item e confere byte a byte.
+// no argv), e depois relê o item e confere campo a campo (a ordem das chaves
+// que a store devolve não conta: `canonico`).
+//
+// ENDEREÇO QUE NÃO ENTRA: só sai em silêncio o que é DEFINITIVO (política,
+// preview, adormecida/encerrada provada, `miss`, redirecionamento). Resultado
+// INDETERMINADO (sonda sem resposta, instável, `erro`, `reserva`, 2+ refs)
+// recusa o --gravar com o endereço no motivo (`classificarEndereco`); o
+// --conferir só avisa.
 //
 // RECUSA (sem falar com a Vercel): reserva vazia; falta loja obrigatória
 // (todo canal de canais-de-backend.json, menos politica.json
@@ -55,6 +62,7 @@ import {
   criarExecutorVercel,
   inventariar,
   lerPolitica,
+  lojaForaDoAr,
   refDaLojaSondada,
   resolverCliVercel,
 } from "./conferir-frota.mjs";
@@ -141,13 +149,96 @@ export function entradaInvalida(host, entrada) {
 
 // ------------------------------------------------------------------ montar e comparar
 
+const STATUS_DE_REDIRECIONAMENTO = new Set([301, 302, 307, 308]);
+
+/**
+ * O que a sonda de UM endereço diz para a reserva:
+ *   { tipo: "entra", ref }                — ficha estável 200 hit de UM ref;
+ *   { tipo: "definitivo", motivo }        — o endereço não é loja no ar, e
+ *     isso é CERTO: declarado na política (enderecosEsperados), alias de
+ *     preview, loja adormecida/encerrada provada pelo contrato do porteiro
+ *     (`lojaForaDoAr`), `miss` estável (sem-loja) ou redirecionamento estável;
+ *   { tipo: "indeterminado", motivo }     — qualquer outra coisa: sem ficha
+ *     (a sonda não respondeu), amostras divergentes, `erro`, `reserva`, mais
+ *     de um ref, HTTP inesperado.
+ * Só o definitivo sai da reserva em silêncio. O indeterminado recusa o
+ * --gravar: a reserva não pode encolher justamente quando a caderneta (ou a
+ * rede) começa a falhar.
+ */
+export function classificarEndereco(sonda, politica = {}) {
+  const dominio = String(sonda?.dominio ?? "");
+  const esperados = new Set(
+    (politica?.enderecosEsperados ?? []).map((e) => e?.dominio),
+  );
+  if (esperados.has(dominio))
+    return {
+      tipo: "definitivo",
+      motivo: "declarado em politica.json enderecosEsperados (não é loja)",
+    };
+  for (const padrao of politica?.aliasesDePreview ?? []) {
+    // eslint-disable-next-line security/detect-non-literal-regexp -- padrões da política versionada no repositório (aliasesDePreview), revisados por PR.
+    if (new RegExp(padrao).test(dominio))
+      return { tipo: "definitivo", motivo: "alias de preview" };
+  }
+  const fora = lojaForaDoAr(sonda);
+  if (fora)
+    return { tipo: "definitivo", motivo: `loja ${fora.estado} (${fora.ref})` };
+  const ficha = sonda?.ficha;
+  if (!ficha)
+    return {
+      tipo: "indeterminado",
+      motivo: "a sonda não respondeu (nenhuma amostra da página)",
+    };
+  if (ficha.estavel !== true)
+    return {
+      tipo: "indeterminado",
+      motivo: "amostras divergentes (ficha instável)",
+    };
+  const ref = refDaLojaSondada(ficha);
+  if (ref !== null && RE_REF.test(ref)) return { tipo: "entra", ref };
+  const caderneta = ficha.caderneta ?? "(sem cabeçalho)";
+  if (caderneta === "miss")
+    return { tipo: "definitivo", motivo: "caderneta miss (sem-loja)" };
+  if (
+    STATUS_DE_REDIRECIONAMENTO.has(ficha.status) &&
+    caderneta !== "erro" &&
+    caderneta !== "reserva"
+  )
+    return {
+      tipo: "definitivo",
+      motivo: `redirecionamento (HTTP ${ficha.status})`,
+    };
+  const refs = Array.isArray(ficha.refs) ? ficha.refs : [];
+  if (caderneta === "hit" && refs.length !== 1)
+    return {
+      tipo: "indeterminado",
+      motivo: `caderneta hit com ${refs.length} refs (esperado um só)`,
+    };
+  return {
+    tipo: "indeterminado",
+    motivo: `HTTP ${ficha.status ?? "-"}, caderneta ${caderneta}`,
+  };
+}
+
+/** Os endereços do inventário com resultado indeterminado: [{dominio, motivo}]. */
+export function enderecosIndeterminados(inventario, politica = {}) {
+  return (inventario?.sondas ?? [])
+    .map((s) => ({ dominio: s?.dominio, ...classificarEndereco(s, politica) }))
+    .filter((c) => c.tipo === "indeterminado")
+    .map(({ dominio, motivo }) => ({ dominio, motivo }))
+    .sort((a, b) =>
+      a.dominio < b.dominio ? -1 : a.dominio > b.dominio ? 1 : 0,
+    );
+}
+
 /**
  * O documento v1 a partir do inventário do conferir-frota (`inventariar`).
  * Hosts em ordem alfabética: frota igual = texto igual. Uma loja `hit` cuja
  * ficha não trouxe chave pública ENTRA com `k: null`, para a recusa dizer o
- * host em voz alta em vez de a loja sumir da reserva calada.
+ * host em voz alta em vez de a loja sumir da reserva calada. Quem grava
+ * confere ANTES `enderecosIndeterminados` (o documento só leva o que entra).
  */
-export function montarReserva(inventario, { sha, agora }) {
+export function montarReserva(inventario, { sha, agora, politica = {} }) {
   if (typeof sha !== "string" || !RE_SHA.test(sha))
     throw new Error(
       "montarReserva: sha precisa ter 40 caracteres hexadecimais",
@@ -157,8 +248,9 @@ export function montarReserva(inventario, { sha, agora }) {
   const pares = [];
   const vistos = new Set();
   for (const sonda of inventario?.sondas ?? []) {
-    const ref = refDaLojaSondada(sonda?.ficha);
-    if (ref === null || !RE_REF.test(ref)) continue;
+    const c = classificarEndereco(sonda, politica);
+    if (c.tipo !== "entra") continue;
+    const ref = c.ref;
     if (vistos.has(sonda.dominio)) continue;
     vistos.add(sonda.dominio);
     pares.push([
@@ -427,6 +519,36 @@ export async function lerReservaAtual(api, config) {
   return r.value;
 }
 
+/**
+ * JSON com as chaves dos objetos em ordem, em toda a profundidade: a store
+ * pode devolver as chaves em outra ordem e o conteúdo continuar o mesmo.
+ * Arrays mantêm a ordem (nela a ordem é conteúdo).
+ */
+export function canonico(valor) {
+  const ordenar = (v) => {
+    if (Array.isArray(v)) return v.map(ordenar);
+    if (!ehObjeto(v)) return v;
+    return Object.fromEntries(
+      Object.keys(v)
+        .sort()
+        .map((k) => [k, ordenar(v[k])]),
+    );
+  };
+  return JSON.stringify(ordenar(valor));
+}
+
+/** Recusas pelos endereços indeterminados (lista ausente também recusa). */
+export function problemasDosIndeterminados(indeterminados) {
+  if (!Array.isArray(indeterminados))
+    return [
+      "lista de endereços indeterminados não informada (enderecosIndeterminados): sem ela não há como provar que nenhum endereço sumiu da reserva calado",
+    ];
+  return indeterminados.map(
+    ({ dominio, motivo }) =>
+      `o endereço ${dominio} deu resultado indeterminado (${motivo}): gravar agora o tiraria da reserva; repetir a conferência`,
+  );
+}
+
 const MENSAGEM_DE_COTA =
   "limite de gravações do plano grátis da Vercel atingido (Global Config: 100 gravações por mês): a reserva NÃO foi gravada; a que está na store continua valendo até o mês virar";
 
@@ -435,13 +557,16 @@ const MENSAGEM_DE_COTA =
  * { ok, estado, motivos, diferenca }, com estado
  *   igual | gravada              (ok)
  *   nao-configurada | recusada | cota | falhou   (não ok).
- * Recusa e não-configurada não falam com a Vercel.
+ * Recusa e não-configurada não falam com a Vercel. `indeterminados`
+ * (de `enderecosIndeterminados`) é OBRIGATÓRIO: sem a lista, ou com algum
+ * endereço nela, recusa — o endereço sumiria da reserva calado.
  */
 export async function gravarReserva({
   nova,
   api,
   config,
   lojasObrigatorias = [],
+  indeterminados,
 }) {
   const resultado = (ok, estado, motivos = [], dif = null) => ({
     ok,
@@ -454,7 +579,10 @@ export async function gravarReserva({
       config?.motivo ??
         "a reserva da caderneta não está configurada (politica.json reservaDaCaderneta)",
     ]);
-  const problemas = problemasDaReserva(nova, { lojasObrigatorias });
+  const problemas = [
+    ...problemasDosIndeterminados(indeterminados),
+    ...problemasDaReserva(nova, { lojasObrigatorias }),
+  ];
   if (problemas.length) return resultado(false, "recusada", problemas);
   let atual;
   try {
@@ -486,12 +614,12 @@ export async function gravarReserva({
       dif,
     );
   }
-  if (JSON.stringify(lida) !== JSON.stringify(nova))
+  if (canonico(lida) !== canonico(nova))
     return resultado(
       false,
       "falhou",
       [
-        "a releitura não é igual, byte a byte, ao que foi gravado: conferir a store antes de publicar",
+        "a releitura não é igual ao que foi gravado (mesmos campos e valores, em qualquer ordem): conferir a store antes de publicar",
       ],
       dif,
     );
@@ -534,7 +662,9 @@ export async function executar(argv, deps) {
   const nova = montarReserva(inventario, {
     sha: args.sha,
     agora: deps.agora(),
+    politica: deps.politica,
   });
+  const indeterminados = enderecosIndeterminados(inventario, deps.politica);
   const lojasObrigatorias = lojasObrigatoriasDosCanais(
     deps.canais,
     deps.politica,
@@ -574,6 +704,9 @@ export async function executar(argv, deps) {
       "",
       ...descreverDiferenca(diferenca(atual, nova)),
     );
+    // No --conferir o indeterminado só AVISA (o --gravar recusaria).
+    for (const p of problemasDosIndeterminados(indeterminados))
+      saida.push(`AVISO: ${p}`);
     for (const p of problemas) erros.push(`RECUSADA: ${p}`);
     return { codigo: problemas.length ? 1 : 0, saida, erros };
   }
@@ -589,12 +722,13 @@ export async function executar(argv, deps) {
     api: deps.api,
     config,
     lojasObrigatorias,
+    indeterminados,
   });
   if (r.diferenca) saida.push("", ...descreverDiferenca(r.diferenca));
   if (r.estado === "igual")
     saida.push("", "Igual à atual (só a lista de lojas conta): nada gravado.");
   if (r.estado === "gravada")
-    saida.push("", "Gravada e conferida na releitura, byte a byte.");
+    saida.push("", "Gravada e conferida na releitura.");
   const rotulo = {
     recusada: "RECUSADA",
     cota: "COTA",

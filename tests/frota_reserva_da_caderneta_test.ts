@@ -23,8 +23,11 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   LIMITE_DE_BYTES,
+  canonico,
+  classificarEndereco,
   criarVercelApi,
   diferenca,
+  enderecosIndeterminados,
   executar,
   gravarReserva,
   lojasObrigatoriasDosCanais,
@@ -163,42 +166,42 @@ const obrigatorias = [
 
 // ------------------------------------------------------------------ montarReserva
 
+const frotaMista = () =>
+  inventario([
+    sonda("loja-um.exemplo.test"),
+    sonda("loja-dois.exemplo.test", { refs: [REF_B], chave: CHAVE_B }),
+    sonda("caiu-na-reserva.exemplo.test", {
+      caderneta: "reserva",
+      refs: [REF_C],
+      chave: CHAVE_C,
+    }),
+    sonda("sem-loja.exemplo.test", {
+      status: 404,
+      caderneta: "miss",
+      refs: [],
+    }),
+    sonda("caderneta-erro.exemplo.test", {
+      status: 503,
+      caderneta: "erro",
+      refs: [],
+    }),
+    sonda("instavel.exemplo.test", {
+      estavel: false,
+      refs: [REF_C],
+      chave: CHAVE_C,
+    }),
+    sonda("dois-refs.exemplo.test", { refs: [REF_A, REF_C] }),
+    {
+      dominio: "nao-respondeu.exemplo.test",
+      ficha: null,
+      chavePublica: null,
+      errosPagina: ["x"],
+      amostras: [],
+    },
+  ]);
+
 Deno.test("montarReserva: só ficha estável 200 hit com UM ref; nunca reserva, miss, erro, instável ou dois refs", () => {
-  const r = montarReserva(
-    inventario([
-      sonda("loja-um.exemplo.test"),
-      sonda("loja-dois.exemplo.test", { refs: [REF_B], chave: CHAVE_B }),
-      sonda("caiu-na-reserva.exemplo.test", {
-        caderneta: "reserva",
-        refs: [REF_C],
-        chave: CHAVE_C,
-      }),
-      sonda("sem-loja.exemplo.test", {
-        status: 404,
-        caderneta: "miss",
-        refs: [],
-      }),
-      sonda("caderneta-erro.exemplo.test", {
-        status: 503,
-        caderneta: "erro",
-        refs: [],
-      }),
-      sonda("instavel.exemplo.test", {
-        estavel: false,
-        refs: [REF_C],
-        chave: CHAVE_C,
-      }),
-      sonda("dois-refs.exemplo.test", { refs: [REF_A, REF_C] }),
-      {
-        dominio: "nao-respondeu.exemplo.test",
-        ficha: null,
-        chavePublica: null,
-        errosPagina: ["x"],
-        amostras: [],
-      },
-    ]),
-    { sha: SHA_1, agora: AGORA },
-  );
+  const r = montarReserva(frotaMista(), { sha: SHA_1, agora: AGORA });
   assertEquals(r, {
     v: 1,
     gerada_em: "2026-11-26T15:00:00.000Z",
@@ -271,6 +274,7 @@ Deno.test("gravarReserva: mesma lista de lojas com sha e gerada_em DIFERENTES n�
     api: v.api,
     config,
     lojasObrigatorias: obrigatorias,
+    indeterminados: [],
   });
   assertEquals(r.ok, true);
   assertEquals(r.estado, "igual");
@@ -287,6 +291,7 @@ Deno.test("gravarReserva: lista diferente = UM PATCH upsert pelo stdin (--input 
     api: v.api,
     config,
     lojasObrigatorias: obrigatorias,
+    indeterminados: [],
   });
   assertEquals(r.ok, true, JSON.stringify(r));
   assertEquals(r.estado, "gravada");
@@ -339,6 +344,7 @@ Deno.test("gravarReserva: store sem a chave (204) grava; reserva atual fora do f
         api: vazia.api,
         config,
         lojasObrigatorias: obrigatorias,
+        indeterminados: [],
       })
     ).estado,
     "gravada",
@@ -350,6 +356,7 @@ Deno.test("gravarReserva: store sem a chave (204) grava; reserva atual fora do f
     api: torta.api,
     config,
     lojasObrigatorias: obrigatorias,
+    indeterminados: [],
   });
   assertEquals(r.estado, "gravada");
   assertEquals(torta.store.patches, 1);
@@ -366,6 +373,7 @@ Deno.test("gravarReserva: releitura diferente byte a byte = falhou (não diz que
     api: v.api,
     config,
     lojasObrigatorias: obrigatorias,
+    indeterminados: [],
   });
   assertEquals(r.ok, false);
   assertEquals(r.estado, "falhou");
@@ -382,6 +390,7 @@ Deno.test("gravarReserva: a reserva atual não lida = nenhum PATCH", async () =>
     api: v.api,
     config,
     lojasObrigatorias: obrigatorias,
+    indeterminados: [],
   });
   assertEquals(r.ok, false);
   assertEquals(r.estado, "falhou");
@@ -399,6 +408,7 @@ async function recusada(nova, lojas = obrigatorias) {
     api: v.api,
     config,
     lojasObrigatorias: lojas,
+    indeterminados: [],
   });
   assertEquals(r.ok, false);
   assertEquals(r.estado, "recusada");
@@ -499,6 +509,7 @@ Deno.test("não configurada (globalConfigId null): nada é lido nem gravado, e d
       time: TIME,
     },
     lojasObrigatorias: obrigatorias,
+    indeterminados: [],
   });
   assertEquals(r.ok, false);
   assertEquals(r.estado, "nao-configurada");
@@ -522,6 +533,7 @@ Deno.test("cota: PATCH recusado pelo limite de gravações do plano grátis tem 
     api: v.api,
     config,
     lojasObrigatorias: obrigatorias,
+    indeterminados: [],
   });
   assertEquals(r.ok, false);
   assertEquals(r.estado, "cota");
@@ -541,6 +553,7 @@ Deno.test("cota: PATCH recusado pelo limite de gravações do plano grátis tem 
     api: outra.api,
     config,
     lojasObrigatorias: obrigatorias,
+    indeterminados: [],
   });
   assertEquals(r2.estado, "falhou");
   assert(!r2.motivos.join("\n").includes("limite de gravações"));
@@ -627,4 +640,229 @@ Deno.test("politica.json real: reservaDaCaderneta existe, com globalConfigId nul
     globalConfigId: null,
     chave: "reserva_v1",
   });
+});
+
+// ------------------------------------------------------------------ endereço indeterminado x definitivo (revisão Opus da T8)
+
+Deno.test("o endereço que não respondeu NÃO some calado: a gravação é recusada citando o endereço", async () => {
+  const inv = frotaMista();
+  const indeterminados = enderecosIndeterminados(inv, politicaBase());
+  assertEquals(
+    indeterminados.map((i) => i.dominio),
+    [
+      "caderneta-erro.exemplo.test",
+      "caiu-na-reserva.exemplo.test",
+      "dois-refs.exemplo.test",
+      "instavel.exemplo.test",
+      "nao-respondeu.exemplo.test",
+    ],
+  );
+  const nova = montarReserva(inv, { sha: SHA_1, agora: AGORA });
+  const v = dubleVercel({ atual: null });
+  const r = await gravarReserva({
+    nova,
+    api: v.api,
+    config,
+    lojasObrigatorias: obrigatorias,
+    indeterminados,
+  });
+  assertEquals(r.estado, "recusada");
+  assertStringIncludes(r.motivos.join("\n"), "nao-respondeu.exemplo.test");
+  assertStringIncludes(r.motivos.join("\n"), "indeterminado");
+  assertEquals(v.chamadas.length, 0, "recusa não fala com a Vercel");
+});
+
+Deno.test("o caso do revisor: domínio próprio sem resposta e o .vercel.app da MESMA loja em hit = recusa (loja obrigatória presente não basta)", async () => {
+  const inv = inventario([
+    {
+      dominio: "loja-um.exemplo.test",
+      ficha: null,
+      chavePublica: null,
+      errosPagina: ["timeout", "timeout", "timeout"],
+      amostras: [],
+    },
+    sonda("loja-um.vercel.app"),
+    sonda("loja-dois.exemplo.test", { refs: [REF_B], chave: CHAVE_B }),
+  ]);
+  const { deps, vercel } = depsDoComando({ inv });
+  const r = await executar(["--gravar", "--sha", SHA_1], deps);
+  assertEquals(r.codigo, 1);
+  assertStringIncludes(r.erros.join("\n"), "loja-um.exemplo.test");
+  assertEquals(vercel.chamadas.length, 0);
+});
+
+Deno.test("gravarReserva sem a lista de indeterminados recusa (fail closed)", async () => {
+  const nova = montarReserva(frotaBase(), { sha: SHA_1, agora: AGORA });
+  const v = dubleVercel({ atual: null });
+  const r = await gravarReserva({
+    nova,
+    api: v.api,
+    config,
+    lojasObrigatorias: obrigatorias,
+  });
+  assertEquals(r.estado, "recusada");
+  assertStringIncludes(r.motivos.join("\n"), "indeterminados não informada");
+  assertEquals(v.chamadas.length, 0);
+});
+
+const foraDoAr = (dominio, estado, status) => {
+  const a = {
+    status,
+    caderneta: null,
+    porteiro: estado,
+    estado,
+    refPorteiro: REF_C,
+    refs: [],
+    titulo: null,
+  };
+  return {
+    dominio,
+    ficha: { ...a, estavel: true },
+    chavePublica: null,
+    amostras: [a, a, a],
+  };
+};
+const politicaComPreviewEEsperado = () => ({
+  ...politicaBase(),
+  aliasesDePreview: ["^loja-git-.+.vercel.app$"],
+  enderecosEsperados: [
+    { dominio: "antigo.exemplo.test", estado: "redirecionamento" },
+  ],
+});
+const tipo = (s, politica = politicaComPreviewEEsperado()) =>
+  classificarEndereco(s, politica).tipo;
+
+Deno.test("indeterminado: sem ficha (a sonda não respondeu)", () => {
+  assertEquals(
+    tipo({ dominio: "x.exemplo.test", ficha: null, amostras: [] }),
+    "indeterminado",
+  );
+});
+Deno.test("indeterminado: caderneta erro", () => {
+  assertEquals(
+    tipo(sonda("x.exemplo.test", { status: 503, caderneta: "erro", refs: [] })),
+    "indeterminado",
+  );
+});
+Deno.test("indeterminado: caderneta reserva (o porteiro já caiu na reserva)", () => {
+  assertEquals(
+    tipo(sonda("x.exemplo.test", { caderneta: "reserva" })),
+    "indeterminado",
+  );
+});
+Deno.test("indeterminado: amostras divergentes (instável), mesmo com hit", () => {
+  assertEquals(
+    tipo(sonda("x.exemplo.test", { estavel: false })),
+    "indeterminado",
+  );
+});
+Deno.test("indeterminado: hit com mais de um ref", () => {
+  const c = classificarEndereco(
+    sonda("x.exemplo.test", { refs: [REF_A, REF_B] }),
+    {},
+  );
+  assertEquals(c.tipo, "indeterminado");
+  assertStringIncludes(c.motivo, "2 refs");
+});
+Deno.test("indeterminado: hit com HTTP que não é 200", () => {
+  assertEquals(tipo(sonda("x.exemplo.test", { status: 500 })), "indeterminado");
+});
+Deno.test("indeterminado: loja que ALEGA estar fora do ar sem o contrato (refs divergentes)", () => {
+  const s = foraDoAr("x.exemplo.test", "adormecida", 503);
+  s.amostras = [
+    s.amostras[0],
+    { ...s.amostras[0], refPorteiro: REF_A },
+    s.amostras[0],
+  ];
+  assertEquals(tipo(s), "indeterminado");
+});
+
+Deno.test("definitivo: caderneta miss estável (sem-loja)", () => {
+  assertEquals(
+    tipo(sonda("x.exemplo.test", { status: 404, caderneta: "miss", refs: [] })),
+    "definitivo",
+  );
+});
+Deno.test("definitivo: redirecionamento estável (308)", () => {
+  assertEquals(
+    tipo(sonda("x.vercel.app", { status: 308, caderneta: null, refs: [] })),
+    "definitivo",
+  );
+});
+Deno.test("definitivo: alias de preview (politica.json aliasesDePreview)", () => {
+  assertEquals(
+    tipo({ dominio: "loja-git-ramo.vercel.app", ficha: null, amostras: [] }),
+    "definitivo",
+  );
+});
+Deno.test("definitivo: endereço declarado em politica.json enderecosEsperados", () => {
+  assertEquals(
+    tipo({ dominio: "antigo.exemplo.test", ficha: null, amostras: [] }),
+    "definitivo",
+  );
+});
+Deno.test("definitivo: loja adormecida (503 no contrato do porteiro)", () => {
+  assertEquals(
+    tipo(foraDoAr("x.exemplo.test", "adormecida", 503)),
+    "definitivo",
+  );
+});
+Deno.test("definitivo: loja encerrada (410 no contrato do porteiro)", () => {
+  assertEquals(
+    tipo(foraDoAr("x.exemplo.test", "encerrada", 410)),
+    "definitivo",
+  );
+});
+Deno.test("entra: ficha estável 200 hit de um ref", () => {
+  assertEquals(classificarEndereco(sonda("x.exemplo.test"), {}), {
+    tipo: "entra",
+    ref: REF_A,
+  });
+});
+
+Deno.test("CLI --conferir com endereço indeterminado só AVISA (sai 0, nada gravado)", async () => {
+  const inv = inventario([
+    ...frotaBase().sondas,
+    sonda("x.exemplo.test", { caderneta: "erro", status: 503, refs: [] }),
+  ]);
+  const { deps, vercel } = depsDoComando({ inv });
+  const r = await executar(["--conferir", "--sha", SHA_1], deps);
+  assertEquals(r.codigo, 0, r.erros.join("\n"));
+  assertStringIncludes(r.saida.join("\n"), "AVISO: o endereço x.exemplo.test");
+  assertEquals(vercel.store.patches, 0);
+});
+
+// ------------------------------------------------------------------ releitura sem depender da ordem das chaves
+
+Deno.test("releitura com as chaves em OUTRA ordem (cabeçalho, hosts e entradas) = gravada", async () => {
+  const nova = montarReserva(frotaBase(), { sha: SHA_1, agora: AGORA });
+  const hostsAoContrario = Object.fromEntries(
+    Object.entries(nova.hosts)
+      .reverse()
+      .map(([h, e]) => [h, { k: e.k, u: e.u }]),
+  );
+  const reordenada = {
+    hosts: hostsAoContrario,
+    sha: nova.sha,
+    gerada_em: nova.gerada_em,
+    v: 1,
+  };
+  assert(
+    JSON.stringify(reordenada) !== JSON.stringify(nova),
+    "o dublê tem de devolver outra ordem",
+  );
+  const v = dubleVercel({ atual: null, releituraTrocada: reordenada });
+  const r = await gravarReserva({
+    nova,
+    api: v.api,
+    config,
+    lojasObrigatorias: obrigatorias,
+    indeterminados: [],
+  });
+  assertEquals(r.estado, "gravada", r.motivos.join("\n"));
+  assertEquals(canonico(reordenada), canonico(nova));
+  assert(
+    canonico({ a: [2, 1] }) !== canonico({ a: [1, 2] }),
+    "array mantém a ordem",
+  );
 });
