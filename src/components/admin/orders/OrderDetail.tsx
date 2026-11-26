@@ -839,8 +839,9 @@ function OrderDeliveryCard({
   const ehBalcao = tipoDeEntregaDoPedido(order) === "balcao";
 
   // Visitante que RETIRA na loja é gravado sem endereço de casa (só CEP, nome
-  // e WhatsApp). Sem rua, bairro e cidade não há o que copiar nem apontar no
-  // mapa: a ficha diz isso em uma linha em vez de um bloco vazio.
+  // e WhatsApp), e quem tem conta pode ter apagado o do cadastro. Sem rua,
+  // bairro e cidade não há o que copiar nem apontar no mapa: a ficha diz só
+  // que ela retira, em uma linha, sem afirmar se informou ou não.
   const semEnderecoDeCasa =
     order.retiradaNaLoja &&
     [order.customer.address, order.customer.neighborhood, order.customer.city]
@@ -908,7 +909,7 @@ function OrderDeliveryCard({
 
       {!ehBalcao && semEnderecoDeCasa && (
         <p className="border-t border-admin-border pt-4 text-sm leading-relaxed text-zinc-400">
-          Cliente retira na loja — não informou endereço de casa
+          Cliente retira na loja.
           {order.customer.cep?.trim() ? (
             <>
               <br />
@@ -921,8 +922,12 @@ function OrderDeliveryCard({
       {!ehBalcao && !semEnderecoDeCasa && (
         <div className="space-y-2 border-t border-admin-border pt-4">
           <p className="text-xs text-zinc-400">
+            {/* Retirada sem cópia no pedido: o endereço é o do cadastro de
+                HOJE, não o da compra (Order.enderecoDoCadastroAtual). */}
             {order.retiradaNaLoja
-              ? "Endereço do cliente"
+              ? order.enderecoDoCadastroAtual
+                ? "Endereço do cadastro (atual)"
+                : "Endereço do cliente"
               : "Endereço de entrega"}
           </p>
           <p className="break-words text-sm leading-relaxed text-zinc-200">
