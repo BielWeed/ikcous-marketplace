@@ -99,7 +99,7 @@ está `cancelled` nem `delivered`. Isso pega o pedido pago ainda não entregue o
 pendente (`pending` com `payment_status = 'aguardando'`; a reserva vencida vira `cancelled` sozinha
 pelo `expirar_pedidos_vencidos`).
 
-Rode também estas duas, no mesmo banco. A consulta de cima não vê o que a loja ainda deve à
+Rode também estas três, no mesmo banco. A consulta de cima não vê o que a loja ainda deve à
 cliente depois que o pedido fecha, e a loja adormecida tira o painel da lojista:
 
 ```sql
@@ -122,9 +122,21 @@ select status, count(*) as devolucoes, min(created_at) as mais_antiga
  order by status;
 ```
 
-- **Nenhuma linha nas três:** pode adormecer.
+```sql
+-- reembolso de devolução já concluída que ainda não chegou à cliente
+-- (o pedido segue "delivered" e "pago"; o refund_id aponta sempre o reembolso que vale agora)
+select r.status, count(*) as reembolsos, min(r.created_at) as mais_antigo
+  from public.devolucoes d
+  join public.order_refunds r on r.id = d.refund_id
+ where d.status = 'concluida'
+   and r.status <> 'concluido'
+ group by r.status
+ order by r.status;
+```
+
+- **Nenhuma linha nas quatro:** pode adormecer.
 - **Alguma linha em qualquer uma:** **não adormeça.** Adie até o pedido fechar (entregue, retirado
-  ou cancelado), o dinheiro voltar à cliente e a devolução terminar, e rode as três de novo antes
+  ou cancelado), o dinheiro voltar à cliente e a devolução terminar, e rode as quatro de novo antes
   de tentar outra vez.
 
 ## Pôr uma loja para dormir
