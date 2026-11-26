@@ -9,6 +9,7 @@
 //   editor NÃO apaga a foto enviada — o servidor pode ter gravado o banner com
 //   ela, e apagá-la deixaria um banner publicado sem imagem;
 // - lista: ligar/desligar e excluir soltam os botões, sem aviso duplicado.
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { erroDeConsultaSemResposta } from "@/lib/prazo-da-requisicao";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -166,7 +167,9 @@ describe("AdminBannersView — gravação sem resposta solta a tela", () => {
       await esperar();
       await esperar();
     });
-    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo);
+    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo, {
+      piramide: gerarPiramide,
+    });
   }
 
   it("salvar sem resposta: editor segue aberto, sem aviso duplicado e sem apagar a foto", async () => {

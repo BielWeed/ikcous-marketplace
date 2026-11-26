@@ -331,6 +331,8 @@ on:
       - "scripts/publicacao/consultas/184b-antes-a-caderneta-fecha-para-o-service-role-ausente.sql"
       - "scripts/publicacao/consultas/186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado.sql"
       - "scripts/publicacao/consultas/186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente.sql"
+      - "scripts/publicacao/consultas/187a-conferir-a-saude-da-reconciliacao-aplicado.sql"
+      - "scripts/publicacao/consultas/187b-antes-a-saude-da-reconciliacao-ausente.sql"
       - "scripts/publicacao/consultas/188a-conferir-o-livro-de-registro-aplicado.sql"
       - "scripts/publicacao/consultas/188b-antes-o-livro-de-registro-ausente.sql"
       - "scripts/publicacao/consultas/188m-medir-o-volume-para-o-livro-de-registro.sql"
@@ -637,6 +639,8 @@ on:
       - "scripts/publicacao/consultas/184b-antes-a-caderneta-fecha-para-o-service-role-ausente.sql"
       - "scripts/publicacao/consultas/186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado.sql"
       - "scripts/publicacao/consultas/186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente.sql"
+      - "scripts/publicacao/consultas/187a-conferir-a-saude-da-reconciliacao-aplicado.sql"
+      - "scripts/publicacao/consultas/187b-antes-a-saude-da-reconciliacao-ausente.sql"
       - "scripts/publicacao/consultas/188a-conferir-o-livro-de-registro-aplicado.sql"
       - "scripts/publicacao/consultas/188b-antes-o-livro-de-registro-ausente.sql"
       - "scripts/publicacao/consultas/188m-medir-o-volume-para-o-livro-de-registro.sql"
@@ -1604,6 +1608,15 @@ jobs:
       - name: Prova viva da caderneta que confere a chave sem bcrypt por chamada (migration 20261490000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-caderneta-confere-a-chave-sem-bcrypt-viva.cjs
+      # Migration 20261500000000 (a loja registra a saude da reconciliacao): a tabela saude_da_reconciliacao (linha unica, RLS sem politica,
+      # nada para PUBLIC/anon/authenticated/service_role), a porta saude_da_reconciliacao_registrar (so service_role) e a leitura publica
+      # saude_da_loja() (anon e authenticated, idade calculada no banco, nenhuma contagem de pagamento). Contador zera na boa e soma na ruim,
+      # ultima_saudavel_em so anda na boa, recusas sem gravar, duas conexoes reais somam 2; reaplicar 2x (LF e CRLF); rollback comum mantem a
+      # tabela e o destrutivo exige APAGAR; pre-voo recusa estado divergente sem escrever; sem COMMIT escondido; consultas 187a/187b EXECUTADAS
+      # com defeitos plantados; mutantes (GRANT ao anon, contador sem zerar, saudavel andando na ruim). CLONE proprio.
+      - name: Prova viva da saude da reconciliacao (migration 20261500000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-registra-a-saude-da-reconciliacao-viva.cjs
       # Migration 20261510000000 (o livro de registro guarda a versao antiga): antes de UPDATE/DELETE em 17 tabelas de dinheiro o banco
       # guarda a versao antiga (so a coluna que mudou; a linha inteira no DELETE), por gatilho POR COMANDO que nunca derruba a gravacao.
       # Acesso fechado para anon/authenticated/service_role; as 17 tabelas com titular; cascatas; v24 anota estoque e cupom e nao o

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // O upload iniciado em A não pode alterar B depois de Cancelar.
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -204,7 +205,9 @@ describe("upload de banner pertence à abertura do editor", () => {
     await act(async () => {
       campo.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    expect(uploadBannerImage).toHaveBeenLastCalledWith(arquivo);
+    expect(uploadBannerImage).toHaveBeenLastCalledWith(arquivo, {
+      piramide: gerarPiramide,
+    });
     expect(campoDeUpload().disabled).toBe(true);
   }
 

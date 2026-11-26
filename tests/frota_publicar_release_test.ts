@@ -1340,6 +1340,25 @@ for (const [nome, ajuste, trecho] of [
     "vencida",
   ],
   [
+    // Decisão de 26/11/2026 (fila por banco): apply CANCELADO também vence. A
+    // lista de runs não diz se ele foi cancelado na fila (não gravou) ou no meio
+    // (cada arquivo é UMA requisição com o próprio COMMIT: os anteriores ficam,
+    // e o que estava no ar pode ter comitado no servidor depois do cancelamento).
+    "apply CANCELADO na Savy DEPOIS da 8e (pode ter gravado antes do cancelamento)",
+    {
+      runsAplicar: [
+        {
+          databaseId: 12,
+          displayTitle: "aplicar em savy: x.sql",
+          createdAt: "2026-10-06T19:30:00Z",
+          conclusion: "cancelled",
+          status: "completed",
+        },
+      ],
+    },
+    "vencida",
+  ],
+  [
     "sha do veredicto ≠ commit do run",
     { logs: { 11: log8e(SAVY, SHA) } },
     "sha do veredicto",
@@ -3383,6 +3402,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado",
     "184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado",
     "186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado",
+    "187a-conferir-a-saude-da-reconciliacao-aplicado",
     "188a-conferir-o-livro-de-registro-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.

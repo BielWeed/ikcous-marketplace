@@ -3450,9 +3450,31 @@ const ROL_DA_186B = [
   "a 20261470000000 e a 20261480000000 estao aplicadas: a porta frota_mudar_estado existe e o service_role nao alcanca frota_lojas nem frota_segredo",
   "extensions.crypt(text, text) e extensions.digest(text, text) existem (pgcrypto no schema extensions)",
 ];
+// Lote 187 (20261500000000, a loja registra a saude da reconciliacao: a tabela fechada saude_da_reconciliacao, a porta da edge
+// saude_da_reconciliacao_registrar so do service_role e a leitura publica saude_da_loja de anon e authenticated). A 187a prova o estado novo
+// (8 itens, so catalogo: nenhuma linha lida, nenhuma funcao chamada). A 187b prova os tres objetos ausentes e os papeis que o pre-voo exige (5 itens).
+const ROL_DA_187A = [
+  "controle: catalogo publico visivel",
+  "saude_da_reconciliacao: tabela comum com as 6 colunas, a chave (id) e os 4 CHECKs desta migration, sem default",
+  "saude_da_reconciliacao: RLS ligada sem FORCE e sem politica; nenhum privilegio de tabela nem de coluna para PUBLIC, anon, authenticated e service_role",
+  "saude_da_reconciliacao_registrar: uma so, com o corpo desta migration (md5), plpgsql, SECURITY DEFINER, VOLATILE, search_path fixo, (boolean, text[]) devolve void",
+  "saude_da_reconciliacao_registrar: EXECUTE so do service_role (PUBLIC, anon e authenticated nao)",
+  "saude_da_loja: uma so, com o corpo desta migration (md5), plpgsql, SECURITY DEFINER, STABLE, search_path fixo, sem argumento, devolve jsonb",
+  "saude_da_loja: EXECUTE de anon e authenticated (PUBLIC e service_role nao)",
+  "as duas funcoes tem o mesmo dono da tabela",
+];
+const ROL_DA_187B = [
+  "controle: catalogo publico visivel",
+  "saude_da_reconciliacao: a tabela ainda NAO existe",
+  "saude_da_reconciliacao_registrar: ainda NAO existe (nenhuma funcao com esse nome em public)",
+  "saude_da_loja: ainda NAO existe (nenhuma funcao com esse nome em public)",
+  "os papeis anon, authenticated e service_role existem (a base que o pre-voo exige)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "188a-conferir-o-livro-de-registro-aplicado": ROL_DA_188A,
   "188b-antes-o-livro-de-registro-ausente": ROL_DA_188B,
+  "187a-conferir-a-saude-da-reconciliacao-aplicado": ROL_DA_187A,
+  "187b-antes-a-saude-da-reconciliacao-ausente": ROL_DA_187B,
   "186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado": ROL_DA_186A,
   "186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente": ROL_DA_186B,
   "184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado": ROL_DA_184A,

@@ -72,6 +72,7 @@ import {
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
 import { soFotosReais } from "@/lib/foto-do-produto";
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import {
   categoriaExisteNaLista,
   mesmaCategoria,
@@ -1565,7 +1566,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // Se o upload terminar DEPOIS do prazo, a tela já deu o envio por falha:
       // o objeto que ele gravou é apagado (não fica órfão no armazenamento).
       const urls = await comPrazo(
-        uploadProductImages([file]),
+        uploadProductImages([file], { piramide: gerarPiramide }),
         PRAZO_POR_FOTO_MS,
         undefined,
         (urlsTardias) => {
@@ -2614,7 +2615,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     `Enviando foto ${indice + 1} de ${files.length}...`,
                     { id: loadingToast },
                   );
-                  const urls = await uploadProductImages([comprimida]);
+                  // Com as 3 cópias reduzidas (miniaturas da loja grátis).
+                  const urls = await uploadProductImages([comprimida], {
+                    piramide: gerarPiramide,
+                  });
                   if (!urls || urls.length === 0) {
                     throw new Error("Falha no upload.");
                   }

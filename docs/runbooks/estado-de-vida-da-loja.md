@@ -73,6 +73,28 @@ Todo comando que muda o estado exige `--sha` = a release que a produção serve 
 
 O valor é o `codeSha`. Se você passar outro, o comando recusa e diz qual é o certo.
 
+## Regra decidida para mensalidade atrasada (26/11/2026) — AINDA NÃO IMPLEMENTADA
+
+A regra fecha a **entrada** e deixa a **saída** aberta. A loja para de aceitar pedido novo, e
+quem recusa é o servidor. O painel da lojista continua aberto, para ela entregar, estornar e
+pagar. "Dia 0" é o vencimento da mensalidade ou o fim do teste.
+
+| Quando | Cliente final | Lojista |
+|---|---|---|
+| Teste: dia 0 a 3. Pagante: dia 0 a 10 | Loja normal | Tudo normal e uma faixa "suas vendas pausam em DD/MM" |
+| Vendas pausadas | A loja abre, mas recusa pedido novo e mostra o contato da loja | Painel inteiro: entrega, estorno, devolução, o que deve e como pagar |
+| A partir do dia 30, com as quatro consultas zeradas | Página "fechada" (`--adormecer`) | Nada pendente |
+| Encerrar | "Não está mais no ar" | Só com ordem escrita do dono, depois do dia 60, com a cópia dos dados oferecida |
+| Pagou | Volta a vender no próximo pedido | A faixa some |
+
+- Nunca pausar na sexta, no sábado ou no domingo: a pausa passa para a segunda seguinte.
+- Pausar é manual, com um clique numa lista que o sistema monta.
+- Reabrir é automático, quando o pagamento é registrado.
+- A Savy fica fora da pausa até o dono dizer o contrário.
+- **Enquanto a "pausa de vendas" não existir no servidor**, a loja adormecida continua aceitando
+  pedido de quem já estava com ela aberta ou com o app guardado no aparelho, e perde o painel.
+  Por isso, hoje, adormecer exige as quatro consultas zeradas, e isso vale também para encerrar.
+
 ## Quando adormecer uma loja de teste que não pagou
 
 - **Quem avisa e quando.** O app de gestão de assinantes mostra a loja no grupo "Testes vencidos
@@ -195,6 +217,12 @@ pós-acordar continua obrigatório.
 Sem a ordem escrita do dono (mensagem dele dizendo qual loja encerrar), **não rode**. Cite a ordem no
 motivo.
 
+**Antes, as mesmas quatro consultas de "Quando adormecer" (pedido em aberto, dinheiro a devolver,
+estorno pendente, devolução aberta), no banco da loja.** Nenhuma linha nas quatro: pode encerrar.
+Alguma linha: **não encerre**, nem com a ordem do dono — avise o dono do que falta, com os números.
+Encerrar tira o painel da lojista de vez; vale ainda mais quando a loja está `ativa` (`--de ativa`),
+porque aí ela pode ter vendido até agora. O comando não olha os pedidos.
+
 ```powershell
 node scripts/frota/estado-da-loja.mjs --encerrar --loja "<id>" --ref "<ref>" --sha "<codeSha>" --motivo "por <seu nome>: ordem escrita do dono em 26/11, encerrar" --confirmar "ENCERRAR <id>"
 ```
@@ -242,6 +270,30 @@ Se vier diferente depois de 2 minutos, rode o `--ver` e confira o estado gravado
 
 Faça a mudança inversa pela porta (adormeceu por engano → `--acordar`; encerrou por engano →
 reabrir). O histórico guarda as duas linhas. Nunca apague linha do histórico.
+
+## O banco da caderneta: a vitrine antiga sem escrita anônima
+
+O banco onde a caderneta mora hoje é o projeto antigo `dekxabvqdsuukijblazl`. Ele não recebe as
+migrations dos canais, e a view `public.vw_produtos_public` dele ficou aberta para escrita com a chave
+pública (nas lojas, a 20260821000100 e a 20261090000000 já a fecharam). O conserto é um script à
+parte, **não** migration, em `scripts/frota/banco-da-caderneta/`. Pelo MCP, **só** com `execute_sql`
+no `dekxabvqdsuukijblazl` (nunca `apply_migration`, que grava uma versão falsa no histórico de
+migrations do projeto):
+
+1. **Antes (só leitura):** `scripts/frota/banco-da-caderneta/vitrine-antiga-sem-escrita-anonima-conferir.sql`.
+   Esperado: 5 linhas; a da ACL mostra no `vivo` a ACL medida em 26/11 (`anon=arwdDxtm/postgres`).
+2. **Aplicar, numa transação só:** `begin;` + o conteúdo de
+   `scripts/frota/banco-da-caderneta/vitrine-antiga-sem-escrita-anonima.sql` + `commit;`, na mesma
+   chamada. O pré-voo recusa com `B1_BASELINE_DIVERGENT` (e nada é gravado) se o banco não tiver a
+   caderneta semeada (`frota_lojas` e `frota_segredo` com linha: é o que separa o dekxab de uma loja,
+   que tem as tabelas vazias e a mesma ACL da view) ou se a ACL não for a medida nem a já aplicada; o
+   pós-voo recusa com `POSVOO_VITRINE_ANTIGA` se o resultado não for o esperado. O rollback tem a mesma
+   trava do banco certo.
+3. **Depois:** a mesma consulta do passo 1. Esperado: as 5 linhas com `ok = true`.
+
+**Desfazer:** `begin;` + `scripts/frota/banco-da-caderneta/rollback-manual-vitrine-antiga-sem-escrita-anonima.sql`
++ `commit;`, pelo `execute_sql`. Ele devolve a ACL medida, byte a byte, e **reabre o furo**; depois
+dele, a consulta do passo 1 volta a mostrar o retrato de antes.
 
 ## Rollback das migrations (ordem)
 

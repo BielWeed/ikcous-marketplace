@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // O dono do recorte é o editor que iniciou o upload, não o que está aberto na resposta.
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -185,7 +186,9 @@ describe("recorte de banner não atravessa gerações do editor", () => {
     expect(confirmar().disabled).toBe(false);
     const upload = uploadPendente();
     await act(async () => confirmar().click());
-    expect(uploadBannerImage).toHaveBeenCalledWith(expect.any(File));
+    expect(uploadBannerImage).toHaveBeenCalledWith(expect.any(File), {
+      piramide: gerarPiramide,
+    });
     expect(confirmar().disabled).toBe(true);
     return upload;
   }

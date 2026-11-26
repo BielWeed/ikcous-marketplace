@@ -58,6 +58,13 @@ const TETO_DE_AVALIACOES = 100;
 const TETO_DE_CANCELAMENTOS = 100;
 
 /**
+ * Quantos pedidos esperando o lojista a lista mostra (os MAIS ANTIGOS, que
+ * mais urgem). O sino conta todos; passando disto a leitura devolve `truncou`
+ * e a tela avisa que a lista esta cortada.
+ */
+const TETO_DE_PEDIDOS = 100;
+
+/**
  * Quanto a tela espera CADA fonte antes de contar que ela nao respondeu.
  * Rede "pendurada" conecta e nao responde: sem prazo, uma fonte parada segurava
  * a lista inteira em "Atualizando os avisos..." (nem a falha aparecia, porque
@@ -103,15 +110,38 @@ interface AvaliacaoCrua {
 // A regra unica "para preparar" (onda F, F2b) — a mesma do selo de Pedidos
 // e do Inicio. So status nao bastava: o PIX/cartao ainda nao pago virava
 // "Pedido de X esperando voce", e quem espera ali e a CLIENTE.
-async function buscarPedidosPendentes(): Promise<PedidoPendente[]> {
-  const { data, error } = await supabase
+//
+// 26/11/2026: sem `.limit`/`.order` o servidor cortava sozinho em 1.000, em
+// ordem qualquer — numa Black Friday o pedido MAIS ANTIGO (o que mais urge)
+// podia ficar de fora sem aviso. Agora vem os mais antigos, com teto e
+// `count: "exact"`, e o corte vira o aviso de lista cortada.
+interface LeituraDePedidos {
+  pedidos: PedidoPendente[];
+  /** Havia mais pedidos esperando que o teto: esta lista traz so os mais antigos. */
+  truncou: boolean;
+}
+
+async function buscarPedidosPendentes(): Promise<LeituraDePedidos> {
+  const { data, error, count } = await supabase
     .from("marketplace_orders")
-    .select("id, customer_name, total, created_at")
+    .select("id, customer_name, total, created_at", { count: "exact" })
     .in("status", STATUS_PARA_PREPARAR as unknown as string[])
-    .or(FILTRO_POSTGREST_PARA_PREPARAR);
+    .or(FILTRO_POSTGREST_PARA_PREPARAR)
+    .order("created_at", { ascending: true })
+    .limit(TETO_DE_PEDIDOS);
 
   if (error) throw error;
-  return (data ?? []) as unknown as PedidoPendente[];
+  const pedidos = (data ?? []) as unknown as PedidoPendente[];
+  return {
+    pedidos,
+    // Sem numero na resposta, lista cheia conta como cortada (como nos
+    // cancelamentos): pedido esperando e o aviso mais urgente, e falso alarme
+    // custa uma linha, omissao custa um pedido que ninguem preparou.
+    truncou:
+      typeof count === "number"
+        ? count > pedidos.length
+        : pedidos.length >= TETO_DE_PEDIDOS,
+  };
 }
 
 async function buscarPerguntasPendentes(): Promise<number> {
@@ -421,7 +451,8 @@ export function useAvisosDoLojista(): AvisosDoLojista {
 
     const falhas: TipoDeAviso[] = [];
 
-    const pedidos = rPedidos.status === "fulfilled" ? rPedidos.value : [];
+    const pedidos =
+      rPedidos.status === "fulfilled" ? rPedidos.value.pedidos : [];
     if (rPedidos.status === "rejected") falhas.push("pedido");
 
     const perguntasPendentes =
@@ -448,6 +479,11 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     if (rRecebimentos.status === "rejected") falhas.push("recebimento");
 
     const cortadas: TipoDeAviso[] = [];
+    // Mais pedidos esperando que o teto: a lista traz os mais antigos, e os
+    // mais novos ficaram fora da leitura.
+    if (rPedidos.status === "fulfilled" && rPedidos.value.truncou) {
+      cortadas.push("pedido");
+    }
     // Mais cancelamentos na janela de 24 h que o teto: a lista traz os mais
     // novos, e o que ficou de fora pode ser um pedido pago a devolver.
     if (rCancelamentos.status === "fulfilled" && rCancelamentos.value.truncou) {

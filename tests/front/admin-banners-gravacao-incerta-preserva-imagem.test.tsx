@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // Regressão: erro de rede não prova que a imagem enviada é órfã.
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -201,7 +202,9 @@ describe("AdminBannersView — imagem após falha ao salvar", () => {
       await esperarMicrotarefas();
     });
 
-    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo);
+    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo, {
+      piramide: gerarPiramide,
+    });
   }
 
   it.each([

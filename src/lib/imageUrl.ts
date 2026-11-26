@@ -23,7 +23,15 @@
  *
  * Projeto novo só entra na lista depois de medido assim. Se um projeto da lista
  * deixar de transformar, `usarImagemOriginal` ainda salva a foto no `onError`.
+ *
+ * No projeto que NÃO transforma, a foto nova sobe com 3 cópias reduzidas
+ * (240/480/960 px, `piramide-da-foto-nomes.ts`) e a original ganha nome
+ * MARCADO. Precedência: projeto que transforma (o `/render/` vence a marca) >
+ * foto marcada (a menor cópia que cobre a largura) > o original. Se uma cópia
+ * faltar, o `onError` dos componentes volta ao original (`usarImagemOriginal`).
  */
+
+import { copiasDe } from "./piramide-da-foto-nomes";
 
 const CAMINHO_ORIGINAL = "/storage/v1/object/public/";
 const CAMINHO_TRANSFORMADO = "/storage/v1/render/image/public/";
@@ -44,8 +52,14 @@ export interface OpcoesImagem {
   readonly quality?: number;
 }
 
-/** true só para arquivo público de um projeto que transforma (lista medida). */
-function ehImagemSupabase(url: string): boolean {
+/**
+ * true só para arquivo público de um projeto que transforma (lista medida).
+ * FONTE ÚNICA da decisão "esta loja usa o `/render/`": a vitrine a usa para
+ * escolher o endereço, e o envio do painel (`gravar-foto-com-piramide.ts`) e a
+ * duplicação (`copiarImagemParaDuplicacao`) a usam para NÃO gerar as cópias
+ * reduzidas numa loja que nunca as serviria.
+ */
+export function projetoDaFotoTransforma(url: string): boolean {
   return (
     typeof url === "string" &&
     ORIGENS_QUE_TRANSFORMAM.some((origem) =>
@@ -69,15 +83,27 @@ export function usarImagemOriginal(
 }
 
 /**
- * Devolve a URL redimensionada. Qualquer coisa que não seja imagem pública do
- * Supabase (URL externa, data:, string vazia) volta intacta — assim dá para usar
- * em qualquer `src` sem precisar checar antes.
+ * Foto marcada: a menor cópia cujo maior lado cobre a largura pedida. Pedido
+ * maior que a maior cópia volta o ORIGINAL (nunca menos do que foi pedido).
+ * `null` = foto sem marca.
+ */
+function copiaQueCobre(url: string, width: number): string | null {
+  const copias = copiasDe(url);
+  if (!copias) return null;
+  return copias.find((copia) => copia.lado >= width)?.url ?? url;
+}
+
+/**
+ * Devolve a URL redimensionada (ou a cópia da foto marcada). Qualquer coisa
+ * que não seja imagem pública do Supabase (URL externa, data:, string vazia)
+ * volta intacta — assim dá para usar em qualquer `src` sem precisar checar antes.
  */
 export function imagemRedimensionada(
   url: string | undefined | null,
   { width, quality = 75 }: OpcoesImagem,
 ): string {
-  if (!url || !ehImagemSupabase(url)) return url || "";
+  if (!url) return "";
+  if (!projetoDaFotoTransforma(url)) return copiaQueCobre(url, width) ?? url;
   const [base] = url.split("?");
   // `resize=contain` é obrigatório: passando só `width`, o Supabase mantém a
   // ALTURA original e distorce a imagem (medido: width=200 devolvia 200x768 de
@@ -98,7 +124,7 @@ export function miniaturaDaSugestao(url: string | undefined | null): string {
 
 /**
  * Monta o `srcSet` para o navegador escolher a densidade certa.
- * Em URL não transformável devolve string vazia — `srcSet=""` é ignorado com
+ * Em URL não transformável e sem marca devolve string vazia — `srcSet=""` é ignorado com
  * segurança e o `src` continua valendo.
  */
 export function conjuntoDeImagens(
@@ -106,7 +132,20 @@ export function conjuntoDeImagens(
   larguras: readonly number[],
   quality = 75,
 ): string {
-  if (!url || !ehImagemSupabase(url)) return "";
+  if (!url) return "";
+  if (!projetoDaFotoTransforma(url)) {
+    // Foto marcada: as cópias que existem, com o lado de cada uma (as
+    // larguras pedidas são do `/render/`, que gera qualquer uma).
+    // Ressalva conhecida: o descritor `Nw` é o MAIOR lado da cópia, não a
+    // largura. Em foto retrato a largura real é menor que N (a cópia de 480
+    // de uma foto 3:4 tem 360 de largura), então o navegador pode escolher
+    // uma cópia um pouco mais estreita do que o ideal. Em paisagem e quadrada
+    // (banner, maioria dos produtos) o descritor é exato. Comportamento
+    // mantido de propósito: a largura real não está no nome do arquivo.
+    const copias = copiasDe(url);
+    if (!copias) return "";
+    return copias.map((copia) => `${copia.url} ${copia.lado}w`).join(", ");
+  }
   return larguras
     .map((w) => `${imagemRedimensionada(url, { width: w, quality })} ${w}w`)
     .join(", ");

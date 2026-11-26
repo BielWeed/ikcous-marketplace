@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // Regressão: o sucesso de A não pode descartar o título B.
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -203,7 +204,9 @@ describe("AdminBannersView — envio preserva edição posterior", () => {
       await esperarMicrotarefas();
     });
 
-    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo);
+    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo, {
+      piramide: gerarPiramide,
+    });
   }
 
   async function clicarTexto(texto: string) {

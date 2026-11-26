@@ -16,6 +16,7 @@
  * storage que usa estas funções mora em `useProducts.ts`:
  * `copiarImagemParaDuplicacao`.
  */
+import { marcaDoNome, nomeMarcado } from "./piramide-da-foto-nomes";
 import { gerarUuidV4 } from "./uuid-v4";
 
 /** Caminho do arquivo no bucket `products` atrás da URL — null se a URL
@@ -28,11 +29,27 @@ export function caminhoDaImagemDoProduto(url: string): string | null {
   return decodeURIComponent(parts[1]);
 }
 
-/** Caminho único da cópia: o sufixo `_copia_<uuid>` entra no lugar da
- * extensão (a extensão reaparece no fim). */
-export function caminhoDaCopia(caminho: string): string {
+/** Caminho único da cópia, com o nome de SEMPRE: o sufixo `_copia_<uuid>`
+ * entra no lugar da extensão (a extensão reaparece no fim). Numa foto marcada
+ * a marca fica no meio e deixa de ser marca -- é o que se quer quando as
+ * cópias reduzidas NÃO foram copiadas junto. */
+export function caminhoDaCopiaSemMarca(caminho: string): string {
   const fileParts = caminho.split(".");
   const ext = fileParts.pop();
   const baseName = fileParts.join(".");
   return `${baseName}_copia_${gerarUuidV4()}.${ext}`;
+}
+
+/** Caminho único da cópia. Foto MARCADA (pirâmide de cópias,
+ * `piramide-da-foto-nomes.ts`): o `_copia_<uuid>` entra ANTES da marca, que
+ * continua valendo (`<uuid>_copia_<x>-vw.jpg`) -- só use quando as 3 cópias
+ * reduzidas também forem copiadas. Sem marca: o nome de sempre. */
+export function caminhoDaCopia(caminho: string): string {
+  const marcada = marcaDoNome(caminho);
+  if (!marcada) return caminhoDaCopiaSemMarca(caminho);
+  return nomeMarcado(
+    `${marcada.base}_copia_${gerarUuidV4()}`,
+    marcada.marca,
+    marcada.ext,
+  );
 }

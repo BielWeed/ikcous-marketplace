@@ -812,6 +812,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "184b-antes-a-caderneta-fecha-para-o-service-role-ausente",
   "186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado",
   "186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente",
+  "187a-conferir-a-saude-da-reconciliacao-aplicado",
+  "187b-antes-a-saude-da-reconciliacao-ausente",
   "188a-conferir-o-livro-de-registro-aplicado",
   "188b-antes-o-livro-de-registro-ausente",
 ]);
