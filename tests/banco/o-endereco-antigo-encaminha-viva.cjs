@@ -1,6 +1,7 @@
 "use strict";
-/* eslint-disable security/detect-non-literal-fs-filename --
- * Os únicos caminhos de arquivo são os da migration 20261570 e dos rollbacks dela, dentro do repositório. */
+/* eslint-disable security/detect-object-injection, security/detect-non-literal-fs-filename --
+ * Toda chave indexada vem de constante do próprio teste (os nomes das consultas 194a/194b); os únicos caminhos de arquivo são os da
+ * migration 20261570, dos rollbacks dela e das consultas 194a/194b, dentro do repositório. */
 /**
  * PROVA VIVA da migration 20261570000000_o_endereco_antigo_encaminha_para_o_novo.sql contra o Postgres EFÊMERO com as migrations
  * aplicadas do zero (rodar-isolado.cjs, clone exclusivo; nunca banco real).
@@ -24,7 +25,9 @@
  *       principal, o principal antigo entra com motivo antigo); cada recusa sem escrever nada (validade vencida ou maior que 1 h, de
  *       diferente do atual, para que não é apelido desta loja — nem de outra —, de = para, host malformado, motivo vazio, loja que não
  *       existe); a troca invertida volta o roteamento ao de antes; uma falha no meio desfaz tudo;
- *   (h) duas conexões: duas trocas iguais ao mesmo tempo — a segunda espera a primeira e é recusada pelo endereço já trocado.
+ *   (h) duas conexões: duas trocas iguais ao mesmo tempo — a segunda espera a primeira e é recusada pelo endereço já trocado;
+ *   (i) consultas 194a/194b EXECUTADAS no catálogo real (como authenticated, sem privilégio de tabela): depois do apply, depois do comum e
+ *       depois do destrutivo, e com defeitos plantados — cada uma reprova exatamente o item certo.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/o-endereco-antigo-encaminha-viva.cjs
  */
@@ -44,6 +47,7 @@ const {
   ENDERECO_ANTIGO,
   desfazerEnderecoAntigoNaTransacao,
 } = require("./o-endereco-antigo-encaminha-posterior.cjs");
+const CONF = require("../../scripts/publicacao/conferir-banco.cjs");
 
 const NOME = ENDERECO_ANTIGO.nome;
 const ler = (n) =>
@@ -55,6 +59,9 @@ const ROLLBACK = ler(`rollback-manual-${NOME}`);
 const DESTRUTIVO = ler(`rollback-manual-destrutivo-${NOME}`);
 
 const TABELA = "public.frota_enderecos_que_encaminham";
+const CONSULTAS = path.join(__dirname, "../../scripts/publicacao/consultas");
+const A194 = "194a-conferir-o-endereco-antigo-encaminha-aplicado";
+const B194 = "194b-antes-o-endereco-antigo-encaminha-ausente";
 const LEITURA = "public.resolver_encaminhamento(text, text)";
 const TROCA =
   "public.frota_trocar_dominio(text, text, text, text, text, timestamptz)";
@@ -1169,6 +1176,170 @@ async function concorrencia(c, url) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// (i) consultas 194a/194b, EXECUTADAS no catálogo real
+// ---------------------------------------------------------------------------
+/** Roda a consulta como authenticated (sem privilégio de tabela) e devolve os itens que NÃO deram ok, em ordem. */
+async function consulta(c, nome) {
+  const sql = fs.readFileSync(path.join(CONSULTAS, `${nome}.sql`), "utf8");
+  assert.equal(CONF.contarStatements(sql), 1);
+  await c.query("SAVEPOINT leitura_catalogo");
+  try {
+    await c.query("SET LOCAL ROLE authenticated");
+    const rows = (await c.query(sql)).rows;
+    assert.equal(
+      CONF.estruturaDoRolFechado(rows, CONF.ROL_FECHADO_POR_CONSULTA[nome]),
+      null,
+      `${nome}: rol fechado`,
+    );
+    return rows
+      .filter((r) => r.ok !== true)
+      .map((r) => r.item)
+      .sort();
+  } finally {
+    await c.query("ROLLBACK TO SAVEPOINT leitura_catalogo");
+  }
+}
+async function portao(c) {
+  const item = (rol, inicio) => {
+    const x = CONF.ROL_FECHADO_POR_CONSULTA[rol].filter((i) =>
+      i.startsWith(inicio),
+    );
+    assert.equal(x.length, 1, `item de ${rol}: ${inicio}`);
+    return x[0];
+  };
+  const FORMA = "frota_enderecos_que_encaminham: as 5 colunas";
+  const FECHADA = "frota_enderecos_que_encaminham: fechada";
+  const GATILHO = "frota_enderecos_que_encaminham_nao_e_principal: o gatilho";
+  const LEITURA_ = "resolver_encaminhamento: uma so";
+  const TROCA_ = "frota_trocar_dominio: uma so";
+  const B_TABELA = "frota_enderecos_que_encaminham e a funcao do gatilho";
+  const B_PORTAS = "resolver_encaminhamento e frota_trocar_dominio ainda NAO";
+  const B_1490 = "a 20261490000000 esta aplicada";
+  const B_LOJAS = "frota_lojas: a chave em id";
+  let defeitos = 0;
+  const plantar = async (rol, sabotagem, esperados) => {
+    await c.query("SAVEPOINT defeito");
+    try {
+      for (const x of [].concat(sabotagem)) await c.query(x);
+      assert.deepEqual(
+        await consulta(c, rol),
+        esperados.map((i) => item(rol, i)).sort(),
+        `${rol} com o defeito "${[].concat(sabotagem).join("; ").slice(0, 90)}" reprova exatamente o item certo`,
+      );
+      defeitos++;
+    } finally {
+      await c.query("ROLLBACK TO SAVEPOINT defeito");
+    }
+  };
+  await desfeita(c, async () => {
+    await preparo(c); // linhas não mudam o veredito (as consultas não leem linha)
+    assert.deepEqual(
+      await consulta(c, A194),
+      [],
+      "194a positiva depois do apply",
+    );
+    assert.deepEqual(
+      await consulta(c, B194),
+      [item(B194, B_TABELA), item(B194, B_PORTAS)].sort(),
+      "194b reprova só o que a migration criou",
+    );
+    for (const [sabotagem, esperados] of [
+      [`GRANT SELECT ON ${TABELA} TO anon`, [FECHADA]],
+      [`GRANT SELECT (host) ON ${TABELA} TO service_role`, [FECHADA]],
+      [
+        [
+          "CREATE POLICY p1570 ON public.frota_enderecos_que_encaminham FOR SELECT TO anon USING (true)",
+        ],
+        [FECHADA],
+      ],
+      [`ALTER TABLE ${TABELA} DISABLE ROW LEVEL SECURITY`, [FECHADA]],
+      [
+        `ALTER TABLE ${TABELA} DROP CONSTRAINT frota_enderecos_que_encaminham_motivo_check`,
+        [FORMA],
+      ],
+      [
+        `ALTER TABLE ${TABELA} DROP CONSTRAINT frota_enderecos_que_encaminham_loja_id_fkey, ADD CONSTRAINT frota_enderecos_que_encaminham_loja_id_fkey FOREIGN KEY (loja_id) REFERENCES public.frota_lojas (id)`,
+        [FORMA],
+      ],
+      [
+        `ALTER TABLE ${TABELA} DISABLE TRIGGER frota_enderecos_que_encaminham_nao_e_principal`,
+        [GATILHO],
+      ],
+      [
+        "GRANT EXECUTE ON FUNCTION public.resolver_encaminhamento(text, text) TO authenticated",
+        [LEITURA_],
+      ],
+      [
+        "REVOKE EXECUTE ON FUNCTION public.resolver_encaminhamento(text, text) FROM anon",
+        [LEITURA_],
+      ],
+      [
+        "ALTER FUNCTION public.resolver_encaminhamento(text, text) SECURITY INVOKER",
+        [LEITURA_],
+      ],
+      [
+        "GRANT EXECUTE ON FUNCTION public.frota_trocar_dominio(text, text, text, text, text, timestamptz) TO service_role",
+        [TROCA_],
+      ],
+      [
+        "CREATE OR REPLACE FUNCTION public.frota_trocar_dominio(p_id text, p_ref text, p_de text, p_para text, p_motivo text, p_valido_ate timestamptz) RETURNS TABLE (id text, nome text, dominio_publico text, dominio_anterior text) LANGUAGE plpgsql SET search_path = '' AS $f$ BEGIN RETURN; END $f$",
+        [TROCA_],
+      ],
+    ])
+      await plantar(A194, sabotagem, esperados);
+  });
+  // Depois do comum: a 194a reprova as duas portas; a 194b ainda reprova a tabela (de propósito: só o destrutivo a tira).
+  await desfeita(c, async () => {
+    await c.query(ROLLBACK);
+    assert.deepEqual(
+      await consulta(c, A194),
+      [item(A194, LEITURA_), item(A194, TROCA_)].sort(),
+      "194a depois do comum: só as duas portas",
+    );
+    assert.deepEqual(
+      await consulta(c, B194),
+      [item(B194, B_TABELA)],
+      "194b depois do comum: só a tabela (fica de propósito)",
+    );
+  });
+  // Depois do destrutivo: a 194b positiva; com a 20261490 desfeita ou com frota_lojas sem o CHECK, a linha certa reprova.
+  await desfeita(c, async () => {
+    assert.equal(await desfazerEnderecoAntigoNaTransacao(c), true);
+    assert.deepEqual(
+      await consulta(c, B194),
+      [],
+      "194b positiva na base de antes",
+    );
+    assert.deepEqual(
+      await consulta(c, A194),
+      [
+        item(A194, FORMA),
+        item(A194, FECHADA),
+        item(A194, GATILHO),
+        item(A194, LEITURA_),
+        item(A194, TROCA_),
+      ].sort(),
+      "194a na base de antes: tudo menos o controle",
+    );
+    await c.query("SAVEPOINT sem1490");
+    assert.equal(await desfazerChaveSemBcryptNaTransacao(c), true);
+    assert.deepEqual(
+      await consulta(c, B194),
+      [item(B194, B_1490)],
+      "194b sem a 20261490: só a linha dela",
+    );
+    defeitos++;
+    await c.query("ROLLBACK TO SAVEPOINT sem1490");
+    await plantar(
+      B194,
+      "ALTER TABLE public.frota_lojas DROP CONSTRAINT frota_lojas_dominio_publico_check",
+      [B_LOJAS],
+    );
+  });
+  return defeitos;
+}
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   const c = new Client({ connectionString: url });
@@ -1213,7 +1384,13 @@ async function main() {
       "duas conexões: a segunda troca igual espera e é recusada pelo endereço já trocado",
       () => concorrencia(c, url),
     );
-    console.log(`\no-endereco-antigo-encaminha-viva: ${provas} provas ok`);
+    const defeitos = await provar(
+      "consultas 194a/194b: catálogo real, depois do apply, do comum e do destrutivo, defeitos plantados",
+      () => portao(c),
+    );
+    console.log(
+      `\no-endereco-antigo-encaminha-viva: ${provas} provas ok; ${defeitos} defeitos plantados nas consultas`,
+    );
     anexarAoSummary(
       "O endereço antigo encaminha para o novo (PG17)",
       `${provas} provas.`,

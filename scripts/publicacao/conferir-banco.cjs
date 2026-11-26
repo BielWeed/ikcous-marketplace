@@ -3523,7 +3523,28 @@ const ROL_DA_192B = [
   "rls_admin_atual(): corpo da 20261197000000, SECURITY DEFINER, EXECUTE de authenticated e nao de anon (a base do pre-voo)",
   "storage.objects: existe com RLS ligada (a base do pre-voo)",
 ];
+// Lote 194 (20261570000000, o endereco antigo encaminha para o novo: a tabela frota_enderecos_que_encaminham, o gatilho que recusa o
+// endereco principal, a porta de leitura resolver_encaminhamento so do anon e a de troca frota_trocar_dominio so do dono). A 194a prova a
+// tabela com a forma exata e fechada, o gatilho e as duas portas pelo md5 (6 itens); a 194b prova que nada disso existe e a base do pre-voo
+// (a 20261490 aplicada; a chave e o CHECK de formato de frota_lojas) (5). As duas leem so o catalogo.
+const ROL_DA_194A = [
+  "controle: catalogo publico visivel",
+  "frota_enderecos_que_encaminham: as 5 colunas (host, loja_id, motivo, criado_em, quem), a chave em host, os CHECKs de formato do host e do motivo e a chave estrangeira para frota_lojas(id) ON DELETE CASCADE",
+  "frota_enderecos_que_encaminham: fechada (tabela comum, RLS ligada, nenhuma politica, nada para PUBLIC, anon, authenticated e service_role, nem em coluna) e com o dono de frota_lojas",
+  "frota_enderecos_que_encaminham_nao_e_principal: o gatilho BEFORE INSERT OR UPDATE OF host por linha, habilitado, na funcao com o corpo da 20261570000000 (md5) e EXECUTE so do dono",
+  "resolver_encaminhamento: uma so, com o corpo da 20261570000000 (md5), plpgsql, SECURITY DEFINER, VOLATILE, search_path vazio, TABLE(destino text), EXECUTE so do anon e o dono de frota_lojas",
+  "frota_trocar_dominio: uma so, com o corpo da 20261570000000 (md5), plpgsql, SECURITY INVOKER, search_path vazio, as 4 colunas de retorno e EXECUTE so do dono",
+];
+const ROL_DA_194B = [
+  "controle: catalogo publico visivel",
+  "frota_enderecos_que_encaminham e a funcao do gatilho dela ainda NAO existem",
+  "resolver_encaminhamento e frota_trocar_dominio ainda NAO existem",
+  "a 20261490000000 esta aplicada: frota_segredo com hash_rapido e hash_rapido_de, resolver_loja e resolver_loja_com_estado uma so cada com os corpos dela (md5)",
+  "frota_lojas: a chave em id (text) e o CHECK de formato do dominio_publico da 20261141000000 (a base do pre-voo)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "194a-conferir-o-endereco-antigo-encaminha-aplicado": ROL_DA_194A,
+  "194b-antes-o-endereco-antigo-encaminha-ausente": ROL_DA_194B,
   "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado": ROL_DA_192A,
   "192b-antes-o-admin-copia-e-apaga-as-fotos-ausente": ROL_DA_192B,
   "188a-conferir-o-livro-de-registro-aplicado": ROL_DA_188A,

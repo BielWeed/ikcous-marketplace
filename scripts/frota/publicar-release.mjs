@@ -1093,6 +1093,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "190b-antes-a-loja-grande-nao-trava-o-balcao-ausente",
   "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado",
   "192b-antes-o-admin-copia-e-apaga-as-fotos-ausente",
+  "194a-conferir-o-endereco-antigo-encaminha-aplicado",
+  "194b-antes-o-endereco-antigo-encaminha-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

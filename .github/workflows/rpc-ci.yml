@@ -342,6 +342,8 @@ on:
       - "scripts/publicacao/consultas/190b-antes-a-loja-grande-nao-trava-o-balcao-ausente.sql"
       - "scripts/publicacao/consultas/192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado.sql"
       - "scripts/publicacao/consultas/192b-antes-o-admin-copia-e-apaga-as-fotos-ausente.sql"
+      - "scripts/publicacao/consultas/194a-conferir-o-endereco-antigo-encaminha-aplicado.sql"
+      - "scripts/publicacao/consultas/194b-antes-o-endereco-antigo-encaminha-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -658,6 +660,8 @@ on:
       - "scripts/publicacao/consultas/190b-antes-a-loja-grande-nao-trava-o-balcao-ausente.sql"
       - "scripts/publicacao/consultas/192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado.sql"
       - "scripts/publicacao/consultas/192b-antes-o-admin-copia-e-apaga-as-fotos-ausente.sql"
+      - "scripts/publicacao/consultas/194a-conferir-o-endereco-antigo-encaminha-aplicado.sql"
+      - "scripts/publicacao/consultas/194b-antes-o-endereco-antigo-encaminha-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1700,7 +1704,8 @@ jobs:
       # de troca frota_trocar_dominio (so o dono; 19 recusas sem escrever; as tres escritas numa transacao; a troca invertida volta o
       # roteamento; falha no meio desfaz tudo; duas conexoes: a segunda espera e e recusada). Reaplicar 2x (LF e CRLF); sem COMMIT
       # escondido; rollback comum (2x) preserva a tabela; destrutivo exige APAGAR, o comum antes e a caderneta confirmada; pre-voo
-      # recusa sem a 20261490 e com objeto de outra forma. CLONE proprio.
+      # recusa sem a 20261490 e com objeto de outra forma; consultas 194a/194b EXECUTADAS (apply, comum, destrutivo, 14 defeitos
+      # plantados). CLONE proprio.
       - name: Prova viva do endereco antigo que encaminha para o novo (migration 20261570000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         timeout-minutes: 3
