@@ -198,10 +198,11 @@ export interface ConexaoResolvida {
  * não há implementação injetada. SÓ `ausente` cai no caminho (b) — o
  * ambiente do próprio projeto. ETAPA 3 (ADENDO A.3 + ADENDO B.1, revisor
  * Opus de T3): com a caderneta configurada, `miss` e chave anômala fecham
- * a loja NA HORA (decisão); uma falha de VERDADE da RPC (rotulada `erro`
- * também) NÃO fecha — herda o stale-if-error, porque a caderneta É o
- * banco da principal e "erro" ali não pode derrubar a frota inteira em
- * 60 s. `atenderPorteiro` escreve este valor em `x-ikcous-caderneta` em
+ * a loja NA HORA (decisão) — exceto o `miss` para host com ficha boa de até
+ * 1 h, que usa a reserva (`obterFichaValidada`); uma falha de VERDADE da RPC
+ * (rotulada `erro` também) NÃO fecha — herda o stale-if-error, porque a
+ * caderneta É o banco da principal e "erro" ali não pode derrubar a frota
+ * inteira em 60 s. `atenderPorteiro` escreve este valor em `x-ikcous-caderneta` em
  * toda resposta que produz — inclusive quando a resposta final é a ficha
  * antiga servida por stale-if-error.
  */
@@ -983,7 +984,9 @@ export interface RecuoAposFalha {
  *     plano (uma revalidação por host); o desfecho vale para a PRÓXIMA visita.
  *     Sem `waitUntil`, a visita espera a caderneta, como antes;
  *   - falha com ficha de até 1 h: a ficha velha, e 30 s de recuo sem perguntar
- *     (`RECUO_APOS_FALHA_MS`);
+ *     (`RECUO_APOS_FALHA_MS`). O "não achei" (`miss`) com ficha de até 1 h
+ *     segue o MESMO caminho (26/11/2026): zero linhas para a frota inteira
+ *     não pode fechar todas as lojas; sem ficha que valha, ele fecha;
  *   - falha sem ficha que valha: 503 `banco-indisponivel`, e 10 s de recuo
  *     sem perguntar (`RECUO_SEM_FICHA_MS`), no mapa do host sem ficha;
  *   - cada recuo aberto escreve UMA linha `[porteiro]` no log (host, etapa,
@@ -1361,11 +1364,28 @@ function resolucaoCompartilhada(
   return nova;
 }
 
+/** O "não achei" da caderneta (zero linhas): `sem-loja` com `miss`. A chave
+ * anômala também é `sem-loja`, mas com `erro`, e nunca entra aqui. */
+function ehNaoAchei(erro: unknown): erro is DecisaoPorteiro {
+  return (
+    erro instanceof DecisaoPorteiro &&
+    erro.motivo === "sem-loja" &&
+    erro.caderneta === "miss"
+  );
+}
+
 /** A falha que abriu um recuo, numa linha só. Só o host (já normalizado: sem
  * porta, sem caminho, sem query), onde caiu, o NOME da causa (nunca a
  * mensagem: ela pode trazer URL), o estado da caderneta e a duração. Nunca
- * chave, nunca URL. Quem chama garante no máximo uma por host por recuo. */
+ * chave, nunca URL. Quem chama garante no máximo uma por host por recuo.
+ * O "não achei" segurado pela reserva sai com `causa=nao-achei`. */
 function avisarFalha(host: string, erro: unknown, recuoMs: number): void {
+  if (ehNaoAchei(erro)) {
+    console.error(
+      `[porteiro] a caderneta nao achou a loja; servindo a ficha da reserva host=${host} causa=nao-achei caderneta=miss versao=${erro.versaoCaderneta ?? "nova"} recuo=${recuoMs / 1000}s`,
+    );
+    return;
+  }
   const falha = erro instanceof FalhaResolucaoPorteiro ? erro : undefined;
   const causa: unknown = falha ? falha.cause : erro;
   const nomeDaCausa = causa instanceof Error ? causa.name : typeof causa;
@@ -1375,20 +1395,23 @@ function avisarFalha(host: string, erro: unknown, recuoMs: number): void {
 }
 
 /** O estado da caderneta que a falha carrega (vai para `x-ikcous-caderneta`
- * e para a marca de versão das respostas servidas no recuo). */
+ * e para a marca de versão das respostas servidas no recuo). O "não achei"
+ * segurado pela reserva carrega o dele (`miss`). */
 function estadoDaFalha(erro: unknown): EstadoCaderneta {
-  return erro instanceof FalhaResolucaoPorteiro ? erro.caderneta : "ausente";
+  return erro instanceof FalhaResolucaoPorteiro || ehNaoAchei(erro)
+    ? erro.caderneta
+    : "ausente";
 }
 function versaoDaFalhaDe(erro: unknown): VersaoCaderneta | undefined {
-  return erro instanceof FalhaResolucaoPorteiro
+  return erro instanceof FalhaResolucaoPorteiro || ehNaoAchei(erro)
     ? erro.versaoCaderneta
     : undefined;
 }
 
-/** Falha com ficha velha guardada: abre o recuo de 30 s DESTE host. Só grava
- * (e só avisa no log) se a entrada ainda é a que o pedido leu: outro pedido
- * da mesma resolução compartilhada, ou uma resolução boa que terminou antes,
- * já pode tê-la trocado. */
+/** Falha (ou "não achei") com ficha velha guardada: abre o recuo de 30 s DESTE
+ * host. Só grava (e só avisa no log) se a entrada ainda é a que o pedido leu:
+ * outro pedido da mesma resolução compartilhada, ou uma resolução boa que
+ * terminou antes, já pode tê-la trocado. */
 function abrirRecuoComFicha(
   deps: DependenciasPorteiro,
   host: string,
@@ -1452,10 +1475,12 @@ function abrirRecuoSemFicha(
  *   - ficha nova: substitui a velha (fresca a partir de AGORA) e apaga as
  *     decisões guardadas deste host, igual à resolução na hora;
  *   - adormecida/encerrada: a ficha velha sai e a decisão fica 60 s;
- *   - qualquer outra DECISÃO (não achei, discorda, chave anômala, encaminha):
- *     a ficha velha sai, para nunca mais ser servida em segundo plano — a
- *     próxima visita pergunta na hora e recebe a decisão; o "não achei" fica
- *     guardado 60 s como sempre;
+ *   - "não achei" com a ficha ainda dentro de 1 h: tratado como falha (ver
+ *     `obterFichaValidada`), abre o recuo de 30 s e a ficha fica;
+ *   - qualquer outra DECISÃO (não achei com ficha passada de 1 h, discorda,
+ *     chave anômala, encaminha): a ficha velha sai, para nunca mais ser
+ *     servida em segundo plano — a próxima visita pergunta na hora e recebe a
+ *     decisão; o "não achei" fica guardado 60 s como sempre;
  *   - falha: abre o recuo de 30 s da ficha velha, como a falha na hora.
  */
 function revalidarEmSegundoPlano(
@@ -1491,16 +1516,17 @@ function revalidarEmSegundoPlano(
         });
         return;
       }
+      // "Não achei" com a ficha ainda na reserva: a mesma saída da falha.
+      if (ehNaoAchei(erro) && momento - doCache.quando < CACHE_STALE_MAX_MS) {
+        abrirRecuoComFicha(deps, host, doCache, momento, erro);
+        return;
+      }
       if (
         erro instanceof DecisaoPorteiro ||
         erro instanceof DecisaoEncaminhamento
       ) {
         if (deps.cache.get(host) === doCache) deps.cache.delete(host);
-        if (
-          erro instanceof DecisaoPorteiro &&
-          erro.motivo === "sem-loja" &&
-          erro.caderneta === "miss"
-        )
+        if (ehNaoAchei(erro))
           guardarComTeto(deps.cacheSemLoja, host, {
             quando: momento,
             ...(erro.versaoCaderneta === undefined
@@ -1787,11 +1813,32 @@ export async function obterFichaValidada(
           erro.versaoCaderneta,
         ),
       };
+    // "Não achei" para um host com ficha boa de menos de 1 h: a MESMA reserva
+    // da falha (abaixo), nunca o host guardado como desconhecido. A caderneta
+    // é um ponto único: zero linhas para TODA a frota (chave trocada de um
+    // lado só, tabela restaurada errada) fecharia todas as lojas em 60 s, e o
+    // 503 `sem-loja` ainda faria o service worker apagar a página guardada.
+    // Loja que dorme ou encerra sai do ar pelo estado EXPLÍCITO (acima), não
+    // por zero linhas. A reserva não se renova: passada 1 h da última
+    // resolução boa, o "não achei" volta a valer.
+    if (
+      ehNaoAchei(erro) &&
+      doCache &&
+      agora - doCache.quando < CACHE_STALE_MAX_MS
+    ) {
+      abrirRecuoComFicha(deps, host, doCache, agora, erro);
+      return {
+        tipo: "ok",
+        ficha: comPublicUrlAtual(doCache.ficha),
+        caderneta: erro.caderneta,
+        ...comVersao(erro.versaoCaderneta),
+      };
+    }
     if (erro instanceof DecisaoPorteiro) {
       // Só o "não achei" DEFINITIVO da caderneta (`miss`) é guardado. A
       // chave anômala também vira `sem-loja`, mas com `caderneta: "erro"`:
       // é resposta estranha, não "não achei", e pergunta de novo.
-      if (erro.motivo === "sem-loja" && erro.caderneta === "miss")
+      if (ehNaoAchei(erro))
         guardarComTeto(deps.cacheSemLoja, host, {
           quando: agora,
           ...comVersao(erro.versaoCaderneta),

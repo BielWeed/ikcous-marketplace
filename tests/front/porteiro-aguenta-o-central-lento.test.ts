@@ -553,17 +553,23 @@ describe("porteiro — ficha na reserva sai na hora e a caderneta é perguntada 
     expect(adiada.fn).toHaveBeenCalledTimes(1);
   });
 
-  it("loja que SAIU da caderneta (miss): a ficha velha sai e nunca reaparece em segundo plano", async () => {
+  // 26/11/2026: o "não achei" com ficha de até 1 h usa a MESMA reserva da
+  // falha (a caderneta dizendo zero linhas para a frota inteira não pode
+  // fechar todas as lojas). Os casos em detalhe estão em
+  // `porteiro-nao-achei-com-ficha-usa-a-reserva.test.ts`.
+  it("loja que SAIU da caderneta (miss): a ficha fica na reserva; passada 1 h, o 'não achei' vale e ela nunca reaparece em segundo plano", async () => {
+    espiarLog();
     const { adiada, cache, entregues, relogio, waitUntil, d } = montar();
     await visitar(d);
     adiada.soltar({ tipo: "miss" });
     await Promise.all(entregues);
-    expect(cache.has("loja-alfa.exemplo")).toBe(false);
+    expect(cache.get("loja-alfa.exemplo")?.recuo?.caderneta).toBe("miss");
     const proxima = await visitar(d);
-    expect(cabecalho(proxima, "x-ikcous-porteiro")).toBe("sem-loja");
-    // Passado o "não achei", a visita pergunta e ESPERA: a vitrine velha não
-    // volta a aparecer enquanto a caderneta responde.
-    relogio.agora += CACHE_SEM_LOJA_MS;
+    if (proxima.tipo !== "ok") throw new Error("esperava a ficha da reserva");
+    expect(proxima.caderneta).toBe("miss");
+    // Passada 1 h da última resolução boa, a visita pergunta e ESPERA: a
+    // vitrine velha não volta a aparecer enquanto a caderneta responde.
+    relogio.agora = CACHE_STALE_MAX_MS - (CACHE_FRESCO_MS + 10_000);
     const emCurso = visitar(d);
     expect(await ouPreso(emCurso)).toBe(PRESO);
     adiada.soltar({ tipo: "miss" });
