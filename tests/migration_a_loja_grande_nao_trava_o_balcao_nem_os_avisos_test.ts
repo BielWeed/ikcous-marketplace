@@ -341,10 +341,12 @@ Deno.test("lote de UMA migration em provasDeObjetos (190a depois, 190b antes) lo
       !("soNosRefs" in lotes[0]),
   );
   const i190 = canais.provasDeObjetos.findIndex((l) => l.consulta === A190);
-  assertEquals(
-    canais.provasDeObjetos[i190 - 1]?.consulta,
-    "187a-conferir-a-saude-da-reconciliacao-aplicado",
-    "anexado logo depois do lote da 20261500",
+  const i187 = canais.provasDeObjetos.findIndex(
+    (l) => l.consulta === "187a-conferir-a-saude-da-reconciliacao-aplicado",
+  );
+  assert(
+    i187 >= 0 && i190 > i187,
+    "anexado depois do lote da 20261500 (lotes posteriores podem ficar no meio)",
   );
   const { CONSULTAS_DE_ROL_FECHADO } = await import(
     new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
