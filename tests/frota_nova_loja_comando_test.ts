@@ -991,6 +991,106 @@ Deno.test("retomar depois de HTTP 5xx no POST (sem projeto criado) reusa a MESMA
   assertEquals(a.db_pass, b.db_pass);
 });
 
+// ─── A7: criar-projeto na org central, sem adotar projeto alheio ────────────
+
+Deno.test("A7: sem --org, com a org central ainda sem slug (org-central.json de hoje) = NÃO antes de qualquer fetch", async () => {
+  const amb = await ambiente();
+  await conectar(amb);
+  const n = amb.api.chamadas.length;
+  for (const aplicar of [true, false]) {
+    const r = await executarPasso(
+      pedido("criar-projeto", { org: undefined, aplicar }),
+      amb.deps,
+    );
+    assertEquals(r.veredito, "NÃO", r.mensagem);
+    assertStringIncludes(r.mensagem, "org central ainda não criada");
+  }
+  assertEquals(amb.api.chamadas.length, n);
+  assertEquals(amb.deps.cofreDoBanco.gravacoes, 0);
+});
+
+Deno.test("A7: sem --org usa o slug de org-central.json — cria nela e confere que a autorização cobre exatamente ela", async () => {
+  const amb = await ambiente();
+  amb.deps.orgCentral = () => ({ slug: ORG, nome: "IKCOUS Lojas" });
+  await conectar(amb);
+  const r = await executarPasso(
+    pedido("criar-projeto", { org: undefined }),
+    amb.deps,
+  );
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(amb.api.corposDoPostProjeto[0].organization_slug, ORG);
+  // a org central apontando OUTRA org que a autorizada: para antes do POST
+  const outra = await ambiente();
+  outra.deps.orgCentral = () => ({ slug: OUTRA_ORG, nome: "IKCOUS Lojas" });
+  await conectar(outra);
+  const r2 = await executarPasso(
+    pedido("criar-projeto", { org: undefined }),
+    outra.deps,
+  );
+  assertEquals(r2.veredito, "NÃO", r2.mensagem);
+  assertStringIncludes(r2.mensagem, "exatamente a organização");
+  assertEquals(outra.api.posts("/v1/projects").length, 0);
+});
+
+Deno.test("A7: a retomada pelo nome RECUSA projeto cujo ref é de loja conhecida (refs fixos, lojas.json ou canais), mesmo chamado ikcous-<slug>", async () => {
+  const REF_DO_LOJAS_JSON = "refdeoutralojaaaaaaa";
+  const REF_DO_CANAL = "refdeumcanalaaaaaaaa";
+  for (const ref of [REF_SAVY, REF_IKCOUS, REF_DO_LOJAS_JSON, REF_DO_CANAL]) {
+    const amb = await ambiente({
+      apiOpcoes: {
+        projetos: [
+          {
+            ref,
+            name: NOME_DO_PROJETO,
+            organization_id: ORG,
+            organization_slug: ORG,
+            status: "ACTIVE_HEALTHY",
+          },
+        ],
+      },
+    });
+    const lojas = structuredClone(LOJAS_BRUTAS);
+    lojas.lojas["outra-loja"] = {
+      ...lojas.lojas.savy,
+      ref: REF_DO_LOJAS_JSON,
+      segredoDoToken: "SUPABASE_ACCESS_TOKEN_LOJAS",
+    };
+    amb.deps.lojasBrutas = () => structuredClone(lojas);
+    amb.deps.canaisBrutos = () => ({ canais: { [REF_DO_CANAL]: {} } });
+    await conectar(amb);
+    const r = await executarPasso(pedido("criar-projeto"), amb.deps);
+    assertEquals(r.veredito, "NÃO", `${ref}: ${r.mensagem}`);
+    assertStringIncludes(r.mensagem, "nunca adoto");
+    assertEquals(amb.api.posts("/v1/projects").length, 0, ref);
+    const e = await amb.deps.estado.ler(SLUG);
+    assertEquals(e?.passos?.["criar-projeto"]?.ref, undefined, ref);
+  }
+  // lojas.json ou canais ilegível: não dá para conferir = INCERTO, nada adotado
+  const amb = await ambiente({
+    apiOpcoes: {
+      projetos: [
+        {
+          ref: REF,
+          name: NOME_DO_PROJETO,
+          organization_id: ORG,
+          organization_slug: ORG,
+          status: "ACTIVE_HEALTHY",
+        },
+      ],
+    },
+  });
+  amb.deps.canaisBrutos = () => {
+    throw new Error("ilegível");
+  };
+  await conectar(amb);
+  const r = await executarPasso(pedido("criar-projeto"), amb.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assertEquals(
+    (await amb.deps.estado.ler(SLUG))?.passos?.["criar-projeto"]?.ref,
+    undefined,
+  );
+});
+
 // ─── refresh e renovação ────────────────────────────────────────────────────
 
 Deno.test("o refresh novo é gravado no cofre ANTES de o access token ser usado", async () => {

@@ -934,12 +934,47 @@ async function passoCriarProjeto(pedido, d) {
   }
 }
 
+/**
+ * Os refs que NUNCA são adotados pela retomada por nome: os fixos da IKCOUS e da
+ * Savy, todo ref (e refDasFunctions) do lojas.json e todo canal de
+ * canais-de-backend.json. Na org central um mesmo token alcança todas as lojas:
+ * um projeto alheio chamado ikcous-<slug> não pode virar "a loja nova".
+ * Ilegível = ErroDoComando ESTADO_DESCONHECIDO (INCERTO): sem conferir, não adota.
+ */
+function refsDeLojasConhecidas(d) {
+  const refs = new Set(REFS_PROTEGIDOS);
+  try {
+    const lojas = d.lojasBrutas()?.lojas;
+    const canais = d.canaisBrutos()?.canais;
+    if (
+      lojas === null ||
+      typeof lojas !== "object" ||
+      canais === null ||
+      typeof canais !== "object"
+    )
+      throw new Error("forma");
+    for (const l of Object.values(lojas)) {
+      if (typeof l?.ref === "string") refs.add(l.ref);
+      if (typeof l?.refDasFunctions === "string") refs.add(l.refDasFunctions);
+    }
+    for (const ref of Object.keys(canais)) refs.add(ref);
+  } catch {
+    throw new ErroDoComando(
+      "não consegui ler scripts/frota/lojas.json e canais-de-backend.json para conferir que o projeto achado pelo nome não é de uma loja que já existe; nada foi adotado nem criado.",
+      { codigo: ESTADO_DESCONHECIDO },
+    );
+  }
+  return refs;
+}
+
 async function criarProjeto(pedido, d, marca) {
-  const { slug, org } = pedido;
+  const { slug } = pedido;
+  // sem --org: a org CENTRAL (scripts/frota/org-central.json)
+  const org = pedido.org ?? d.orgCentral().slug;
   if (!org) {
     return resultado(
       NAO,
-      "criar-projeto precisa de --org <slug da organização da lojista>.",
+      "org central ainda não criada: o slug de scripts/frota/org-central.json está null (preenchido na B2, depois da assinatura). Nada foi feito.",
     );
   }
   const e = await d.estado.ler(slug);
@@ -958,7 +993,7 @@ async function criarProjeto(pedido, d, marca) {
   if (!(visiveis.length === 1 && visiveis[0] === org)) {
     return resultado(
       NAO,
-      `PARAR: a autorização tem de cobrir exatamente a organização ${org}, e cobre ${visiveis.length === 0 ? "nenhuma" : visiveis.map((v) => textoSeguro(v, 64)).join(", ")}. Peça para a lojista autorizar de novo escolhendo a organização certa (abrir/receber). Nenhum projeto foi criado.`,
+      `PARAR: a autorização tem de cobrir exatamente a organização ${org}, e cobre ${visiveis.length === 0 ? "nenhuma" : visiveis.map((v) => textoSeguro(v, 64)).join(", ")}. Autorize de novo escolhendo só a organização certa (autorizar). Nenhum projeto foi criado.`,
     );
   }
 
@@ -978,6 +1013,16 @@ async function criarProjeto(pedido, d, marca) {
       return resultado(
         NAO,
         `PARAR: há ${doNome.length} projetos chamados ${nome} na organização ${org}; não sei qual é o da loja. Nada foi criado.`,
+      );
+    }
+    if (
+      doNome.length === 1 &&
+      RE_REF.test(String(doNome[0].ref)) &&
+      refsDeLojasConhecidas(d).has(doNome[0].ref)
+    ) {
+      return resultado(
+        NAO,
+        `PARAR: o projeto ${nome} da organização ${org} é o banco de uma loja que já existe (ref ${doNome[0].ref}, no cadastro ou entre as lojas que vendem): nunca adoto. Nada foi feito.`,
       );
     }
     if (doNome.length === 1 && RE_REF.test(String(doNome[0].ref))) {
@@ -3563,14 +3608,18 @@ async function ensaio(pedido, d) {
     );
   }
   if (passo === "criar-projeto") {
-    if (!pedido.org)
-      return resultado(NAO, `${ENSAIO} criar-projeto precisa de --org.`);
+    const org = pedido.org ?? d.orgCentral().slug;
+    if (!org)
+      return resultado(
+        NAO,
+        `${ENSAIO} org central ainda não criada (slug null em scripts/frota/org-central.json).`,
+      );
     const ref = passos["criar-projeto"]?.ref;
     return resultado(
       INCERTO,
       ref
-        ? `${ENSAIO} o projeto ${ref} já está no estado local; conferiria a organização ${pedido.org} e esperaria ACTIVE_HEALTHY, sem criar outro.`
-        : `${ENSAIO} conferiria que a autorização cobre só a organização ${pedido.org}, procuraria o projeto ${nomeDoProjeto(slug)} pelo nome e, se não houver, criaria em ${REGIAO} com senha forte guardada só no cofre DPAPI; depois esperaria ACTIVE_HEALTHY por até ${PRAZO_ATIVO_MS / 60_000} min.`,
+        ? `${ENSAIO} o projeto ${ref} já está no estado local; conferiria a organização ${org} e esperaria ACTIVE_HEALTHY, sem criar outro.`
+        : `${ENSAIO} conferiria que a autorização cobre só a organização ${org}, procuraria o projeto ${nomeDoProjeto(slug)} pelo nome e, se não houver, criaria em ${REGIAO} com senha forte guardada só no cofre DPAPI; depois esperaria ACTIVE_HEALTHY por até ${PRAZO_ATIVO_MS / 60_000} min.`,
     );
   }
   if (passo === "banco") {
@@ -3701,6 +3750,14 @@ function completar(deps) {
   d.lerEntrada ??= lerLinhaDaEntrada;
   d.arquivos ??= () => arquivosDoRepo();
   d.lojasBrutas ??= () => JSON.parse(readFileSync(CAMINHO_LOJAS, "utf8"));
+  d.canaisBrutos ??= () =>
+    JSON.parse(
+      readFileSync(
+        path.join(path.dirname(CAMINHO_LOJAS), "canais-de-backend.json"),
+        "utf8",
+      ),
+    );
+  d.orgCentral ??= () => carregarOrgCentral();
   d.cofre ??= criarCofreDpapi();
   d.cofreDoBanco ??= criarCofreDpapi({
     pasta: pastaPadraoDoCofreDoBanco(),
