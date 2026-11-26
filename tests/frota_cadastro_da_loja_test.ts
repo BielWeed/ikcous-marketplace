@@ -315,15 +315,22 @@ Deno.test("as lojas que já existem ficam byte a byte iguais: o diff fora da loj
     }
 
     // o canal novo tem o MESMO texto (formato do biome) que o da Savy, trocando
-    // só nome, alvo e projetosNoMesmoBanco (que na Savy já é [])
+    // só nome, alvo e projetosNoMesmoBanco (que na Savy já é []), e SEM a linha
+    // do enderecoDeReserva: o endereço da Savy é dela (tests/frota_reserva_test.ts
+    // reprova endereço declarado por dois canais), e o cadastro não escreve o
+    // endereço da loja nova (nem a reserva em politica.json)
     const canaisTxt = depois["scripts/frota/canais-de-backend.json"];
     const bloco = (ref: string) => {
       const ini = canaisTxt.indexOf(`    "${ref}": {`);
       return canaisTxt.slice(ini, canaisTxt.indexOf("\n    }", ini) + 6);
     };
+    const linhaDaReservaDaSavy = /\r?\n {6}"enderecoDeReserva": "[^"]*",/;
+    assert(linhaDaReservaDaSavy.test(bloco(REF_SAVY)), bloco(REF_SAVY));
+    assert(!bloco(REF_NOVA).includes("enderecoDeReserva"), bloco(REF_NOVA));
     assertEquals(
       bloco(REF_NOVA),
       bloco(REF_SAVY)
+        .replace(linhaDaReservaDaSavy, "")
         .replace(REF_SAVY, REF_NOVA)
         .replace('"nome": "Savy"', `"nome": "${NOME_NOVO}"`)
         .replaceAll('"savy"', `"${NOVA}"`),
@@ -366,6 +373,58 @@ Deno.test("as lojas que já existem ficam byte a byte iguais: o diff fora da loj
         nome,
       );
     }
+  });
+});
+
+Deno.test("campo que o cadastro não conhece, nas lojas que já existem, sai byte a byte igual e não vaza para a loja nova", async () => {
+  // O próximo campo de canal (como o enderecoDeReserva de 26/11/2026) chega
+  // antes de o cadastro saber dele: as lojas existentes não podem perdê-lo, e a
+  // loja nova não pode herdar o valor de outra. (lojas.json tem lista FECHADA de
+  // campos em lojas.cjs: campo desconhecido ali já é recusa, não entra aqui.)
+  await noArvoreOriginal(async (raiz) => {
+    const rel = "scripts/frota/canais-de-backend.json";
+    const original = ler(raiz, rel);
+    const comCampo = original
+      .replace(
+        /(\r?\n)( {6})"projetosNoMesmoBanco": /g,
+        (_m, eol, recuo) =>
+          `${eol}${recuo}"campoFuturo": { "x": [1, "dois"] },${eol}${recuo}"projetosNoMesmoBanco": `,
+      )
+      .replace(/^\{(\r?\n)/, (_m, eol) => `{${eol}  "_campoFuturo": 7,${eol}`);
+    const brutoAntes = JSON.parse(comCampo);
+    const refsExistentes = Object.keys(brutoAntes.canais);
+    assert(refsExistentes.length >= 2);
+    for (const r of refsExistentes)
+      assertEquals(brutoAntes.canais[r].campoFuturo, { x: [1, "dois"] }, r);
+    Deno.writeTextFileSync(join(raiz, rel), comCampo);
+
+    const antes = fotografia(raiz);
+    const r = await cadastrar(raiz, [...ARGS_NOVA, "--aplicar"]);
+    assertEquals(r.codigo, 0, r.saida);
+    const depois = fotografia(raiz);
+
+    const ins = trechoInserido(antes[rel], depois[rel]);
+    assert(!ins.includes("campoFuturo"), ins);
+    const d = JSON.parse(depois[rel]);
+    assertEquals(d._campoFuturo, 7);
+    for (const ref of refsExistentes)
+      assertEquals(
+        JSON.stringify(d.canais[ref]),
+        JSON.stringify(brutoAntes.canais[ref]),
+        ref,
+      );
+    assert(!Object.hasOwn(d.canais[REF_NOVA], "campoFuturo"));
+    assertEquals(
+      depois["scripts/frota/politica.json"],
+      antes["scripts/frota/politica.json"],
+    );
+
+    // e a segunda rodada continua sem mudar nada
+    assertEquals(
+      (await cadastrar(raiz, [...ARGS_NOVA, "--aplicar"])).codigo,
+      0,
+    );
+    assertEquals(fotografia(raiz), depois);
   });
 });
 
