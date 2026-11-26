@@ -1,0 +1,852 @@
+// Ponte A (T7 do PLANO-PORTAO-OAUTH-PONTE-A): a SESSÃO DE PUBLICAÇÃO das lojas
+// OAuth. Cartão de quarto de hotel: vale enquanto o processo vive, e o fechar()
+// é o check-out. Quem chama (publicar-release.mjs --sessao, T8) segura o laço,
+// os sinais e o finally; este módulo só abre e fecha.
+//
+// ABRIR (abrirSessao), nesta ordem:
+//   0. recusa SEM REDE: cadastro torto, nome de segredo fora do RE_SEGREDO, o
+//      legado, nome que é de loja que não é OAuth (IKCOUS, Savy), loja pedida
+//      que não é OAuth, repetida ou lista vazia; minimoMs torto;
+//      matarTokenNoFechar ausente (é a decisão da prova P6b, nunca um padrão);
+//   1. gh.entrar(): lê `gh auth token` UMA vez, só em memória (mudança 2: o
+//      fechar não pode depender de processo filho, que a janela fechada mata);
+//   2. recusa se alguém além do dono tem escrita no repositório (mudança 6:
+//      quem escreve lê todo segredo por um workflow);
+//   3. faxina: apaga todo segredo de loja OAuth DO CADASTRO que sobrou;
+//   4. renova cada loja UMA vez (renovarComTravaLonga: a trava fica presa);
+//   5. confere o prazo de TODOS antes de gravar QUALQUER segredo;
+//   6. grava cada segredo (gh secret set, valor pelo stdin).
+//   Falha ou sinal em qualquer passo depois do 1: apaga TODOS os nomes OAuth
+//   do cadastro (como a faxina: o gh pode ter gravado e dito que falhou),
+//   solta todas as travas e o erro original sobe com `limpeza`.
+//
+// FECHAR (fechar): apaga os segredos da sessão em paralelo; com
+// matarTokenNoFechar, renova cada loja de novo DEPOIS de apagar (se a P6b
+// provar que renovar invalida o anterior, o token que esteve no GitHub morre);
+// solta as travas; esquece o token do gh. Nunca lança; pode ser chamado de
+// novo (devolve o mesmo resultado). O que não saiu volta com o comando exato.
+//
+// "APAGADO" só com prova: DELETE 204, ou um DELETE que falhou e a lista do
+// repositório mostra que o nome não está lá. 404 sozinho não prova (é também
+// a resposta do GitHub para quem não tem acesso).
+//
+// SEGREDOS: nenhum token (OAuth ou do gh) vai em mensagem, argumento, env de
+// processo filho, arquivo ou resultado. O valor vai ao gh só pelo stdin.
+import { spawn as spawnPadrao } from "node:child_process";
+import { createRequire } from "node:module";
+import { ErroDaGestao, buscarComPrazo } from "./supabase-gestao.mjs";
+
+const require = createRequire(import.meta.url);
+const {
+  RE_PROJETO,
+  RE_REF,
+  RE_SEGREDO,
+  SEGREDO_LEGADO,
+} = require("./lojas.cjs");
+
+export const MINIMO_PADRAO_MS = 2 * 60 * 60 * 1000;
+export const API_GITHUB = "https://api.github.com";
+const PRAZO_GH_MS = 30_000;
+const POR_PAGINA = 100;
+const TETO_PAGINAS = 10;
+const RE_REPO = /^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/;
+const RE_LOGIN = /^[A-Za-z0-9-]{1,39}$/;
+
+export class ErroDaPonte extends ErroDaGestao {
+  constructor(mensagem, extra = {}) {
+    super(mensagem, extra);
+    this.name = "ErroDaPonte";
+  }
+}
+
+/**
+ * As lojas OAuth do cadastro, com o nome do segredo VINDO do cadastro, nunca
+ * derivado. Qualquer desvio lança: um cadastro torto nunca vira "nenhuma
+ * loja" nem deixa a ponte mexer no segredo de uma loja pelo CLI.
+ * @returns {Array<{ projeto: string, ref: string, nome: string }>}
+ */
+export function lojasOAuthDo(cadastro) {
+  const lojas = cadastro?.lojas;
+  if (lojas === null || typeof lojas !== "object" || Array.isArray(lojas)) {
+    throw new ErroDaPonte("Ponte: o cadastro de lojas não é um objeto.", {
+      codigo: "CADASTRO_INVALIDO",
+    });
+  }
+  const entradas = Object.entries(lojas);
+  const nomesNaoOAuth = new Set(
+    entradas
+      .filter(([, l]) => l?.acesso !== "oauth")
+      .map(([, l]) => l?.segredoDoToken),
+  );
+  const recusa = (msg) =>
+    new ErroDaPonte(`Ponte: ${msg}`, { codigo: "CADASTRO_INVALIDO" });
+  const vistos = new Set();
+  const refs = new Set();
+  const saida = [];
+  for (const [projeto, l] of entradas) {
+    if (l?.acesso !== "oauth") continue;
+    if (!RE_PROJETO.test(projeto))
+      throw recusa("nome de loja fora do formato.");
+    if (l.classe !== "assinante") {
+      throw recusa(`${projeto}: acesso oauth só existe em loja assinante.`);
+    }
+    if (typeof l.ref !== "string" || !RE_REF.test(l.ref)) {
+      throw recusa(`${projeto}: ref fora do formato.`);
+    }
+    const nome = l.segredoDoToken;
+    if (
+      typeof nome !== "string" ||
+      !RE_SEGREDO.test(nome) ||
+      nome === SEGREDO_LEGADO
+    ) {
+      throw recusa(
+        `${projeto}: o segredo precisa ser SUPABASE_ACCESS_TOKEN_<LOJA> (nunca o legado).`,
+      );
+    }
+    if (nomesNaoOAuth.has(nome)) {
+      throw recusa(
+        `${projeto}: o segredo ${nome} é de uma loja que não é OAuth; a ponte nunca mexe nele.`,
+      );
+    }
+    if (vistos.has(nome) || refs.has(l.ref)) {
+      throw recusa(`${projeto}: segredo ou ref repetido entre lojas OAuth.`);
+    }
+    vistos.add(nome);
+    refs.add(l.ref);
+    saida.push(Object.freeze({ projeto, ref: l.ref, nome }));
+  }
+  return saida;
+}
+
+function escolherLojas(todas, pedidas) {
+  if (pedidas === undefined) {
+    if (todas.length === 0) {
+      throw new ErroDaPonte(
+        "Ponte: o cadastro não tem loja OAuth; a sessão não serve para nada (use o ensaio normal).",
+        { codigo: "SEM_LOJA_OAUTH" },
+      );
+    }
+    return todas;
+  }
+  if (!Array.isArray(pedidas) || pedidas.length === 0) {
+    throw new ErroDaPonte("Ponte: a lista de lojas da sessão está vazia.", {
+      codigo: "PEDIDO_INVALIDO",
+    });
+  }
+  if (new Set(pedidas).size !== pedidas.length) {
+    throw new ErroDaPonte("Ponte: loja repetida na lista da sessão.", {
+      codigo: "PEDIDO_INVALIDO",
+    });
+  }
+  return pedidas.map((p) => {
+    const l = todas.find((x) => x.projeto === p);
+    if (!l) {
+      throw new ErroDaPonte(
+        `Ponte: ${typeof p === "string" && RE_PROJETO.test(p) ? p : "a loja pedida"} não é uma loja OAuth do cadastro.`,
+        { codigo: "LOJA_NAO_OAUTH" },
+      );
+    }
+    return l;
+  });
+}
+
+const comandoApagar = (gh, nome) =>
+  `gh secret delete ${nome} --app actions --repo ${gh.repo}`;
+
+/**
+ * Apaga os nomes em paralelo. O que falhou é conferido UMA vez na lista do
+ * repositório: ausente = apagado; presente ou lista que falha = naoApagados.
+ * Nunca lança.
+ */
+async function apagarTodos(gh, nomes) {
+  const r = await Promise.all(
+    nomes.map((n) =>
+      Promise.resolve()
+        .then(() => gh.apagar(n))
+        .then(
+          () => null,
+          () => n,
+        ),
+    ),
+  );
+  let falhos = r.filter((n) => n !== null);
+  if (falhos.length > 0) {
+    try {
+      const existentes = new Set(await gh.listar());
+      falhos = falhos.filter((n) => existentes.has(n));
+    } catch {
+      // sem lista, nada do que falhou se prova apagado
+    }
+  }
+  return {
+    apagados: nomes.filter((n) => !falhos.includes(n)),
+    naoApagados: falhos.map((nome) => ({
+      nome,
+      comando: comandoApagar(gh, nome),
+    })),
+  };
+}
+
+/** A faxina com o gh já entrado: só os nomes OAuth que existem. */
+async function faxinarEntrado(todas, gh) {
+  const existentes = new Set(await gh.listar());
+  return apagarTodos(
+    gh,
+    todas.map((l) => l.nome).filter((n) => existentes.has(n)),
+  );
+}
+
+function exigirGh(gh) {
+  const metodos = ["entrar", "comEscrita", "listar", "definir", "apagar"];
+  if (
+    gh === null ||
+    typeof gh !== "object" ||
+    typeof gh.entrar !== "function" ||
+    typeof gh.comEscrita !== "function" ||
+    typeof gh.listar !== "function" ||
+    typeof gh.definir !== "function" ||
+    typeof gh.apagar !== "function" ||
+    typeof gh.repo !== "string" ||
+    typeof gh.dono !== "string"
+  ) {
+    throw new ErroDaPonte(
+      `Ponte: o gh precisa de repo, dono e ${metodos.join(", ")}.`,
+      { codigo: "PEDIDO_INVALIDO" },
+    );
+  }
+}
+
+async function esquecer(gh) {
+  try {
+    await gh.esquecer?.();
+  } catch {
+    // esquecer é limpeza de memória; nunca derruba o fechar
+  }
+}
+
+/**
+ * Faxina avulsa (`--faxina`): apaga os segredos de TODA loja OAuth do cadastro
+ * que estiverem no GitHub. Nada renova. Sem loja OAuth, nem entra no gh.
+ * @returns {Promise<{ apagados: string[], naoApagados: Array<{ nome: string, comando: string }> }>}
+ */
+export async function faxinar({ cadastro, gh } = {}) {
+  const todas = lojasOAuthDo(cadastro);
+  if (todas.length === 0) return { apagados: [], naoApagados: [] };
+  exigirGh(gh);
+  await gh.entrar();
+  try {
+    return await faxinarEntrado(todas, gh);
+  } finally {
+    await esquecer(gh);
+  }
+}
+
+function interrompida() {
+  return new ErroDaPonte(
+    "Ponte: a abertura da sessão foi interrompida; os segredos das lojas OAuth foram apagados.",
+    { codigo: "ABERTURA_INTERROMPIDA" },
+  );
+}
+
+/** Corrida de cada passo com o sinal: o sinal derruba a espera na hora. */
+function criarEspera(sinal) {
+  if (!sinal) return { esperar: (p) => p, conferir() {}, soltar() {} };
+  let avisar;
+  const caiu = new Promise((_ok, falha) => {
+    avisar = () => falha(interrompida());
+  });
+  caiu.catch(() => {});
+  sinal.addEventListener("abort", avisar, { once: true });
+  return {
+    esperar: (p) => Promise.race([p, caiu]),
+    conferir() {
+      if (sinal.aborted) throw interrompida();
+    },
+    soltar() {
+      sinal.removeEventListener("abort", avisar);
+    },
+  };
+}
+
+/** Roda `fazer` em cada [loja, handle] em paralelo; devolve os projetos que falharam. */
+async function quemFalhou(pares, fazer) {
+  const r = await Promise.all(
+    pares.map(([l, h]) =>
+      Promise.resolve()
+        .then(() => fazer(h))
+        .then(
+          () => null,
+          () => l.projeto,
+        ),
+    ),
+  );
+  return r.filter((p) => p !== null);
+}
+
+/** Renova de novo (P6b): se renovar invalida o anterior, o token morre. */
+const matarTokens = (pares) => quemFalhou(pares, (h) => h.renovarDeNovo());
+const soltarTravas = (pares) => quemFalhou(pares, (h) => h.liberar());
+
+/**
+ * @param {{
+ *   cadastro: { lojas: object },
+ *   acesso: { renovarComTravaLonga: Function },
+ *   gh: { repo: string, dono: string, entrar: Function, comEscrita: Function,
+ *         listar: Function, definir: Function, apagar: Function, esquecer?: Function },
+ *   lojas?: string[],          projetos; padrão: todas as lojas OAuth
+ *   agora?: () => number,
+ *   minimoMs?: number,
+ *   matarTokenNoFechar: boolean,   resultado da P6b (renovar invalida o anterior?)
+ *   sinal?: AbortSignal,       interrompe a abertura (Ctrl+C antes de abrir)
+ * }} opcoes
+ * @returns {Promise<{
+ *   lojas: ReadonlyArray<{ projeto: string, ref: string, nome: string }>,
+ *   validaAte: number,
+ *   readonly estado: "aberta" | "fechando" | "fechada",
+ *   tokenDe: (ref: string) => string,
+ *   fechar: () => Promise<{ apagados: string[],
+ *     naoApagados: Array<{ nome: string, comando: string }>,
+ *     tokensNaoMortos: string[], travasPresas: string[] }>,
+ * }>}
+ */
+export async function abrirSessao({
+  cadastro,
+  acesso,
+  gh,
+  lojas: pedidas,
+  agora = Date.now,
+  minimoMs = MINIMO_PADRAO_MS,
+  matarTokenNoFechar,
+  sinal,
+} = {}) {
+  // ---- 0. tudo que se recusa sem rede
+  const todas = lojasOAuthDo(cadastro);
+  const daSessao = escolherLojas(todas, pedidas);
+  exigirGh(gh);
+  if (typeof acesso?.renovarComTravaLonga !== "function") {
+    throw new ErroDaPonte(
+      "Ponte: falta o acesso OAuth (renovarComTravaLonga).",
+      {
+        codigo: "PEDIDO_INVALIDO",
+      },
+    );
+  }
+  if (
+    typeof minimoMs !== "number" ||
+    !Number.isFinite(minimoMs) ||
+    minimoMs <= 0
+  ) {
+    throw new ErroDaPonte(
+      "Ponte: minimoMs precisa ser positivo, em milissegundos.",
+      {
+        codigo: "PEDIDO_INVALIDO",
+      },
+    );
+  }
+  if (typeof matarTokenNoFechar !== "boolean") {
+    throw new ErroDaPonte(
+      "Ponte: matarTokenNoFechar precisa ser true ou false (o resultado da prova P6b: renovar invalida o token anterior?).",
+      { codigo: "PEDIDO_INVALIDO" },
+    );
+  }
+  if (sinal !== undefined && !(sinal instanceof AbortSignal)) {
+    throw new ErroDaPonte("Ponte: sinal precisa ser um AbortSignal.", {
+      codigo: "PEDIDO_INVALIDO",
+    });
+  }
+  if (sinal?.aborted) throw interrompida();
+
+  const espera = criarEspera(sinal);
+  /** @type {Array<[string, any]>} projeto -> handle da trava longa */
+  const presas = [];
+  const tentados = new Set();
+  let entrou = false;
+  try {
+    // ---- 1. o token do gh, uma vez
+    await espera.esperar(gh.entrar());
+    entrou = true;
+    // ---- 2. ninguém além do dono escreve no repositório
+    const comEscrita = await espera.esperar(gh.comEscrita());
+    const dono = gh.dono.toLowerCase();
+    const terceiros = comEscrita.filter(
+      (l) => String(l).toLowerCase() !== dono,
+    );
+    if (terceiros.length > 0) {
+      throw new ErroDaPonte(
+        `Ponte: além do dono, têm escrita no repositório: ${terceiros.filter((l) => RE_LOGIN.test(l)).join(", ") || "(login ilegível)"}. Quem escreve lê todo segredo por um workflow; a sessão não abre.`,
+        { codigo: "ESCRITA_DE_TERCEIROS" },
+      );
+    }
+    // ---- 3. faxina de toda loja OAuth do cadastro
+    const fax = await espera.esperar(faxinarEntrado(todas, gh));
+    if (fax.naoApagados.length > 0) {
+      throw new ErroDaPonte(
+        `Ponte: a faxina não conseguiu apagar ${fax.naoApagados.map((x) => x.nome).join(", ")}; a sessão não abre.`,
+        { codigo: "FAXINA_INCOMPLETA" },
+      );
+    }
+    // ---- 4. uma renovação por loja, com a trava presa
+    for (const l of daSessao) {
+      espera.conferir();
+      const p = acesso.renovarComTravaLonga({ slug: l.projeto });
+      try {
+        presas.push([l, await espera.esperar(p)]);
+      } catch (e) {
+        // sinal no meio: a renovação ainda pode chegar; quando chegar, solta
+        p.then(
+          (h) => h.liberar(),
+          () => {},
+        );
+        throw e;
+      }
+    }
+    // ---- 5. o prazo de TODOS antes de gravar qualquer um
+    const t = agora();
+    for (const [{ projeto }, h] of presas) {
+      if (typeof h.expiraEm !== "number" || !Number.isFinite(h.expiraEm)) {
+        throw new ErroDaPonte(
+          `Ponte: o Supabase não disse quando o acesso da loja ${projeto} vence; a sessão não abre sem prazo.`,
+          { codigo: "TOKEN_SEM_PRAZO" },
+        );
+      }
+      if (h.expiraEm - t < minimoMs) {
+        throw new ErroDaPonte(
+          `Ponte: o acesso da loja ${projeto} dura menos que o mínimo da sessão (${Math.round(minimoMs / 60_000)} min).`,
+          { codigo: "TOKEN_CURTO" },
+        );
+      }
+    }
+    // ---- 6. grava (o definir recebe o sinal e mata o gh em voo)
+    for (const [l, h] of presas) {
+      espera.conferir();
+      tentados.add(l.nome);
+      await gh.definir(l.nome, h.accessToken, { sinal });
+    }
+    espera.conferir();
+  } catch (e) {
+    const apagou = entrou
+      ? await apagarTodos(
+          gh,
+          todas.map((l) => l.nome),
+        )
+      : { apagados: [], naoApagados: [] };
+    const mortas = matarTokenNoFechar
+      ? await matarTokens(presas.filter(([l]) => tentados.has(l.nome)))
+      : [];
+    const travasPresas = await soltarTravas(presas);
+    await esquecer(gh);
+    const limpeza = Object.freeze({
+      ...apagou,
+      tokensNaoMortos: mortas,
+      travasPresas,
+    });
+    // com o sinal dado, a causa é a interrupção (o gh morto falha por ela)
+    const erro = sinal?.aborted ? interrompida() : e;
+    if (erro !== null && typeof erro === "object") {
+      try {
+        erro.limpeza = limpeza;
+      } catch {
+        // erro congelado: sobe sem a limpeza anexada
+      }
+    }
+    throw erro;
+  } finally {
+    espera.soltar();
+  }
+
+  // ---- a sessão aberta
+  const tokens = new Map(presas.map(([l, h]) => [l.ref, h.accessToken]));
+  const validaAte = Math.min(...presas.map(([, h]) => h.expiraEm));
+  const nomes = daSessao.map((l) => l.nome);
+  let estado = "aberta";
+  let fechando = null;
+
+  async function encerrar() {
+    estado = "fechando";
+    tokens.clear();
+    let apagou = {
+      apagados: [],
+      naoApagados: nomes.map((nome) => ({
+        nome,
+        comando: comandoApagar(gh, nome),
+      })),
+    };
+    let mortas = matarTokenNoFechar ? presas.map(([l]) => l.projeto) : [];
+    let travasPresas = presas.map(([l]) => l.projeto);
+    try {
+      apagou = await apagarTodos(gh, nomes);
+      if (matarTokenNoFechar) mortas = await matarTokens(presas);
+    } catch {
+      // nunca lança: os valores pessimistas acima (nada apagado, nada
+      // morto) são o que vale, e o dono recebe os comandos para apagar à mão
+    } finally {
+      travasPresas = await soltarTravas(presas);
+      await esquecer(gh);
+      estado = "fechada";
+    }
+    return Object.freeze({ ...apagou, tokensNaoMortos: mortas, travasPresas });
+  }
+
+  return Object.freeze({
+    lojas: Object.freeze([...daSessao]),
+    validaAte,
+    get estado() {
+      return estado;
+    },
+    /** O token gravado no segredo da loja `ref`. Nunca renova. */
+    tokenDe(ref) {
+      if (estado !== "aberta") {
+        throw new ErroDaPonte("Ponte: a sessão já foi fechada.", {
+          codigo: "SESSAO_FECHADA",
+        });
+      }
+      const t = tokens.get(ref);
+      if (t === undefined) {
+        throw new ErroDaPonte("Ponte: esta loja não está na sessão OAuth.", {
+          codigo: "FORA_DA_SESSAO",
+        });
+      }
+      return t;
+    },
+    fechar() {
+      fechando ??= encerrar();
+      return fechando;
+    },
+  });
+}
+
+// ------------------------------------------------------------ o gh real --
+
+/** Tira do texto do gh o que pode ser segredo e devolve uma linha curta. */
+function redigir(texto, segredos) {
+  let t = String(texto ?? "");
+  for (const s of segredos) if (s) t = t.split(s).join("[redigido]");
+  return t
+    .replace(/\b(?:gh[opsur]_|github_pat_|sbp_)[A-Za-z0-9_]+/g, "[redigido]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+}
+
+/**
+ * O gh de verdade. Grava com `gh secret set` (o gh cifra com a chave pública
+ * do repositório), o valor pelo stdin. Apaga, lista e confere colaboradores
+ * com fetch DENTRO do processo, com o token lido uma vez de `gh auth token`:
+ * fechar a janela mata os filhos do console, e o apagar não pode depender de
+ * um. Só mexe em segredo de loja OAuth do cadastro.
+ * @param {{ repo: string, cadastro: object, spawn?: Function, fetch?: typeof fetch,
+ *   executavel?: string, prazoMs?: number, env?: object }} opcoes
+ */
+export function criarGhReal({
+  repo,
+  cadastro,
+  spawn = spawnPadrao,
+  fetch: fetchFn = globalThis.fetch,
+  executavel = "gh",
+  prazoMs = PRAZO_GH_MS,
+  env = process.env,
+} = {}) {
+  const m = RE_REPO.exec(typeof repo === "string" ? repo : "");
+  if (!m || m[2] === "." || m[2] === "..") {
+    throw new ErroDaPonte(
+      "Ponte: o repositório precisa ser OWNER/REPO do GitHub.",
+      {
+        codigo: "PEDIDO_INVALIDO",
+      },
+    );
+  }
+  const permitidos = new Set(lojasOAuthDo(cadastro).map((l) => l.nome));
+  let emMemoria = null;
+  let entrando = null;
+
+  function exigirNome(nome) {
+    if (typeof nome !== "string" || !permitidos.has(nome)) {
+      throw new ErroDaPonte(
+        "Ponte: o gh só mexe em segredo de loja OAuth do cadastro.",
+        { codigo: "NOME_RECUSADO" },
+      );
+    }
+  }
+
+  function exigirToken() {
+    if (emMemoria === null) {
+      throw new ErroDaPonte("Ponte: o gh não entrou (chame entrar antes).", {
+        codigo: "GH_SEM_LOGIN",
+      });
+    }
+    return emMemoria;
+  }
+
+  /** spawn sem shell; o stdin leva `entrada` (ou nada). */
+  function rodar(args, { entrada, sinal } = {}) {
+    return new Promise((resolve, reject) => {
+      let filho;
+      try {
+        filho = spawn(executavel, args, {
+          env,
+          shell: false,
+          windowsHide: true,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+      } catch {
+        reject(
+          new ErroDaPonte("Ponte: não consegui rodar o gh.", {
+            codigo: "GH_AUSENTE",
+          }),
+        );
+        return;
+      }
+      const saida = [];
+      const erro = [];
+      let estourou = false;
+      let abortado = false;
+      const matar = () => {
+        try {
+          filho.kill();
+        } catch {
+          // já morreu
+        }
+      };
+      const relogio = setTimeout(() => {
+        estourou = true;
+        matar();
+      }, prazoMs);
+      const aoAbortar = () => {
+        abortado = true;
+        matar();
+      };
+      sinal?.addEventListener("abort", aoAbortar, { once: true });
+      const fim = () => {
+        clearTimeout(relogio);
+        sinal?.removeEventListener("abort", aoAbortar);
+      };
+      filho.stdout.on("data", (b) => saida.push(Buffer.from(b)));
+      filho.stderr.on("data", (b) => erro.push(Buffer.from(b)));
+      filho.on("error", () => {
+        fim();
+        reject(
+          new ErroDaPonte(
+            "Ponte: o gh não foi encontrado ou não rodou (ele está instalado?).",
+            { codigo: "GH_AUSENTE" },
+          ),
+        );
+      });
+      filho.on("close", (codigo) => {
+        fim();
+        resolve({
+          codigo,
+          estourou,
+          abortado,
+          saida: Buffer.concat(saida).toString("utf8"),
+          erro: Buffer.concat(erro).toString("utf8"),
+        });
+      });
+      filho.stdin.on("error", () => {}); // gh que morre cedo não derruba o Node
+      if (sinal?.aborted) aoAbortar();
+      if (entrada === undefined) filho.stdin.end();
+      else filho.stdin.end(entrada, "utf8");
+    });
+  }
+
+  /** GET/DELETE na API do GitHub com o token em memória. */
+  async function api(metodo, caminho, onde) {
+    const t = exigirToken();
+    let r;
+    try {
+      r = await buscarComPrazo(
+        fetchFn,
+        `${API_GITHUB}${caminho}`,
+        {
+          method: metodo,
+          redirect: "manual",
+          headers: {
+            accept: "application/vnd.github+json",
+            authorization: `Bearer ${t}`,
+            "x-github-api-version": "2022-11-28",
+          },
+        },
+        prazoMs,
+        onde,
+      );
+    } catch (e) {
+      throw new ErroDaPonte(
+        `Ponte: ${onde}: ${e instanceof ErroDaGestao ? e.message : "a conexão falhou"}`,
+        {
+          codigo: e?.codigo ?? "REDE",
+        },
+      );
+    }
+    return r;
+  }
+
+  function jsonOuNull(texto) {
+    try {
+      return JSON.parse(texto);
+    } catch {
+      return null;
+    }
+  }
+
+  async function paginas(caminho, onde, extrair) {
+    const itens = [];
+    for (let pagina = 1; pagina <= TETO_PAGINAS; pagina++) {
+      const sep = caminho.includes("?") ? "&" : "?";
+      const { status, texto } = await api(
+        "GET",
+        `${caminho}${sep}per_page=${POR_PAGINA}&page=${pagina}`,
+        onde,
+      );
+      if (status !== 200) {
+        throw new ErroDaPonte(`Ponte: ${onde} respondeu HTTP ${status}.`, {
+          codigo: "HTTP",
+          status,
+        });
+      }
+      const lote = extrair(jsonOuNull(texto));
+      if (lote === null) {
+        throw new ErroDaPonte(
+          `Ponte: ${onde} respondeu num formato que eu não reconheço.`,
+          {
+            codigo: "RESPOSTA_INVALIDA",
+          },
+        );
+      }
+      itens.push(...lote.itens);
+      if (
+        lote.itens.length < POR_PAGINA ||
+        (lote.total !== undefined && itens.length >= lote.total)
+      ) {
+        return itens;
+      }
+    }
+    throw new ErroDaPonte(`Ponte: ${onde} passou de ${TETO_PAGINAS} páginas.`, {
+      codigo: "RESPOSTA_INVALIDA",
+    });
+  }
+
+  return {
+    repo,
+    dono: m[1],
+
+    /** Lê `gh auth token` uma vez; o token fica só nesta memória. */
+    entrar() {
+      if (emMemoria !== null) return Promise.resolve();
+      entrando ??= (async () => {
+        const r = await rodar(["auth", "token", "--hostname", "github.com"]);
+        const t = r.saida.trim();
+        if (r.codigo !== 0 || !/^[\x21-\x7e]{1,4096}$/.test(t)) {
+          throw new ErroDaPonte(
+            "Ponte: o gh não devolveu um token (rode `gh auth login` nesta máquina).",
+            { codigo: "GH_SEM_LOGIN" },
+          );
+        }
+        emMemoria = t;
+      })().finally(() => {
+        entrando = null;
+      });
+      return entrando;
+    },
+
+    esquecer() {
+      emMemoria = null;
+    },
+
+    /** Quem tem push, maintain ou admin, em todas as afiliações. */
+    async comEscrita() {
+      exigirToken();
+      const onde = "GitHub GET colaboradores";
+      const lista = await paginas(
+        `/repos/${repo}/collaborators?affiliation=all`,
+        onde,
+        (c) => (Array.isArray(c) ? { itens: c } : null),
+      );
+      return lista
+        .map((c) => {
+          const p = c?.permissions;
+          if (
+            typeof c?.login !== "string" ||
+            p === null ||
+            typeof p !== "object"
+          ) {
+            throw new ErroDaPonte(
+              `Ponte: ${onde}: colaborador sem login ou sem permissões.`,
+              {
+                codigo: "RESPOSTA_INVALIDA",
+              },
+            );
+          }
+          return p.admin === true || p.maintain === true || p.push === true
+            ? c.login
+            : null;
+        })
+        .filter((l) => l !== null);
+    },
+
+    /** Os NOMES dos segredos de Actions do repositório. */
+    async listar() {
+      exigirToken();
+      return paginas(
+        `/repos/${repo}/actions/secrets`,
+        "GitHub GET segredos",
+        (c) =>
+          c !== null &&
+          typeof c === "object" &&
+          Array.isArray(c.secrets) &&
+          Number.isInteger(c.total_count) &&
+          c.secrets.every((s) => typeof s?.name === "string")
+            ? { itens: c.secrets.map((s) => s.name), total: c.total_count }
+            : null,
+      );
+    },
+
+    /** DELETE; só 204 é sucesso. */
+    async apagar(nome) {
+      exigirNome(nome);
+      exigirToken();
+      const onde = `GitHub DELETE ${nome}`;
+      const { status } = await api(
+        "DELETE",
+        `/repos/${repo}/actions/secrets/${nome}`,
+        onde,
+      );
+      if (status !== 204) {
+        throw new ErroDaPonte(`Ponte: ${onde} respondeu HTTP ${status}.`, {
+          codigo: "HTTP",
+          status,
+        });
+      }
+    },
+
+    /** `gh secret set NOME --app actions --repo R`, valor pelo stdin sem quebra de linha. */
+    async definir(nome, valor, { sinal } = {}) {
+      exigirNome(nome);
+      if (typeof valor !== "string" || !/^[\x21-\x7e]{1,4096}$/.test(valor)) {
+        throw new ErroDaPonte(
+          "Ponte: valor de segredo vazio ou com caractere proibido.",
+          {
+            codigo: "PEDIDO_INVALIDO",
+          },
+        );
+      }
+      const r = await rodar(
+        ["secret", "set", nome, "--app", "actions", "--repo", repo],
+        {
+          entrada: valor,
+          sinal,
+        },
+      );
+      if (r.abortado || r.estourou || r.codigo !== 0) {
+        const motivo = r.abortado
+          ? "interrompido"
+          : r.estourou
+            ? `sem resposta em ${prazoMs} ms`
+            : `saiu com código ${r.codigo}`;
+        const detalhe = redigir(r.erro, [valor, emMemoria]);
+        throw new ErroDaPonte(
+          `Ponte: gh secret set ${nome} ${motivo}${detalhe ? ` (${detalhe})` : ""}. O segredo PODE ter sido gravado.`,
+          { codigo: r.abortado ? "ABERTURA_INTERROMPIDA" : "GH_FALHOU" },
+        );
+      }
+    },
+  };
+}
