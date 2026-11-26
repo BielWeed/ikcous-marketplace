@@ -338,6 +338,8 @@ on:
       - "scripts/publicacao/consultas/188m-medir-o-volume-para-o-livro-de-registro.sql"
       - "scripts/publicacao/consultas/191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado.sql"
       - "scripts/publicacao/consultas/191b-antes-a-loja-nova-nasce-com-a-ficha-ausente.sql"
+      - "scripts/publicacao/consultas/192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado.sql"
+      - "scripts/publicacao/consultas/192b-antes-o-admin-copia-e-apaga-as-fotos-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -648,6 +650,8 @@ on:
       - "scripts/publicacao/consultas/188m-medir-o-volume-para-o-livro-de-registro.sql"
       - "scripts/publicacao/consultas/191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado.sql"
       - "scripts/publicacao/consultas/191b-antes-a-loja-nova-nasce-com-a-ficha-ausente.sql"
+      - "scripts/publicacao/consultas/192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado.sql"
+      - "scripts/publicacao/consultas/192b-antes-o-admin-copia-e-apaga-as-fotos-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1651,6 +1655,16 @@ jobs:
       - name: Prova viva da loja nova que nasce com a ficha (migration 20261540000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nova-nasce-com-a-ficha-viva.cjs
+      # Migration 20261550000000 (o admin copia e apaga as fotos da loja): as politicas SELECT "Admin Select Access (products|banners)"
+      # em storage.objects, so authenticated e so o admin de agora (rls_admin_atual). Admin: DELETE ... RETURNING apaga 1 e a copia acha a
+      # origem; CONTROLE sem a politica: 0 e 0 (o defeito da loja nova). Cliente, admin rebaixado e visitante: 0; a foto de devolucao do
+      # cliente continua legivel; mutante com is_admin_atual() derruba o SELECT logado com 42501; a "Public Display" das lojas antigas
+      # convive sem mudar nada; reaplicar 2x (LF e CRLF) igual; rollback (2x) volta ao defeito; pre-voo, pos-voo, trava de 5 s e
+      # consultas 192a/192b EXECUTADAS. CLONE proprio.
+      - name: Prova viva do admin que copia e apaga as fotos da loja (migration 20261550000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 3
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-admin-copia-e-apaga-as-fotos-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam
