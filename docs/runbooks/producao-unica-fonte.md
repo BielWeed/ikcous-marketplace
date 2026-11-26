@@ -2483,6 +2483,13 @@ O cadastro de UMA vez, na entrada do cliente:
   `variacoes_independentes`, sem nomes nem estoque. Use os mesmos alvos e parametros da 45m, uma loja por
   execucao. Se algum indicador de RLS for 1, o total pode estar incompleto. So leitura, sem dados de
   clientes. Nao e portao.
+- **`193m-medir-infinitos-guardados`** (26/11/2026): conta, em cada loja assinante e ANTES de aplicar a
+  `20261560000000` (o infinito nao entra no banco), quantas linhas ja guardam `Infinity` ou `-Infinity` na taxa
+  de entrega local, no preco proprio da variacao e no valor do cupom (a mesma regra da guarda da migration). Rol
+  fechado de 4 linhas com `ok`: o controle (a RLS nao vale para quem leu) e uma contagem por coluna, `ok` so com 0.
+  Qualquer `ok=false` numa contagem = a migration se recusaria nessa loja: ela sai da release
+  (`migrationsForaDaRelease`) ate a lojista corrigir o valor. Os mesmos alvos e parametros da 45m, uma loja por
+  execucao. So contagens, nenhum dado de linha. Nao e portao.
 
 ## Fora da release, de proposito
 

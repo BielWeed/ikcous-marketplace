@@ -148,11 +148,14 @@ export const OrderReceipt = memo(function OrderReceipt({
             {order.customer.whatsapp && (
               <p className="break-words">{order.customer.whatsapp}</p>
             )}
-            {linhasDoEndereco(order.customer).map((linha) => (
-              <p key={linha} className="break-words text-xs">
-                {linha}
-              </p>
-            ))}
+            {/* Retirada sem cópia no pedido: o endereço é o do cadastro de
+                HOJE, não o da compra, e retirada não precisa dele no papel. */}
+            {!order.enderecoDoCadastroAtual &&
+              linhasDoEndereco(order.customer).map((linha) => (
+                <p key={linha} className="break-words text-xs">
+                  {linha}
+                </p>
+              ))}
           </div>
         )}
 

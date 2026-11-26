@@ -377,6 +377,11 @@ export function mapOrderFromDB(
         : null,
     retiradaNaLoja: enderecoDeRetirada !== "",
     enderecoDeRetirada: enderecoDeRetirada || null,
+    // Retirada sem retrato do endereço: o que estiver em `customer` saiu do
+    // JOIN `row.address`, o cadastro de HOJE (ver Order.enderecoDoCadastroAtual).
+    ...(enderecoDeRetirada !== "" && !retrato && row.address
+      ? { enderecoDoCadastroAtual: true }
+      : {}),
     // Achado 1 da revisão de 26/09/2026 (rodada 2): coluna de
     // get_admin_orders_cancelados_recentes (20261175000000, ainda não
     // regenerada em database.types.ts, por isso o cast — igual às colunas

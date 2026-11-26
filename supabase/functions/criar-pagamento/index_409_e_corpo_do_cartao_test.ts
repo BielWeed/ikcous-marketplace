@@ -83,7 +83,7 @@ function bancoComUmPedido() {
   };
 }
 
-async function criarPix(respostaDoPost: () => Response) {
+async function criarPix(respostaDoPost: () => Response, opcoes: { sandbox?: string } = {}) {
   const banco = bancoComUmPedido();
   const chamadas: string[] = [];
   const fetchImpl = (entrada: string | URL | Request, init?: RequestInit) => {
@@ -99,6 +99,9 @@ async function criarPix(respostaDoPost: () => Response) {
   console.log = () => {};
   console.warn = () => {};
   console.error = () => {};
+  const sandboxAntes = Deno.env.get("MP_SANDBOX_PAYER_EMAIL");
+  if (opcoes.sandbox !== undefined) Deno.env.set("MP_SANDBOX_PAYER_EMAIL", opcoes.sandbox);
+  else Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
   try {
     const resposta = await handler(
       new Request("http://localhost/criar-pagamento", {
@@ -114,6 +117,8 @@ async function criarPix(respostaDoPost: () => Response) {
     );
     return { status: resposta.status, corpo: await resposta.json(), chamadas, banco };
   } finally {
+    if (sandboxAntes === undefined) Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+    else Deno.env.set("MP_SANDBOX_PAYER_EMAIL", sandboxAntes);
     console.log = consolePrev.log;
     console.warn = consolePrev.warn;
     console.error = consolePrev.error;
@@ -140,6 +145,99 @@ Deno.test("PIX CONTROLE: 409 de idempotência -> tenta recuperar a order pela bu
   assertEquals(r.status, 502);
   assertEquals(r.chamadas.filter((c) => c.startsWith("GET")).length >= 1, true, "a recuperação tem de buscar");
   assertEquals(r.banco.linha.gateway_payment_id, null);
+});
+
+// ── PIX: pagar a si mesma (26/11/2026) ──────────────────────────────────────
+// A lojista testa comprando dela mesma, com o e-mail da conta do MP que
+// recebe. O MP recusa; o app tem de dizer o porquê, no MESMO 502 de hoje. Todo
+// outro erro continua byte a byte como era.
+
+const FRASE_PAGAR_A_SI_MESMA =
+  "O Mercado Pago não deixa a mesma conta pagar e receber. Para testar, entre na loja com outro e-mail e pague com outra conta.";
+const FRASE_GENERICA_DA_CRIACAO = "Não foi possível gerar a cobrança.";
+
+for (
+  const [rotulo, corpo] of [
+    ["'Invalid users involved' (Orders)", { errors: [{ code: "invalid_users", message: "Invalid users involved" }] }],
+    ["collector + customer (Payments)", { message: "bad request", cause: [{ code: 2034, description: "customer can't be equal to the collector" }] }],
+  ] as const
+) {
+  Deno.test(`PIX: 400 ${rotulo} -> 502 com a frase de pagar a si mesma, sem terminal e sem ocupar a vaga`, async () => {
+    const r = await criarPix(() => resp(400, corpo));
+    assertEquals(r.status, 502);
+    assertEquals(r.corpo.error, FRASE_PAGAR_A_SI_MESMA);
+    assertEquals(r.corpo.terminal, undefined);
+    assertEquals(r.chamadas.filter((c) => c.startsWith("POST")).length, 1, "uma criação só");
+    assertEquals(r.banco.linha.gateway_payment_id, null);
+  });
+}
+
+Deno.test("PIX CONTROLE: outro 400 qualquer (payer.email recusado) -> 502 com a frase genérica de hoje", async () => {
+  const r = await criarPix(() =>
+    resp(400, { errors: [{ code: "property_value", message: "The domain provided in payer.email is not allowed" }] })
+  );
+  assertEquals(r.status, 502);
+  assertEquals(r.corpo.error, FRASE_GENERICA_DA_CRIACAO);
+  assertEquals(r.corpo.terminal, undefined);
+});
+
+Deno.test("PIX CONTROLE: 2062 'Invalid card token' NÃO vira pagar a si mesma (a doc do MP diz que é token)", async () => {
+  const r = await criarPix(() => resp(400, { message: "Invalid card token", cause: [{ code: 2062, description: "Invalid card token" }] }));
+  assertEquals(r.status, 502);
+  assertEquals(r.corpo.error, FRASE_GENERICA_DA_CRIACAO);
+});
+
+for (
+  const caso of [
+    { status: 401, esperado: 503, terminal: true },
+    { status: 403, esperado: 503, terminal: true },
+    { status: 409, esperado: 502, terminal: undefined },
+    { status: 500, esperado: 502, terminal: undefined },
+  ]
+) {
+  Deno.test(`PIX CONTROLE: ${caso.status} com 'Invalid users involved' no corpo -> ${caso.esperado} como hoje, nunca a frase nova`, async () => {
+    const r = await criarPix(() => resp(caso.status, { errors: [{ code: "invalid_users", message: "Invalid users involved" }] }));
+    assertEquals(r.status, caso.esperado);
+    assertEquals(r.corpo.terminal, caso.terminal);
+    assertEquals(r.corpo.error === FRASE_PAGAR_A_SI_MESMA, false);
+    if (caso.status === 409 || caso.status === 500) assertEquals(r.corpo.error, FRASE_GENERICA_DA_CRIACAO);
+    assertEquals(r.banco.linha.gateway_payment_id, null);
+  });
+}
+
+// Ressalva 2 da revisão Opus: com MP_SANDBOX_PAYER_EMAIL ligada o pagador é um
+// usuário de TESTE, e "Invalid users involved" ali é a mistura teste/real — a
+// frase genérica de hoje, não a de "mesma conta". Os dois lados.
+Deno.test("PIX sandbox LIGADO: 400 'Invalid users involved' -> 502 com a frase genérica de hoje", async () => {
+  const r = await criarPix(
+    () => resp(400, { errors: [{ code: "invalid_users", message: "Invalid users involved" }] }),
+    { sandbox: "test_payer_123@testuser.com" },
+  );
+  assertEquals(r.status, 502);
+  assertEquals(r.corpo.error, FRASE_GENERICA_DA_CRIACAO);
+  assertEquals(r.corpo.terminal, undefined);
+  assertEquals(r.banco.linha.gateway_payment_id, null);
+});
+
+Deno.test("PIX sandbox LIGADO: a frase EXPLÍCITA de mesma conta (payer + collector + same) continua dando a frase nova", async () => {
+  const r = await criarPix(
+    () => resp(400, { message: "Payer and collector cannot be the same user" }),
+    { sandbox: "test_payer_123@testuser.com" },
+  );
+  assertEquals(r.status, 502);
+  assertEquals(r.corpo.error, FRASE_PAGAR_A_SI_MESMA);
+});
+
+Deno.test("PIX sandbox DESLIGADO (contraste): o MESMO 400 'Invalid users involved' -> frase de pagar a si mesma", async () => {
+  const r = await criarPix(() => resp(400, { errors: [{ code: "invalid_users", message: "Invalid users involved" }] }));
+  assertEquals(r.status, 502);
+  assertEquals(r.corpo.error, FRASE_PAGAR_A_SI_MESMA);
+});
+
+Deno.test("PIX CONTROLE: 400 'card token does not belong to the collector of this payer' (sem identidade) -> frase genérica", async () => {
+  const r = await criarPix(() => resp(400, { message: "card token does not belong to the collector of this payer" }));
+  assertEquals(r.status, 502);
+  assertEquals(r.corpo.error, FRASE_GENERICA_DA_CRIACAO);
 });
 
 // ── validarCorpoDoCartao ─────────────────────────────────────────────────────
