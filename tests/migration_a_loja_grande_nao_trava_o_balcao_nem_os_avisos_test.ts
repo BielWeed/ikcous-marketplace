@@ -398,7 +398,7 @@ Deno.test("inventario das portas: a porta nova e do LOGADO (so authenticated exe
   assertEquals(linhas[0].situacao, "logado");
 });
 
-Deno.test("a porta chama is_admin_atual(): as provas que desfazem a 20261197000000 a desfazem ANTES (A_LOJA_GRANDE no fim de POSTERIORES_A_97)", async () => {
+Deno.test("a porta chama is_admin_atual(): as provas que desfazem a 20261197000000 a desfazem ANTES (A_LOJA_GRANDE logo depois de FORNECEDORES em POSTERIORES_A_97)", async () => {
   // Sem isto o rollback-manual da 97 recusa (B1_BASELINE_DIVERGENT: "funcoes fora da 20261197000000 ainda usam ...") e as
   // provas do admin atual e dos pagamentos reprovam no CI (PR #1908, 26/11/2026). A guarda da 97 e' a certa e nao se afrouxa.
   assertStringIncludes(LER(NOME), "public.is_admin_atual()");
@@ -429,8 +429,10 @@ Deno.test("a porta chama is_admin_atual(): as provas que desfazem a 202611970000
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l !== "" && !l.startsWith("//"));
-    assertEquals(itens.at(-2), "FORNECEDORES,", arq);
-    assertEquals(itens.at(-1), "A_LOJA_GRANDE,", arq);
+    // Logo depois de FORNECEDORES; as posteriores que vierem depois (20261550 FOTOS_DA_LOJA...) entram no fim.
+    const iForn = itens.indexOf("FORNECEDORES,");
+    assert(iForn >= 0, `${arq}: sem FORNECEDORES`);
+    assertEquals(itens[iForn + 1], "A_LOJA_GRANDE,", arq);
   }
 });
 
