@@ -116,7 +116,10 @@ describe("backup ao apagar: foto marcada vira backup SEM marca", () => {
       const [de, para] = h.copy.mock.calls[0] as [string, string];
       expect(de).toBe(nome);
       const [base, ext] = nome.split(".");
-      expect(para).toMatch(new RegExp(`^backup/${base}_\\d+\\.${ext}$`));
+      const prefixo = `backup/${base}_`;
+      expect(para.startsWith(prefixo)).toBe(true);
+      expect(para.slice(prefixo.length)).toMatch(/^\d+\.(jpg|png)$/);
+      expect(para.endsWith(`.${ext}`)).toBe(true);
       // As duas barreiras: a pasta e o carimbo depois da marca.
       expect(marcaDoNome(para.slice("backup/".length))).toBeNull();
       const urlDoBackup = `${PASTA}${para}`;

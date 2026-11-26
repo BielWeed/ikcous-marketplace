@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
   remove: vi.fn(),
   erro: vi.fn(),
   buckets: [] as string[],
+  origem: "https://novalojagratisaaaaaa.supabase.co",
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -52,7 +53,7 @@ vi.mock("@/lib/supabase", () => ({
           remove: h.remove,
           getPublicUrl: (caminho: string) => ({
             data: {
-              publicUrl: `https://novalojagratisaaaaaa.supabase.co/storage/v1/object/public/products/${caminho}`,
+              publicUrl: `${h.origem}/storage/v1/object/public/products/${caminho}`,
             },
           }),
         };
@@ -66,7 +67,12 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 type Api = ReturnType<typeof useProducts>;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
+/** `<uuid>.jpg`: o nome de hoje, sem marca. */
+const NOME_SEM_MARCA =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/;
+/** Só o uuid (a base do nome). */
+const SO_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function piramideW(): Piramide {
   return {
@@ -92,6 +98,7 @@ describe("uploadProductImages com a pirâmide", () => {
     h.remove.mockReset().mockResolvedValue({ data: [], error: null });
     h.erro.mockReset();
     h.buckets.length = 0;
+    h.origem = "https://novalojagratisaaaaaa.supabase.co";
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     hospedeiro = document.createElement("div");
@@ -116,7 +123,7 @@ describe("uploadProductImages com a pirâmide", () => {
   it("sem opções: o envio de hoje (um arquivo `<uuid>.<ext>`, sem cópia)", async () => {
     const urls = await api.uploadProductImages([foto()]);
     expect(caminhosEnviados()).toHaveLength(1);
-    expect(caminhosEnviados()[0]).toMatch(new RegExp(`${UUID.source}\\.jpg$`));
+    expect(caminhosEnviados()[0]).toMatch(NOME_SEM_MARCA);
     expect(h.upload.mock.calls[0][2]).toEqual({
       cacheControl: "31536000",
       upsert: false,
@@ -132,7 +139,7 @@ describe("uploadProductImages com a pirâmide", () => {
     const caminhos = caminhosEnviados();
     expect(caminhos).toHaveLength(4);
     const base = caminhos[3].replace(/-vw\.jpg$/, "");
-    expect(base).toMatch(new RegExp(`${UUID.source}$`));
+    expect(base).toMatch(SO_UUID);
     expect(caminhos).toEqual([
       `${base}-240.webp`,
       `${base}-480.webp`,
@@ -212,7 +219,7 @@ describe("uploadProductImages com a pirâmide", () => {
     });
     expect(h.remove).toHaveBeenCalledTimes(1);
     expect(marcaDe(urls[0])).toBeNull();
-    expect(caminhosEnviados()[3]).toMatch(new RegExp(`${UUID.source}\\.jpg$`));
+    expect(caminhosEnviados()[3]).toMatch(NOME_SEM_MARCA);
   });
 
   it("apagar as cópias também falha: a original ainda sobe sem marca", async () => {
@@ -272,7 +279,7 @@ describe("uploadProductImages com a pirâmide", () => {
   ])("%s: sobe só a original sem marca, sem cópia", async (_caso, piramide) => {
     const urls = await api.uploadProductImages([foto()], { piramide });
     expect(caminhosEnviados()).toHaveLength(1);
-    expect(caminhosEnviados()[0]).toMatch(new RegExp(`${UUID.source}\\.jpg$`));
+    expect(caminhosEnviados()[0]).toMatch(NOME_SEM_MARCA);
     expect(marcaDe(urls[0])).toBeNull();
   });
 
@@ -283,6 +290,19 @@ describe("uploadProductImages com a pirâmide", () => {
     expect(caminhosEnviados()).toHaveLength(1);
     expect(marcaDe(urls[0])).toBeNull();
     expect(piramide).not.toHaveBeenCalled();
+  });
+
+  it("loja que JÁ transforma (Savy): nem gera a pirâmide, 1 gravação, nome sem marca", async () => {
+    h.origem = "https://gnjsrucsmjkajijrakzr.supabase.co";
+    const piramide = vi.fn<GerarPiramide>(async () => piramideW());
+    const urls = await api.uploadProductImages([foto()], { piramide });
+    expect(piramide).not.toHaveBeenCalled();
+    expect(caminhosEnviados()).toHaveLength(1);
+    expect(caminhosEnviados()[0]).toMatch(NOME_SEM_MARCA);
+    expect(
+      urls[0].startsWith("https://gnjsrucsmjkajijrakzr.supabase.co/"),
+    ).toBe(true);
+    expect(h.remove).not.toHaveBeenCalled();
   });
 
   it("várias fotos: cada uma com a sua pirâmide, numa base própria", async () => {

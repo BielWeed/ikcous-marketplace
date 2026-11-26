@@ -1,3 +1,4 @@
+import { projetoDaFotoTransforma } from "./imageUrl";
 // Grava UMA foto no Storage, com ou sem a pirâmide de cópias (plano das
 // miniaturas, 26/11/2026). Usado pelo envio de foto de produto (useProducts) e
 // de banner (useBanners); não importa o gerador nem o cliente do Supabase --
@@ -10,7 +11,8 @@
 //   3. Falhou uma cópia: as 3 são apagadas (melhor esforço) e a original sobe
 //      SEM marca, com o nome de hoje (`<base>.<ext>`).
 //   4. Falhou a original marcada: as 3 são apagadas e o erro sobe, como hoje.
-// Sem gerador, gerador que devolve `null`/lança, pirâmide fora do formato ou
+// Sem gerador, loja cujo projeto transforma a imagem (`/render/`), gerador
+// que devolve `null`/lança, pirâmide fora do formato ou
 // extensão que o leitor da marca não reconhece: só a original, sem marca --
 // exatamente o envio de hoje.
 import {
@@ -38,6 +40,7 @@ export interface BucketDoEnvio {
     opcoes: { cacheControl: string; upsert: boolean; contentType?: string },
   ): PromiseLike<{ error: unknown }>;
   remove(caminhos: string[]): PromiseLike<unknown>;
+  getPublicUrl(caminho: string): { data: { publicUrl: string } };
 }
 
 const OPCOES_DO_ENVIO = { cacheControl: "31536000", upsert: false } as const;
@@ -99,6 +102,16 @@ export async function gravarFotoComPiramide({
     return semMarca;
   };
   if (!gerar) return gravarSemMarca();
+  // Loja cujo projeto TRANSFORMA a imagem (Savy, Pro): a vitrine sempre usa o
+  // `/render/` (`imageUrl.ts`), e as cópias seriam 3 arquivos parados e 3
+  // gravações a mais por foto. Mesma decisão da vitrine, pela URL pública que
+  // a foto vai ter; na dúvida (falha ao montar a URL), sem pirâmide.
+  try {
+    if (projetoDaFotoTransforma(bucket.getPublicUrl(semMarca).data.publicUrl))
+      return gravarSemMarca();
+  } catch {
+    return gravarSemMarca();
+  }
 
   // O nome marcado tem de ser LIDO de volta como marcado (extensão aceita,
   // base no formato): só então as cópias são as que os leitores procuram.

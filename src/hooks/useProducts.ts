@@ -18,6 +18,7 @@ import {
   type OpcoesDoEnvioDeFoto,
   gravarFotoComPiramide,
 } from "@/lib/gravar-foto-com-piramide";
+import { projetoDaFotoTransforma } from "@/lib/imageUrl";
 import { arquivoJpegSemExif } from "@/lib/jpeg-sem-exif";
 import { mapProductFromDB } from "@/lib/mappers";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
@@ -98,7 +99,11 @@ export async function copiarImagemParaDuplicacao(url: string): Promise<string> {
     // marcada desta loja), a cópia de sempre, sem marca.
     let novoCaminho = caminhoDaCopiaSemMarca(caminho);
     let copiasNovas: string[] = [];
-    const copiasDaOrigem = marcaDe(url) ? nomesDasCopias(caminho) : null;
+    // Loja que transforma (o `/render/` vence a marca): a cópia de sempre.
+    const copiasDaOrigem =
+      marcaDe(url) && !projetoDaFotoTransforma(url)
+        ? nomesDasCopias(caminho)
+        : null;
     if (copiasDaOrigem) {
       const marcado = caminhoDaCopia(caminho);
       const destinos = nomesDasCopias(marcado);

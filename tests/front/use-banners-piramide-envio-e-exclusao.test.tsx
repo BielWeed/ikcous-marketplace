@@ -33,6 +33,7 @@ const h = vi.hoisted(() => ({
   upload: vi.fn(),
   remove: vi.fn(),
   linhas: [] as Record<string, unknown>[],
+  pasta: "",
 }));
 
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: true }) }));
@@ -71,7 +72,7 @@ vi.mock("@/lib/supabase", () => {
             upload: h.upload,
             remove: h.remove,
             getPublicUrl: (caminho: string) => ({
-              data: { publicUrl: `${PASTA}${caminho}` },
+              data: { publicUrl: `${h.pasta || PASTA}${caminho}` },
             }),
           };
         },
@@ -129,6 +130,7 @@ describe("useBanners e a pirâmide de cópias", () => {
     h.upload.mockReset().mockResolvedValue({ error: null });
     h.remove.mockReset().mockResolvedValue({ data: [], error: null });
     h.linhas = [];
+    h.pasta = "";
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -218,6 +220,23 @@ describe("useBanners e a pirâmide de cópias", () => {
         `${base}-480.webp`,
         `${base}-960.webp`,
       ]);
+    });
+
+    it("loja que JÁ transforma (Savy): nem gera a pirâmide, 1 gravação, nome sem marca", async () => {
+      h.pasta =
+        "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/banners/";
+      const ler = await montar();
+      const piramide = vi.fn<GerarPiramide>(async () => piramideW());
+      let url = "";
+      await act(async () => {
+        url = await ler().uploadBannerImage(foto(), { piramide });
+      });
+      expect(piramide).not.toHaveBeenCalled();
+      expect(caminhosEnviados()).toHaveLength(1);
+      expect(caminhosEnviados()[0]).toMatch(/^\d+-[0-9a-z]+\.png$/);
+      expect(url.startsWith("https://gnjsrucsmjkajijrakzr.supabase.co/")).toBe(
+        true,
+      );
     });
 
     it("gerador que devolve null: só a original, sem marca", async () => {

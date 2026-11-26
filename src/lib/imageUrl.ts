@@ -52,8 +52,14 @@ export interface OpcoesImagem {
   readonly quality?: number;
 }
 
-/** true só para arquivo público de um projeto que transforma (lista medida). */
-function ehImagemSupabase(url: string): boolean {
+/**
+ * true só para arquivo público de um projeto que transforma (lista medida).
+ * FONTE ÚNICA da decisão "esta loja usa o `/render/`": a vitrine a usa para
+ * escolher o endereço, e o envio do painel (`gravar-foto-com-piramide.ts`) e a
+ * duplicação (`copiarImagemParaDuplicacao`) a usam para NÃO gerar as cópias
+ * reduzidas numa loja que nunca as serviria.
+ */
+export function projetoDaFotoTransforma(url: string): boolean {
   return (
     typeof url === "string" &&
     ORIGENS_QUE_TRANSFORMAM.some((origem) =>
@@ -97,7 +103,7 @@ export function imagemRedimensionada(
   { width, quality = 75 }: OpcoesImagem,
 ): string {
   if (!url) return "";
-  if (!ehImagemSupabase(url)) return copiaQueCobre(url, width) ?? url;
+  if (!projetoDaFotoTransforma(url)) return copiaQueCobre(url, width) ?? url;
   const [base] = url.split("?");
   // `resize=contain` é obrigatório: passando só `width`, o Supabase mantém a
   // ALTURA original e distorce a imagem (medido: width=200 devolvia 200x768 de
@@ -127,9 +133,15 @@ export function conjuntoDeImagens(
   quality = 75,
 ): string {
   if (!url) return "";
-  if (!ehImagemSupabase(url)) {
+  if (!projetoDaFotoTransforma(url)) {
     // Foto marcada: as cópias que existem, com o lado de cada uma (as
     // larguras pedidas são do `/render/`, que gera qualquer uma).
+    // Ressalva conhecida: o descritor `Nw` é o MAIOR lado da cópia, não a
+    // largura. Em foto retrato a largura real é menor que N (a cópia de 480
+    // de uma foto 3:4 tem 360 de largura), então o navegador pode escolher
+    // uma cópia um pouco mais estreita do que o ideal. Em paisagem e quadrada
+    // (banner, maioria dos produtos) o descritor é exato. Comportamento
+    // mantido de propósito: a largura real não está no nome do arquivo.
     const copias = copiasDe(url);
     if (!copias) return "";
     return copias.map((copia) => `${copia.url} ${copia.lado}w`).join(", ");

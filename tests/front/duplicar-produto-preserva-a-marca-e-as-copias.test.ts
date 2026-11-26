@@ -180,6 +180,16 @@ describe("copiarImagemParaDuplicacao com foto marcada", () => {
     vi.useRealTimers();
   });
 
+  it("loja que JÁ transforma (Savy), foto marcada: uma cópia só, sem marca (a vitrine usa /render/)", async () => {
+    const marcadaSavy = `https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/products/${U}-vw.jpg`;
+    await copiarImagemParaDuplicacao(marcadaSavy);
+    expect(h.copy).toHaveBeenCalledTimes(1);
+    const [de, para] = h.copy.mock.calls[0];
+    expect(de).toBe(`${U}-vw.jpg`);
+    expect(para).toMatch(new RegExp(`^${U}-vw_copia_${UUIDV4}\\.jpg$`));
+    expect(marcaDoNome(para)).toBeNull();
+  });
+
   it("foto sem marca: uma cópia só, como hoje", async () => {
     const url = await copiarImagemParaDuplicacao(`${PASTA}${U}.jpg`);
     expect(h.copy).toHaveBeenCalledTimes(1);
