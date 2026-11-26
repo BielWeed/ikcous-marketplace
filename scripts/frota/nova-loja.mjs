@@ -3,10 +3,11 @@
 /* eslint-disable security/detect-object-injection -- as chaves indexadas são nomes de passo de PASSOS (lista fechada) ou o slug já conferido por RE_PROJETO, sempre com Object.hasOwn. */
 /**
  * nova-loja.mjs — o comando ASSISTIDO que abre uma loja nova passo a passo
- * (plano nova-loja de 26/11/2026, tarefas C1 e C3; o desenho vem do L4b).
- * Nesta versão: abrir, receber, criar-projeto, banco, ficha, primeira-admin e
- * conferir; definir-dono está reservado (aguardando a decisão do sócio). Os
- * passos de segredos, functions, login e cadastro entram no C2.
+ * (plano nova-loja de 26/11/2026, tarefas C1, C2 e C3; o desenho vem do L4b).
+ * Nesta versão: abrir, receber, criar-projeto, banco, ficha, segredos,
+ * functions, login, primeira-admin, definir-dono e conferir. cadastro, marca e
+ * chave-do-plano têm o nome guardado e recusam (NÃO, sem rede): dependem de a
+ * release alcançar loja só-OAuth (AGUARDANDO; CACA-PORTAO-LE-LOJA-NOVA).
  *
  *   node scripts/frota/nova-loja.mjs <passo> --loja <slug> [--aplicar] [opções]
  *
@@ -15,9 +16,15 @@
  *   criar-projeto  --org <slug da organização da lojista>
  *   banco
  *   ficha          [--nome <apelido>]
+ *   segredos       (segredos-da-loja.mjs, B1)
+ *   cadastro       (aguardando: cadastrar trava a publicação de todas as lojas)
+ *   functions      (functions-da-loja.mjs, B2: só com HEAD == topo da release)
+ *   login          (login-da-loja-nova.mjs, B4: domínio <slug>.vercel.app)
+ *   marca          (pendente)
+ *   chave-do-plano (pendente)
  *   primeira-admin (o e-mail da administradora pela ENTRADA, nunca por argumento)
+ *   definir-dono   (a administradora única vira a dona; só loja do nova-loja)
  *   conferir       (só leitura: a lista do que torna a loja pronta)
- *   definir-dono   (reservado: recusa até a regra ser decidida)
  *
  * O QUE ESTE ARQUIVO GARANTE (tests/frota_nova_loja_comando_test.ts trava):
  *  - SEM --aplicar NADA sai nem se grava: nenhum fetch (nem o POST do
@@ -57,9 +64,27 @@
  *    rodada: o e-mail entra pela entrada e só vai ao banco (nunca ao estado, à
  *    saída nem à mensagem); a transação do B3 tem o SET LOCAL ROLE postgres
  *    (as travas de cargo leem o GUC role) e repete todas as guardas;
+ *  - segredos, functions e login chamam os scripts B com o cliente da gestão
+ *    DESTA rodada (o token OAuth renovado do cofre, nunca o
+ *    SUPABASE_ACCESS_TOKEN do ambiente) e repassam o veredito deles sem que
+ *    INCERTO vire SIM; o B2 só publica com o HEAD no topo do ramo da release
+ *    e a recusa dele é repassada como veio. Mensagem de script B que manda
+ *    "rodar sem --aplicar" para ler o estado é reescrita para o conferir
+ *    (pelo nova-loja, sem --aplicar não se lê nada);
+ *  - definir-dono (regra do sócio, 26/11): sem dono e com EXATAMENTE uma
+ *    administradora (nas duas fontes do cargo, e-mail confirmado), grava essa
+ *    pessoa como dona numa transação (READ COMMITTED, advisory lock, LOCK
+ *    TABLE, SET LOCAL ROLE postgres, as guardas de novo, conferência pela
+ *    88c) e relê; dona igual = SIM sem gravar; dono diferente, dono que não é
+ *    mais admin, 0 ou 2+ admins = NÃO (não troca nem escolhe); leitura que
+ *    falha = INCERTO. Nenhum e-mail: a dona é o id que o banco acha. Só em
+ *    loja com estado local (criar-projeto e banco SIM) e NUNCA na IKCOUS nem
+ *    na Savy (pelo nome e pelo ref: lojas.json e os refs fixos);
  *  - conferir é SÓ LEITURA (GET e database/query read_only; não grava nem o
- *    estado local) e dá SIM, NÃO ou INCERTO por item; o geral é SIM só se
- *    TODOS forem SIM, e o que ainda não está ligado aparece como pendente NÃO;
+ *    estado local) e dá SIM, NÃO ou INCERTO por item (functions e login pelos
+ *    B2/B4 em ensaio sobre a fachada somenteLeitura; reconciliação DEGRADADA
+ *    é NÃO); o geral é SIM só se TODOS forem SIM, e o que ainda não está
+ *    ligado aparece como pendente NÃO;
  *  - ficha confere store_config id = 1 (semeada pela migration
  *    20261540000000) e GERA, sem executar, o SQL da linha em frota_lojas e a
  *    entrada de lojas.json para o passo de cadastro (B5);
@@ -81,16 +106,22 @@ import {
   pastaPadraoDoCofre,
 } from "./cofre-local.mjs";
 import {
+  executar as executarFunctions,
+  gitReal,
+} from "./functions-da-loja.mjs";
+import {
   arquivosDoRepo,
   instalar,
   lerEstado,
   lerPrivilegiosPadrao,
   planejarInstalacao,
 } from "./instalador-banco.mjs";
+import { configurarLoginNovo } from "./login-da-loja-nova.mjs";
 import { executar as executarPrimeiraAdmin } from "./primeira-admin.mjs";
 import {
   SQL_SAUDE,
   faltandoNo,
+  instalarSegredos,
   lerEstado as lerEstadoDosSegredos,
 } from "./segredos-da-loja.mjs";
 import {
@@ -116,12 +147,38 @@ export const PASSOS = Object.freeze([
   "criar-projeto",
   "banco",
   "ficha",
+  "segredos",
+  "cadastro",
+  "functions",
+  "login",
+  "marca",
+  "chave-do-plano",
   "primeira-admin",
   "definir-dono",
   "conferir",
 ]);
-/** Passo com o nome guardado e sem execução: a regra está com o sócio. */
-const RESERVADOS = new Set(["definir-dono"]);
+/** Passos com o nome guardado e SEM execução (NÃO antes de qualquer rede,
+ * trava ou estado): dependem de a release alcançar loja só-OAuth, e isso está
+ * com o sócio (CACA-PORTAO-LE-LOJA-NOVA-26-11: o portão de hoje entra nas
+ * lojas com o login do dono, que nunca é membro da org da lojista; uma loja
+ * cadastrada que ele não lê bloqueia a release de TODAS). */
+export const AGUARDANDO = Object.freeze({
+  cadastro:
+    "cadastrar a loja agora trava a publicação de todas as lojas: aguarda o portão ler loja OAuth (CACA-PORTAO-LE-LOJA-NOVA). Nada foi feito.",
+  marca:
+    "pendente: a marca (scripts/identidade-bootstrap.mjs) exige a chave de serviço da loja, que a IKCOUS não tem numa loja só-OAuth; e a loja só entra na frota depois do cadastro, que aguarda o portão ler loja OAuth (CACA-PORTAO-LE-LOJA-NOVA). Nada foi feito.",
+  "chave-do-plano":
+    "pendente: a chave do plano vai pelo instalar-chave-da-loja.yml, que só usa o segredo fixo do repositório e não alcança loja só-OAuth; aguarda a decisão da release para loja OAuth (CACA-PORTAO-LE-LOJA-NOVA). Nada foi feito.",
+});
+/** As lojas que já vendem: o dono delas é cadastrado pelo dono do produto
+ * (docs/runbooks/definir-o-dono-da-loja.md, seção 3.3), nunca por este
+ * comando. Recusadas pelo nome e pelo ref (de lojas.json e, de reserva, os
+ * fixos abaixo: um lojas.json adulterado não tira a proteção). */
+export const LOJAS_PROTEGIDAS = Object.freeze(["ikcous-publicada", "savy"]);
+const REFS_PROTEGIDOS = Object.freeze([
+  "cafkrminfnokvgjqtkle", // ikcous-publicada (e o legado "loja")
+  "gnjsrucsmjkajijrakzr", // savy
+]);
 export const SIM = "SIM";
 export const NAO = "NÃO";
 export const INCERTO = "INCERTO";
@@ -188,8 +245,13 @@ export const CAMPOS_DO_ESTADO = Object.freeze({
     total: inteiro,
   }),
   ficha: Object.freeze({}),
+  segredos: Object.freeze({}),
+  functions: Object.freeze({}),
+  login: Object.freeze({}),
   // só o veredito: o e-mail NUNCA entra aqui
   "primeira-admin": Object.freeze({}),
+  // só o veredito: nem o id da dona entra aqui
+  "definir-dono": Object.freeze({}),
 });
 
 export class ErroDoComando extends Error {
@@ -1098,6 +1160,222 @@ async function passoFicha(pedido, d) {
   );
 }
 
+// ─── peças dos passos que chamam os scripts B ───────────────────────────────
+
+/** O domínio da loja nova: o mesmo que o cadastro grava em frota_lojas
+ * (cadastroGerado). Só o host, sem https://. */
+const dominioDaLoja = (slug) => `${slug}.vercel.app`;
+
+/** Os scripts B, rodados à mão, mandam "rodar de novo SEM --aplicar" para ler
+ * o estado. Pelo nova-loja isso não lê nada (sem --aplicar é ENSAIO, 0
+ * fetch): quem lê sem gravar aqui é o conferir (achado ANOTADO do C3). */
+function semMandarTirarOAplicar(texto, slug) {
+  return String(texto).replace(
+    /(r)ode de novo sem --aplicar/gi,
+    (_t, r) =>
+      `${r}ode node scripts/frota/nova-loja.mjs conferir --loja ${slug} --aplicar (só leitura: não grava nada)`,
+  );
+}
+
+/** Registra o veredito de um passo que PODE ter escrito. Estado que não
+ * grava (ou qualquer erro aqui) não desfaz o que o banco fez: SIM sem o
+ * estado vira INCERTO, e o resto fica como está. */
+async function fecharPasso(d, slug, passo, r, repetir) {
+  try {
+    await registrar(d, slug, passo, { veredito: r.veredito });
+  } catch (erro) {
+    return resultado(
+      r.veredito === SIM ? INCERTO : r.veredito,
+      `${r.mensagem} ${porque(erro)} ${repetir}`,
+    );
+  }
+  return r;
+}
+
+// ─── segredos ───────────────────────────────────────────────────────────────
+
+const RE_LINHA_DE_DESTAQUE_DO_B1 =
+  /^(FALHOU|RECUSADO|ESTADO DESCONHECIDO|ATENÇÃO|conferência:)/;
+
+/** O B1 (segredos-da-loja.mjs) com o cliente OAuth desta rodada: o token
+ * nunca vem do ambiente. Ele relê antes de gravar, nunca substitui e confere
+ * por releitura; o veredito dele é repassado (INCERTO nunca vira SIM). */
+async function passoSegredos(pedido, d) {
+  const { slug } = pedido;
+  const e = await d.estado.ler(slug);
+  if (e?.passos?.banco?.veredito !== SIM) {
+    return resultado(
+      NAO,
+      "rode banco --aplicar até dar SIM antes dos segredos (o Vault e a store_config moram no banco da loja). Nada foi lido.",
+    );
+  }
+  const pre = await projetoPronto(d, slug, "segredos");
+  if (pre.falta) return resultado(NAO, pre.falta);
+  const { gestao } = contexto(pedido, d);
+  const repetir =
+    "Rode segredos de novo: o segredos-da-loja relê antes e nunca substitui o que já existe.";
+  let r;
+  try {
+    r = await instalarSegredos({
+      cliente: gestao,
+      ref: pre.ref,
+      aplicar: true,
+    });
+  } catch (erro) {
+    return await fecharPasso(
+      d,
+      slug,
+      "segredos",
+      resultado(
+        INCERTO,
+        `o segredos-da-loja parou no meio (${porque(erro)}): uma escrita pode ter acontecido.`,
+      ),
+      repetir,
+    );
+  }
+  const linhas = Array.isArray(r?.linhas) ? r.linhas.map(String) : [];
+  for (const l of linhas) d.saida.out(l);
+  const veredito = VEREDITOS.has(r?.veredito) ? r.veredito : INCERTO;
+  const destaque = linhas.filter(
+    (l) => RE_LINHA_DE_DESTAQUE_DO_B1.test(l) || l.includes("BLOQUEADO"),
+  );
+  const mensagem =
+    destaque.length > 0
+      ? destaque.join(" ")
+      : "o segredos-da-loja não explicou o veredito.";
+  return await fecharPasso(
+    d,
+    slug,
+    "segredos",
+    resultado(veredito, semMandarTirarOAplicar(mensagem, slug)),
+    repetir,
+  );
+}
+
+// ─── functions ──────────────────────────────────────────────────────────────
+
+/** Veredito do functions-da-loja (B2) → o nosso, com o código de saída que
+ * ele tem de ter junto (qualquer desencontro = INCERTO). */
+const VEREDITO_DO_B2 = new Map([
+  ["SIM", [SIM, 0]],
+  ["NAO", [NAO, 1]],
+  ["INCERTO", [INCERTO, 3]],
+]);
+
+/** O resultado do B2 → { veredito, corpo, antes, erros }. */
+function lidoDoB2(r) {
+  const par = VEREDITO_DO_B2.get(r?.veredito);
+  const saida = Array.isArray(r?.saida) ? r.saida.map(String) : [];
+  const erros = Array.isArray(r?.erros) ? r.erros.map(String) : [];
+  const m = RE_LINHA_DO_VEREDITO.exec(saida.at(-1) ?? "");
+  const veredito = par && m && par[1] === r.codigo ? par[0] : INCERTO;
+  return {
+    veredito,
+    corpo: m
+      ? m[1]
+      : "o functions-da-loja respondeu fora do formato: não dá para afirmar o que aconteceu.",
+    antes: m ? saida.slice(0, -1) : saida,
+    erros,
+  };
+}
+
+/** O B2 com o cliente OAuth desta rodada: só o commit aprovado (HEAD == topo
+ * do ramo da release) publica, uma por vez, conferindo cada uma. A recusa
+ * dele (HEAD fora do topo, loja fora do cadastro, fontes divergentes) é
+ * repassada como veio. */
+async function passoFunctions(pedido, d) {
+  const { slug } = pedido;
+  const pre = await projetoPronto(d, slug, "functions");
+  if (pre.falta) return resultado(NAO, pre.falta);
+  const { gestao } = contexto(pedido, d);
+  const repetir =
+    "Rode functions de novo: as que já estão no ar com o verify_jwt certo são puladas.";
+  let r;
+  try {
+    r = await executarFunctions(
+      ["--projeto", pre.ref, "--canal", slug, "--aplicar"],
+      { git: d.git, cliente: gestao, esperar: d.dormir },
+    );
+  } catch (erro) {
+    return await fecharPasso(
+      d,
+      slug,
+      "functions",
+      resultado(
+        INCERTO,
+        `o functions-da-loja parou no meio (${porque(erro)}): uma publicação pode ter acontecido. Rode conferir --aplicar (só leitura) antes de repetir.`,
+      ),
+      repetir,
+    );
+  }
+  const l = lidoDoB2(r);
+  for (const x of [...l.antes, ...l.erros]) d.saida.out(x);
+  const mensagem =
+    l.erros.length > 0 ? `${l.corpo} (${l.erros.join("; ")})` : l.corpo;
+  return await fecharPasso(
+    d,
+    slug,
+    "functions",
+    resultado(l.veredito, semMandarTirarOAplicar(mensagem, slug)),
+    repetir,
+  );
+}
+
+// ─── login ──────────────────────────────────────────────────────────────────
+
+const RE_LINHA_DE_DESTAQUE_DO_B4 =
+  /^(FALTA|FALHOU|NÃO MEDIDO|estado|não consegui|a escrita respondeu|o que fazer)/;
+
+/** O que o B4 (login-da-loja-nova.mjs) disse que importa: as faltas, as
+ * falhas e o que fazer; sem elas, a última linha (o veredito dele). */
+function resumoDoB4(linhas) {
+  const destaque = linhas.filter((l) => RE_LINHA_DE_DESTAQUE_DO_B4.test(l));
+  return (destaque.length > 0 ? destaque : linhas.slice(-1)).join(" ");
+}
+
+/** O B4 com o cliente OAuth desta rodada, no domínio <slug>.vercel.app:
+ * endereços do login e o gancho de e-mail preparado DESLIGADO. */
+async function passoLogin(pedido, d) {
+  const { slug } = pedido;
+  const pre = await projetoPronto(d, slug, "login");
+  if (pre.falta) return resultado(NAO, pre.falta);
+  const { gestao } = contexto(pedido, d);
+  const repetir =
+    "Rode conferir --aplicar (só leitura) e veja o item login antes de repetir.";
+  let r;
+  try {
+    r = await configurarLoginNovo({
+      cliente: gestao,
+      ref: pre.ref,
+      dominio: dominioDaLoja(slug),
+      aplicar: true,
+    });
+  } catch (erro) {
+    return await fecharPasso(
+      d,
+      slug,
+      "login",
+      resultado(
+        INCERTO,
+        `o login-da-loja-nova parou no meio (${porque(erro)}): uma escrita pode ter acontecido.`,
+      ),
+      repetir,
+    );
+  }
+  const linhas = (Array.isArray(r?.linhas) ? r.linhas : []).map((l) =>
+    semMandarTirarOAplicar(l, slug),
+  );
+  for (const l of linhas) d.saida.out(l);
+  const veredito = VEREDITOS.has(r?.veredito) ? r.veredito : INCERTO;
+  return await fecharPasso(
+    d,
+    slug,
+    "login",
+    resultado(veredito, resumoDoB4(linhas)),
+    repetir,
+  );
+}
+
 // ─── primeira-admin ─────────────────────────────────────────────────────────
 
 /** O código de saída do primeira-admin.mjs (B3) → veredito. */
@@ -1157,8 +1435,14 @@ async function passoPrimeiraAdmin(pedido, d) {
   const corpo = m
     ? m[1]
     : "o primeira-admin respondeu fora do formato: não dá para afirmar o que aconteceu. Rode de novo (é seguro: a mesma pessoa já admin dá SIM sem gravar).";
-  for (const l of saida.slice(0, -1)) d.saida.out(l);
-  const mensagem = erros.length > 0 ? `${corpo} (${erros.join("; ")})` : corpo;
+  for (const l of saida.slice(0, -1))
+    d.saida.out(semMandarTirarOAplicar(l, slug));
+  // o B3 avulso manda "rodar SEM --aplicar" para ler o estado; aqui quem lê
+  // sem gravar é o conferir
+  const mensagem = semMandarTirarOAplicar(
+    erros.length > 0 ? `${corpo} (${erros.join("; ")})` : corpo,
+    slug,
+  );
   try {
     await registrar(d, slug, "primeira-admin", { veredito });
   } catch (erro) {
@@ -1180,23 +1464,465 @@ async function passoPrimeiraAdmin(pedido, d) {
 export const SQL_ADMINS =
   "SELECT (SELECT count(*) FROM (SELECT p.id FROM public.profiles p WHERE p.role = 'admin' UNION SELECT u.id FROM auth.users u WHERE u.raw_app_meta_data ->> 'role' = 'admin') a)::int AS admins, (SELECT count(*) FROM auth.users u JOIN public.profiles p ON p.id = u.id WHERE p.role = 'admin' AND u.raw_app_meta_data ->> 'role' = 'admin')::int AS nas_duas;";
 
+// ─── definir-dono: o SQL ────────────────────────────────────────────────────
+
+/** Só leitura: a tabela do dono existe (migration 20261383000000)? */
+export const SQL_DONO_EXISTE =
+  "SELECT to_regclass('public.dono_da_loja') IS NOT NULL AS tabela;";
+
+/** Só leitura, uma linha, nenhum id nem e-mail. `admins` = admin em QUALQUER
+ * das duas fontes do cargo (a união do primeira-admin.mjs); `nas_duas` =
+ * admin nas DUAS (o que is_admin_atual() e definir_cargo() exigem);
+ * `dono_admin` = o critério da consulta 88c: o dono existe em auth.users e é
+ * admin em profiles.role e em auth.users (role). */
+export const SQL_DONO = `WITH admins AS MATERIALIZED (
+  SELECT p.id FROM public.profiles p WHERE p.role = 'admin'
+  UNION
+  SELECT u.id FROM auth.users u WHERE u.raw_app_meta_data ->> 'role' = 'admin'
+), nas_duas AS MATERIALIZED (
+  SELECT u.id, u.email_confirmed_at IS NOT NULL AS confirmada
+    FROM auth.users u JOIN public.profiles p ON p.id = u.id
+   WHERE p.role = 'admin' AND u.raw_app_meta_data ->> 'role' = 'admin'
+)
+SELECT (SELECT count(*) FROM admins)::int AS admins,
+       (SELECT count(*) FROM nas_duas)::int AS nas_duas,
+       COALESCE((SELECT bool_and(n.confirmada) FROM nas_duas n), false) AS confirmada,
+       (SELECT count(*) FROM public.dono_da_loja)::int AS donos,
+       EXISTS (SELECT 1 FROM public.dono_da_loja d JOIN nas_duas n ON n.id = d.user_id) AS dono_admin;`;
+
+/**
+ * A escrita: UMA requisição, sem `parameters` e SEM dado de entrada (a dona
+ * é o id que o próprio banco acha; nada de e-mail). O DO repete TODAS as
+ * guardas da leitura (a leitura explica; a guarda que vale é a de dentro):
+ *  - READ COMMITTED + pg_advisory_xact_lock (a MESMA chave do primeira-admin,
+ *    para nenhuma promoção correr junto, e a do definir-dono) + LOCK TABLE
+ *    dono_da_loja (nem um INSERT/DELETE à mão corre junto); lock_timeout faz a
+ *    espera virar erro com SQLSTATE (55P03, nada gravado) antes do prazo do
+ *    pg-meta, que viraria INCERTO;
+ *  - SET LOCAL ROLE postgres: dono_da_loja não tem gatilho e nenhuma trava
+ *    dela lê o GUC role (conferido em 20261383000000 e 20261440000000), mas a
+ *    tabela só é escrita pelo dono dela (postgres, "Ninguem de aplicacao
+ *    escreve"): o papel fica preso nele, seja qual for o da sessão da API;
+ *  - a admin única é travada (FOR SHARE OF p) até o COMMIT, e a conferência
+ *    depois do INSERT é o critério da 88c (1 linha, em auth.users, admin nas
+ *    duas fontes). O resultado (sem id) volta por um GUC de sessão gravado
+ *    DENTRO da transação: só existe se ela comitou.
+ * Cada recusa tem SQLSTATE próprio (classe IK, IKD01..IKD07).
+ */
+export const SQL_DEFINIR_DONO = `BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE postgres;
+SET LOCAL lock_timeout = '10s';
+DO $definir_dono$
+DECLARE
+  v_donos integer;
+  v_admins integer;
+  v_id uuid;
+  v_confirmada boolean;
+  v_linhas integer := 0;
+BEGIN
+  PERFORM set_config('ikcous.definir_dono_resultado', '', false);
+  PERFORM pg_advisory_xact_lock(hashtext('ikcous.primeira_admin'));
+  PERFORM pg_advisory_xact_lock(hashtext('ikcous.definir_dono'));
+  LOCK TABLE public.dono_da_loja IN SHARE ROW EXCLUSIVE MODE;
+
+  SELECT count(*) INTO v_donos FROM public.dono_da_loja;
+  SELECT count(*) INTO v_admins
+    FROM (SELECT p.id FROM public.profiles p WHERE p.role = 'admin'
+          UNION
+          SELECT u.id FROM auth.users u WHERE u.raw_app_meta_data ->> 'role' = 'admin') a;
+  IF v_donos > 0 THEN
+    IF EXISTS (SELECT 1 FROM public.dono_da_loja d
+                 JOIN auth.users u ON u.id = d.user_id
+                 JOIN public.profiles p ON p.id = d.user_id
+                WHERE p.role = 'admin' AND u.raw_app_meta_data ->> 'role' = 'admin') THEN
+      PERFORM set_config('ikcous.definir_dono_resultado',
+        json_build_object('acao', 'ja_era_dona', 'donos', v_donos, 'linhas', 0, 'admins', v_admins)::text, false);
+      RETURN;
+    END IF;
+    IF v_admins = 0 THEN
+      RAISE EXCEPTION 'definir-dono: o dono nao e mais admin' USING ERRCODE = 'IKD02';
+    END IF;
+    RAISE EXCEPTION 'definir-dono: a loja ja tem outro dono' USING ERRCODE = 'IKD01';
+  END IF;
+  IF v_admins = 0 THEN
+    RAISE EXCEPTION 'definir-dono: a loja nao tem admin' USING ERRCODE = 'IKD03';
+  END IF;
+  IF v_admins > 1 THEN
+    RAISE EXCEPTION 'definir-dono: mais de uma admin' USING ERRCODE = 'IKD04';
+  END IF;
+  SELECT u.id, u.email_confirmed_at IS NOT NULL INTO v_id, v_confirmada
+    FROM auth.users u JOIN public.profiles p ON p.id = u.id
+   WHERE p.role = 'admin' AND u.raw_app_meta_data ->> 'role' = 'admin'
+     FOR SHARE OF p;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'definir-dono: as fontes do cargo discordam' USING ERRCODE = 'IKD05';
+  END IF;
+  IF NOT v_confirmada THEN
+    RAISE EXCEPTION 'definir-dono: e-mail nao confirmado' USING ERRCODE = 'IKD06';
+  END IF;
+
+  INSERT INTO public.dono_da_loja (user_id) VALUES (v_id);
+  GET DIAGNOSTICS v_linhas = ROW_COUNT;
+
+  IF v_linhas <> 1 OR (SELECT count(*) FROM public.dono_da_loja) <> 1 OR NOT EXISTS (
+    SELECT 1 FROM public.dono_da_loja d
+      JOIN auth.users u ON u.id = d.user_id
+      JOIN public.profiles p ON p.id = d.user_id
+     WHERE d.user_id = v_id AND p.role = 'admin' AND u.raw_app_meta_data ->> 'role' = 'admin'
+  ) THEN
+    RAISE EXCEPTION 'definir-dono: conferencia da 88c falhou' USING ERRCODE = 'IKD07';
+  END IF;
+  PERFORM set_config('ikcous.definir_dono_resultado',
+    json_build_object('acao', 'gravada', 'donos', 1, 'linhas', v_linhas, 'admins', v_admins)::text, false);
+END
+$definir_dono$;
+COMMIT;
+SELECT current_setting('ikcous.definir_dono_resultado', true) AS resultado;`;
+
+// ─── definir-dono: a regra (decisão do sócio, 26/11 tarde) ──────────────────
+
+const TROCAR_E_DA_DONA =
+  "trocar de dono é pedido da dona, pela autorização dela (o passo trocar-dono ainda não existe); este comando não troca nem apaga ninguém";
+
+/** Cada recusa de dentro da transação (SQLSTATE IKD..) e a mesma, lida antes. */
+const RECUSAS_DO_DONO = Object.freeze({
+  IKD01: `a loja já tem dono cadastrado e ele não é a administradora de hoje: ${TROCAR_E_DA_DONA}`,
+  IKD02: `o dono cadastrado não é mais administrador nas duas fontes do cargo (e a loja não tem administradora): ${TROCAR_E_DA_DONA}`,
+  IKD03:
+    "a loja não tem administradora: rode primeira-admin --aplicar antes (a dona é a primeira administradora)",
+  IKD04:
+    "a loja tem 2 ou mais administradoras: não escolho quem vira dona. Cadastrar o dono nesse caso é decisão do dono do produto",
+  IKD05:
+    "as duas fontes do cargo discordam (admin em uma e não na outra): decisão do dono do produto, não se mexe aqui",
+  IKD06:
+    "a administradora ainda não confirmou o e-mail: peça que abra o link de confirmação e entre na loja uma vez; depois rode de novo",
+  IKD07:
+    "a conferência pelo critério da 88c (1 dono, em auth.users, admin nas duas fontes) não fechou dentro da transação",
+});
+
+const COLUNAS_DO_DONO = "admins,confirmada,dono_admin,donos,nas_duas";
+
+/** A linha de SQL_DONO, ou null se veio fora do formato. */
+function linhaDoDono(linhas) {
+  const l = Array.isArray(linhas) && linhas.length === 1 ? linhas[0] : null;
+  if (
+    l === null ||
+    typeof l !== "object" ||
+    Array.isArray(l) ||
+    Object.keys(l).sort().join(",") !== COLUNAS_DO_DONO ||
+    !inteiro(l.admins) ||
+    !inteiro(l.nas_duas) ||
+    !inteiro(l.donos) ||
+    typeof l.confirmada !== "boolean" ||
+    typeof l.dono_admin !== "boolean"
+  ) {
+    return null;
+  }
+  return l;
+}
+
+/**
+ * Pura: a linha de SQL_DONO → { veredito, mensagem, gravar }. A MESMA ordem
+ * de guardas do DO de SQL_DEFINIR_DONO. Só `gravar: true` leva à escrita.
+ */
+export function decidirDono(linhas) {
+  const l = linhaDoDono(linhas);
+  const nao = (codigo) => ({
+    veredito: NAO,
+    mensagem: `${Reflect.get(RECUSAS_DO_DONO, codigo)}. Nada foi gravado.`,
+    gravar: false,
+  });
+  if (!l) {
+    return {
+      veredito: INCERTO,
+      mensagem:
+        "a leitura do dono e das administradoras voltou fora do formato; nada foi gravado.",
+      gravar: false,
+    };
+  }
+  if (l.donos > 1) {
+    return {
+      veredito: NAO,
+      mensagem: `dono_da_loja tem ${l.donos} linhas (fora do desenho: a tabela aceita uma). Nada foi gravado; avise o programador.`,
+      gravar: false,
+    };
+  }
+  if (l.donos === 1) {
+    if (l.dono_admin) {
+      return {
+        veredito: SIM,
+        mensagem:
+          l.admins === 1
+            ? "a administradora única já é a dona (critério da 88c: 1 dono, admin nas duas fontes); nada foi gravado."
+            : `o dono cadastrado é admin nas duas fontes (critério da 88c), e a loja tem ${l.admins} administradoras; nada foi gravado.`,
+        gravar: false,
+      };
+    }
+    return nao(l.admins === 0 ? "IKD02" : "IKD01");
+  }
+  if (l.admins === 0) return nao("IKD03");
+  if (l.admins > 1) {
+    return {
+      ...nao("IKD04"),
+      mensagem: `a loja tem ${l.admins} administradoras: não escolho quem vira dona. Cadastrar o dono nesse caso é decisão do dono do produto. Nada foi gravado.`,
+    };
+  }
+  if (l.nas_duas !== 1) return nao("IKD05");
+  if (!l.confirmada) return nao("IKD06");
+  return {
+    veredito: SIM,
+    mensagem:
+      "sem dono, e uma administradora só (nas duas fontes do cargo, e-mail confirmado)",
+    gravar: true,
+  };
+}
+
+/** Lê (só leitura) se a tabela existe e, se existe, a linha de SQL_DONO. */
+async function lerDono(cliente, ref) {
+  const t = await cliente.consultarBanco(ref, SQL_DONO_EXISTE, {
+    somenteLeitura: true,
+  });
+  const tabela =
+    Array.isArray(t) && t.length === 1 && typeof t[0]?.tabela === "boolean"
+      ? t[0].tabela
+      : null;
+  if (tabela === null) return { tabela: null };
+  if (!tabela) return { tabela: false };
+  const linhas = await cliente.consultarBanco(ref, SQL_DONO, {
+    somenteLeitura: true,
+  });
+  return { tabela: true, linhas };
+}
+
+const SEM_A_TABELA_DO_DONO =
+  "public.dono_da_loja não existe neste banco: a migration 20261383000000_so_o_dono_da_loja_define_cargo estava na fila do banco? Nada foi gravado.";
+
+/** A linha final da escrita → "gravada" | "ja_era_dona" | null (null =
+ * qualquer coisa fora do exato: INCERTO). */
+function resultadoDoDono(linhas) {
+  if (!Array.isArray(linhas) || linhas.length !== 1) return null;
+  const l = linhas[0];
+  if (l === null || typeof l !== "object" || Array.isArray(l)) return null;
+  if (Object.keys(l).join(",") !== "resultado") return null;
+  if (typeof l.resultado !== "string" || l.resultado === "") return null;
+  let r;
+  try {
+    r = JSON.parse(l.resultado);
+  } catch {
+    return null;
+  }
+  if (r === null || typeof r !== "object" || Array.isArray(r)) return null;
+  if (Object.keys(r).sort().join(",") !== "acao,admins,donos,linhas")
+    return null;
+  if (r.donos !== 1 || !inteiro(r.admins)) return null;
+  if (r.acao === "gravada" && r.linhas === 1 && r.admins === 1)
+    return "gravada";
+  if (r.acao === "ja_era_dona" && r.linhas === 0) return "ja_era_dona";
+  return null;
+}
+
+const REPETIR_O_DONO =
+  "Repetir definir-dono --aplicar é seguro: ele lê antes, e a dona já cadastrada dá SIM sem gravar.";
+
+/** O erro da escrita → resultado. Só um erro do PRÓPRIO Postgres (SQLSTATE
+ * no corpo) prova que o COMMIT não rodou; o resto é INCERTO. */
+function resultadoDoErroDoDono(e) {
+  const sqlstate =
+    e instanceof ErroDaGestao && e.codigo === "HTTP" ? e.sqlstate : undefined;
+  if (typeof sqlstate !== "string") {
+    return resultado(
+      INCERTO,
+      `a resposta não diz se a transação comitou (${porque(e)}). ${REPETIR_O_DONO}`,
+    );
+  }
+  if (Object.hasOwn(RECUSAS_DO_DONO, sqlstate)) {
+    return resultado(
+      NAO,
+      `${Reflect.get(RECUSAS_DO_DONO, sqlstate)} (o banco recusou por dentro da transação, SQLSTATE ${sqlstate}: nada foi gravado).`,
+    );
+  }
+  if (sqlstate === "55P03") {
+    return resultado(
+      NAO,
+      "outro comando segurava a trava do cargo da loja há mais de 10 s (SQLSTATE 55P03); nada foi gravado. Espere e rode de novo.",
+    );
+  }
+  if (sqlstate === "42501") {
+    return resultado(
+      NAO,
+      "o banco recusou a transação por permissão (SQLSTATE 42501): provavelmente o SET LOCAL ROLE postgres não valeu por esta API (prova P5 da T1). Nada foi gravado; não improvise outro caminho, volte a decisão ao programador.",
+    );
+  }
+  return resultado(
+    NAO,
+    `o banco recusou a transação (SQLSTATE ${sqlstate}); nada foi gravado.`,
+  );
+}
+
+/** Por que esta loja nunca recebe o definir-dono (null = pode). LANÇA
+ * ErroDoComando se lojas.json não deixa conferir. */
+function porQueEProtegida(d, slug, ref) {
+  const recusa = (qual) =>
+    `${qual}: o definir-dono nunca roda nas lojas que já vendem (IKCOUS e Savy); o dono delas é cadastrado pelo dono do produto (docs/runbooks/definir-o-dono-da-loja.md). Nada foi feito.`;
+  if (LOJAS_PROTEGIDAS.includes(slug)) return recusa(`a loja ${slug}`);
+  if (REFS_PROTEGIDOS.includes(ref))
+    return recusa(`o projeto ${ref} é de uma loja que já vende`);
+  let lojas;
+  try {
+    lojas = d.lojasBrutas()?.lojas;
+  } catch {
+    lojas = undefined;
+  }
+  const legivel =
+    lojas !== null &&
+    typeof lojas === "object" &&
+    LOJAS_PROTEGIDAS.every(
+      (n) => Object.hasOwn(lojas, n) && RE_REF.test(String(lojas[n]?.ref)),
+    );
+  if (!legivel) {
+    throw new ErroDoComando(
+      "não consegui ler scripts/frota/lojas.json (com a IKCOUS e a Savy) para conferir que esta loja não é uma delas; nada foi feito.",
+      { codigo: ESTADO_DESCONHECIDO },
+    );
+  }
+  // toda loja que já está no cadastro com OUTRO nome é loja que já existia
+  for (const [nome, l] of Object.entries(lojas)) {
+    if (nome === slug) continue;
+    if (ref === l?.ref || ref === l?.refDasFunctions) {
+      return recusa(`o projeto ${ref} é o da loja ${textoSeguro(nome, 40)}`);
+    }
+  }
+  return null;
+}
+
+/** As condições ANTES de qualquer rede: loja aberta pelo nova-loja (estado
+ * local com projeto e banco SIM) e que não é IKCOUS/Savy. Devolve
+ * { ref } ou { r: resultado }. */
+async function preDoDono(d, slug, prefixo = "") {
+  const e = await d.estado.ler(slug);
+  const cp = e?.passos?.["criar-projeto"];
+  if (cp?.veredito !== SIM || !cp.ref) {
+    return {
+      r: resultado(
+        NAO,
+        `${prefixo}definir-dono só roda em loja aberta pelo nova-loja: o estado local de ${slug} não tem projeto com criar-projeto SIM. Nada foi feito.`,
+      ),
+    };
+  }
+  if (e?.passos?.banco?.veredito !== SIM) {
+    return {
+      r: resultado(
+        NAO,
+        `${prefixo}rode banco --aplicar até dar SIM antes do definir-dono. Nada foi lido.`,
+      ),
+    };
+  }
+  let protegida;
+  try {
+    protegida = porQueEProtegida(d, slug, cp.ref);
+  } catch (erro) {
+    return { r: resultado(INCERTO, `${prefixo}${porque(erro)}`) };
+  }
+  if (protegida) return { r: resultado(NAO, `${prefixo}${protegida}`) };
+  return { ref: cp.ref };
+}
+
+async function passoDefinirDono(pedido, d) {
+  const { slug } = pedido;
+  const pre = await preDoDono(d, slug);
+  if (pre.r) return pre.r;
+  const { ref } = pre;
+  const { gestao } = contexto(pedido, d);
+  const fechar = (r) => fecharPasso(d, slug, "definir-dono", r, REPETIR_O_DONO);
+
+  let lido;
+  try {
+    lido = await lerDono(gestao, ref);
+  } catch (erro) {
+    return await fechar(
+      resultado(
+        INCERTO,
+        `não consegui ler o dono e as administradoras: ${porque(erro)} Nada foi gravado.`,
+      ),
+    );
+  }
+  if (lido.tabela === false)
+    return await fechar(resultado(NAO, SEM_A_TABELA_DO_DONO));
+  const decisao =
+    lido.tabela === null ? decidirDono(null) : decidirDono(lido.linhas);
+  if (!decisao.gravar)
+    return await fechar(resultado(decisao.veredito, decisao.mensagem));
+
+  d.saida.out(
+    `definir-dono: ${decisao.mensagem}. Plano: UMA transação (BEGIN; SET LOCAL ROLE postgres; travas; as guardas de novo; INSERT em dono_da_loja com o id lido no banco; conferência pela 88c; COMMIT).`,
+  );
+  let linhas;
+  try {
+    linhas = await gestao.consultarBanco(ref, SQL_DEFINIR_DONO);
+  } catch (erro) {
+    return await fechar(resultadoDoErroDoDono(erro));
+  }
+  const acao = resultadoDoDono(linhas);
+  if (acao === null) {
+    return await fechar(
+      resultado(
+        INCERTO,
+        `a escrita respondeu num formato inesperado: não dá para afirmar que gravou. ${REPETIR_O_DONO}`,
+      ),
+    );
+  }
+  // a releitura, fora da transação, pelo mesmo critério da 88c
+  let depois;
+  try {
+    depois = await lerDono(gestao, ref);
+  } catch (erro) {
+    return await fechar(
+      resultado(
+        INCERTO,
+        `a transação respondeu que ${acao === "gravada" ? "gravou" : "a dona já estava cadastrada"}, mas a releitura caiu (${porque(erro)}): sem ela não digo SIM. ${REPETIR_O_DONO}`,
+      ),
+    );
+  }
+  const l = depois.tabela === true ? linhaDoDono(depois.linhas) : null;
+  if (!l) {
+    return await fechar(
+      resultado(
+        INCERTO,
+        `a releitura do dono voltou fora do formato: sem ela não digo SIM. ${REPETIR_O_DONO}`,
+      ),
+    );
+  }
+  if (!(l.donos === 1 && l.dono_admin)) {
+    return await fechar(
+      resultado(
+        NAO,
+        "a transação respondeu, mas a releitura não acha 1 dono admin nas duas fontes (critério da 88c): algo mudou junto. Confira antes de repetir.",
+      ),
+    );
+  }
+  return await fechar(
+    resultado(
+      SIM,
+      acao === "gravada"
+        ? "a administradora única agora é a dona da loja (conferido pelo critério da 88c: 1 dono, em auth.users, admin nas duas fontes). Quem estava com o painel aberto recarrega a página (F5)."
+        : "a administradora única já era a dona; nada foi gravado.",
+    ),
+  );
+}
+
 /** O que a loja pronta precisa e este comando ainda não faz: aparece como
- * pendente (NÃO) até o passo ser ligado (C2; definir-dono com o sócio). */
-const PENDENTES = Object.freeze([
-  "functions",
-  "login",
-  "marca",
-  "chave-do-plano",
-  "cadastro",
-  "definir-dono",
-]);
-/** Os itens que só se conferem dentro do projeto (SQL e secrets). */
+ * pendente (NÃO) até o passo ser ligado (os motivos estão em AGUARDANDO). */
+const PENDENTES = Object.freeze(Object.keys(AGUARDANDO));
+/** Os itens que só se conferem dentro do projeto (GET e SQL read_only). */
 const ITENS_DO_PROJETO = Object.freeze([
   "banco",
   "ficha",
   "segredos",
   "reconciliação",
+  "functions",
+  "login",
   "admin",
+  "definir-dono",
 ]);
 const IDADE_MAXIMA_DA_RODADA_S = 900;
 
@@ -1348,7 +2074,7 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
         falta.length === 0 ? SIM : NAO,
         falta.length === 0
           ? "todos os nomes existem (functions, Vault e store_config.vapid_public_key); nenhum valor foi lido."
-          : `falta: ${falta.join(", ")} (quem grava é o segredos-da-loja.mjs; o passo segredos entra no C2).`,
+          : `falta: ${falta.join(", ")} (rode segredos --aplicar: ele grava só o que falta, sem substituir).`,
       );
     }
   } catch (erro) {
@@ -1371,17 +2097,31 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
       const r = await leitura.consultarBanco(ref, SQL_SAUDE);
       const saude = Array.isArray(r) && r.length === 1 ? r[0]?.saude : null;
       const idade = saude?.idade_rodada_s;
+      const seguidas = saude?.rodadas_degradadas_seguidas;
       if (saude && idade === null) {
         item(
           "reconciliação",
           NAO,
           "ainda não rodou: o cron roda de 10 em 10 min e precisa dos segredos e da function reconciliar-pagamentos. Rode conferir de novo daqui a 10 min.",
         );
-      } else if (typeof idade !== "number" || !Number.isFinite(idade)) {
+      } else if (
+        typeof idade !== "number" ||
+        !Number.isFinite(idade) ||
+        typeof saude?.degradado !== "boolean"
+      ) {
         item(
           "reconciliação",
           INCERTO,
           "saude_da_loja() respondeu fora do formato.",
+        );
+      } else if (saude.degradado) {
+        // rodar não basta: a rodada que falha numa etapa (pagamentos,
+        // cancelamentos, estornos, contestações) deixa PIX pago sem virar
+        // pedido pago (achado ANTES DE CRESCER da revisão Opus do C3)
+        item(
+          "reconciliação",
+          NAO,
+          `rodou há ${Math.round(idade)} s, mas DEGRADADA: alguma etapa falhou (rodadas_degradadas_seguidas: ${inteiro(seguidas) ? seguidas : "ilegível"}). Confira o log da function reconciliar-pagamentos e o passo 4 do runbook.`,
         );
       } else if (idade < IDADE_MAXIMA_DA_RODADA_S) {
         item("reconciliação", SIM, `rodou há ${Math.round(idade)} s.`);
@@ -1399,6 +2139,50 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
         `não consegui ler saude_da_loja(): ${porque(erro)}`,
       );
     }
+  }
+
+  // functions: o B2 em ENSAIO (só GET; a fachada somenteLeitura nem tem
+  // implantarFuncao), com as mesmas fontes e o mesmo commit da publicação
+  try {
+    const l = lidoDoB2(
+      await executarFunctions(["--projeto", ref, "--canal", pedido.slug], {
+        git: d.git,
+        cliente: leitura,
+        esperar: d.dormir,
+      }),
+    );
+    item(
+      "functions",
+      l.veredito,
+      [l.corpo, ...l.erros].join("; ").slice(0, 600),
+    );
+  } catch (erro) {
+    item(
+      "functions",
+      INCERTO,
+      `não consegui conferir as functions: ${porque(erro)}`,
+    );
+  }
+
+  // login: o B4 sem aplicar (só GET), no domínio da loja
+  try {
+    const r = await configurarLoginNovo({
+      cliente: leitura,
+      ref,
+      dominio: dominioDaLoja(pedido.slug),
+      aplicar: false,
+    });
+    const linhas = (Array.isArray(r?.linhas) ? r.linhas : []).map(String);
+    const v = VEREDITOS.has(r?.veredito) ? r.veredito : INCERTO;
+    item(
+      "login",
+      v,
+      v === SIM
+        ? `endereços de https://${dominioDaLoja(pedido.slug)} e gancho de e-mail (desligado até o Gmail) conferidos.`
+        : resumoDoB4(linhas).slice(0, 600),
+    );
+  } catch (erro) {
+    item("login", INCERTO, `não consegui conferir o login: ${porque(erro)}`);
   }
 
   // admin: exatamente 1, com admin nas duas fontes do cargo
@@ -1437,6 +2221,37 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
       `não consegui contar as administradoras: ${porque(erro)}`,
     );
   }
+
+  // definir-dono: o critério da 88c (1 dono, em auth.users, admin nas duas)
+  try {
+    const lido = await lerDono(leitura, ref);
+    if (lido.tabela === false) {
+      item("definir-dono", NAO, SEM_A_TABELA_DO_DONO);
+    } else {
+      const l = lido.tabela === true ? linhaDoDono(lido.linhas) : null;
+      if (!l)
+        item(
+          "definir-dono",
+          INCERTO,
+          "a leitura do dono voltou fora do formato.",
+        );
+      else if (l.donos === 1 && l.dono_admin)
+        item(
+          "definir-dono",
+          SIM,
+          "1 dono cadastrado, admin nas duas fontes do cargo (critério da 88c).",
+        );
+      else if (l.donos === 0 && decidirDono(lido.linhas).gravar)
+        item(
+          "definir-dono",
+          NAO,
+          "sem dono cadastrado: rode definir-dono --aplicar (a administradora única vira a dona).",
+        );
+      else item("definir-dono", NAO, decidirDono(lido.linhas).mensagem);
+    }
+  } catch (erro) {
+    item("definir-dono", INCERTO, `não consegui ler o dono: ${porque(erro)}`);
+  }
 }
 
 async function passoConferir(pedido, d) {
@@ -1460,7 +2275,7 @@ async function passoConferir(pedido, d) {
     item(
       p,
       NAO,
-      `pendente: passo ${p} ainda não ligado${p === "definir-dono" ? " (aguardando decisão)" : " (entra no C2)"}.`,
+      `pendente: passo ${p} ainda não ligado (${Reflect.get(AGUARDANDO, p)})`,
     );
   }
   const veredito = vereditoGeral(itens);
@@ -1559,6 +2374,38 @@ async function ensaio(pedido, d) {
       `${ENSAIO} pediria o e-mail pela entrada, leria a conta e as administradoras (só leitura) e, se a conta for única, confirmada e a loja não tiver administradora, mandaria UMA transação: BEGIN; SET LOCAL ROLE postgres; as guardas de novo; UPDATE do cargo; conferência 1,1,1; COMMIT.`,
     );
   }
+  if (passo === "segredos") {
+    if (passos.banco?.veredito !== SIM)
+      return resultado(NAO, `${ENSAIO} rode banco até dar SIM antes.`);
+    return resultado(
+      INCERTO,
+      `${ENSAIO} leria os NOMES dos secrets e do Vault (nenhum valor) e gravaria só o que falta, sem substituir nada: MP_CHAVES_ENCRYPTION_KEY, RECONCILIACAO_SECRET com o mesmo valor no Vault (e reconciliacao_url), e o par VAPID com a pública em store_config; depois conferiria por releitura.`,
+    );
+  }
+  if (passo === "functions") {
+    if (passos["criar-projeto"]?.veredito !== SIM)
+      return resultado(NAO, `${ENSAIO} rode criar-projeto até dar SIM antes.`);
+    return resultado(
+      INCERTO,
+      `${ENSAIO} só com o HEAD no topo do ramo da release, publicaria uma por vez as functions do canal da loja (com o verify_jwt do supabase/config.toml), conferindo cada uma no GET /functions; as que já estão certas no ar seriam puladas.`,
+    );
+  }
+  if (passo === "login") {
+    if (passos["criar-projeto"]?.veredito !== SIM)
+      return resultado(NAO, `${ENSAIO} rode criar-projeto até dar SIM antes.`);
+    return resultado(
+      INCERTO,
+      `${ENSAIO} acertaria site_url e a lista de endereços de volta para https://${dominioDaLoja(slug)} e prepararia o gancho de e-mail DESLIGADO (o segredo gerado na hora nas duas pontas), sem substituir meia configuração.`,
+    );
+  }
+  if (passo === "definir-dono") {
+    const pre = await preDoDono(d, slug, `${ENSAIO} `);
+    if (pre.r) return pre.r;
+    return resultado(
+      INCERTO,
+      `${ENSAIO} leria (só leitura) o dono e as administradoras do projeto ${pre.ref}; sem dono e com UMA administradora (nas duas fontes do cargo, e-mail confirmado), mandaria UMA transação: BEGIN; SET LOCAL ROLE postgres; travas; as guardas de novo; INSERT em dono_da_loja com o id lido no banco (nenhum e-mail); conferência pela 88c; COMMIT. Dono igual = SIM sem gravar; qualquer outro caso = NÃO.`,
+    );
+  }
   // conferir
   return resultado(
     INCERTO,
@@ -1574,7 +2421,11 @@ const EXECUTORES = Object.freeze({
   "criar-projeto": passoCriarProjeto,
   banco: passoBanco,
   ficha: passoFicha,
+  segredos: passoSegredos,
+  functions: passoFunctions,
+  login: passoLogin,
   "primeira-admin": passoPrimeiraAdmin,
+  "definir-dono": passoDefinirDono,
   conferir: passoConferir,
 });
 
@@ -1594,6 +2445,7 @@ function completar(deps) {
     pasta: path.join(path.dirname(pastaPadraoDoCofre()), "banco"),
   });
   d.estado ??= criarEstadoEmArquivo();
+  d.git ??= gitReal();
   return d;
 }
 
@@ -1617,10 +2469,15 @@ export async function executarPasso(pedido, deps = {}) {
       r = resultado(NAO, "loja inválida (minúsculas, dígitos e hífen).");
     } else if (pedido.org !== undefined && !RE_ORG.test(String(pedido.org))) {
       r = resultado(NAO, "--org fora do formato.");
-    } else if (RESERVADOS.has(passo)) {
+    } else if (Object.hasOwn(AGUARDANDO, passo)) {
+      r = resultado(NAO, Reflect.get(AGUARDANDO, passo));
+    } else if (
+      passo === "definir-dono" &&
+      LOJAS_PROTEGIDAS.includes(pedido.slug)
+    ) {
       r = resultado(
         NAO,
-        `o passo ${passo} está reservado, aguardando decisão da regra (quem vira dona da loja, e quando). Nada foi feito.`,
+        `a loja ${pedido.slug}: o definir-dono nunca roda nas lojas que já vendem (IKCOUS e Savy); o dono delas é cadastrado pelo dono do produto (docs/runbooks/definir-o-dono-da-loja.md). Nada foi feito.`,
       );
     } else if (passo === "abrir" && slugQueNaoCabe(pedido.slug)) {
       r = resultado(NAO, slugQueNaoCabe(pedido.slug));

@@ -28,8 +28,9 @@
  * Nenhuma chamada de rede real: todo fetch aqui é falso; os cofres são os de
  * memória; o estado vai para uma pasta temporária.
  */
+import { createHmac } from "node:crypto";
 import { open } from "node:fs/promises";
-import { join } from "https://deno.land/std@0.177.0/path/mod.ts";
+import { fromFileUrl, join } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
   assert,
   assertEquals,
@@ -51,6 +52,9 @@ import {
   PASSOS,
   PRAZO_ATIVO_MS,
   SQL_ADMINS,
+  SQL_DEFINIR_DONO,
+  SQL_DONO,
+  SQL_DONO_EXISTE,
   SQL_FICHA,
   criarEstadoEmArquivo,
   executarPasso,
@@ -99,10 +103,19 @@ const MIGRATIONS = [
   { arquivo: "20260101000000_um.sql", corpo: "SELECT 1;" },
   { arquivo: "20260102000000_dois.sql", corpo: "SELECT 2;" },
 ];
+const REF_SAVY = "gnjsrucsmjkajijrakzr";
+const REF_IKCOUS = "cafkrminfnokvgjqtkle";
 const LOJAS_BRUTAS = {
   lojas: {
+    "ikcous-publicada": {
+      ref: REF_IKCOUS,
+      classe: "assinante",
+      apelido: "IKCOUS",
+      segredoDoToken: "SUPABASE_ACCESS_TOKEN_IKCOUS",
+      functionsNomeadas: true,
+    },
     savy: {
-      ref: "gnjsrucsmjkajijrakzr",
+      ref: REF_SAVY,
       classe: "assinante",
       apelido: "Savy",
       segredoDoToken: "SUPABASE_ACCESS_TOKEN_SAVY",
@@ -110,6 +123,69 @@ const LOJAS_BRUTAS = {
     },
   },
 };
+
+// ─── o repositório, para o functions-da-loja (B2) ───────────────────────────
+// A loja nova entra no lojas.json e nos canais como o cadastro (B5) a
+// deixaria (fora de functionsSoPeloWorkflow); o resto vem do disco.
+const RAIZ = fromFileUrl(new URL("..", import.meta.url));
+const CAMINHO_CANAIS = "scripts/frota/canais-de-backend.json";
+const CAMINHO_LOJAS = "scripts/frota/lojas.json";
+function lerDoDisco(caminho) {
+  try {
+    return Deno.readTextFileSync(`${RAIZ}/${caminho}`);
+  } catch {
+    return null;
+  }
+}
+const CANAIS_COM_A_NOVA = (() => {
+  const c = JSON.parse(lerDoDisco(CAMINHO_CANAIS));
+  const daSavy = Reflect.get(c.canais, REF_SAVY).functionsPublicaveis;
+  c.canais = {
+    ...c.canais,
+    [REF]: {
+      nome: "Loja nova",
+      migrations: SLUG,
+      functions: SLUG,
+      projetosNoMesmoBanco: [],
+      functionsPublicaveis: [...daSavy],
+    },
+  };
+  return c;
+})();
+const LOJAS_COM_A_NOVA = (() => {
+  const l = JSON.parse(lerDoDisco(CAMINHO_LOJAS));
+  l.lojas = {
+    ...l.lojas,
+    [SLUG]: {
+      ref: REF,
+      classe: "assinante",
+      apelido: "Nova",
+      segredoDoToken: "SUPABASE_ACCESS_TOKEN_LOJA_NOVA",
+      functionsNomeadas: true,
+    },
+  };
+  return l;
+})();
+const PUBLICAVEIS = [
+  ...Reflect.get(CANAIS_COM_A_NOVA.canais, REF).functionsPublicaveis,
+];
+const TOPO = "0123456789abcdef0123456789abcdef01234567";
+const OUTRO_SHA = "fedcba9876543210fedcba9876543210fedcba98";
+
+/** git falso: HEAD e topo do ramo da release; o commit é o disco + trocas. */
+function gitFalso({ head = TOPO, topo = TOPO } = {}) {
+  const g = { leituras: 0 };
+  g.head = async () => head;
+  g.topoDoRamo = async () => topo;
+  g.ler = (sha, caminho) => {
+    g.leituras += 1;
+    if (sha !== topo && sha !== head) return null;
+    if (caminho === CAMINHO_CANAIS) return JSON.stringify(CANAIS_COM_A_NOVA);
+    if (caminho === CAMINHO_LOJAS) return JSON.stringify(LOJAS_COM_A_NOVA);
+    return lerDoDisco(caminho);
+  };
+  return g;
+}
 
 function resposta(status, corpo) {
   return new Response(
@@ -132,6 +208,16 @@ function bancoFalso({
   vault = ["reconciliacao_secret", "reconciliacao_url"],
   temVapid = true,
   idadeRodada = 120,
+  degradado = false,
+  rodadasDegradadas = 0,
+  // o dono: null (nenhum), "alvo" (a lojista), "outra" (uma das outras
+  // admins) ou "ex" (alguém que não é mais admin)
+  dono = null,
+  donoTabela = true,
+  confirmada = true,
+  // a admin é admin só em UMA das duas fontes do cargo
+  fontesDiscordam = false,
+  promocaoCai = false,
 } = {}) {
   const b = {
     alvo,
@@ -139,6 +225,13 @@ function bancoFalso({
     vault: [...vault],
     temVapid,
     idadeRodada,
+    degradado,
+    rodadasDegradadas,
+    dono,
+    donoTabela,
+    confirmada,
+    fontesDiscordam,
+    promocaoCai,
     falharEstadoNa: null,
     leiturasDoEstado: 0,
     tabelas: 0,
@@ -209,6 +302,8 @@ function bancoFalso({
         ];
       }
       if (sql === sqlDaPromocao(EMAIL)) {
+        if (b.promocaoCai)
+          throw Object.assign(new Error("gateway"), { http: 503 });
         if (b.outrasAdmins > 0)
           throw Object.assign(new Error("ja tem"), { sqlstate: "IKA05" });
         const acao = b.alvo === "admin" ? "ja_era_admin" : "promovida";
@@ -230,7 +325,76 @@ function bancoFalso({
       if (sql === SQL_NOMES_NO_VAULT)
         return [...b.vault].sort().map((name) => ({ name }));
       if (sql === SQL_SAUDE)
-        return [{ saude: { idade_rodada_s: b.idadeRodada } }];
+        return [
+          {
+            saude: {
+              idade_rodada_s: b.idadeRodada,
+              degradado: b.idadeRodada === null ? null : b.degradado,
+              rodadas_degradadas_seguidas:
+                b.idadeRodada === null ? null : b.rodadasDegradadas,
+            },
+          },
+        ];
+      // a transação do segredos-da-loja (B1): o Vault e a vapid_public_key
+      if (sql.startsWith("BEGIN;\nDO $b1$")) {
+        for (const n of ["reconciliacao_secret", "reconciliacao_url"]) {
+          if (sql.includes(`'${n}'`) && !b.vault.includes(n)) b.vault.push(n);
+        }
+        if (sql.includes("SET vapid_public_key")) b.temVapid = true;
+        return [{ gravado: true }];
+      }
+      // o dono (definir-dono): o mesmo critério do SQL de verdade
+      const linhaDoDono = () => {
+        const n = admins();
+        const nasDuas = b.fontesDiscordam ? Math.max(n - 1, 0) : n;
+        const donoAdmin =
+          (b.dono === "alvo" && b.alvo === "admin" && !b.fontesDiscordam) ||
+          (b.dono === "outra" && b.outrasAdmins > 0);
+        return {
+          admins: n,
+          nas_duas: nasDuas,
+          confirmada: nasDuas > 0 && b.confirmada,
+          donos: b.dono === null ? 0 : 1,
+          dono_admin: donoAdmin,
+        };
+      };
+      if (sql === SQL_DONO_EXISTE) return [{ tabela: b.donoTabela }];
+      if (sql === SQL_DONO) {
+        b.leiturasDoDono = (b.leiturasDoDono ?? 0) + 1;
+        if (b.leituraDoDonoCaiNa === b.leiturasDoDono)
+          throw Object.assign(new Error("caiu"), { http: 503 });
+        return [linhaDoDono()];
+      }
+      if (sql === SQL_DEFINIR_DONO) {
+        b.escritasDoDono = (b.escritasDoDono ?? 0) + 1;
+        if (b.escritaDoDonoCai)
+          throw Object.assign(new Error("gateway"), { http: 504 });
+        const l = linhaDoDono();
+        const resultado = (acao, linhas) => [
+          {
+            resultado: JSON.stringify({
+              acao,
+              donos: 1,
+              linhas,
+              admins: l.admins,
+            }),
+          },
+        ];
+        if (l.donos === 1) {
+          if (l.dono_admin) return resultado("ja_era_dona", 0);
+          throw Object.assign(new Error("dono"), {
+            sqlstate: l.admins === 0 ? "IKD02" : "IKD01",
+          });
+        }
+        const recusa = (sqlstate) =>
+          Object.assign(new Error("recusa"), { sqlstate });
+        if (l.admins === 0) throw recusa("IKD03");
+        if (l.admins > 1) throw recusa("IKD04");
+        if (l.nas_duas !== 1) throw recusa("IKD05");
+        if (!l.confirmada) throw recusa("IKD06");
+        b.dono = "alvo";
+        return resultado("gravada", 1);
+      }
       const m = /VALUES \('(\d{13,14})', '([a-z0-9_-]+)'/.exec(sql);
       if (!m || !sql.startsWith("BEGIN;\n"))
         throw new Error(`consulta inesperada: ${sql.slice(0, 60)}`);
@@ -266,6 +430,18 @@ function apiFalsa({
     refreshValido: REFRESH_1,
     nRefresh: 1,
     corposDoPostProjeto: [],
+    valoresGravados: [],
+    funcoes: new Map(),
+    deploys: [],
+    // o Auth de um projeto novo: site_url de fábrica, sem gancho
+    auth: {
+      site_url: "http://localhost:3000",
+      uri_allow_list: "",
+      rate_limit_email_sent: 2,
+      hook_send_email_enabled: false,
+      hook_send_email_uri: null,
+      hook_send_email_secrets: null,
+    },
   };
   s.fetch = async (url, init = {}) => {
     const u = new URL(String(url));
@@ -298,6 +474,9 @@ function apiFalsa({
     // dublê: comparar o token falso em tempo constante não protege nada aqui
     // eslint-disable-next-line security/detect-possible-timing-attacks
     if (auth !== `Bearer ${ACCESS}`) return resposta(401, { message: "no" });
+    // falha injetada pelo teste: (método, caminho) → status HTTP ou nada
+    const falha = s.falharSe?.(metodo, u.pathname);
+    if (falha) return resposta(falha, { message: "falha injetada" });
     if (metodo === "GET" && u.pathname === "/v1/organizations")
       return resposta(200, orgs);
     if (metodo === "GET" && u.pathname === "/v1/projects")
@@ -350,6 +529,53 @@ function apiFalsa({
         200,
         s.segredos.map((name) => ({ name, value: DIGEST_DO_SEGREDO })),
       );
+    }
+    if (metodo === "POST" && u.pathname === `/v1/projects/${REF}/secrets`) {
+      for (const { name, value } of JSON.parse(init.body)) {
+        if (!s.segredos.includes(name)) s.segredos.push(name);
+        s.valoresGravados.push(value);
+      }
+      return resposta(201, {});
+    }
+    if (metodo === "GET" && u.pathname === `/v1/projects/${REF}/functions`) {
+      return resposta(
+        200,
+        [...s.funcoes].map(([slug, f]) => ({ slug, ...f })),
+      );
+    }
+    if (
+      metodo === "POST" &&
+      u.pathname === `/v1/projects/${REF}/functions/deploy`
+    ) {
+      const slug = u.searchParams.get("slug");
+      const meta = JSON.parse(String(init.body.get("metadata")));
+      const antes = s.funcoes.get(slug);
+      s.funcoes.set(slug, {
+        status: "ACTIVE",
+        verify_jwt: meta.verify_jwt,
+        version: (antes?.version ?? 0) + 1,
+      });
+      s.deploys.push(slug);
+      return resposta(201, { slug, status: "ACTIVE" });
+    }
+    if (metodo === "GET" && u.pathname === `/v1/projects/${REF}/config/auth`) {
+      return resposta(200, { ...s.auth });
+    }
+    if (
+      metodo === "PATCH" &&
+      u.pathname === `/v1/projects/${REF}/config/auth`
+    ) {
+      for (const [k, v] of Object.entries(JSON.parse(init.body))) {
+        // o GET devolve o segredo do gancho como HMAC-SHA256(chave = ref)
+        Reflect.set(
+          s.auth,
+          k,
+          k === "hook_send_email_secrets"
+            ? createHmac("sha256", REF).update(v, "utf8").digest("hex")
+            : v,
+        );
+      }
+      return resposta(200, { ...s.auth });
     }
     if (metodo === "GET" && u.pathname === `/v1/projects/${REF}/api-keys`) {
       return resposta(200, [
@@ -428,6 +654,7 @@ async function ambiente(o = {}) {
     dormir: relogio.dormir,
     arquivos: () => MIGRATIONS,
     lojasBrutas: () => structuredClone(LOJAS_BRUTAS),
+    git: o.git ?? gitFalso(),
   };
   return { api, pasta, relogio, saida, deps, linha, entradas };
 }
@@ -457,9 +684,23 @@ async function lerArquivoDeEstado(pasta) {
 
 // ─── 0 escritas sem --aplicar ───────────────────────────────────────────────
 
+const PASSOS_COM_ENSAIO = [
+  "abrir",
+  "receber",
+  "criar-projeto",
+  "banco",
+  "ficha",
+  "segredos",
+  "functions",
+  "login",
+  "primeira-admin",
+  "definir-dono",
+  "conferir",
+];
+
 Deno.test("sem --aplicar: nenhum passo faz POST/PATCH/DELETE, grava cofre ou cria o estado", async () => {
   const amb = await ambiente();
-  for (const passo of ["abrir", "receber", "criar-projeto", "banco", "ficha"]) {
+  for (const passo of PASSOS_COM_ENSAIO) {
     const r = await executarPasso(pedido(passo, { aplicar: false }), amb.deps);
     assert(r.veredito !== "SIM", `${passo} em ensaio não pode dizer SIM`);
     assertStringIncludes(r.mensagem, "ENSAIO");
@@ -480,7 +721,7 @@ Deno.test("sem --aplicar com a loja já conectada e projeto criado: ainda 0 escr
   const antes = amb.api.chamadas.length;
   const gravacoes = amb.deps.cofre.gravacoes;
   const estadoAntes = await lerArquivoDeEstado(amb.pasta);
-  for (const passo of ["abrir", "receber", "criar-projeto", "banco", "ficha"]) {
+  for (const passo of PASSOS_COM_ENSAIO) {
     await executarPasso(pedido(passo, { aplicar: false }), amb.deps);
   }
   assertEquals(amb.api.chamadas.length, antes);
@@ -963,7 +1204,7 @@ Deno.test("argumentos: forma da chamada e o código NUNCA por argumento", () => 
     lerArgumentos(["receber", "--loja", SLUG, "--codigo", CODIGO]),
   );
   assert(!e2.message.includes(CODIGO));
-  assertThrows(() => lerArgumentos(["segredos", "--loja", SLUG]));
+  assertThrows(() => lerArgumentos(["trocar-dono", "--loja", SLUG]));
   assertThrows(() => lerArgumentos(["banco", "--loja", "Loja Errada"]));
   assertThrows(() => lerArgumentos(["banco"]));
 });
@@ -1302,28 +1543,472 @@ Deno.test("primeira-admin: sem --aplicar nenhuma chamada e o e-mail nem é pedid
   assertEquals(crua.entradas.length, 1);
 });
 
-// ─── C3: definir-dono reservado ─────────────────────────────────────────────
-
-Deno.test("definir-dono: reservado, recusa 'aguardando decisão' com e sem --aplicar, sem rede, trava nem estado", async () => {
-  assert(PASSOS.includes("definir-dono"));
-  assertEquals(
-    lerArgumentos(["definir-dono", "--loja", SLUG]).passo,
-    "definir-dono",
-  );
-  const amb = await ambiente();
-  for (const aplicar of [true, false]) {
-    const r = await executarPasso(
-      pedido("definir-dono", { aplicar }),
-      amb.deps,
-    );
-    assertEquals(r.veredito, "NÃO");
-    assertStringIncludes(r.mensagem, "aguardando decisão");
-  }
-  assertEquals(amb.api.chamadas.length, 0);
-  assertEquals([...Deno.readDirSync(amb.pasta)].length, 0);
+Deno.test("primeira-admin: INCERTO do B3 é repassado SEM mandar 'rodar sem --aplicar' (pelo nova-loja isso não lê nada): aponta o conferir", async () => {
+  const amb = await ateFicha({
+    apiOpcoes: { banco: bancoFalso({ promocaoCai: true }) },
+  });
+  amb.entradas.push(EMAIL);
+  const r = await executarPasso(pedido("primeira-admin"), amb.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assert(!/sem --aplicar/i.test(r.mensagem), r.mensagem);
+  assertStringIncludes(r.mensagem, "conferir");
+  assert(!amb.saida.join("\n").includes(EMAIL));
 });
 
-// ─── C3: conferir ───────────────────────────────────────────────────────────
+// ─── C2: cadastro, marca e chave-do-plano esperam o portão OAuth ────────────
+
+Deno.test("cadastro: recusa NÃO 'trava a publicação de todas as lojas', com e sem --aplicar, sem rede, trava nem estado", async () => {
+  assert(PASSOS.includes("cadastro"));
+  assertEquals(
+    lerArgumentos(["cadastro", "--loja", SLUG, "--aplicar"]).passo,
+    "cadastro",
+  );
+  const amb = await ateFicha();
+  const n = amb.api.chamadas.length;
+  const estadoAntes = await lerArquivoDeEstado(amb.pasta);
+  for (const aplicar of [true, false]) {
+    const r = await executarPasso(pedido("cadastro", { aplicar }), amb.deps);
+    assertEquals(r.veredito, "NÃO");
+    assertStringIncludes(
+      r.mensagem,
+      "cadastrar a loja agora trava a publicação de todas as lojas: aguarda o portão ler loja OAuth (CACA-PORTAO-LE-LOJA-NOVA)",
+    );
+  }
+  assertEquals(amb.api.chamadas.length, n);
+  assertEquals(await lerArquivoDeEstado(amb.pasta), estadoAntes);
+  const travas = [...Deno.readDirSync(amb.pasta)].filter((e) =>
+    e.name.endsWith(".trava"),
+  );
+  assertEquals(travas.length, 0);
+});
+
+Deno.test("marca e chave-do-plano: pendentes (NÃO) com o motivo, sem rede nem estado", async () => {
+  const amb = await ateFicha();
+  const n = amb.api.chamadas.length;
+  const estadoAntes = await lerArquivoDeEstado(amb.pasta);
+  const marca = await executarPasso(pedido("marca"), amb.deps);
+  assertEquals(marca.veredito, "NÃO");
+  assertStringIncludes(marca.mensagem, "pendente");
+  assertStringIncludes(marca.mensagem, "chave de serviço");
+  const chave = await executarPasso(pedido("chave-do-plano"), amb.deps);
+  assertEquals(chave.veredito, "NÃO");
+  assertStringIncludes(chave.mensagem, "pendente");
+  assertStringIncludes(chave.mensagem, "instalar-chave-da-loja.yml");
+  assertEquals(amb.api.chamadas.length, n);
+  assertEquals(await lerArquivoDeEstado(amb.pasta), estadoAntes);
+});
+
+// ─── C2: segredos ───────────────────────────────────────────────────────────
+
+const TOKEN_DO_AMBIENTE = "sbp_DO_AMBIENTE_FALSO_nunca_usar_0123";
+
+Deno.test("segredos: grava pelo B1 com o token OAuth da rodada (NUNCA o SUPABASE_ACCESS_TOKEN do ambiente) e dá SIM conferido", async () => {
+  const amb = await ateFicha({
+    apiOpcoes: {
+      segredos: [],
+      banco: bancoFalso({ vault: [], temVapid: false }),
+    },
+  });
+  const n = amb.api.chamadas.length;
+  const antigo = Deno.env.get("SUPABASE_ACCESS_TOKEN");
+  Deno.env.set("SUPABASE_ACCESS_TOKEN", TOKEN_DO_AMBIENTE);
+  let r;
+  try {
+    r = await executarPasso(pedido("segredos"), amb.deps);
+  } finally {
+    if (antigo === undefined) Deno.env.delete("SUPABASE_ACCESS_TOKEN");
+    else Deno.env.set("SUPABASE_ACCESS_TOKEN", antigo);
+  }
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  const novas = amb.api.chamadas.slice(n);
+  for (const c of novas) {
+    assert(!c.auth.includes(TOKEN_DO_AMBIENTE), "usou o token do ambiente");
+    if (c.caminho !== "/v1/oauth/token")
+      assertEquals(c.auth, `Bearer ${ACCESS}`, c.caminho);
+  }
+  assertEquals(
+    novas.filter((c) => c.caminho === "/v1/oauth/token").length,
+    1,
+    "uma rodada renova uma vez",
+  );
+  assertEquals(amb.api.posts(`/v1/projects/${REF}/secrets`).length, 1);
+  for (const nome of SEGREDOS_DO_B1) assert(amb.api.segredos.includes(nome));
+  assert(amb.api.banco.temVapid);
+  assertEquals(amb.api.banco.vault.length, 2);
+  const estado = await lerArquivoDeEstado(amb.pasta);
+  assertEquals(JSON.parse(estado).passos.segredos.veredito, "SIM");
+  const tudo = `${amb.saida.join("\n")}\n${estado}\n${r.mensagem}`;
+  assert(amb.api.valoresGravados.length >= 4);
+  for (const v of amb.api.valoresGravados)
+    assert(!tudo.includes(v), "valor de segredo vazou");
+  assert(!tudo.includes(ACCESS));
+});
+
+Deno.test("segredos: o que já existe fica (SIM sem escrita); sem banco SIM é NÃO sem rede", async () => {
+  const amb = await ateFicha();
+  const r = await executarPasso(pedido("segredos"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(amb.api.posts(`/v1/projects/${REF}/secrets`).length, 0);
+  assert(!amb.api.banco.consultas.some((q) => q.startsWith("BEGIN;\nDO $b1$")));
+  const crua = await ambiente();
+  await conectar(crua);
+  await executarPasso(pedido("criar-projeto"), crua.deps);
+  const m = crua.api.chamadas.length;
+  const r2 = await executarPasso(pedido("segredos"), crua.deps);
+  assertEquals(r2.veredito, "NÃO");
+  assertEquals(crua.api.chamadas.length, m);
+});
+
+Deno.test("segredos: POST sem resposta (503) é INCERTO repassado, nunca SIM", async () => {
+  const amb = await ateFicha({
+    apiOpcoes: {
+      segredos: [],
+      banco: bancoFalso({ vault: [], temVapid: false }),
+    },
+  });
+  amb.api.falharSe = (metodo, caminho) =>
+    metodo === "POST" && caminho === `/v1/projects/${REF}/secrets`
+      ? 503
+      : undefined;
+  const r = await executarPasso(pedido("segredos"), amb.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assertStringIncludes(r.mensagem, "ESTADO DESCONHECIDO");
+  const estado = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+  assertEquals(estado.passos.segredos.veredito, "INCERTO");
+});
+
+// ─── C2: functions ──────────────────────────────────────────────────────────
+
+Deno.test("functions: publica pelo B2 (HEAD == topo) com o token OAuth, SIM conferido; rodar de novo não republica", async () => {
+  const amb = await ateFicha();
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("functions"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals([...amb.api.deploys].sort(), [...PUBLICAVEIS].sort());
+  for (const c of amb.api.chamadas.slice(n)) {
+    if (c.caminho !== "/v1/oauth/token")
+      assertEquals(c.auth, `Bearer ${ACCESS}`, c.caminho);
+  }
+  const estado = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+  assertEquals(estado.passos.functions.veredito, "SIM");
+  const de = amb.api.deploys.length;
+  const r2 = await executarPasso(pedido("functions"), amb.deps);
+  assertEquals(r2.veredito, "SIM", r2.mensagem);
+  assertEquals(amb.api.deploys.length, de, "republicou");
+  assert(!amb.saida.join("\n").includes(ACCESS));
+});
+
+Deno.test("functions: HEAD diferente do topo da release = NÃO com a recusa do B2 repassada e 0 chamadas ao Supabase", async () => {
+  const amb = await ateFicha({ git: gitFalso({ head: OUTRO_SHA }) });
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("functions"), amb.deps);
+  assertEquals(r.veredito, "NÃO");
+  assertStringIncludes(r.mensagem, "não é o topo");
+  assertEquals(amb.api.chamadas.length, n);
+  assertEquals(amb.api.deploys.length, 0);
+});
+
+Deno.test("functions: deploy da ÚLTIMA sem resposta (504) = INCERTO repassado, nunca SIM", async () => {
+  const amb = await ateFicha();
+  const ultima = PUBLICAVEIS.at(-1);
+  let falhou = false;
+  amb.api.falharSe = (metodo, caminho) => {
+    if (
+      !falhou &&
+      metodo === "POST" &&
+      caminho === `/v1/projects/${REF}/functions/deploy` &&
+      amb.api.deploys.length === PUBLICAVEIS.length - 1
+    ) {
+      falhou = true;
+      return 504;
+    }
+    return undefined;
+  };
+  const r = await executarPasso(pedido("functions"), amb.deps);
+  assert(falhou, `a falha não foi injetada (${ultima})`);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+});
+
+// ─── C2: login ──────────────────────────────────────────────────────────────
+
+Deno.test("login: endereços de <slug>.vercel.app e gancho DESLIGADO pelo B4 com o token OAuth; SIM conferido; o segredo do gancho não sai", async () => {
+  const amb = await ateFicha();
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("login"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(amb.api.auth.site_url, `https://${SLUG}.vercel.app`);
+  assertStringIncludes(
+    amb.api.auth.uri_allow_list,
+    `https://${SLUG}.vercel.app/**`,
+  );
+  assertEquals(amb.api.auth.hook_send_email_enabled, false);
+  assert(amb.api.segredos.includes("SEND_EMAIL_HOOK_SECRET"));
+  for (const c of amb.api.chamadas.slice(n)) {
+    if (c.caminho !== "/v1/oauth/token")
+      assertEquals(c.auth, `Bearer ${ACCESS}`, c.caminho);
+  }
+  const estado = await lerArquivoDeEstado(amb.pasta);
+  assertEquals(JSON.parse(estado).passos.login.veredito, "SIM");
+  const tudo = `${amb.saida.join("\n")}\n${estado}\n${r.mensagem}`;
+  for (const v of amb.api.valoresGravados) assert(!tudo.includes(v));
+  assert(!tudo.includes(amb.api.auth.hook_send_email_secrets));
+  // de novo: as duas pontas presentes, nada a gravar
+  const m = amb.api.escritas().length;
+  const r2 = await executarPasso(pedido("login"), amb.deps);
+  assertEquals(r2.veredito, "SIM", r2.mensagem);
+  const novas = amb.api
+    .escritas()
+    .slice(m)
+    .filter((c) => !c.caminho.endsWith("/database/query"));
+  assertEquals(novas.filter((c) => c.caminho !== "/v1/oauth/token").length, 0);
+});
+
+Deno.test("login: meia configuração do gancho = NÃO repassado e 0 escritas", async () => {
+  const amb = await ateFicha();
+  amb.api.auth.hook_send_email_enabled = true;
+  const r = await executarPasso(pedido("login"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "meia configuração");
+  assertEquals(
+    amb.api.chamadas.filter(
+      (c) =>
+        (c.metodo === "PATCH" || c.metodo === "POST") &&
+        (c.caminho.endsWith("/config/auth") || c.caminho.endsWith("/secrets")),
+    ).length,
+    0,
+  );
+});
+
+Deno.test("login: INCERTO do B4 é repassado SEM mandar 'rodar sem --aplicar': aponta o conferir", async () => {
+  const amb = await ateFicha();
+  let leituras = 0;
+  amb.api.falharSe = (metodo, caminho) => {
+    if (metodo === "GET" && caminho === `/v1/projects/${REF}/config/auth`) {
+      leituras += 1;
+      if (leituras === 2) return 503;
+    }
+    return undefined;
+  };
+  const r = await executarPasso(pedido("login"), amb.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assert(!/sem --aplicar/i.test(r.mensagem), r.mensagem);
+  assert(
+    !/sem --aplicar/i.test(amb.saida.join("\n")),
+    "a saída manda tirar o --aplicar",
+  );
+  assertStringIncludes(r.mensagem, "conferir");
+});
+
+// ─── C2: definir-dono ───────────────────────────────────────────────────────
+
+/** Até a primeira-admin (a lojista admin única), com o banco escolhido. */
+async function ateADona(o = {}) {
+  const amb = await ateFicha(o);
+  amb.entradas.push(EMAIL);
+  const r = await executarPasso(pedido("primeira-admin"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  return amb;
+}
+
+const escritasDoDono = (amb) =>
+  amb.api.banco.consultas.filter((q) => q === SQL_DEFINIR_DONO).length;
+
+Deno.test("definir-dono: sem dono e 1 admin (nas duas fontes, confirmada) = grava numa transação protegida, confere pela 88c e dá SIM; sem e-mail", async () => {
+  const amb = await ateADona();
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(amb.api.banco.dono, "alvo");
+  assertEquals(escritasDoDono(amb), 1);
+  assertEquals(amb.entradas.length, 0, "pediu entrada");
+  // a escrita: trava, papel do dono da tabela, sem e-mail, e as guardas
+  for (const t of [
+    "BEGIN ISOLATION LEVEL READ COMMITTED;",
+    "SET LOCAL ROLE postgres;",
+    "pg_advisory_xact_lock",
+    "LOCK TABLE public.dono_da_loja",
+    "INSERT INTO public.dono_da_loja (user_id) VALUES (v_id)",
+    "IF v_admins > 1 THEN",
+    "IF v_donos > 0 THEN",
+    "email_confirmed_at",
+    "COMMIT;",
+  ])
+    assertStringIncludes(SQL_DEFINIR_DONO, t);
+  assert(!SQL_DEFINIR_DONO.includes("@"), "e-mail no SQL");
+  assert(!/lower\(u\.email\)/.test(SQL_DEFINIR_DONO));
+  // leu antes (só leitura) e releu depois (critério da 88c)
+  assertEquals(amb.api.banco.leiturasDoDono, 2);
+  const consultas = amb.api.chamadas
+    .slice(n)
+    .filter((c) => c.caminho.endsWith("/database/query"));
+  assertEquals(
+    consultas.filter((c) => c.somenteLeitura !== true).length,
+    1,
+    "só a transação escreve",
+  );
+  const estado = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+  assertEquals(estado.passos["definir-dono"].veredito, "SIM");
+});
+
+Deno.test("definir-dono: dono igual à admin única = SIM sem gravar (rodar de novo é seguro)", async () => {
+  const amb = await ateADona();
+  await executarPasso(pedido("definir-dono"), amb.deps);
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(escritasDoDono(amb), 1, "gravou de novo");
+});
+
+Deno.test("definir-dono: dono DIFERENTE da admin única = NÃO, não troca, e diz que trocar é pedido da dona", async () => {
+  const amb = await ateADona({
+    apiOpcoes: { banco: bancoFalso({ dono: "ex" }) },
+  });
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "NÃO");
+  assertStringIncludes(r.mensagem, "pedido da dona");
+  assertEquals(escritasDoDono(amb), 0);
+  assertEquals(amb.api.banco.dono, "ex");
+});
+
+Deno.test("definir-dono: dono que não é mais admin (loja sem admin) = NÃO, nada gravado", async () => {
+  const amb = await ateFicha({
+    apiOpcoes: { banco: bancoFalso({ dono: "ex" }) },
+  });
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "NÃO");
+  assertStringIncludes(r.mensagem, "não é mais administrador");
+  assertEquals(escritasDoDono(amb), 0);
+});
+
+Deno.test("definir-dono: 0 admins = NÃO 'rode primeira-admin'", async () => {
+  const amb = await ateFicha();
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "NÃO");
+  assertStringIncludes(r.mensagem, "primeira-admin");
+  assertEquals(escritasDoDono(amb), 0);
+});
+
+Deno.test("definir-dono: 2 admins = NÃO, não escolhe ninguém (nem a primeira)", async () => {
+  const amb = await ateFicha({
+    apiOpcoes: { banco: bancoFalso({ alvo: "admin", outrasAdmins: 1 }) },
+  });
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "NÃO");
+  assertStringIncludes(r.mensagem, "não escolho");
+  assertEquals(escritasDoDono(amb), 0);
+  assertEquals(amb.api.banco.dono, null);
+});
+
+Deno.test("definir-dono: fontes do cargo discordam, ou e-mail não confirmado = NÃO, nada gravado", async () => {
+  for (const [banco, texto] of [
+    [bancoFalso({ alvo: "admin", fontesDiscordam: true }), "fontes do cargo"],
+    [bancoFalso({ alvo: "admin", confirmada: false }), "confirmou o e-mail"],
+  ]) {
+    const amb = await ateFicha({ apiOpcoes: { banco } });
+    const r = await executarPasso(pedido("definir-dono"), amb.deps);
+    assertEquals(r.veredito, "NÃO", r.mensagem);
+    assertStringIncludes(r.mensagem, texto);
+    assertEquals(escritasDoDono(amb), 0);
+  }
+});
+
+Deno.test("definir-dono: dono cadastrado e admin, com outras admins = SIM sem gravar", async () => {
+  const amb = await ateFicha({
+    apiOpcoes: {
+      banco: bancoFalso({ alvo: "admin", outrasAdmins: 1, dono: "alvo" }),
+    },
+  });
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assertEquals(escritasDoDono(amb), 0);
+});
+
+Deno.test("definir-dono: leitura que falha = INCERTO e nada gravado; tabela do dono ausente = NÃO", async () => {
+  const amb = await ateADona();
+  amb.api.banco.leituraDoDonoCaiNa = 1;
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assertEquals(escritasDoDono(amb), 0);
+  const sem = await ateADona({
+    apiOpcoes: { banco: bancoFalso({ donoTabela: false }) },
+  });
+  const r2 = await executarPasso(pedido("definir-dono"), sem.deps);
+  assertEquals(r2.veredito, "NÃO");
+  assertStringIncludes(r2.mensagem, "20261383000000");
+  assertEquals(escritasDoDono(sem), 0);
+});
+
+Deno.test("definir-dono: escrita sem resposta = INCERTO (nunca SIM); repetir é seguro e fecha SIM", async () => {
+  const amb = await ateADona();
+  amb.api.banco.escritaDoDonoCai = true;
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assert(!/sem --aplicar/i.test(r.mensagem));
+  amb.api.banco.escritaDoDonoCai = false;
+  const r2 = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r2.veredito, "SIM", r2.mensagem);
+  assertEquals(amb.api.banco.dono, "alvo");
+});
+
+Deno.test("definir-dono: a transação gravou mas a releitura cai = INCERTO, não SIM", async () => {
+  const amb = await ateADona();
+  amb.api.banco.leituraDoDonoCaiNa = 2;
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "INCERTO", r.mensagem);
+  assertEquals(amb.api.banco.dono, "alvo");
+});
+
+Deno.test("definir-dono: NUNCA na savy nem na ikcous-publicada — pelo slug (sem rede, trava nem estado) e pelo ref do estado", async () => {
+  for (const slug of ["savy", "ikcous-publicada"]) {
+    const amb = await ambiente();
+    for (const aplicar of [true, false]) {
+      const r = await executarPasso(
+        { passo: "definir-dono", slug, aplicar },
+        amb.deps,
+      );
+      assertEquals(r.veredito, "NÃO", r.mensagem);
+      assertStringIncludes(r.mensagem, "nunca");
+    }
+    assertEquals(amb.api.chamadas.length, 0);
+    assertEquals([...Deno.readDirSync(amb.pasta)].length, 0);
+  }
+  // loja com outro nome, mas o estado aponta o projeto da Savy (ou da IKCOUS)
+  for (const ref of [REF_SAVY, REF_IKCOUS]) {
+    const amb = await ambiente();
+    await conectar(amb);
+    const e = JSON.parse(await lerArquivoDeEstado(amb.pasta));
+    e.passos["criar-projeto"] = { veredito: "SIM", ref, org: ORG };
+    e.passos.banco = { veredito: "SIM" };
+    await amb.deps.estado.gravar(SLUG, e);
+    const n = amb.api.chamadas.length;
+    for (const aplicar of [true, false]) {
+      const r = await executarPasso(
+        pedido("definir-dono", { aplicar }),
+        amb.deps,
+      );
+      assertEquals(r.veredito, "NÃO", r.mensagem);
+      assertStringIncludes(r.mensagem, "nunca");
+    }
+    assertEquals(amb.api.chamadas.length, n, "falou com a loja protegida");
+  }
+});
+
+Deno.test("definir-dono: só em loja aberta pelo nova-loja (sem estado local = NÃO sem rede); lojas.json ilegível = INCERTO sem rede", async () => {
+  const amb = await ambiente();
+  const r = await executarPasso(pedido("definir-dono"), amb.deps);
+  assertEquals(r.veredito, "NÃO");
+  assertEquals(amb.api.chamadas.length, 0);
+  const comLoja = await ateADona();
+  comLoja.deps.lojasBrutas = () => {
+    throw new Error("disco");
+  };
+  const n = comLoja.api.chamadas.length;
+  const r2 = await executarPasso(pedido("definir-dono"), comLoja.deps);
+  assertEquals(r2.veredito, "INCERTO", r2.mensagem);
+  assertEquals(comLoja.api.chamadas.length, n);
+  assertEquals(escritasDoDono(comLoja), 0);
+});
+
+// ─── conferir ───────────────────────────────────────────────────────────────
 
 Deno.test("vereditoGeral: SIM só com todos SIM; INCERTO nunca vira SIM; lista vazia não é SIM", () => {
   const i = (veredito) => ({ item: "x", veredito, detalhe: "" });
@@ -1335,20 +2020,23 @@ Deno.test("vereditoGeral: SIM só com todos SIM; INCERTO nunca vira SIM; lista v
   assertEquals(vereditoGeral([i("SIM"), i("talvez")]), "INCERTO");
 });
 
+/** Todos os passos ligados, cada um com SIM. */
 async function ateConferir(o = {}) {
-  const amb = await ateFicha(o);
-  amb.entradas.push(EMAIL);
-  const r = await executarPasso(pedido("primeira-admin"), amb.deps);
-  assertEquals(r.veredito, "SIM", r.mensagem);
+  const amb = await ateADona(o);
+  for (const passo of ["segredos", "functions", "login", "definir-dono"]) {
+    const r = await executarPasso(pedido(passo), amb.deps);
+    assertEquals(r.veredito, "SIM", `${passo}: ${r.mensagem}`);
+  }
   return amb;
 }
 
 const porItem = (r) =>
   Object.fromEntries(r.itens.map((i) => [i.item, i.veredito]));
 
-Deno.test("conferir: o que já existe dá SIM item a item; o que não está ligado é 'pendente' NÃO; só leitura", async () => {
+Deno.test("conferir: todos os passos ligados dão SIM item a item; só cadastro, marca e chave-do-plano ficam pendentes (NÃO); só leitura", async () => {
   const amb = await ateConferir();
   const n = amb.api.chamadas.length;
+  const deploys = amb.api.deploys.length;
   const estadoAntes = await lerArquivoDeEstado(amb.pasta);
   const r = await executarPasso(pedido("conferir"), amb.deps);
   const v = porItem(r);
@@ -1358,19 +2046,21 @@ Deno.test("conferir: o que já existe dá SIM item a item; o que não está liga
     "ficha",
     "segredos",
     "reconciliação",
+    "functions",
+    "login",
     "admin",
+    "definir-dono",
   ]) {
     assertEquals(Reflect.get(v, k), "SIM", `${k}: ${JSON.stringify(r.itens)}`);
   }
   const pendentes = r.itens.filter((i) =>
     i.detalhe.startsWith("pendente: passo"),
   );
-  for (const p of ["functions", "login", "cadastro"]) {
-    assert(
-      pendentes.some((i) => i.detalhe.includes(`passo ${p} ainda não ligado`)),
-      `sem o pendente ${p}`,
-    );
-  }
+  assertEquals(pendentes.map((i) => i.item).sort(), [
+    "cadastro",
+    "chave-do-plano",
+    "marca",
+  ]);
   assert(pendentes.every((i) => i.veredito === "NÃO"));
   assertEquals(r.veredito, "NÃO");
   // só leitura: além de renovar o acesso, só GET e consultas read_only
@@ -1381,13 +2071,19 @@ Deno.test("conferir: o que já existe dá SIM item a item; o que não está liga
     assert(c.caminho.endsWith("/database/query"), `${c.metodo} ${c.caminho}`);
     assertEquals(c.somenteLeitura, true, "consulta sem read_only");
   }
+  assertEquals(
+    novas.filter((c) => c.caminho === "/v1/oauth/token").length,
+    1,
+    "a conferência renova uma vez só",
+  );
+  assertEquals(amb.api.deploys.length, deploys);
   assertEquals(await lerArquivoDeEstado(amb.pasta), estadoAntes);
   const texto = amb.saida.join("\n");
   assert(!texto.includes(DIGEST_DO_SEGREDO), "o digest do segredo saiu");
   assert(!texto.includes(EMAIL));
 });
 
-Deno.test("conferir: segredo faltando, 0 admin e reconciliação que não rodou = NÃO com o nome do que falta", async () => {
+Deno.test("conferir: segredo faltando, 0 admin, sem functions, login, nem dono, e reconciliação que não rodou = NÃO com o nome do que falta", async () => {
   const amb = await ateFicha({
     apiOpcoes: {
       segredos: ["MP_CHAVES_ENCRYPTION_KEY"],
@@ -1399,21 +2095,51 @@ Deno.test("conferir: segredo faltando, 0 admin e reconciliação que não rodou 
   assertEquals(v.segredos, "NÃO");
   assertEquals(v.admin, "NÃO");
   assertEquals(v.reconciliação, "NÃO");
+  assertEquals(v.functions, "NÃO");
+  assertEquals(v.login, "NÃO");
+  assertEquals(Reflect.get(v, "definir-dono"), "NÃO");
   const seg = r.itens.find((i) => i.item === "segredos");
   assertStringIncludes(seg.detalhe, "VAPID_PRIVATE_KEY");
   assertEquals(r.veredito, "NÃO");
+  assertEquals(amb.api.deploys.length, 0);
+});
+
+Deno.test("conferir: reconciliação DEGRADADA = NÃO mostrando rodadas_degradadas_seguidas, mesmo tendo rodado há pouco", async () => {
+  const amb = await ateConferir({
+    apiOpcoes: {
+      banco: bancoFalso({
+        idadeRodada: 60,
+        degradado: true,
+        rodadasDegradadas: 4,
+      }),
+    },
+  });
+  const r = await executarPasso(pedido("conferir"), amb.deps);
+  const rec = r.itens.find((i) => i.item === "reconciliação");
+  assertEquals(rec.veredito, "NÃO", rec.detalhe);
+  assertStringIncludes(rec.detalhe, "rodadas_degradadas_seguidas");
+  assertStringIncludes(rec.detalhe, "4");
+  assertEquals(r.veredito, "NÃO");
+});
+
+Deno.test("conferir: dono que não é mais admin = NÃO no item definir-dono", async () => {
+  const amb = await ateConferir();
+  amb.api.banco.dono = "ex";
+  const r = await executarPasso(pedido("conferir"), amb.deps);
+  assertEquals(Reflect.get(porItem(r), "definir-dono"), "NÃO");
 });
 
 Deno.test("conferir: leitura que cai é INCERTO no item (nunca SIM); sem projeto no estado é NÃO sem rede; sem --aplicar 0 chamadas", async () => {
   const amb = await ateConferir();
   const responder = amb.api.banco.responder;
   amb.api.banco.responder = (sql) => {
-    if (sql === SQL_ADMINS)
+    if (sql === SQL_ADMINS || sql === SQL_DONO)
       throw Object.assign(new Error("caiu"), { http: 503 });
     return responder(sql);
   };
   const r = await executarPasso(pedido("conferir"), amb.deps);
   assertEquals(porItem(r).admin, "INCERTO");
+  assertEquals(Reflect.get(porItem(r), "definir-dono"), "INCERTO");
   assert(r.veredito !== "SIM");
   // ensaio
   const n = amb.api.chamadas.length;
