@@ -75,10 +75,16 @@
  * QUEM RODA: o dono, no PowerShell, de uma worktree limpa do ramo da release
  * com os CLIs do Supabase, da Vercel e do GitHub (gh) logados. As permissões
  * do projeto negam ao agente `vercel promote`/`rollback`; o ensaio (sem
- * --promover) só lê (fora o cofre local da loja OAuth, acima).
+ * --promover) só lê (fora o cofre local da loja OAuth, acima). Com loja OAuth
+ * na frota, o dono publica pela `--sessao`: grava o segredo de cada loja OAuth
+ * no GitHub, ensaia em laço (Enter / `promover` / `sair`) e apaga tudo ao
+ * fechar. Janela fechada, falta de luz ou saída 1 da sessão: `--faxina`.
+ * Receita: docs/runbooks/ligar-loja-nova.md, "Publicar quando há loja OAuth".
  *
  * Uso:
  *   node scripts/frota/publicar-release.mjs --sha <40hex> --deployment <dpl_…> [--promover] [--json <arquivo>]
+ *   node scripts/frota/publicar-release.mjs --sessao --sha <40hex> --deployment <dpl_…> [--json <arquivo>]
+ *   node scripts/frota/publicar-release.mjs --faxina
  * Saída: 0 = pronto (ensaio) ou publicado e conferido; 1 = bloqueado ou
  * conferência pós-promote falhou; 2 = uso errado. Na --sessao e na --faxina,
  * 1 também quando o fechar não confirmou que TODOS os segredos das lojas OAuth

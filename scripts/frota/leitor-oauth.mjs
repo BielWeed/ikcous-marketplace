@@ -48,7 +48,9 @@ export const RE_FUNCAO = /^[a-z0-9][a-z0-9_-]*$/;
 /** `status` de FunctionResponse na spec da Management API. Só ACTIVE está no ar
  * de verdade; REMOVED e THROTTLED contam como AUSENTES (o portão gera o comando
  * de publicar, nunca "em dia"). Valor fora desta lista LANÇA. Sem o campo, vale
- * como ACTIVE: é a forma do caminho pelo CLI, que não lê status. */
+ * como ACTIVE: a mesma régua do caminho pelo CLI (listarFuncoes em
+ * publicar-release.mjs), que conta toda function listada sem olhar status.
+ * Este leitor só recebe a resposta da API; a saída do CLI nunca passa aqui. */
 const STATUS_NO_AR = "ACTIVE";
 const STATUS_FORA_DO_AR = new Set(["REMOVED", "THROTTLED"]);
 const PREFIXO_DAS_FUNCOES = "supabase/functions/";

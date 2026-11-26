@@ -684,6 +684,178 @@ O ensaio de ponta a ponta (C5) inclui um PIX real de R$ 1.
 
 ---
 
+## Publicar quando há loja OAuth: a sessão
+
+> Conferido no código de [`scripts/frota/publicar-release.mjs`](../../scripts/frota/publicar-release.mjs)
+> (`--sessao` e `--faxina`) e [`scripts/frota/ponte-oauth.mjs`](../../scripts/frota/ponte-oauth.mjs)
+> em 26/11/2026. **Ainda não foi ensaiada com uma loja de verdade** (é a T12 do plano da ponte A).
+
+**Por que existe.** A loja OAuth não tem segredo fixo no GitHub. Os workflows da frota
+(`gh workflow run ...`) só conseguem mexer nela enquanto o segredo `SUPABASE_ACCESS_TOKEN_<SLUG>`
+dela estiver lá. A **sessão** é um comando que fica aberto numa janela: ao abrir, grava esse
+segredo; enquanto está aberta, você ensaia e publica; ao fechar, apaga o segredo do GitHub. Funciona
+como o cartão de um quarto de hotel: vale enquanto você está hospedado, e o check-out é o fechar.
+
+**Quem roda:** o dono, no Windows PowerShell 5.1, na pasta da release que o agente indicou (veja
+[Abrir o terminal no lugar certo](#abrir-o-terminal-no-lugar-certo)), com o `gh` (o programa do
+GitHub) já logado. O agente te passa o comando com o `<sha>` e o `<dpl_...>` já preenchidos.
+
+### Antes de abrir: as regras da sessão
+
+- **PC desligado ou suspenso desde a última sessão? Rode a faxina ANTES de tudo** (passo 7). Se o
+  PC dormiu com uma sessão aberta, o segredo pode ter ficado no GitHub.
+- **A sessão inteira tem de caber em 24 h.** O acesso da loja vence. A tela mostra o horário: a
+  sessão fecha sozinha **45 minutos antes** de o acesso vencer. Se ela estiver no meio de um
+  ensaio, espera o ensaio terminar e fecha logo depois, com a mensagem
+  `o token vence às HH:MM; feche e abra outra sessão. Esta fecha agora.` Para continuar, abra
+  outra sessão (passo 1).
+- **Não rode o `nova-loja` da mesma loja enquanto a sessão estiver aberta.** A sessão segura a
+  autorização da loja do começo ao fim. Outro comando da mesma loja fica esperando por ela ou
+  atrapalha.
+- **Só o dono pode ter escrita no repositório.** Se mais alguém tiver permissão de escrever (push)
+  no repositório do GitHub, a sessão **não abre**: quem escreve consegue ler qualquer segredo por um
+  workflow. Atenção: essa conferência olha só **pessoas**. Um **GitHub App** (um aplicativo
+  instalado no repositório) com permissão de escrita **não aparece** nela. Antes da primeira
+  sessão, confira com o agente que nenhum aplicativo instalado tem escrita.
+- **Um comando por vez.** Nada de `&&`.
+
+### Passo 1 — Abrir a sessão
+
+Na janela do PowerShell, na pasta certa, cole o comando que o agente passou. Ele tem esta forma:
+
+```powershell
+node scripts/frota/publicar-release.mjs --sessao --sha <sha> --deployment <dpl_...>
+```
+
+- **O que aparece:** depois de alguns segundos, uma linha assim:
+  `Sessão aberta. Segredos gravados no GitHub: SUPABASE_ACCESS_TOKEN_<SLUG>; vale até HH:MM (fecha sozinha às HH:MM). Cole os comandos gh workflow run em OUTRA janela.`
+  Logo abaixo vem o relatório do primeiro ensaio e, no fim, a pergunta:
+  `Enter = ensaio de novo · promover = publicar · sair = fechar a sessão >`
+- **Como saber que deu certo:** a linha começa com `Sessão aberta.` e mostra só **nomes** de
+  segredo, nunca um valor.
+- **Se aparecer diferente:**
+  - `A sessão NÃO abriu: ...`: nada ficou aberto. Copie **só essa linha** e mande para o agente.
+    Se ela disser `além do dono, têm escrita no repositório: ...`, é a regra de escrita acima: tire
+    a permissão dessa pessoa no GitHub ou fale com o agente. Se a mensagem trouxer
+    `NÃO apagado: ... — rode: ...`, rode o comando que ela mostra, do jeito que está.
+  - `--promover não se usa com --sessao`: o comando tem `--promover` a mais. Tire e rode de novo.
+    Dentro da sessão, publicar é digitar `promover` (passo 5).
+
+**Deixe esta janela aberta até o passo 6.** Ela é a sessão.
+
+### Passo 2 — Ler o horário
+
+Olhe o `vale até HH:MM` e o `fecha sozinha às HH:MM` da linha do passo 1. Todo o trabalho tem de
+terminar antes do segundo horário. Se o horário estiver apertado para o que falta, fale com o
+agente antes de seguir.
+
+### Passo 3 — Colar os `gh workflow run` em OUTRA janela
+
+Se o relatório disser `BLOQUEADO`, ele lista comandos `gh workflow run ...` (por exemplo, aplicar
+migration ou publicar function na loja). **Não cole na janela da sessão**: ali o que você digita é
+lido como Enter, `promover` ou `sair`.
+
+1. Abra **outra** janela do Windows PowerShell (menu Iniciar, **Windows PowerShell**) e vá para a
+   mesma pasta (`Set-Location "<pasta do repositório>"`).
+2. Cole **um** comando `gh workflow run ...` por vez, na ordem em que o relatório mostra.
+   - **O que aparece:** o `gh` confirma que o workflow foi disparado.
+3. Descubra o número do run. Troque `<arquivo>.yml` pelo nome que aparece no comando que você
+   colou (por exemplo `aplicar-migrations.yml`):
+
+   ```powershell
+   gh run list --workflow <arquivo>.yml --limit 1
+   ```
+
+   - **O que aparece:** uma linha com o run mais novo; o número comprido é o `<id>`.
+4. Acompanhe até terminar:
+
+   ```powershell
+   gh run watch <id>
+   ```
+
+   - **Como saber que deu certo:** o run termina com ✓ (verde).
+   - **Se terminar com X (vermelho):** não siga. Copie o nome do workflow e o número do run e mande
+     para o agente.
+
+### Passo 4 — Apertar Enter para o ensaio seguinte
+
+Volte para a janela da **sessão** e aperte **Enter** (sem digitar nada).
+
+- **O que aparece:** um relatório novo, com a pergunta de novo no fim.
+- **Como saber que deu certo:** o relatório termina em `## 4. PRONTO — nenhum alvo bloqueia`,
+  seguido da frase "Para publicar: digite promover na janela da sessão".
+- **Se ainda disser `BLOQUEADO`:** volte ao passo 3 com os comandos novos que ele mostrar. Repita
+  passo 3 e passo 4 até dar `PRONTO`.
+- **Se aparecer `não entendi: aperte Enter (ensaio de novo), digite promover ou sair.`:** você
+  digitou outra coisa. Aperte só Enter.
+
+### Passo 5 — Digitar `promover`
+
+Com o relatório dizendo `PRONTO`, digite na janela da sessão e aperte Enter:
+
+```powershell
+promover
+```
+
+- **O que aparece:** o relatório de novo, agora com a parte `## 5. Promoção` e a conferência da
+  frota depois de publicar.
+- **Como saber que deu certo:** a publicação passou e a sessão fecha sozinha (passo 6).
+- **Se aparecer `run(s) ainda em andamento ou na fila`:** a publicação foi feita, mas ainda tem
+  workflow da loja rodando, e ele precisa do segredo. A sessão **não fecha** enquanto isso. Espere
+  o run terminar (o `gh run watch <id>` do passo 3, na outra janela) e digite `sair` na janela da
+  sessão.
+- **Se a conferência depois de publicar falhar:** a sessão continua aberta e o relatório traz o
+  comando de desfazer. **Não rode nada sozinho:** copie a parte do relatório e mande para o agente.
+
+Para fechar **sem** publicar, digite `sair` no lugar de `promover`. A regra dos runs em andamento
+vale do mesmo jeito.
+
+### Passo 6 — Como saber que a sessão fechou
+
+- **O que aparece:**
+  `Fechando a sessão: tirando os segredos das lojas OAuth do GitHub...` e, logo depois,
+  `segredos apagados: N de N` (os dois números iguais). A janela volta para a linha que termina em
+  `>`.
+- **Como saber que deu certo:** os dois números são iguais e, ao rodar o comando abaixo, a
+  resposta é `0`:
+
+  ```powershell
+  $LASTEXITCODE
+  ```
+
+  `0` = publicou (ou fechou depois de um ensaio PRONTO) e o GitHub ficou limpo.
+- **Se aparecer diferente:**
+  - `segredos apagados: 1 de 2` (números diferentes), `NÃO apagado: ...`, `NÃO confirmei em 8 s
+    ...` ou `o fechar falhou`: **sobrou segredo no GitHub.** Vá para o passo 7 agora.
+  - `$LASTEXITCODE` deu `1`: ou o último ensaio estava `BLOQUEADO`, ou sobrou segredo. Na dúvida,
+    rode o passo 7: ele não estraga nada se não houver o que apagar.
+  - `o token da loja ... não foi invalidado no fechar (vence sozinho às HH:MM)`: o segredo saiu do
+    GitHub, mas o acesso que esteve lá só morre nesse horário. Avise o agente.
+
+### Passo 7 — Faxina: janela fechada, falta de luz, PC dormiu ou saída 1
+
+Use sempre que a sessão não terminou com `segredos apagados: N de N` e saída `0`: fechou a janela
+no meio, faltou luz, o PC desligou ou suspendeu, ou o `$LASTEXITCODE` deu `1`. A faxina só apaga;
+ela não renova nem publica nada.
+
+```powershell
+node scripts/frota/publicar-release.mjs --faxina
+```
+
+- **O que aparece:** `segredos apagados: SUPABASE_ACCESS_TOKEN_<SLUG>` (os nomes que ela tirou) ou
+  `nenhum segredo de loja OAuth no GitHub: nada a apagar`.
+- **Como saber que deu certo:** `$LASTEXITCODE` responde `0`.
+- **Se aparecer `NÃO apagado: ... — rode: ...`:** rode o comando que a linha mostra, do jeito que
+  está, e depois a faxina de novo. Se continuar, copie só essa linha e mande para o agente.
+- **Se aparecer `A faxina falhou: ...`:** copie só essa linha e mande para o agente. Até ele
+  responder, não abra outra sessão.
+
+**Ctrl+C na janela da sessão** também fecha e apaga os segredos, mas sem esperar os runs: um run
+que ainda estava na fila fica sem o segredo e para em `SEM_ACESSO`. Depois do Ctrl+C, confira o
+passo 6 do mesmo jeito.
+
+---
+
 ## Parte 4 — Armadilhas (todas vieram das revisões)
 
 ### E-mail com acento no PowerShell 5.1
