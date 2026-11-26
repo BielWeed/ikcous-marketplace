@@ -281,6 +281,13 @@ escrita serial (salvo a exceção do `/paralelizar`, acima); quem escreveu não 
 - **Migration não leva `BEGIN`/`COMMIT`.** Com eles, o `ROLLBACK` do script de prova vira
   no-op e a mudança fica gravada.
 - **Backup depende do plano.** O Supabase oferece [backup diário automático](https://supabase.com/docs/guides/platform/backups) nos planos Pro, Team e Enterprise, não no Free. Confira o plano de cada loja e não conte com backup para desfazer migration que altera dados.
+- **Livro de registro (20261510000000).** Antes de UPDATE/DELETE em 17 tabelas de dinheiro (pedido, itens, estorno,
+  histórico de pagamento, devolução e itens, produto, variação, categoria, cupom, fornecedor, caixa, configuração da loja,
+  cartão e política de devolução), o banco guarda a versão antiga em `public.livro_de_registro` por 90 dias (gatilho por
+  comando que nunca derruba a gravação; ninguém de aplicação lê). Desligar na hora: `UPDATE public.livro_de_registro_chave
+  SET ligado = false, motivo = '...', mudado_em = now();`. Desfazer por ele: [roteiro](docs/runbooks/desfazer-pelo-livro-de-registro.md).
+  **SQL em massa nestas tabelas é UM comando** (cada comando abre uma subtransação no gatilho; muitos na mesma transação
+  estouram o cache de subtransações). **`TRUNCATE` nelas é proibido** (não passa pelo gatilho e não deixa versão antiga).
 - Nunca `--no-verify` no commit — o `secretlint` do
   pre-commit é a única trava contra credencial vazada (o histórico já teve chave commitada).
 
