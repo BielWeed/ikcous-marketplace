@@ -3391,7 +3391,29 @@ const ROL_DA_184B = [
   "frota_lojas e frota_segredo existem com o mesmo dono da resolver_loja e da resolver_loja_com_estado",
   "a 20261460000000 esta aplicada: resolver_loja e resolver_loja_com_estado com os corpos dela (md5)",
 ];
+// Lote 187 (20261500000000, a loja registra a saude da reconciliacao: a tabela fechada saude_da_reconciliacao, a porta da edge
+// saude_da_reconciliacao_registrar so do service_role e a leitura publica saude_da_loja de anon e authenticated). A 187a prova o estado novo
+// (8 itens, so catalogo: nenhuma linha lida, nenhuma funcao chamada). A 187b prova os tres objetos ausentes e os papeis que o pre-voo exige (5 itens).
+const ROL_DA_187A = [
+  "controle: catalogo publico visivel",
+  "saude_da_reconciliacao: tabela comum com as 6 colunas, a chave (id) e os 4 CHECKs desta migration, sem default",
+  "saude_da_reconciliacao: RLS ligada sem FORCE e sem politica; nenhum privilegio de tabela nem de coluna para PUBLIC, anon, authenticated e service_role",
+  "saude_da_reconciliacao_registrar: uma so, com o corpo desta migration (md5), plpgsql, SECURITY DEFINER, VOLATILE, search_path fixo, (boolean, text[]) devolve void",
+  "saude_da_reconciliacao_registrar: EXECUTE so do service_role (PUBLIC, anon e authenticated nao)",
+  "saude_da_loja: uma so, com o corpo desta migration (md5), plpgsql, SECURITY DEFINER, STABLE, search_path fixo, sem argumento, devolve jsonb",
+  "saude_da_loja: EXECUTE de anon e authenticated (PUBLIC e service_role nao)",
+  "as duas funcoes tem o mesmo dono da tabela",
+];
+const ROL_DA_187B = [
+  "controle: catalogo publico visivel",
+  "saude_da_reconciliacao: a tabela ainda NAO existe",
+  "saude_da_reconciliacao_registrar: ainda NAO existe (nenhuma funcao com esse nome em public)",
+  "saude_da_loja: ainda NAO existe (nenhuma funcao com esse nome em public)",
+  "os papeis anon, authenticated e service_role existem (a base que o pre-voo exige)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "187a-conferir-a-saude-da-reconciliacao-aplicado": ROL_DA_187A,
+  "187b-antes-a-saude-da-reconciliacao-ausente": ROL_DA_187B,
   "184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado": ROL_DA_184A,
   "184b-antes-a-caderneta-fecha-para-o-service-role-ausente": ROL_DA_184B,
   "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado": ROL_DA_183A,
