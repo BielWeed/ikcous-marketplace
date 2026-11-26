@@ -262,6 +262,12 @@ export async function conferirCandidato({
     // (qualquer valor: o endereço do candidato nao e uma loja). Sem o
     // cabecalho o middleware nao rodou -- e uma release com o porteiro
     // quebrado derrubaria TODAS as lojas depois da promocao.
+    // O selo sozinho nao basta: o 503 `banco-indisponivel` tambem o traz. A
+    // caderneta da frota tem de ter RESPONDIDO ao candidato -- `miss` (o
+    // endereco do candidato nao e loja, o caso normal) ou `hit`. `erro`
+    // (caderneta fora do ar, chave errada), `ausente` (variaveis
+    // IKCOUS_FROTA_* faltando) ou sem o cabecalho: promover este deploy
+    // derrubaria todas as lojas, que nascem sem ficha no deploy novo.
     try {
       const res = await fetchImpl(`https://${d.url}/?t=${Date.now()}`, {
         cache: "no-store",
@@ -270,9 +276,15 @@ export async function conferirCandidato({
         signal: AbortSignal.timeout(15000),
       });
       await res.text();
-      if (!res.headers.get("x-ikcous-porteiro"))
+      const porteiro = res.headers.get("x-ikcous-porteiro");
+      const caderneta = res.headers.get("x-ikcous-caderneta");
+      if (!porteiro)
         problemas.push(
           `candidato respondeu a "/" (HTTP ${res.status}) sem x-ikcous-porteiro: o middleware (porteiro) não carregou na borda`,
+        );
+      else if (caderneta !== "miss" && caderneta !== "hit")
+        problemas.push(
+          `candidato respondeu a "/" (HTTP ${res.status}, x-ikcous-porteiro ${celula(porteiro)}) ${caderneta === null ? "sem x-ikcous-caderneta" : `com x-ikcous-caderneta=${celula(caderneta)}`}, esperado miss ou hit: a caderneta da frota não respondeu ao candidato (variáveis IKCOUS_FROTA_* erradas ou faltando, ou o banco da caderneta fora do ar); promover este deploy derrubaria todas as lojas`,
         );
     } catch (e) {
       problemas.push(`"/" do candidato não lida: ${e.message}`);

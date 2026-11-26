@@ -403,6 +403,16 @@ function deps(ajuste = {}) {
     pedidosAoCandidato: [],
     semPorteiroNoCandidato: false,
     falhaNaRaizDoCandidato: false,
+    // O "/" do candidato (endereço .vercel.app que não é loja): o porteiro
+    // pergunta à caderneta, ela não conhece o endereço e o 503 `sem-loja` sai
+    // com `x-ikcous-caderneta: miss`. Um teste troca a resposta inteira aqui.
+    raizDoCandidato: {
+      status: 503,
+      headers: {
+        "x-ikcous-porteiro": "sem-loja",
+        "x-ikcous-caderneta": "miss",
+      },
+    },
     classesAntes: [
       { dominio: "savycollection.vercel.app", classe: "ENDERECO_ANTIGO" },
       { dominio: "ickous-marketplace.vercel.app", classe: "OK" },
@@ -449,10 +459,12 @@ function deps(ajuste = {}) {
         throw new TypeError("fetch failed");
       if (u.pathname === "/")
         return new Response("<html></html>", {
-          status: estado.semPorteiroNoCandidato ? 200 : 503,
+          status: estado.semPorteiroNoCandidato
+            ? 200
+            : estado.raizDoCandidato.status,
           headers: estado.semPorteiroNoCandidato
             ? {}
-            : { "x-ikcous-porteiro": "sem-loja" },
+            : estado.raizDoCandidato.headers,
         });
       return new Response(estado.versaoCandidato, { status: 200 });
     },
@@ -2074,6 +2086,68 @@ for (const [nome, ajuste, trecho] of [
     "sem x-ikcous-porteiro",
   ],
   [
+    "candidato cujo '/' volta com o porteiro mas sem x-ikcous-caderneta",
+    {
+      raizDoCandidato: {
+        status: 503,
+        headers: { "x-ikcous-porteiro": "sem-loja" },
+      },
+    },
+    "sem x-ikcous-caderneta",
+  ],
+  [
+    "candidato cujo '/' volta com x-ikcous-caderneta: erro",
+    {
+      raizDoCandidato: {
+        status: 503,
+        headers: {
+          "x-ikcous-porteiro": "sem-loja",
+          "x-ikcous-caderneta": "erro",
+        },
+      },
+    },
+    "x-ikcous-caderneta=erro",
+  ],
+  [
+    "candidato cujo '/' volta com x-ikcous-caderneta: ausente (variaveis da frota faltando)",
+    {
+      raizDoCandidato: {
+        status: 503,
+        headers: {
+          "x-ikcous-porteiro": "discorda",
+          "x-ikcous-caderneta": "ausente",
+        },
+      },
+    },
+    "x-ikcous-caderneta=ausente",
+  ],
+  [
+    "candidato cujo '/' e o 503 banco-indisponivel do porteiro (caderneta fora do ar)",
+    {
+      raizDoCandidato: {
+        status: 503,
+        headers: {
+          "x-ikcous-porteiro": "banco-indisponivel",
+          "x-ikcous-caderneta": "erro",
+        },
+      },
+    },
+    "a caderneta da frota não respondeu ao candidato",
+  ],
+  [
+    "candidato cujo '/' volta com x-ikcous-caderneta de valor desconhecido",
+    {
+      raizDoCandidato: {
+        status: 503,
+        headers: {
+          "x-ikcous-porteiro": "sem-loja",
+          "x-ikcous-caderneta": "MISS",
+        },
+      },
+    },
+    "x-ikcous-caderneta=MISS",
+  ],
+  [
     "candidato cujo '/' nao responde (rede)",
     { falhaNaRaizDoCandidato: true },
     '"/" do candidato não lida',
@@ -2108,6 +2182,55 @@ Deno.test("endereço que não é loja legível nem esperado: bloqueia", async ()
   const r = await executar(d, true);
   assertEquals(r.codigo, 1);
   assert(r.bloqueios.some((b) => b.motivo.includes("estranho.vercel.app")));
+});
+
+// A caderneta respondeu ao candidato: `miss` (endereço que não é loja, o caso
+// normal) ou `hit` (a caderneta conhece o endereço). Os dois passam.
+for (const [nome, raizDoCandidato] of [
+  [
+    "miss",
+    {
+      status: 503,
+      headers: {
+        "x-ikcous-porteiro": "sem-loja",
+        "x-ikcous-caderneta": "miss",
+      },
+    },
+  ],
+  [
+    "hit",
+    {
+      status: 200,
+      headers: { "x-ikcous-porteiro": "ok", "x-ikcous-caderneta": "hit" },
+    },
+  ],
+]) {
+  Deno.test(`candidato cujo '/' volta com x-ikcous-caderneta: ${nome} — passa e promove`, async () => {
+    const { d, chamadas } = deps({ raizDoCandidato });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 0, r.relatorio);
+    assertEquals(chamadas.promover, [DPL]);
+  });
+}
+
+Deno.test("o 503 banco-indisponivel do candidato explica em português por que não promove", async () => {
+  const { d, chamadas } = deps({
+    raizDoCandidato: {
+      status: 503,
+      headers: {
+        "x-ikcous-porteiro": "banco-indisponivel",
+        "x-ikcous-caderneta": "erro",
+      },
+    },
+  });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover, []);
+  const motivo = r.bloqueios.map((b) => String(b.motivo)).join("\n");
+  assertStringIncludes(motivo, "HTTP 503");
+  assertStringIncludes(motivo, "x-ikcous-porteiro banco-indisponivel");
+  assertStringIncludes(motivo, "esperado miss ou hit");
+  assertStringIncludes(motivo, "derrubaria todas as lojas");
 });
 
 Deno.test("candidato: o GET '/' leva Sec-Fetch-Dest: document + Sec-Fetch-Mode: navigate e o version.json, nao", async () => {
