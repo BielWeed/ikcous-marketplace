@@ -844,7 +844,9 @@ export function lerVeredicto(log, consulta) {
  *                   consulta espera) — é um resultado, não falta de prova;
  *   SEM_EVIDENCIA — qualquer outro caso (sem run, vencido, em execução,
  *                   falhou, outra loja, outro commit, veredicto ausente,
- *                   ambíguo, sem linhas ou com ok não booleano).
+ *                   ambíguo, sem linhas ou com ok não booleano);
+ *   JANELA_ESTOUROU — a lista de runs do GitHub não pôde ser lida INTEIRA
+ *                   (lerRunsEmFaixas): sem ela nada se afirma, e o lote PARA.
  * Regras na ordem: o run MAIS NOVO com o título da loja decide; dentro da
  * validade; terminado com sucesso; sem apply depois dele naquela loja; commit
  * com migrations e consulta iguais às do SHA; veredicto único da consulta, ref
@@ -869,9 +871,33 @@ export async function evidenciaDaProva({
     motivo,
     ...(run ? { run } : {}),
   });
+  // A janela de runs que a decisão precisa (lerRunsEmFaixas): conferências da
+  // validade para cá; applies desde a vida máxima de um run antes dela (um
+  // apply criado antes disso não pode ter terminado depois da prova), mais os
+  // que ainda não terminaram, de qualquer idade. A folga cobre o relógio daqui
+  // diferente do relógio do GitHub.
+  const ate = agora + FOLGA_DO_RELOGIO_MS;
+  let estouro = null;
+  const lerRuns = (workflow, opcoes) =>
+    Promise.resolve(deps.listarRuns(workflow, { ...opcoes, ate })).catch(
+      (e) => {
+        if (e?.code !== "JANELA_ESTOUROU") throw e;
+        estouro = e;
+        return null;
+      },
+    );
+  const estourou = () => ({
+    ok: false,
+    estado: "JANELA_ESTOUROU",
+    motivo: estouro.message,
+  });
   // A MAIS NOVA conferência pertinente decide, em qualquer estado: um run
   // antigo verde nunca esconde um mais novo vermelho, cancelado ou em execução.
-  const pertinentes = (await deps.listarRuns("conferir-banco-da-loja.yml"))
+  const conferencias = await lerRuns("conferir-banco-da-loja.yml", {
+    desde: limite - FOLGA_DO_RELOGIO_MS,
+  });
+  if (!conferencias) return estourou();
+  const pertinentes = conferencias
     .filter(
       (r) =>
         r.displayTitle === titulo && Number.isFinite(Date.parse(r.createdAt)),
@@ -909,7 +935,12 @@ export async function evidenciaDaProva({
   };
   const depois = (t) =>
     !Number.isFinite(Date.parse(t)) || Date.parse(t) > inicio;
-  const vencedores = (await deps.listarRuns("aplicar-migrations.yml")).filter(
+  const applies = await lerRuns("aplicar-migrations.yml", {
+    desde: limite - VIDA_MAXIMA_DE_UM_RUN_MS - FOLGA_DO_RELOGIO_MS,
+    emAndamento: true,
+  });
+  if (!applies) return estourou();
+  const vencedores = applies.filter(
     (r) =>
       tocaEsteBanco(r) &&
       (r.status !== "completed" ||
@@ -1007,6 +1038,7 @@ export async function evidenciaDaProva({
  *     consulta de ausência (8a) PROVA o lote inteiro ausente, as conferências
  *     de antes (8b, 8k) estão ok e o ledger não registra nenhuma versão dele.
  *     Qualquer ok=false do diagnóstico, ou contradição, PARA e vai ao dono.
+ *   - prova ou diagnóstico JANELA_ESTOUROU: PARA, sem comando.
  * Devolve { acao: NADA|CONFERIR|BACKFILL|APLICAR|PARAR, motivo, consultas?, versoes? }.
  */
 export function decidirLote({
@@ -1017,6 +1049,17 @@ export function decidirLote({
   diagnostico = new Map(),
 }) {
   const consulta = lote.consulta;
+  // Lista de runs que não coube inteira: nem a prova nem o diagnóstico valem, e
+  // pedir conferência nova só engordaria a lista. PARA, sem comando.
+  const estouro = [prova, ...diagnostico.values()].find(
+    (e) => e?.estado === "JANELA_ESTOUROU",
+  );
+  if (estouro) {
+    return {
+      acao: "PARAR",
+      motivo: `${estouro.motivo} — o portão não leu todos os runs do GitHub e não decide este lote; conferir de novo não resolve (diagnóstico da leitura com o dono)`,
+    };
+  }
   if (!faltam.length) {
     if (!exigeProva)
       return {
@@ -2318,19 +2361,145 @@ function lerNoSha(sha, caminho, cache) {
 }
 
 /**
- * Quantos runs de CADA workflow o portão lê do GitHub (`gh run list --limit`).
- * A lista vem do run mais novo para o mais antigo e o limite corta o FIM dela:
- * se a prova mais antiga da release sai da janela, o portão bloqueia sozinho
- * ("sem run"), mesmo com tudo feito. A conta, por loja e por lote, são 2 runs
- * de conferência (a prova "a" e a "b"):
- *   lojas × lotes × 2 = 60 × 8 × 2 = 960
- * ou seja, uma release de até 8 lotes em 60 lojas cabe (5 lotes usam 600, 60%
- * da janela; a janela antiga de 100 só dava para 10 lojas × 5 lotes). 1000 é o
- * TETO que o GitHub entrega por consulta: passar disso não adianta. Se a frota
- * ou o número de lotes crescer a ponto de 1000 apertar, o próximo passo é
- * filtrar do lado do GitHub (`--created`), não subir este número.
+ * Quantos runs o GitHub entrega por busca (`gh run list --limit`): 1000 é o
+ * TETO da API (com filtro de `created`, `status` ou `head_sha`, "up to 1,000
+ * results for each search"). A lista vem do mais novo para o mais antigo e o
+ * teto corta o FIM: com ~60 lojas × 8 lotes × 2 provas a prova mais antiga já
+ * sai da janela, e um apply antigo AINDA EM EXECUÇÃO sumia da lista e deixava
+ * passar a evidência que ele venceu (falha aberta; plano L9, 26/11/2026).
+ * Por isso a leitura é em faixas de data (lerRunsEmFaixas), nunca só os 1000
+ * mais novos.
  */
 export const RUNS_LIDOS_POR_WORKFLOW = 1000;
+
+/**
+ * Vida máxima de um run no GitHub (docs.github.com, 26/11/2026): pode ser
+ * re-executado até 30 dias depois de criado, e cada run dura no máximo 35
+ * dias (o que passar disso é cancelado). Um apply criado antes de
+ * (prova − 65 dias) não pode ter rodado depois da prova. Os runs ainda não
+ * terminados de antes disso são lidos à parte, pelo estado.
+ */
+export const VIDA_MAXIMA_DE_UM_RUN_MS = (30 + 35) * 24 * 3600 * 1000;
+
+/** Folga para o relógio desta máquina diferir do relógio do GitHub. */
+export const FOLGA_DO_RELOGIO_MS = 3600 * 1000;
+
+/** Estados de um run que ainda não terminou, na ordem do ciclo de vida (lidos
+ * nessa ordem: um run que avança de estado entre duas buscas cai na primeira). */
+export const ESTADOS_EM_ANDAMENTO = [
+  "requested",
+  "waiting",
+  "pending",
+  "queued",
+  "in_progress",
+];
+
+/** Antes do GitHub Actions existir: a faixa dos não terminados começa aqui. */
+const INICIO_DO_GITHUB_ACTIONS_MS = Date.parse("2018-01-01T00:00:00Z");
+
+/** Instante no formato da busca do GitHub (`YYYY-MM-DDTHH:MM:SS+00:00`). */
+const instanteDaBusca = (ms) =>
+  `${new Date(ms).toISOString().slice(0, 19)}+00:00`;
+
+/** O segundo (em ms) em que o run foi criado: a busca por `created` é por segundo. */
+const segundoDoRun = (r) => Math.floor(Date.parse(r?.createdAt) / 1000) * 1000;
+
+function janelaEstourou(motivo) {
+  return Object.assign(new Error(`JANELA_ESTOUROU: ${motivo}`), {
+    code: "JANELA_ESTOUROU",
+  });
+}
+
+/**
+ * Lê TODOS os runs de um workflow que a decisão precisa, sem o corte de 1000.
+ * `buscar({ created?, status? })` faz UMA busca (`gh run list` com o teto de
+ * 1000) e devolve o array. Passos:
+ *  1. uma busca sem filtro, a mesma de sempre: menos de 1000 = a história
+ *     inteira coube, e acabou (nenhum custo extra);
+ *  2. senão, a faixa [desde, ate] de `created`, dividida ao meio sempre que
+ *     uma busca volta com 1000 (as metades se tocam no segundo do meio: a
+ *     busca é inclusiva, e o repetido sai pelo databaseId);
+ *  3. a lista sem filtro do passo 1 confere a leitura por faixas: run dela
+ *     criado dentro da faixa que as faixas não trouxeram = filtro não confiável;
+ *  4. com `emAndamento`, os runs ainda não terminados criados ANTES de
+ *     `desde`, um estado por vez (ESTADOS_EM_ANDAMENTO), também em faixas.
+ * Falha FECHADA (erro com code JANELA_ESTOUROU, nunca lista cortada): faixa de
+ * um segundo ainda com 1000, run fora da faixa pedida (filtro ignorado), run
+ * da lista sem filtro faltando nas faixas, ou 1000+ runs sem faixa para dividir.
+ * Devolve do mais novo para o mais antigo; um run lido duas vezes fica com a
+ * leitura de `updatedAt` mais recente.
+ */
+export async function lerRunsEmFaixas({
+  desde,
+  ate,
+  emAndamento = false,
+  buscar,
+}) {
+  const semFiltro = await buscar({});
+  if (semFiltro.length < RUNS_LIDOS_POR_WORKFLOW) return semFiltro;
+  if (!Number.isFinite(desde) || !Number.isFinite(ate) || desde > ate) {
+    throw janelaEstourou(
+      `${semFiltro.length} runs na busca sem filtro (o teto do GitHub) e nenhuma faixa de datas para dividir`,
+    );
+  }
+  const porId = new Map();
+  const guardar = (r) => {
+    const antes = porId.get(r.databaseId);
+    if (
+      !antes ||
+      Date.parse(r.updatedAt ?? r.createdAt) >
+        Date.parse(antes.updatedAt ?? antes.createdAt)
+    )
+      porId.set(r.databaseId, r);
+  };
+  const faixa = async (de, fim, status) => {
+    const nome = `${instanteDaBusca(de)}..${instanteDaBusca(fim)}`;
+    const runs = await buscar({
+      created: nome,
+      ...(status ? { status } : {}),
+    });
+    for (const r of runs) {
+      const t = segundoDoRun(r);
+      if (!(t >= de && t <= fim)) {
+        throw janelaEstourou(
+          `o GitHub devolveu o run ${r?.databaseId} (criado ${r?.createdAt}) fora da faixa ${nome}: o filtro por data não foi aplicado`,
+        );
+      }
+      guardar(r);
+    }
+    if (runs.length < RUNS_LIDOS_POR_WORKFLOW) return;
+    if (fim - de <= 1000) {
+      throw janelaEstourou(
+        `${runs.length} runs${status ? ` ${status}` : ""} criados no mesmo segundo (${nome}): a faixa não divide mais`,
+      );
+    }
+    const meio = de + Math.floor((fim - de) / 2000) * 1000;
+    await faixa(de, meio, status);
+    await faixa(meio, fim, status);
+  };
+  const de = Math.floor(desde / 1000) * 1000;
+  const fim = Math.ceil(ate / 1000) * 1000;
+  await faixa(de, fim);
+  for (const r of semFiltro) {
+    const t = segundoDoRun(r);
+    if (t >= de && t <= fim && !porId.has(r.databaseId)) {
+      throw janelaEstourou(
+        `a leitura por faixas não trouxe o run ${r.databaseId} (criado ${r.createdAt}) que a lista sem filtro trouxe: o filtro por data não é confiável`,
+      );
+    }
+  }
+  for (const r of semFiltro) guardar(r);
+  if (emAndamento) {
+    for (const status of ESTADOS_EM_ANDAMENTO) {
+      await faixa(INICIO_DO_GITHUB_ACTIONS_MS, de, status);
+    }
+  }
+  return [...porId.values()].sort(
+    (a, b) =>
+      Date.parse(b.createdAt) - Date.parse(a.createdAt) ||
+      Number(b.databaseId) - Number(a.databaseId),
+  );
+}
 
 /**
  * `rodarGh(args, opcoes)` existe só para os testes trocarem o `gh` por um
@@ -2390,29 +2559,41 @@ export function dependenciasReais({ rodarGh } = {}) {
         return false; // diferença (exit 1) ou commit ausente: sem evidência
       }
     },
-    listarRuns: async (workflow) => {
+    // `{ desde, ate, emAndamento }` é a janela que a decisão precisa (ms):
+    // lerRunsEmFaixas lê tudo dela, sem o corte de 1000 do GitHub.
+    listarRuns: async (workflow, { desde, ate, emAndamento = false } = {}) => {
       // O cache guarda a PROMESSA (não o resultado): com várias lojas lendo ao
       // mesmo tempo, quem chega depois espera a mesma leitura em vez de abrir
       // outra `gh run list`. Falha não fica guardada: a nova tentativa lê de novo.
-      if (!cacheRuns.has(workflow)) {
-        const lida = Promise.resolve(
-          executarGh([
-            "run",
-            "list",
-            "--workflow",
-            workflow,
-            "--limit",
-            String(RUNS_LIDOS_POR_WORKFLOW),
-            "--json",
-            "databaseId,displayTitle,headSha,createdAt,updatedAt,conclusion,status",
-          ]),
-        ).then((saida) => JSON.parse(saida));
-        cacheRuns.set(workflow, lida);
+      const chave = JSON.stringify([
+        workflow,
+        desde ?? null,
+        ate ?? null,
+        emAndamento,
+      ]);
+      if (!cacheRuns.has(chave)) {
+        const buscar = async ({ created, status } = {}) =>
+          JSON.parse(
+            await executarGh([
+              "run",
+              "list",
+              "--workflow",
+              workflow,
+              ...(created ? ["--created", created] : []),
+              ...(status ? ["--status", status] : []),
+              "--limit",
+              String(RUNS_LIDOS_POR_WORKFLOW),
+              "--json",
+              "databaseId,displayTitle,headSha,createdAt,updatedAt,conclusion,status",
+            ]),
+          );
+        const lida = lerRunsEmFaixas({ desde, ate, emAndamento, buscar });
+        cacheRuns.set(chave, lida);
         lida.catch(() => {
-          if (cacheRuns.get(workflow) === lida) cacheRuns.delete(workflow);
+          if (cacheRuns.get(chave) === lida) cacheRuns.delete(chave);
         });
       }
-      return cacheRuns.get(workflow);
+      return cacheRuns.get(chave);
     },
     logDoRun: (id) =>
       executarGh(["run", "view", String(Number(id)), "--log"], {
