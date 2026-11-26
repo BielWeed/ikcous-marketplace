@@ -145,7 +145,7 @@ function caminhoDoPrecache(url: string): string {
  * versão anterior — o app que funcionava offline passava a faltar arquivo.
  * Agora o `install` FALHA se faltar qualquer arquivo: o service worker novo
  * é descartado, o antigo e o cache dele seguem valendo, e o navegador tenta
- * de novo na próxima verificação de atualização (a cada 3 minutos com o app
+ * de novo na próxima verificação de atualização (a cada 20 minutos com o app
  * aberto).
  *
  * `addAll` é tudo-ou-nada, então uma falha PASSAGEIRA em um só arquivo
@@ -580,7 +580,7 @@ sw.addEventListener("fetch", (event: any) => {
     return;
 
   // `/version.json` é SONDA DE FRESCOR, não recurso cacheável: é ela que o
-  // useUpdateCheck consulta a cada 3 minutos para descobrir se saiu versão
+  // useUpdateCheck consulta a cada 20 minutos para descobrir se saiu versão
   // nova. Duas razões para não passar por aqui, e as duas custaram medição:
   //
   // (1) O catch-all lá embaixo grava POR URL. Como cada poll levava um

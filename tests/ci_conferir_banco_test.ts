@@ -16056,6 +16056,27 @@ Deno.test("182a/182b — todo md5 das consultas e' o que a migration 20261460000
     .update(corpoDe(caderneta, "public.resolver_loja"))
     .digest("hex");
   assertEquals(b.split(`'${h1141}'`).length - 1, 1, "md5 da 20261141 na 182b");
+  // A 182a aceita tambem a SUCESSORA das duas portas, a 20261490000000 (so a conferencia da chave muda): o md5 de cada corpo dela
+  // aparece uma vez na 182a, e a 182b (antes) nunca o cita.
+  const sucessora = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261490000000_a_caderneta_confere_a_chave_sem_bcrypt_por_chamada.sql`,
+    )
+  ).replace(/\r/g, "");
+  const hSucessora = [
+    "public.resolver_loja",
+    "public.resolver_loja_com_estado",
+  ].map((nome) =>
+    createHash("md5").update(corpoDe(sucessora, nome)).digest("hex"),
+  );
+  for (const h of hSucessora) {
+    assertEquals(
+      a.split(`'${h}'`).length - 1,
+      1,
+      `md5 ${h} da sucessora na 182a`,
+    );
+    assert(!b.includes(h), `182b cita a sucessora ${h}`);
+  }
   for (const [nome, sql] of [
     [NOME_182A, a],
     [NOME_182B, b],
@@ -16063,7 +16084,11 @@ Deno.test("182a/182b — todo md5 das consultas e' o que a migration 20261460000
     const hashes = [...sql.matchAll(/'([0-9a-f]{32})'/g)].map((m) => m[1]);
     assert(hashes.length > 0, `${nome}: sem md5`);
     for (const x of hashes)
-      assert(mig.includes(`'${x}'`), `${nome}: md5 ${x} nao esta na migration`);
+      assert(
+        mig.includes(`'${x}'`) ||
+          (nome === NOME_182A && hSucessora.includes(x)),
+        `${nome}: md5 ${x} nao esta na migration nem e' da sucessora`,
+      );
   }
 });
 

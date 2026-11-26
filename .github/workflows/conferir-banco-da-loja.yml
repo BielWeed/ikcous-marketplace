@@ -400,6 +400,9 @@ on:
           - 183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente
           - 184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado
           - 184b-antes-a-caderneta-fecha-para-o-service-role-ausente
+          - 185-privilegios-padrao-em-public
+          - 186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado
+          - 186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente
           - 187a-conferir-a-saude-da-reconciliacao-aplicado
           - 187b-antes-a-saude-da-reconciliacao-ausente
           - backups

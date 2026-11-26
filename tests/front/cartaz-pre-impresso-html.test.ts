@@ -17,7 +17,7 @@ import {
 import { atributosDeImagem } from "@/lib/imageUrl";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
 
-const LOJA = "https://lojaaaaaaaaaaaaaaaaa.supabase.co";
+const LOJA = "https://gnjsrucsmjkajijrakzr.supabase.co";
 const FOTO = `${LOJA}/storage/v1/object/public/banners/1791565996435-7tdkqgfb019.webp`;
 const AGORA = Date.parse("2026-10-31T12:00:00Z");
 
@@ -131,7 +131,7 @@ describe("pedidoPodeTerCartaz -- so a 1a abertura da vitrine pelo navegador", ()
 });
 
 describe("lojaRedimensionaFoto -- decidido pela origem, antes de ler banner", () => {
-  it("loja comum redimensiona", () => {
+  it("loja do projeto medido redimensiona", () => {
     expect(lojaRedimensionaFoto(LOJA)).toBe(true);
   });
   it("IKCOUS (sem redimensionamento) nao", () => {
@@ -141,7 +141,7 @@ describe("lojaRedimensionaFoto -- decidido pela origem, antes de ler banner", ()
   });
   it("origem que nao e https puro nao", () => {
     for (const url of [
-      "http://lojaaaaaaaaaaaaaaaaa.supabase.co",
+      "http://gnjsrucsmjkajijrakzr.supabase.co",
       "lixo",
       "",
       `${LOJA}:8443`,
@@ -343,7 +343,7 @@ describe("montarCartaz -- a foto e do storage da PROPRIA loja", () => {
   });
 
   it("host de OUTRA loja nao vale", () => {
-    const outra = FOTO.replace("lojaaaaaaaaaaaaaaaaa", "outraloja000000000000");
+    const outra = FOTO.replace("gnjsrucsmjkajijrakzr", "outraloja000000000000");
     expect(montarCartaz(linha({ image_url: outra }), LOJA)).toBeNull();
   });
   it("host externo nao vale", () => {
@@ -359,10 +359,10 @@ describe("montarCartaz -- a foto e do storage da PROPRIA loja", () => {
   });
   it("subdominio enganoso / host parecido nao vale", () => {
     for (const host of [
-      "lojaaaaaaaaaaaaaaaaa.supabase.co.evil.example",
-      "evil.lojaaaaaaaaaaaaaaaaa.supabase.co",
-      "lojaaaaaaaaaaaaaaaaa.supabase.co@evil.example",
-      "evil.example#@lojaaaaaaaaaaaaaaaaa.supabase.co",
+      "gnjsrucsmjkajijrakzr.supabase.co.evil.example",
+      "evil.gnjsrucsmjkajijrakzr.supabase.co",
+      "gnjsrucsmjkajijrakzr.supabase.co@evil.example",
+      "evil.example#@gnjsrucsmjkajijrakzr.supabase.co",
     ]) {
       const url = `https://${host}/storage/v1/object/public/banners/a.webp`;
       expect(montarCartaz(linha({ image_url: url }), LOJA)).toBeNull();
@@ -374,7 +374,7 @@ describe("montarCartaz -- a foto e do storage da PROPRIA loja", () => {
     ).toBeNull();
   });
   it("a loja sem https no banco nao ganha cartaz", () => {
-    const http = "http://lojaaaaaaaaaaaaaaaaa.supabase.co";
+    const http = "http://gnjsrucsmjkajijrakzr.supabase.co";
     const foto = `${http}/storage/v1/object/public/banners/a.webp`;
     expect(montarCartaz(linha({ image_url: foto }), http)).toBeNull();
   });
@@ -382,8 +382,8 @@ describe("montarCartaz -- a foto e do storage da PROPRIA loja", () => {
     for (const url of [
       "javascript:alert(1)",
       "data:image/svg+xml;base64,PHN2Zz4=",
-      "blob:https://lojaaaaaaaaaaaaaaaaa.supabase.co/x",
-      "//lojaaaaaaaaaaaaaaaaa.supabase.co/storage/v1/object/public/banners/a.webp",
+      "blob:https://gnjsrucsmjkajijrakzr.supabase.co/x",
+      "//gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/banners/a.webp",
       "/storage/v1/object/public/banners/a.webp",
       "banners/a.webp",
     ]) {
@@ -410,8 +410,8 @@ describe("montarCartaz -- a foto e do storage da PROPRIA loja", () => {
   it("credencial na URL, porta e fragmento nao valem", () => {
     const base = "/storage/v1/object/public/banners/a.webp";
     for (const url of [
-      `https://user:pw@lojaaaaaaaaaaaaaaaaa.supabase.co${base}`,
-      `https://lojaaaaaaaaaaaaaaaaa.supabase.co:8443${base}`,
+      `https://user:pw@gnjsrucsmjkajijrakzr.supabase.co${base}`,
+      `https://gnjsrucsmjkajijrakzr.supabase.co:8443${base}`,
       `${LOJA}${base}#x`,
     ]) {
       expect(montarCartaz(linha({ image_url: url }), LOJA)).toBeNull();
@@ -472,7 +472,7 @@ describe("montarCartaz -- a foto e do storage da PROPRIA loja", () => {
       const srcset = atributos[1] ?? "";
       for (const candidata of srcset.split(",")) {
         expect(candidata.trim()).toMatch(
-          /^https:\/\/lojaaaaaaaaaaaaaaaaa\.supabase\.co\/storage\/v1\/render\/image\/public\/banners\/[A-Za-z0-9._-]+\?width=\d+&resize=contain&quality=\d+ \d+w$/,
+          /^https:\/\/gnjsrucsmjkajijrakzr\.supabase\.co\/storage\/v1\/render\/image\/public\/banners\/[A-Za-z0-9._-]+\?width=\d+&resize=contain&quality=\d+ \d+w$/,
         );
       }
     });

@@ -16,7 +16,7 @@ import type { ComponentProps, ComponentType } from "react";
  * soluço de rede em quem não memoriza e a falha passageira antes da
  * memorização; quando o arquivo realmente sumiu do servidor (versão nova no
  * ar) só uma recarga da página resolve, e este limite NÃO a aciona: quem
- * troca a versão é a atualização obrigatória (checagem de 3 em 3 minutos, no
+ * troca a versão é a atualização obrigatória (checagem de 20 em 20 minutos, no
  * próximo momento seguro). Até lá, "Tentar de novo" pode falhar de novo.
  */
 export type PedacoRetentavel<T extends ComponentType<any>> = ComponentType<

@@ -2173,6 +2173,12 @@ O cadastro de UMA vez, na entrada do cliente:
    cadastro usa o Supabase Auth (`supabase.auth.signUp`, `src/contexts/AuthContext.tsx:1351-1364`);
    e quando o Auth manda o e-mail pela function `auth-send-email`, ela tambem precisa de remetente e falha sem ele
    (`supabase/functions/auth-send-email/index.ts:110-118`).
+   (0) **Acerte os enderecos do login antes de medir:** `login-da-loja.yml` com `acao=acertar`
+   (secao "Login da loja (enderecos e limite)", abaixo). O projeto Supabase novo nasce com
+   `site_url = http://localhost:3000`, e o link do e-mail de confirmacao e de recuperacao de senha
+   levaria a uma pagina morta. O acertar le o dominio de `store_config.dominio_publico` (a linha
+   `id = 1` do passo 6) e PARA sem gravar se ele estiver vazio ou se o `site_url` ja apontar para
+   outro endereco. Rodar de novo nao grava nada.
    (a) **Meca a configuracao do Auth da loja** pelas duas ferramentas de leitura da secao "E-mail do
    login (Supabase Auth) por loja", abaixo: `medir-auth-da-loja.yml` (o cadastro exige confirmacao por
    e-mail? ha remetente proprio?) e `ativar-email-do-login.yml` com `acao=medir` (o hook de e-mail esta
@@ -2191,6 +2197,9 @@ O cadastro de UMA vez, na entrada do cliente:
    O e-mail tem de chegar e a
    confirmacao tem de abrir. O e-mail da futura administradora (passo 8) serve, se ela nao for da
    equipe; nao o copie para este repositorio nem para o relatorio.
+   (d) **Fim do passo:** `login-da-loja.yml` com `acao=conferir` ate o veredito ser **SIM** (o run so
+   sai verde com SIM). Com NAO ou INCERTO, a loja nao abre o cadastro para clientes: o log diz o
+   item que FALTA ou que nao foi medido.
 8. **Primeira administradora (sem isto o painel recusa todo mundo e o dono da loja nao pode ser
    cadastrado):** aplicar as migrations NAO cria administradora. O cadastro comum nasce `customer`
    (`handle_new_user`, `supabase/migrations/20260806000000_baseline_do_schema_vivo.sql:2960-2966`,
@@ -2476,6 +2485,50 @@ nunca confirma.
   `gh workflow run medir-auth-da-loja.yml --repo BielWeed/ikcous-marketplace --ref <ramo> -f projeto=savy -f expected_sha=<SHA completo do topo>`
   e o mesmo com `-f projeto=ikcous-publicada`. O titulo do run e "medir auth em <projeto>".
 - Teste: `tests/ci_medir_auth_da_loja_test.ts`.
+
+## Login da loja (enderecos e limite)
+
+`login-da-loja.yml` (script `scripts/publicacao/login-da-loja.cjs`, regras em
+`scripts/publicacao/login-da-loja-regras.cjs`) tem duas acoes, uma loja assinante por run:
+
+- **`conferir` (so leitura):** le a configuracao do Auth, as functions, os nomes dos segredos e,
+  por uma consulta fixa `read_only`, o `dominio_publico` e um sim/nao de Gmail cadastrado. Responde
+  item a item (OK, FALTA, ATENCAO, NAO MEDIDO) e um veredito: **SIM** (a loja pode abrir o
+  cadastro para clientes), **NAO** ou **INCERTO** (algo nao foi medido; nunca vira SIM). O run so
+  sai verde com SIM. NAO aparece com `site_url` em localhost ou vazio, endereco de volta que o
+  Supabase recusaria, hook de e-mail ligado com endereco de outro projeto ou com a function
+  `auth-send-email` sem `verify_jwt=false`, sem segredo ou sem Gmail, e sem hook nem SMTP com a
+  confirmacao de cadastro ligada. Limite de e-mails abaixo de 30/h e localhost na lista de
+  enderecos sao ATENCAO.
+- **`acertar`:** grava SO tres campos do Auth (PATCH `/v1/projects/{ref}/config/auth`):
+  `site_url = https://<dominio_publico>` quando ele esta em localhost ou vazio;
+  `uri_allow_list` ganha `https://<dominio_publico>/**` uma vez, mantendo as entradas que ja
+  existiam na ordem; e `rate_limit_email_sent = 30` so quando a loja ja tem remetente proprio
+  (SMTP completo ou hook de e-mail ligado) e o valor esta vazio ou abaixo de 30. Os enderecos e o
+  limite vao em gravacoes separadas, cada uma relida e confirmada; se qualquer outro campo do
+  Auth mudar no meio, PARA com "estado DESCONHECIDO" (rode `conferir` antes de repetir). PARA sem
+  gravar se o `dominio_publico` estiver vazio ou fora do formato, ou se o `site_url` apontar para
+  outro endereco (mostra so o host; decida a mao). Rodar de novo nao grava nada. No fim, roda o
+  `conferir`. Na loja recem-nascida o veredito ainda e NAO ate o Gmail (passo 10) e o hook de
+  e-mail: o acertar sai verde mesmo assim.
+- **Alvos e travas:** as lojas assinantes do `scripts/frota/lojas.json` (menu gerado), cada uma so
+  com o seu segredo, so no ultimo passo; `expected_sha` completo igual ao SHA do run; 401/403 param
+  sem tentar outro segredo; token, `smtp_pass` e o segredo do hook so em `::add-mask::`; o corpo
+  cru da resposta nunca vai para o log. O token precisa dos escopos `auth:read`, `auth:write`
+  (so o acertar), `edge_functions:read`, `secrets:read` e `database:write` (a consulta fixa roda
+  `read_only`, mas o endpoint exige esse escopo).
+- **Como rodar:**
+  `gh workflow run login-da-loja.yml --repo BielWeed/ikcous-marketplace --ref <ramo> -f projeto=savy -f acao=conferir -f expected_sha=<SHA completo do topo>`
+  (troque `acao=acertar` para gravar). O titulo do run e "login da loja em <projeto>: <acao>". O
+  ensaio da release (`scripts/frota/publicar-release.mjs`) imprime o `conferir` de cada loja
+  assinante na prontidao dela.
+- **Como desfazer:** o log e o resumo do `acertar` imprimem os valores de ANTES (`antes site_url`,
+  `antes uri_allow_list`, `antes rate_limit_email_sent`; nenhum e segredo). Para voltar, grave
+  esses valores de novo nos mesmos tres campos (PATCH `/config/auth` com o token de gestao da loja,
+  ou o painel do Supabase dela: Authentication, URL Configuration e Rate Limits). O workflow nao
+  tem acao de desfazer, de proposito: voltar o `site_url` para localhost quebra o link do e-mail
+  outra vez.
+- Testes: `tests/ci_login_da_loja_regras_test.ts` e `tests/ci_login_da_loja_test.ts`.
 
 ## Rollback integral da configuracao do repositorio
 

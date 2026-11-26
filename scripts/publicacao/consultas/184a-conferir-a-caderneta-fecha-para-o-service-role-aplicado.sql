@@ -2,6 +2,8 @@
 -- Nao le nenhuma linha de public.frota_lojas nem de public.frota_segredo (a caderneta guarda o endereco e a chave do banco de cada loja):
 -- roda por papel sem privilegio de tabela. Confere o ESTADO NOVO inteiro: o service_role sem nada nas duas tabelas (tabela e colunas), as
 -- duas continuando fechadas para PUBLIC, anon e authenticated, e as portas do porteiro (resolver_loja e resolver_loja_com_estado) intactas.
+-- As duas portas tem uma SUCESSORA, a 20261490000000 (a caderneta confere a chave sem bcrypt por chamada); o corpo dela e aceito ao lado
+-- do da 20261460000000 (quem distingue e a 186a).
 WITH tab AS (
   SELECT c.oid, c.relname, c.relowner, c.relacl, c.relrowsecurity, c.relkind
   FROM pg_class c WHERE c.oid IN (to_regclass('public.frota_lojas'), to_regclass('public.frota_segredo'))
@@ -36,8 +38,8 @@ WITH tab AS (
   UNION ALL SELECT 'resolver_loja e resolver_loja_com_estado: uma so cada, com os corpos da 20261460000000 (md5)', 'sim', CASE WHEN
     (SELECT count(*) FROM fn WHERE proname = 'resolver_loja') = 1
     AND (SELECT count(*) FROM fn WHERE proname = 'resolver_loja_com_estado') = 1
-    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'resolver_loja' AND h = '19072d99f3253583342a0bb6c42447dd')
-    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'resolver_loja_com_estado' AND h = '92682af1143806d3662411b6d5788096') THEN 'sim' ELSE 'nao' END
+    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'resolver_loja' AND h IN ('19072d99f3253583342a0bb6c42447dd', '0c60eb13c0016d2129b51def3ec7c255'))
+    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'resolver_loja_com_estado' AND h IN ('92682af1143806d3662411b6d5788096', 'a30e752cff5ae4edc2db612866eb8bcd')) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'resolver_loja e resolver_loja_com_estado: SECURITY DEFINER, o mesmo dono de frota_lojas e frota_segredo e EXECUTE so do anon (PUBLIC, authenticated e service_role nao)', 'sim', CASE WHEN
     (SELECT count(*) FROM fn) = 2
     AND COALESCE((SELECT bool_and(f.prosecdef

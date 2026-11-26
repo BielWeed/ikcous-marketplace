@@ -139,7 +139,16 @@ function banco() {
         },
     };
     return {
-        cliente: { from: (nome: string) => (nome === "store_config" ? storeConfig : appSettings) },
+        cliente: {
+            from: (nome: string) => (nome === "store_config" ? storeConfig : appSettings),
+            // Fila da reconciliação VAZIA: nenhum pedido aguardando pagamento,
+            // então trocar de conta segue livre (a recusa com fila cheia mora em
+            // index_troca_de_conta_com_pagamento_aberto_test.ts).
+            rpc: (nome: string) => {
+                assertEquals(nome, "pagamentos_a_reconciliar");
+                return Promise.resolve({ data: [], error: null });
+            },
+        },
         estado,
         registro: () => JSON.parse(estado.valor!),
         editarRegistro: (mudar: (r: any) => void) => {

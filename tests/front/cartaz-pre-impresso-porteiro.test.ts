@@ -24,7 +24,7 @@ import type {
   EntradaCachePorteiro,
 } from "@/hospedagem/porteiro";
 
-const LOJA = "https://lojaaaaaaaaaaaaaaaaa.supabase.co";
+const LOJA = "https://gnjsrucsmjkajijrakzr.supabase.co";
 const IKCOUS = "https://cafkrminfnokvgjqtkle.supabase.co";
 const HOST = "loja-a.exemplo";
 const FOTO = `${LOJA}/storage/v1/object/public/banners/1791565996435-7tdkqgfb019.webp`;

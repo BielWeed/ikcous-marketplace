@@ -74,7 +74,7 @@ it("CheckoutView deixa o círculo neutro quando a miniatura do botão falha", as
     description: "",
     price: 100,
     images: [
-      "https://exemplo.supabase.co/storage/v1/object/public/fotos/vestido.jpg",
+      "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/fotos/vestido.jpg",
     ],
     category: "Vestidos",
     stock: 5,

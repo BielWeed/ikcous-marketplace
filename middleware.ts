@@ -93,9 +93,11 @@ const cachePorteiro = new Map<string, EntradaCachePorteiro>();
 // `CACHE_FORA_DO_AR_MS` no porteiro. A loja ativa nunca escreve aqui.
 const cacheForaDoAr = new Map<string, EntradaCacheForaDoAr>();
 
-// O "não achei" da caderneta por host, 60 s (só `miss`, nunca erro): ver
-// `CACHE_SEM_LOJA_MS` no porteiro. Host desconhecido não vira uma pergunta
-// cara à caderneta a cada pedido de robô.
+// O host SEM ficha: o "não achei" da caderneta, 60 s (só `miss`), e o recuo
+// de 10 s depois de uma falha sem ficha (nunca guardada como "não achei"): ver
+// `EntradaCacheSemLoja` no porteiro. Host desconhecido não vira uma pergunta
+// cara à caderneta a cada pedido de robô, e a instância nova não martela a
+// caderneta que oscila.
 const cacheSemLoja = new Map<string, EntradaCacheSemLoja>();
 
 // Resoluções em andamento por host: pedidos simultâneos do mesmo host esperam
@@ -364,6 +366,13 @@ export default async function middleware(
     process.env as AmbientePorteiro,
     context,
   );
+  // A revalidação da ficha em segundo plano (stale-while-revalidate do
+  // porteiro) vive no MESMO `waitUntil` do contador. Sem `context`, o porteiro
+  // espera a caderneta na hora, como antes.
+  const waitUntil =
+    typeof context?.waitUntil === "function"
+      ? (promessa: Promise<unknown>) => context.waitUntil(promessa)
+      : undefined;
   const caminhoDaPrevia = url.pathname.replace(/\/$/, "");
   if (
     caminhoDaPrevia === "/product-detail" &&
@@ -388,6 +397,7 @@ export default async function middleware(
         cacheForaDoAr,
         cacheSemLoja,
         resolucoesEmVoo,
+        waitUntil,
       },
     );
     // Ficha ausente (sem-loja/discorda/banco-indisponivel) -> a MESMA 503
@@ -624,6 +634,7 @@ export default async function middleware(
     cacheForaDoAr,
     cacheSemLoja,
     resolucoesEmVoo,
+    waitUntil,
     cacheMapa: cacheMapaDoSite,
     cacheCartaz: cacheCartazDaLoja,
     // Pessoa abrindo a loja (ou previa de link) -> uma entrada no banco DESTA

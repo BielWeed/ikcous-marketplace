@@ -568,6 +568,7 @@ async function executarTesteDeConexao(
     let mensagem: string;
     let ambiente: "producao" | "teste" | null = null;
     let conta: string | null = null;
+    let contaId: string | null = null;
     try {
         const resposta = await buscar(`${BASE_URL_PADRAO}/users/me`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -586,6 +587,7 @@ async function executarTesteDeConexao(
             const analise = analisarAmbienteDaConta(dados, token);
             ambiente = analise.ambiente;
             conta = typeof dados.nickname === "string" ? dados.nickname : null;
+            contaId = idDaConta(dados);
             // O log diz o ambiente e QUAL marca decidiu — nunca o e-mail.
             console.log(
                 `[credenciais-mp] ambiente da conta: ${
@@ -637,9 +639,199 @@ async function executarTesteDeConexao(
             mensagem,
             ambiente,
             conta,
+            conta_id: contaId,
         },
         semResposta,
     };
+}
+
+/**
+ * O `id` da conta na resposta de `GET /users/me`, em texto (o MP devolve
+ * número). Qualquer outra forma vira null: sem id não se afirma conta nenhuma.
+ */
+function idDaConta(dadosDoUsersMe: unknown): string | null {
+    if (typeof dadosDoUsersMe !== "object" || dadosDoUsersMe === null) return null;
+    const id = (dadosDoUsersMe as Record<string, unknown>).id;
+    if (typeof id === "number" && Number.isSafeInteger(id) && id > 0) {
+        return String(id);
+    }
+    if (typeof id === "string" && /^\d+$/.test(id.trim())) return id.trim();
+    return null;
+}
+
+// ── Troca de CONTA com pagamento em aberto (26/11/2026) ──────────────────
+
+/**
+ * Recusa a troca do Access Token por o de OUTRA conta do Mercado Pago
+ * enquanto a conta atual ainda tem pagamento em aberto. Devolve a resposta da
+ * recusa, ou null quando a troca pode seguir.
+ *
+ * POR QUE: o webhook só aceita a assinatura da chave em vigor e a
+ * reconciliação consulta com o token em vigor. Trocar de conta (pessoa física
+ * -> empresa) com um PIX (30 min) ou um 3DS de cartão (40 min) aberto na conta
+ * antiga deixa esse pagamento sem ninguém para conferir: o aviso da conta
+ * antiga leva 401, a consulta com o token novo não acha a cobrança, o pedido
+ * expira, o estoque volta à venda e o dinheiro cai na conta antiga sem o aviso
+ * de pagamento atrasado (P1).
+ *
+ * "EM ABERTO" é a fila da própria reconciliação (`pagamentos_a_reconciliar`):
+ * exatamente os pedidos que ela ainda vai consultar com o token em vigor — o
+ * mesmo critério, num lugar só. A fila esvazia sozinha quando o MP dá a
+ * cobrança como terminal (paga, expirada, cancelada).
+ *
+ * MESMA CONTA = mesmo `id` de `GET /users/me` E mesmo AMBIENTE. O id da conta
+ * nova sai do teste de conexão que o `salvar` acabou de rodar (sem chamada
+ * nova); o da antiga, do `ultimo_teste.conta_id` gravado (que um teste falho
+ * do MESMO token não apaga — `comIdDaContaConhecido`). Com a mesma conta
+ * provada assim, nem a fila é consultada.
+ *
+ * AMBIENTE (revisão Opus, 26/11/2026): a credencial de TESTE (`TEST-`) de uma
+ * conta devolve o MESMO id da de produção, e sem chamar o MP não dá para
+ * provar que são contas separadas. Conciliar pagamento real com chave de teste
+ * é pior que esperar: teste <-> não-teste com fila cheia RECUSA, mesmo id ou
+ * não. "Teste" é o mesmo sinal positivo do resto da tela (`ambiente` do teste
+ * de conexão, ou o prefixo `TEST-` do token).
+ *
+ * Com fila cheia e a conta antiga não provada igual, pergunta-se ao MP com o
+ * token ANTIGO (`GET /users/me`, a mesma consulta do teste de conexão):
+ *   - o MP RECUSA a chave antiga (401/403, revogada ou expirada) -> a troca
+ *     SEGUE. Com o token antigo morto ninguém concilia mais nada da fila — nem
+ *     a reconciliação, que usa o mesmo token —, então ela não esvazia sozinha
+ *     (24 h no PIX, 14 dias no cartão) e recusar só prenderia a loja; a chave
+ *     nova é a única que volta a conciliar. Vale para conta diferente também.
+ *   - token salvo que o cofre não decifra: mesma regra (ninguém o usa).
+ *   - o MP NÃO RESPONDE (rede, tempo, 5xx) -> recusa: falha nunca libera.
+ *   - responde com o id -> compara conta e ambiente.
+ * Chave NOVA que não se identifica (teste dela falhou) com fila cheia RECUSA.
+ *
+ * Roda ANTES de qualquer escrita. Primeira configuração e token igual ao
+ * salvo nem chegam aqui (quem chama filtra).
+ */
+async function recusaDaTrocaDeConta(
+    supabase: any,
+    args: {
+        testeDaChaveNova: UltimoTeste | null;
+        tokenNovo: string;
+        testeDaChaveAntiga: UltimoTeste | null | undefined;
+        tokenAntigo: string | null;
+        buscar: (url: string, init?: RequestInit) => Promise<Response>;
+    },
+): Promise<Response | null> {
+    const contaNova = args.testeDaChaveNova?.conectado === true
+        ? args.testeDaChaveNova.conta_id ?? null
+        : null;
+    const novaEhDeTeste = ehCredencialDeTeste(args.testeDaChaveNova, args.tokenNovo);
+    const contaAntigaGravada = args.testeDaChaveAntiga?.conta_id ?? null;
+    const antigaGravadaEhDeTeste = ehCredencialDeTeste(
+        args.testeDaChaveAntiga,
+        args.tokenAntigo,
+    );
+    // Mesma conta no mesmo ambiente, provada pelo que já está em mãos: nem
+    // consulta a fila.
+    if (
+        contaNova !== null && contaNova === contaAntigaGravada &&
+        novaEhDeTeste === antigaGravadaEhDeTeste
+    ) {
+        return null;
+    }
+
+    const { data: fila, error } = await supabase.rpc("pagamentos_a_reconciliar");
+    if (error || !Array.isArray(fila)) {
+        console.error(
+            "[credenciais-mp] troca de conta: a fila de pagamentos em aberto não pôde ser lida:",
+            error?.message ?? "resposta sem lista",
+        );
+        return json(
+            {
+                erro: "Não consegui conferir agora se há pedidos aguardando pagamento na conta atual do Mercado Pago, então nada foi alterado. Tente de novo em instantes.",
+            },
+            503,
+        );
+    }
+    if (fila.length === 0) return null;
+
+    // "incerta" | "conta" | "ambiente": por que a troca é recusada.
+    let motivo: "incerta" | "conta" | "ambiente" | null = null;
+    if (contaNova === null) {
+        motivo = "incerta";
+    } else if (args.tokenAntigo === null) {
+        // O cofre não decifra o token salvo: ninguém concilia com ele.
+        console.warn(
+            "[credenciais-mp] troca de conta liberada com fila cheia: o token salvo não se decifra",
+        );
+        return null;
+    } else {
+        const { ultimoTeste: antigo, semResposta } = await executarTesteDeConexao(
+            args.tokenAntigo,
+            args.buscar,
+        );
+        if (!antigo.conectado && !semResposta) {
+            // 401/403: o MP recusou a chave antiga — ela está morta.
+            console.warn(
+                `[credenciais-mp] troca de conta liberada com ${fila.length} pedido(s) em aberto: o Mercado Pago recusou o token antigo`,
+            );
+            return null;
+        }
+        const contaAntiga = antigo.conectado ? antigo.conta_id ?? null : null;
+        if (contaAntiga === null) {
+            motivo = "incerta";
+        } else if (contaAntiga !== contaNova) {
+            motivo = "conta";
+        } else if (ehCredencialDeTeste(antigo, args.tokenAntigo) !== novaEhDeTeste) {
+            motivo = "ambiente";
+        } else {
+            return null;
+        }
+    }
+
+    const quantos = `Há ${fila.length} pedido(s) aguardando pagamento na conta atual do Mercado Pago`;
+    // Sem "cancele os pedidos": a fila guarda de propósito o pedido aguardando
+    // E cancelado cujo PIX ainda pode ser pago (20261349000000) — cancelar não
+    // destrava a troca, e a lojista perderia a venda à toa.
+    const espere =
+        "Espere esses pagamentos terminarem e troque depois: o PIX sai da conferência quando vence e é conferido (cerca de 1 hora), e um cartão em análise pode levar alguns dias. Nada foi salvo.";
+    console.warn(
+        `[credenciais-mp] troca de conta recusada: ${fila.length} pedido(s) em aberto; motivo: ${motivo}`,
+    );
+    return json(
+        {
+            erro: motivo === "incerta"
+                ? `${quantos}, e não consegui confirmar se as chaves novas são da mesma conta. Se trocar agora, esses pagamentos podem não ser mais conferidos pelo app. ${espere}`
+                : motivo === "ambiente"
+                ? `${quantos}, e as chaves novas são de outro ambiente (teste e produção não se misturam). Se trocar agora, esses pagamentos não seriam mais conferidos pelo app. ${espere}`
+                : `${quantos}, e as chaves novas são de outra conta. Se trocar agora, esses pagamentos não seriam mais conferidos pelo app. ${espere}`,
+        },
+        409,
+    );
+}
+
+/**
+ * A credencial é de TESTE? Só sinal positivo, o mesmo da tela: o prefixo
+ * `TEST-` do token ou o `ambiente === "teste"` de um teste de conexão que
+ * passou (`analisarAmbienteDaConta`: etiqueta `test_user`, e-mail
+ * `@testuser.com`, prefixo). Sem sinal = não é de teste.
+ */
+function ehCredencialDeTeste(
+    teste: UltimoTeste | null | undefined,
+    token: string | null,
+): boolean {
+    if (token?.startsWith("TEST-")) return true;
+    return teste?.conectado === true && teste.ambiente === "teste";
+}
+
+/**
+ * Um teste de conexão do MESMO token que não trouxe o id da conta (falhou, ou o
+ * MP não respondeu) não apaga o último id conhecido daquele token: sem isso,
+ * um `testar` com a rede fora deixava a loja sem como provar "mesma conta" na
+ * próxima troca. NUNCA usar quando o token mudou — o id antigo seria atribuído
+ * à chave nova.
+ */
+function comIdDaContaConhecido(
+    teste: UltimoTeste,
+    anterior: UltimoTeste | null | undefined,
+): UltimoTeste {
+    if (teste.conta_id != null || !anterior?.conta_id) return teste;
+    return { ...teste, conta_id: anterior.conta_id };
 }
 
 // ── A liberação automática: alvo, reconciliação e recados ─────────────────
@@ -1095,6 +1287,7 @@ export async function handler(
                             "Não consegui ler a chave salva. Cole e salve as chaves de novo.",
                         ambiente: null,
                         conta: null,
+                        conta_id: null,
                     };
                 } else {
                     const resultado = await executarTesteDeConexao(
@@ -1104,6 +1297,35 @@ export async function handler(
                     ultimoTeste = resultado.ultimoTeste;
                     testeSemResposta = resultado.semResposta;
                 }
+                // Testou o MESMO token que já estava salvo (mudou só a Public
+                // Key ou a Chave de notificações, ou colou o mesmo token): um
+                // teste falho não apaga o id da conta que já se conhecia.
+                // Token NOVO nunca herda o id do antigo.
+                if (!accessToken || accessToken === tokenSalvo) {
+                    ultimoTeste = comIdDaContaConhecido(
+                        ultimoTeste,
+                        registroAntigo?.ultimo_teste,
+                    );
+                }
+            }
+
+            // TROCA DE CONTA COM PAGAMENTO EM ABERTO (26/11/2026): Access
+            // Token novo sobre um já salvo (primeira configuração não tem conta
+            // anterior a proteger; o mesmo token colado de novo não troca
+            // nada) passa pela recusa ANTES de qualquer escrita — ver
+            // `recusaDaTrocaDeConta`.
+            if (
+                trocouToken && registroAntigo?.token_cifrado &&
+                accessToken !== tokenSalvo
+            ) {
+                const recusaDaTroca = await recusaDaTrocaDeConta(supabase, {
+                    testeDaChaveNova: ultimoTeste,
+                    tokenNovo: accessToken,
+                    testeDaChaveAntiga: registroAntigo.ultimo_teste,
+                    tokenAntigo: tokenSalvo,
+                    buscar,
+                });
+                if (recusaDaTroca) return recusaDaTroca;
             }
 
             // R1 (revisão de 30/09): o teste acima leva segundos, e o lojista
@@ -1369,7 +1591,12 @@ export async function handler(
                 );
             }
 
-            const { ultimoTeste } = await executarTesteDeConexao(token, buscar);
+            // O MESMO token salvo: um teste falho não apaga o id da conta já
+            // conhecido (sem ele, a próxima troca não provaria "mesma conta").
+            const ultimoTeste = comIdDaContaConhecido(
+                (await executarTesteDeConexao(token, buscar)).ultimoTeste,
+                registro.ultimo_teste,
+            );
             // R1 (revisão de 30/09): o teste leva segundos e o lojista pode ter
             // apertado PAUSAR nesse meio-tempo. Gravar o `registro` lido ANTES
             // apagaria a pausa, e a reconciliação abaixo religaria a loja. A

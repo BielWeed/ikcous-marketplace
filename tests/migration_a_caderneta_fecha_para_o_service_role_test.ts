@@ -57,6 +57,14 @@ function corpo(sql, nome) {
 }
 const MD5_V1 = md5(corpo(estadoDeVida, "public.resolver_loja"));
 const MD5_V2 = md5(corpo(estadoDeVida, "public.resolver_loja_com_estado"));
+// A 20261490000000 sucede os corpos das duas portas: a 184a (depois) aceita os dois; a 184b (antes) so os da 20261460.
+const sucessora = LER(
+  "20261490000000_a_caderneta_confere_a_chave_sem_bcrypt_por_chamada.sql",
+);
+const MD5_V1_SUCESSORA = md5(corpo(sucessora, "public.resolver_loja"));
+const MD5_V2_SUCESSORA = md5(
+  corpo(sucessora, "public.resolver_loja_com_estado"),
+);
 const REVOKE =
   "REVOKE ALL ON TABLE public.frota_lojas, public.frota_segredo FROM service_role;";
 const GRANT =
@@ -243,7 +251,11 @@ Deno.test("184a/184b: rol fechado (6 e 5 linhas) igual aos rotulos do SQL, UM st
       `${nome}: nao chama porta`,
     );
     const hashes = [...sql.matchAll(/'([0-9a-f]{32})'/g)].map((m) => m[1]);
-    assertEquals(hashes.sort(), [MD5_V1, MD5_V2].sort(), `${nome}: md5`);
+    const esperados =
+      nome === A184
+        ? [MD5_V1, MD5_V2, MD5_V1_SUCESSORA, MD5_V2_SUCESSORA]
+        : [MD5_V1, MD5_V2];
+    assertEquals(hashes.sort(), esperados.sort(), `${nome}: md5`);
   }
 });
 
@@ -264,7 +276,7 @@ Deno.test("lote de UMA migration em provasDeObjetos (184a depois, 184b antes), a
       !("soNosRefs" in lotes[0]),
   );
   assertStringIncludes(lotes[0]._comentario, "IKCOUS_FROTA_URL");
-  // Anexado no fim quando entrou: logo depois do lote da 20261470 (os lotes posteriores, como o da 20261500, vêm depois dele).
+  // Anexado no fim quando entrou: logo depois do lote da 20261470 (os lotes posteriores, como os da 20261490 e da 20261500, vêm depois dele).
   const i184 = canais.provasDeObjetos.findIndex((l) => l.consulta === A184);
   assertEquals(
     canais.provasDeObjetos[i184 - 1]?.consulta,

@@ -111,7 +111,7 @@ function montarProduto(overrides: Record<string, unknown>) {
       name: "Vestido longo de linho com alças finas e botões de madeira",
       category: "Vestidos",
       images: [
-        "https://proj.supabase.co/storage/v1/object/public/products/foto1.jpg",
+        "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/products/foto1.jpg",
       ],
       isActive: true,
       stock: 20,
@@ -841,7 +841,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       // O catálogo pede a foto pequena; se ela falha, tenta a original; e se
       // nem isso, espera um pouco e pede tudo de novo (até 2 vezes).
       const ORIGINAL_DA_FOTO =
-        "https://proj.supabase.co/storage/v1/object/public/products/foto1.jpg";
+        "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/products/foto1.jpg";
 
       async function falhar(img: Element | null) {
         expect(img).not.toBeNull();

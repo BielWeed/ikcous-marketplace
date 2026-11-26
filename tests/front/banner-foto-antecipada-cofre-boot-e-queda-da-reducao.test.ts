@@ -37,7 +37,8 @@ vi.mock("@/lib/dataVault", () => ({
   },
 }));
 
-const REDUZIVEL = "https://loja.test/storage/v1/object/public/banners/r.png";
+const REDUZIVEL =
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/banners/r.png";
 const SEM_REDUCAO = "https://loja.test/banners/original.png";
 const VENCIDO_EM = "2020-01-01T00:00:00Z";
 

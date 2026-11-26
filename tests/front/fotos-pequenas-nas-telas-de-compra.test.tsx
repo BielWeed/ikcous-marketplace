@@ -20,7 +20,7 @@ vi.mock("@/contexts/StoreContext", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const ORIGINAL =
-  "https://xyz.supabase.co/storage/v1/object/public/produtos/p1/foto.jpg";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/p1/foto.jpg";
 const PLACEHOLDER = "https://placehold.co/600x400?text=Sem+Imagem";
 
 const produto: Product = {

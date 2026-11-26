@@ -112,7 +112,7 @@ async function tentarAtivarServiceWorkerNovo(): Promise<boolean> {
     if (!registro) return false;
     if (!registro.waiting) {
       // Ainda não há versão nova esperando: pede a busca dela (a checagem
-      // automática é de 3 em 3 minutos). Teto de tempo e erro engolidos —
+      // automática é de 20 em 20 minutos). Teto de tempo e erro engolidos —
       // sem versão nova, o assumir abaixo devolve `false`.
       let prazo: ReturnType<typeof setTimeout> | undefined = undefined;
       try {

@@ -26,7 +26,10 @@
 //      profundidade) e escapa-se tudo. A CSP bloqueia script inline: o
 //      trecho nunca tem `on*=` nem `<script>` (um teste proibe).
 //   2. So loja cuja foto passa pelo redimensionamento (`srcSet` nao vazio):
-//      sem ele (IKCOUS, foto de 669 KB) o cartaz roubaria o cano do JS.
+//      sem ele (IKCOUS, foto de 669 KB) o cartaz roubaria o cano do JS. Desde
+//      26/11/2026 so transforma o projeto MEDIDO (lista em `imageUrl.ts`): a
+//      loja em projeto gratuito (403 FeatureNotEnabled) fica sem cartaz, em
+//      vez de imprimir um endereco que da erro.
 //   3. So quando a vitrine mostraria a foto CRUA: banner com texto/pelicula
 //      ou modelo pronto muda de cara quando o app chega, e um cartaz com a
 //      foto limpa seria uma imagem que a loja nunca mostra.
@@ -184,8 +187,8 @@ function hostDaLoja(supabaseUrl: string): string | null {
 
 /**
  * A loja redimensiona a foto do banner? Decidido pela ORIGEM, antes de ler
- * qualquer banner: a IKCOUS (foto de 669 KB sem redimensionamento) nem chega
- * a consultar o banco por causa do cartaz.
+ * qualquer banner: a IKCOUS (foto de 669 KB sem redimensionamento) e a loja em
+ * projeto gratuito nem chegam a consultar o banco por causa do cartaz.
  */
 export function lojaRedimensionaFoto(supabaseUrl: string): boolean {
   const host = hostDaLoja(supabaseUrl);

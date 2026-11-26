@@ -46,7 +46,28 @@
  * concluída é "loja já instalada" e RECUSA: loja que vende e está atrasada
  * recebe migration nova pelo aplicar-migrations.yml (portão de publicação),
  * nunca por aqui. (Guarda por store_config não serve: 10 migrations a semeiam,
- * inclusive a baseline.)
+ * inclusive a baseline.) A ÚNICA exceção é a loja que ESTE instalador
+ * terminou e que está completa (marca concluída + ledger == fila inteira):
+ * rodar de novo dá JA_INSTALADA, saída de sucesso, só leituras (26/11/2026;
+ * antes devolvia o mesmo RECUSADO das recusas perigosas).
+ *
+ * OS PRIVILÉGIOS PADRÃO DE PUBLIC (26/11/2026): desde 30/05/2026 projeto
+ * Supabase NOVO nasce sem o `ALTER DEFAULT PRIVILEGES` que dava acesso a
+ * anon/authenticated/service_role em toda tabela, sequência e função nova de
+ * public — e as migrations contam com ele (a baseline não tem GRANT). Sem ele,
+ * a loja nova nasce com 42501 na vitrine e no painel, ou uma guarda de
+ * migration recusa no meio. Os 9 comandos (scripts/ci/banco/
+ * privilegios-padrao.cjs, os MESMOS do banco do CI) vão DENTRO da transação
+ * do DDL do ledger e da marca: nascem juntos ou não nascem, e por isso
+ * "ledger com versão" implica "privilégios aplicados antes da 1ª migration".
+ * Toda rodada que grava reaplica o DDL (idempotente: conceder de novo não muda
+ * nada) e CONFERE o pg_default_acl antes de enviar qualquer migration (ou de
+ * marcar concluída): não bateu, FALHOU, nada enviado. A retomada (e o "nada")
+ * lê ANTES do DDL também: se achou faltando (alguém revogou entre rodadas, ou
+ * o banco foi começado antes desta trava), FALHA FECHADA sem gravar nada —
+ * decisão da hub, 26/11/2026: reaplicar e seguir esconderia as tabelas que
+ * nasceram sem acesso enquanto faltava. A mensagem diz o que conferir e traz
+ * o SQL para reaplicar à mão; depois disso, a rodada seguinte segue.
  *
  * O QUE ESTE MÓDULO ASSUME (e a prova viva tests/banco/instalador-nova-loja-
  * viva.cjs mede num Postgres 17): a requisição é UMA sessão e o texto inteiro
@@ -75,6 +96,16 @@ const {
   contarStatements,
 } = require("../publicacao/conferir-banco.cjs");
 
+// Os DEFAULT PRIVILEGES de fábrica de public (ALL em tabela/sequência e
+// EXECUTE em função nova para anon, authenticated e service_role) e a
+// conferência deles no pg_default_acl: a MESMA fonte que o banco efêmero do CI
+// usa (provisionar-efemero.cjs). Projeto Supabase novo nasce sem essa regra
+// desde 30/05/2026; as migrations contam com ela (baseline sem GRANT).
+const {
+  comandosDosPrivilegiosPadrao,
+  SQL_CONFERIR_PRIVILEGIOS_PADRAO,
+} = require("../ci/banco/privilegios-padrao.cjs");
+
 const PASTA_MIGRATIONS = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../supabase/migrations",
@@ -100,6 +131,8 @@ export const SQL_MARCA =
   "SELECT concluida_em IS NOT NULL AS concluida FROM supabase_migrations.ikcous_instalacao WHERE id = 1;";
 export const SQL_CONCLUIR =
   "UPDATE supabase_migrations.ikcous_instalacao SET concluida_em = now() WHERE id = 1 AND concluida_em IS NULL;";
+/** Leitura: `papel_dono` e `faltando` ('' = os privilégios padrão batem). */
+export const SQL_PRIVILEGIOS = SQL_CONFERIR_PRIVILEGIOS_PADRAO;
 
 const MARCAS = new Set(["ausente", "em_curso", "concluida"]);
 const LOJA_JA_INSTALADA =
@@ -141,8 +174,8 @@ const recusa = (motivo, estado) => ({
  * @param estadoObservado {tabelasEmPublic, ledgerExiste, versoesNoLedger} (de lerEstado)
  * @param arquivosDoRepo  [{arquivo, corpo}] — `arquivo` é o nome (ou caminho
  *        relativo; quem tem pasta no caminho não é da fila)
- * @returns {acao: "recusar"|"instalar"|"nada", motivo, estado, fila: [{arquivo,
- *          versao, nome, envelope}], jaNoLedger, total}
+ * @returns {acao: "recusar"|"instalar"|"nada"|"ja_instalada", motivo, estado,
+ *          fila: [{arquivo, versao, nome, envelope}], jaNoLedger, total}
  */
 export function planejarInstalacao(estadoObservado, arquivosDoRepo) {
   const estado = estadoObservado;
@@ -193,6 +226,23 @@ export function planejarInstalacao(estadoObservado, arquivosDoRepo) {
   // Ledger com versões = algo já rodou. Só ESTE instalador, no meio do
   // caminho (marca em curso), pode continuar; o resto é loja instalada, e
   // migration nova numa loja instalada passa pelo portão de publicação.
+  // A instalada por ESTE instalador e COMPLETA (o ledger é exatamente a fila)
+  // não é recusa: é "já instalada", sucesso sem gravar.
+  if (
+    estado.marca === "concluida" &&
+    estado.tabelasEmPublic > 0 &&
+    noLedger.size === porVersao.size &&
+    [...noLedger].every((v) => porVersao.has(v))
+  ) {
+    return {
+      acao: "ja_instalada",
+      motivo: `JÁ INSTALADA: as ${fila.length} migrations da fila estão no ledger e a marca de instalação está concluída. Nada a fazer aqui; migration nova vai pelo aplicar-migrations.yml.`,
+      estado,
+      fila: [],
+      jaNoLedger: noLedger.size,
+      total: fila.length,
+    };
+  }
   if (noLedger.size > 0 && estado.marca !== "em_curso") {
     return recusa(
       `RECUSADO: ${LOJA_JA_INSTALADA} (o ledger registra ${noLedger.size} versão(ões) e a marca de instalação está ${estado.marca === "concluida" ? "concluída" : "ausente — não foi este instalador que começou este banco"}). Nada se aplica por aqui.`,
@@ -352,23 +402,28 @@ export function envelopeDoArquivo({ arquivo, corpo } = {}) {
   return `BEGIN;\n${corpo}\n${registro}\nCOMMIT;\n`;
 }
 
-/** O ledger no formato do CLI do Supabase (as mesmas 4 instruções de
- * pkg/migration/history.go: tabela só com version, depois as colunas) E a
- * marca de instalação, numa transação só (nascem juntos ou não nascem) e
- * idempotente: rodar duas vezes não muda nada (a linha da marca que já existe,
- * em curso, fica como está). Só roda quando o plano é "instalar", isto é,
- * ledger vazio ou marca em curso: nunca numa loja já instalada. */
+/** Os privilégios padrão de public (os 9 comandos de privilegios-padrao.cjs,
+ * ver o cabeçalho), o ledger no formato do CLI do Supabase (as mesmas 4
+ * instruções de pkg/migration/history.go: tabela só com version, depois as
+ * colunas) E a marca de instalação, numa transação só (nascem juntos ou não
+ * nascem) e idempotente: rodar duas vezes não muda nada (conceder de novo é
+ * nada; a linha da marca que já existe, em curso, fica como está). Só roda
+ * quando o plano é "instalar" ou "nada", isto é, ledger vazio ou marca em
+ * curso: nunca numa loja já instalada. */
 export function ddlDoLedger() {
-  return (
-    "BEGIN;\n" +
-    "CREATE SCHEMA IF NOT EXISTS supabase_migrations;\n" +
-    "CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text NOT NULL PRIMARY KEY);\n" +
-    "ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS statements text[];\n" +
-    "ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS name text;\n" +
-    "CREATE TABLE IF NOT EXISTS supabase_migrations.ikcous_instalacao (id int PRIMARY KEY CHECK (id = 1), iniciada_em timestamptz NOT NULL DEFAULT now(), concluida_em timestamptz);\n" +
-    "INSERT INTO supabase_migrations.ikcous_instalacao (id) VALUES (1) ON CONFLICT (id) DO NOTHING;\n" +
-    "COMMIT;\n"
-  );
+  // Uma instrução por linha; o "" final dá o "\n" depois do COMMIT.
+  return [
+    "BEGIN;",
+    ...comandosDosPrivilegiosPadrao().map((c) => `${c};`),
+    "CREATE SCHEMA IF NOT EXISTS supabase_migrations;",
+    "CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text NOT NULL PRIMARY KEY);",
+    "ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS statements text[];",
+    "ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS name text;",
+    "CREATE TABLE IF NOT EXISTS supabase_migrations.ikcous_instalacao (id int PRIMARY KEY CHECK (id = 1), iniciada_em timestamptz NOT NULL DEFAULT now(), concluida_em timestamptz);",
+    "INSERT INTO supabase_migrations.ikcous_instalacao (id) VALUES (1) ON CONFLICT (id) DO NOTHING;",
+    "COMMIT;",
+    "",
+  ].join("\n");
 }
 
 // ─── T8: a execução ─────────────────────────────────────────────────────────
@@ -459,15 +514,64 @@ function falhaDeEscrita(erro, arquivo, versao, aplicados, dica) {
   };
 }
 
+/** Lê a conferência dos privilégios padrão (SÓ leitura). Resposta fora do
+ * formato LANÇA: nunca vira "bate". */
+export async function lerPrivilegiosPadrao(cliente) {
+  const linhas = await cliente.consultar(SQL_PRIVILEGIOS);
+  const l = Array.isArray(linhas) && linhas.length === 1 ? linhas[0] : null;
+  if (
+    !l ||
+    typeof l.papel_dono !== "string" ||
+    typeof l.faltando !== "string"
+  ) {
+    throw new Error(
+      `resposta da conferência dos privilégios padrão fora do formato: ${JSON.stringify(linhas)?.slice(0, 200)}`,
+    );
+  }
+  return { papelDono: l.papel_dono, faltando: l.faltando };
+}
+
+const FASE_DOS_PRIVILEGIOS = "privilégios padrão";
+const SEM_ELES =
+  "sem eles as tabelas e funções das migrations nascem sem acesso para anon, authenticated e service_role (42501 na vitrine e no painel) ou uma guarda de migration recusa no meio";
+
+function falhaNaLeituraDosPrivilegios(erro, aplicados, quando) {
+  return {
+    estado: "FALHOU",
+    fase: FASE_DOS_PRIVILEGIOS,
+    aplicados,
+    mensagem: `FALHOU ao conferir os privilégios padrão de public ${quando} (${String(erro?.message ?? erro).slice(0, 300)}). Nenhuma migration foi enviada nesta rodada. Conferência é só leitura e o DDL é idempotente: rodar de novo é seguro.`,
+  };
+}
+
+/** A recusa da retomada que achou os privilégios padrão faltando: em
+ * português simples, o que pode ter acontecido, o que conferir e o SQL para
+ * reaplicar à mão (os MESMOS 9 comandos do DDL e a mesma conferência). */
+function recusaDaRetomadaSemPrivilegios({ papelDono, faltando }) {
+  const comandos = comandosDosPrivilegiosPadrao()
+    .map((c) => `${c};`)
+    .join("\n");
+  return [
+    `FALHOU: esta retomada achou os privilégios padrão de public FALTANDO para o papel ${papelDono} (falta: ${faltando}). Nada foi gravado nesta rodada.`,
+    "Por que parar: as migrations que já rodaram criaram tabelas, sequências e funções. As que nasceram enquanto os privilégios faltavam podem ter ficado sem acesso para anon, authenticated e service_role (a vitrine e o painel dariam 42501), e reaplicar agora só vale para o que nascer daqui para a frente.",
+    "Antes de reaplicar à mão, conferir no SQL Editor desta loja: (1) quem tirou a regra e quando; (2) as permissões das tabelas de public (Database → Tables, ou pg_class.relacl), comparando com uma loja antiga — atenção, algumas tabelas são fechadas de propósito pelas migrations, como frota_lojas e frota_segredo. O que tiver nascido sem acesso precisa de GRANT próprio.",
+    `Depois, reaplicar à mão (o mesmo que o instalador aplica):\n${comandos}`,
+    `E conferir (tem de voltar faltando vazio):\n${SQL_PRIVILEGIOS}`,
+    "Feito isso, rodar o instalador de novo: a retomada segue do ponto do ledger.",
+  ].join("\n\n");
+}
+
 /**
  * Executa o plano. Sem `aplicar: true` (literal) é ENSAIO: só leituras.
  * Sempre relê o estado antes (o banco pode ter mudado desde o plano: outro
  * instalador, alguém no SQL Editor) e, se mudou, RECUSA sem gravar. Para na
- * primeira falha, nunca repete.
+ * primeira falha, nunca repete. Antes da 1ª migration (e antes de marcar
+ * concluída) os privilégios padrão de public têm de bater no pg_default_acl;
+ * não bateu, FALHOU sem enviar nada (ver o cabeçalho).
  *
- * @returns {estado: "OK"|"ENSAIO"|"NADA_A_FAZER"|"RECUSADO"|"FALHOU"|
- *          "ESTADO_DESCONHECIDO", mensagem, aplicados?, aplicaria?, arquivo?,
- *          codigo?, fase?}
+ * @returns {estado: "OK"|"ENSAIO"|"NADA_A_FAZER"|"JA_INSTALADA"|"RECUSADO"|
+ *          "FALHOU"|"ESTADO_DESCONHECIDO", mensagem, aplicados?, aplicaria?,
+ *          arquivo?, codigo?, fase?}
  */
 export async function instalar(cliente, plano, opcoes = {}) {
   const aplicar = opcoes?.aplicar === true;
@@ -478,7 +582,11 @@ export async function instalar(cliente, plano, opcoes = {}) {
       aplicados: [],
     };
   }
-  if (plano.acao !== "instalar" && plano.acao !== "nada") {
+  if (
+    plano.acao !== "instalar" &&
+    plano.acao !== "nada" &&
+    plano.acao !== "ja_instalada"
+  ) {
     return {
       estado: "RECUSADO",
       mensagem: `RECUSADO: ação de plano desconhecida (${plano.acao})`,
@@ -504,10 +612,36 @@ export async function instalar(cliente, plano, opcoes = {}) {
       mensagem: `RECUSADO: o banco mudou desde o plano (ledger com ${agora.versoesNoLedger.length} versão(ões), esperava ${plano.estado.versoesNoLedger.length}; marca ${agora.marca}, esperava ${plano.estado.marca}). Outro instalador rodando, ou alguém mexeu: planeje de novo. Nada foi gravado.`,
     };
   }
-  if (plano.acao === "nada") {
-    // Só chega aqui com a marca EM CURSO e o ledger completo: a rodada
-    // anterior aplicou e conferiu tudo, e a resposta da marca se perdeu.
-    if (!aplicar) {
+
+  if (plano.acao === "ja_instalada") {
+    // Só leituras, com ou sem `aplicar`: este instalador não grava em loja
+    // instalada. O sucesso só sai se os privilégios padrão também batem — uma
+    // loja instalada antes desta trava (ou que perdeu a regra) aparece aqui.
+    let priv;
+    try {
+      priv = await lerPrivilegiosPadrao(cliente);
+    } catch (e) {
+      return falhaNaLeituraDosPrivilegios(e, [], "da loja já instalada");
+    }
+    if (priv.faltando !== "") {
+      return {
+        estado: "FALHOU",
+        fase: FASE_DOS_PRIVILEGIOS,
+        aplicados: [],
+        mensagem: `FALHOU: a loja está instalada (marca concluída, ledger completo), mas os privilégios padrão de public do papel ${priv.papelDono} não batem (falta: ${priv.faltando}); ${SEM_ELES}. Este instalador não grava em loja instalada: diagnóstico antes (conferir as permissões das tabelas; a consulta 185-privilegios-padrao-em-public mede a regra).`,
+      };
+    }
+    return {
+      estado: "JA_INSTALADA",
+      aplicados: [],
+      mensagem: `${plano.motivo} Privilégios padrão de public conferidos (papel ${priv.papelDono}). Nada foi gravado.`,
+    };
+  }
+
+  if (!aplicar) {
+    if (plano.acao === "nada") {
+      // Só chega aqui com a marca EM CURSO e o ledger completo: a rodada
+      // anterior aplicou e conferiu tudo, e a resposta da marca se perdeu.
       return {
         estado: "ENSAIO",
         aplicados: [],
@@ -515,6 +649,55 @@ export async function instalar(cliente, plano, opcoes = {}) {
         mensagem: `ENSAIO (nada gravado): ${plano.motivo}. Rode com --aplicar para marcar.`,
       };
     }
+    return {
+      estado: "ENSAIO",
+      aplicados: [],
+      aplicaria: plano.fila.map((i) => i.arquivo),
+      mensagem: `ENSAIO (nada gravado): ${plano.motivo}. Antes da 1ª, os privilégios padrão de public. Rode com --aplicar para gravar.`,
+    };
+  }
+
+  // Retomada ("instalar" com ledger, ou "nada"): o que já nasceu nasceu com os
+  // privilégios que havia. Faltando agora = falha FECHADA, nada gravado.
+  if (plano.jaNoLedger > 0) {
+    let antes;
+    try {
+      antes = await lerPrivilegiosPadrao(cliente);
+    } catch (e) {
+      return falhaNaLeituraDosPrivilegios(e, [], "antes de retomar");
+    }
+    if (antes.faltando !== "") {
+      return {
+        estado: "FALHOU",
+        fase: FASE_DOS_PRIVILEGIOS,
+        aplicados: [],
+        mensagem: recusaDaRetomadaSemPrivilegios(antes),
+      };
+    }
+  }
+
+  const aplicados = [];
+  try {
+    await cliente.consultar(ddlDoLedger());
+  } catch (e) {
+    return falhaDeEscrita(e, "(ledger)", null, aplicados, DICA_DO_LEDGER);
+  }
+  let priv;
+  try {
+    priv = await lerPrivilegiosPadrao(cliente);
+  } catch (e) {
+    return falhaNaLeituraDosPrivilegios(e, aplicados, "depois do DDL");
+  }
+  if (priv.faltando !== "") {
+    return {
+      estado: "FALHOU",
+      fase: FASE_DOS_PRIVILEGIOS,
+      aplicados,
+      mensagem: `FALHOU: o DDL dos privilégios padrão de public voltou sem erro, mas o pg_default_acl do papel ${priv.papelDono} não bate (falta: ${priv.faltando}); ${SEM_ELES}. Nenhuma migration foi enviada nesta rodada. Diagnóstico antes de rodar de novo.`,
+    };
+  }
+
+  if (plano.acao === "nada") {
     try {
       await cliente.consultar(SQL_CONCLUIR);
     } catch (e) {
@@ -526,21 +709,7 @@ export async function instalar(cliente, plano, opcoes = {}) {
       mensagem: `${plano.motivo}: marcada agora. A loja está instalada; migration nova vai pelo aplicar-migrations.yml.`,
     };
   }
-  if (!aplicar) {
-    return {
-      estado: "ENSAIO",
-      aplicados: [],
-      aplicaria: plano.fila.map((i) => i.arquivo),
-      mensagem: `ENSAIO (nada gravado): ${plano.motivo}. Rode com --aplicar para gravar.`,
-    };
-  }
 
-  const aplicados = [];
-  try {
-    await cliente.consultar(ddlDoLedger());
-  } catch (e) {
-    return falhaDeEscrita(e, "(ledger)", null, aplicados, DICA_DO_LEDGER);
-  }
   for (const item of plano.fila) {
     try {
       await cliente.consultar(item.envelope);
@@ -584,7 +753,7 @@ export async function instalar(cliente, plano, opcoes = {}) {
   }
 
   // Só depois da conferência, e numa requisição À PARTE: a marca concluída é
-  // o que passa a recusar este instalador nesta loja para sempre.
+  // o que encerra este instalador nesta loja (dali em diante, JA_INSTALADA ou recusa).
   try {
     await cliente.consultar(SQL_CONCLUIR);
   } catch (e) {
