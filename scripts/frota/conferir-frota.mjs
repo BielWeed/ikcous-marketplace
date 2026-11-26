@@ -351,7 +351,9 @@ export const CAMINHO_DA_SONDA_DE_REDIRECT = "/produto/frota-conferencia";
  * de rede, tempo esgotado ou 5xx no version.json): 2 novas tentativas, 3 no
  * total. Com 300-600 endereços x 4 pedidos, um tropeço à toa virava
  * INALCANCAVEL, bloqueava o ensaio antes do promote e, depois dele, imprimia
- * "FALHOU." com o rollback da frota inteira (caça de 26/11/2026).
+ * "FALHOU." com o rollback da frota inteira (caça de 26/11/2026). Custo de um
+ * endereço morto (todo pedido estoura o tempo): ~52 s por vaga da sonda
+ * (3 x 15 s de timeout + 2 s + 5 s de pausa).
  */
 export const ESPERAS_DA_NOVA_TENTATIVA_MS = Object.freeze([2000, 5000]);
 const esperarDeVerdade = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -383,7 +385,10 @@ const carimbo = (base, n) => (n === 0 ? `${base}` : `${base}-n${n}`);
  * CAMINHO_DA_SONDA_DE_REDIRECT?y=1&t=... e registra status + Location.
  * Cada pedido que tropeça é refeito SOZINHO (os que responderam não se
  * repetem), com as pausas de `esperasDeNovaTentativaMs`; `esperar` é
- * injetável para teste não dormir de verdade.
+ * injetável para teste não dormir de verdade. O erro que sobra de um tropeço
+ * fica MARCADO (`versaoTropecou`; `errosPaginaTropecouEm[i]` = "/" ou
+ * "redirecionamento" para `errosPagina[i]`, null se não foi tropeço): quem
+ * decide "não sei" contra "errado" lê a marca, nunca o texto do erro.
  */
 export async function sondarEndereco(dominio, opcoes = {}) {
   const {
@@ -402,8 +407,10 @@ export async function sondarEndereco(dominio, opcoes = {}) {
     dominio,
     versao: null,
     erroVersao: null,
+    versaoTropecou: false,
     ficha: null,
     errosPagina: [],
+    errosPaginaTropecouEm: [],
     amostras: [],
     redirecionamento: null,
   };
@@ -432,8 +439,10 @@ export async function sondarEndereco(dominio, opcoes = {}) {
         };
       }
     });
-    if (r.erro) sonda.erroVersao = r.erro;
-    else sonda.versao = r.versao;
+    if (r.erro) {
+      sonda.erroVersao = r.erro;
+      sonda.versaoTropecou = r.tropecou === true;
+    } else sonda.versao = r.versao;
   })();
   const amostraDaPagina = async (i, n) => {
     try {
@@ -494,8 +503,12 @@ export async function sondarEndereco(dominio, opcoes = {}) {
         };
       }
     });
-    if (r.erro) sonda.errosPagina.push(r.erro);
-    else sonda.redirecionamento = r.redirecionamento;
+    if (r.erro) {
+      sonda.errosPagina.push(r.erro);
+      sonda.errosPaginaTropecouEm.push(
+        r.tropecou === true ? "redirecionamento" : null,
+      );
+    } else sonda.redirecionamento = r.redirecionamento;
   })();
   const [, , ...resultados] = await Promise.all([versao, redirect, ...paginas]);
   // A chave publicável fica na sonda, fora das amostras e da ficha: não entra
@@ -507,9 +520,10 @@ export async function sondarEndereco(dominio, opcoes = {}) {
       sonda.chavePublica ??= chavePublica;
       return a;
     });
-  sonda.errosPagina.push(
-    ...resultados.filter((r) => r.erro).map((r) => r.erro),
-  );
+  for (const r of resultados.filter((x) => x.erro)) {
+    sonda.errosPagina.push(r.erro);
+    sonda.errosPaginaTropecouEm.push(r.tropecou === true ? "/" : null);
+  }
   if (sonda.amostras.length) {
     const primeira = sonda.amostras[0];
     sonda.ficha = {
@@ -1096,9 +1110,24 @@ export function classificar(alvo, sonda, ctx) {
     }
   }
 
-  // 2) Alcance.
-  if (sonda.erroVersao) add("INALCANCAVEL", sonda.erroVersao);
-  for (const e of sonda.errosPagina ?? []) add("INALCANCAVEL", e);
+  // 2) Alcance. Erro que veio de TROPEÇO marcado pela sonda leva `tropecouEm`
+  // (o pedido); sem a marca, é resposta que contradiz (404, não-JSON) ou sonda
+  // que não diz, e fica sem — o lado seguro para quem lê depois.
+  const alcance = (motivo, tropecouEm) =>
+    achados.push({
+      classe: "INALCANCAVEL",
+      motivo,
+      ...(tropecouEm ? { tropecouEm } : {}),
+    });
+  if (sonda.erroVersao)
+    alcance(
+      sonda.erroVersao,
+      sonda.versaoTropecou === true ? "version.json" : null,
+    );
+  (sonda.errosPagina ?? []).forEach((e, i) => {
+    const em = sonda.errosPaginaTropecouEm?.[i];
+    alcance(e, em === "/" || em === "redirecionamento" ? em : null);
+  });
 
   // 3) Versão servida.
   const vercel = ctx.vercel;

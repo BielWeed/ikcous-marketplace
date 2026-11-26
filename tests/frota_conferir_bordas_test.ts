@@ -528,6 +528,88 @@ Deno.test("nova tentativa: resposta que CONTRADIZ não é re-sondada para virar 
   assertEquals(classe, "ENDERECO_ANTIGO");
 });
 
+Deno.test("tropeço marcado: a sonda diz QUAL pedido tropeçou (rede, tempo, 5xx) e o achado leva tropecouEm; resposta que contradiz (404, não-JSON) não leva", async () => {
+  const sondar = async (roteiro, redirecionamento = false) => {
+    const { fetchImpl } = fetchComRoteiro(roteiro);
+    const { esperar } = relogio();
+    const sonda = await sondarEndereco("a.example.app", {
+      agora: NOW,
+      fetchImpl,
+      esperar,
+      redirecionamento,
+    });
+    const { achados } = classificar(
+      { dominio: "a.example.app", esperado: null },
+      sonda,
+      CTX_DA_SONDA,
+    );
+    return {
+      sonda,
+      alcance: achados.filter((a) => a.classe === "INALCANCAVEL"),
+    };
+  };
+  for (const falha of [
+    () => rede(),
+    () => tempo(),
+    () => resposta({ status: 503 }),
+  ]) {
+    const { sonda, alcance } = await sondar({
+      "/version.json": [falha],
+      "/": [paginaBoa],
+    });
+    assertEquals(sonda.versaoTropecou, true);
+    assertEquals(alcance.length, 1);
+    assertEquals(alcance[0].tropecouEm, "version.json");
+  }
+  for (const contradiz of [
+    () => resposta({ status: 404 }),
+    () => resposta({ corpo: "<!doctype html><title>x</title>" }),
+  ]) {
+    const { sonda, alcance } = await sondar({
+      "/version.json": [contradiz],
+      "/": [paginaBoa],
+    });
+    assertEquals(sonda.versaoTropecou, false);
+    assertEquals(alcance.length, 1);
+    assert(!("tropecouEm" in alcance[0]), JSON.stringify(alcance[0]));
+  }
+  // as amostras de "/" e a sonda de redirecionamento: cada erro com o seu pedido
+  const { sonda, alcance } = await sondar(
+    {
+      "/version.json": [versaoOk()],
+      "/#1": [() => tempo()],
+      "/": [paginaBoa],
+      "*": [() => rede()],
+    },
+    true,
+  );
+  assertEquals(sonda.versaoTropecou, false);
+  assertEquals(sonda.errosPagina, [
+    "sonda de redirecionamento: erro de rede",
+    "amostra 2 da página: timeout",
+  ]);
+  assertEquals(sonda.errosPaginaTropecouEm, ["redirecionamento", "/"]);
+  assertEquals(
+    alcance.map((a) => a.tropecouEm),
+    ["redirecionamento", "/"],
+  );
+  // sonda montada à mão, sem a marca: nenhum achado vira tropeço (lado seguro)
+  const { achados } = classificar(
+    { dominio: "a.example.app", esperado: null },
+    {
+      ...sonda,
+      versaoTropecou: undefined,
+      erroVersao: "version.json: timeout",
+      errosPaginaTropecouEm: undefined,
+    },
+    CTX_DA_SONDA,
+  );
+  assert(
+    achados.every((a) => !("tropecouEm" in a)),
+    JSON.stringify(achados),
+  );
+});
+
 Deno.test("nova tentativa: página que RESPONDE com 5xx (503 de loja adormecida/manutenção) é estado, não tropeço: não se repete", async () => {
   const { fetchImpl, contagem } = fetchComRoteiro({
     "/version.json": [versaoOk()],

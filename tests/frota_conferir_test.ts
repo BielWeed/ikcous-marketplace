@@ -2096,15 +2096,39 @@ Deno.test({
 });
 
 Deno.test({
-  name: "script: endereço que não responde -> INALCANCAVEL, exit 1",
+  // No processo (main), contra o MESMO stub HTTP: um subprocesso dormiria de
+  // verdade as pausas da nova tentativa (2 s + 5 s); aqui `esperar` é falso.
+  name: "main contra o stub HTTP: endereço que não responde -> INALCANCAVEL, exit 1, sem dormir as pausas",
   ...SEM_SANITIZAR,
   async fn() {
     const mundo = mundoBase();
     mundo["savycollection.vercel.app"].falha = "trava";
-    const r = await rodar(["--sha", SHA], mundo);
-    assertEquals(r.codigo, 1);
-    assertStringIncludes(r.saida, "INALCANCAVEL");
-    assertStringIncludes(r.saida, "timeout");
+    const stub = subirStub(mundo);
+    const esperas = [];
+    const logs = [];
+    const antes = console.log;
+    console.log = (...a) => logs.push(a.join(" "));
+    let codigo;
+    try {
+      codigo = await main(
+        ["--sha", SHA],
+        {
+          FROTA_URL_MODELO: `${stub.base}/{dominio}`,
+          FROTA_TIMEOUT_MS: "800",
+          GITHUB_STEP_SUMMARY: "",
+        },
+        { esperar: async (ms) => void esperas.push(ms) },
+      );
+    } finally {
+      console.log = antes;
+      await stub.parar();
+    }
+    const saida = logs.join("\n");
+    assertEquals(codigo, 1);
+    assertStringIncludes(saida, "INALCANCAVEL");
+    assertStringIncludes(saida, "timeout");
+    // as pausas foram pedidas (houve nova tentativa), mas não dormidas
+    assert(esperas.includes(2000) && esperas.includes(5000), `${esperas}`);
   },
 });
 

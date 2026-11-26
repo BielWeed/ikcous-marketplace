@@ -65,9 +65,11 @@
  *   node scripts/frota/publicar-release.mjs --sha <40hex> --deployment <dpl_…> [--promover] [--json <arquivo>]
  * Saída: 0 = pronto (ensaio) ou publicado e conferido; 1 = bloqueado ou
  * conferência pós-promote falhou; 2 = uso errado; 3 = publicado, mas a
- * conferência pós-promote ficou INCERTA: o único problema foi endereço que não
- * respondeu nem depois das novas tentativas da sonda (sem "FALHOU." e sem o
- * rollback: conferir aqueles endereços de novo).
+ * conferência pós-promote ficou INCERTA: o único problema foi version.json que
+ * tropeçou (rede, tempo esgotado, 5xx) nem depois das novas tentativas da
+ * sonda, em endereço cuja página respondeu e que a Vercel diz apontar para o
+ * deployment promovido (sem "FALHOU." e sem o rollback: conferir de novo; ver
+ * soEnderecosSemResposta). 404, não-JSON, página ou loja sem resposta = 1.
  */
 
 import { execFile, execFileSync } from "node:child_process";
@@ -501,24 +503,32 @@ export function problemasAntesDoPromote(conferencia, sha) {
 }
 
 /**
- * DEPOIS do promote: o ÚNICO problema da conferência é endereço que não
- * respondeu (INALCANCAVEL que sobrou das novas tentativas da sonda)? Devolve
- * esses endereços, em ordem, ou null quando há QUALQUER outro problema (versão
- * errada, isolamento, canônico, inventário incompleto, endereço que sumiu) ou
- * quando a conferência não traz o que é preciso para provar isso: na dúvida é
- * FALHOU, nunca "incerto" no escuro. Decide por ACHADO, nunca pela `classe`:
- * INALCANCAVEL é mais grave que ENDERECO_ANTIGO e esconderia a versão velha.
- * `lojasAntes` = [{ ref, dominios }] do inventário antes do promote: loja
- * cadastrada que não foi sondada só é "não sei" se TODOS os endereços que ela
- * tinha antes estão entre os que não responderam.
+ * DEPOIS do promote: o ÚNICO problema da conferência é endereço cujo
+ * version.json TROPEÇOU (rede, tempo esgotado, 5xx) em todas as novas
+ * tentativas da sonda? Devolve esses endereços, em ordem, ou null quando há
+ * QUALQUER outro problema ou quando a conferência não traz o que é preciso
+ * para provar isso: na dúvida é FALHOU, nunca "incerto" no escuro. Decide por
+ * ACHADO, nunca pela `classe` (INALCANCAVEL é mais grave que ENDERECO_ANTIGO e
+ * esconderia a versão velha) e pela MARCA de tropeço que a sonda pôs no
+ * achado (`tropecouEm`), nunca pelo texto do motivo. Viram FALHOU:
+ * - resposta que contradiz (404, index.html no lugar do JSON): `classificar`
+ *   também a põe em INALCANCAVEL, mas é release sem version.json ou vitrine
+ *   servindo a SPA no caminho — errado, não "não sei";
+ * - tropeço da página "/" (o isolamento — LOJA_TROCADA — daquele endereço não
+ *   foi conferido) ou da sonda de redirecionamento (o canônico não foi);
+ * - loja cadastrada que não foi sondada em NENHUM endereço;
+ * - endereço sem resposta que a Vercel não diz apontar para `deploymentId`:
+ *   sem version.json, essa é a única prova de que ele serve a release.
  */
-export function soEnderecosSemResposta(pos, lojasAntes) {
+export function soEnderecosSemResposta(pos, deploymentId) {
   if (pos?.ok === true || !Array.isArray(pos?.resultados)) return null;
+  if (typeof deploymentId !== "string" || !deploymentId) return null;
   if (pos.vercel?.ok !== true || pos.inventario?.completo !== true) return null;
   const cobertura = pos.cobertura;
   if (
     !Array.isArray(cobertura?.lojasNaoSondadas) ||
     !Array.isArray(cobertura?.dominiosNaoSondados) ||
+    cobertura.lojasNaoSondadas.length ||
     cobertura.dominiosNaoSondados.length
   )
     return null;
@@ -529,20 +539,15 @@ export function soEnderecosSemResposta(pos, lojasAntes) {
     if (
       r.classe !== "INALCANCAVEL" ||
       !achados.length ||
-      !achados.every((a) => a?.classe === "INALCANCAVEL")
+      !achados.every(
+        (a) => a?.classe === "INALCANCAVEL" && a.tropecouEm === "version.json",
+      ) ||
+      r.deploymentId !== deploymentId
     )
       return null;
     semResposta.add(r.dominio);
   }
   if (!semResposta.size) return null;
-  const dominiosDaLoja = new Map(
-    (lojasAntes ?? []).map((l) => [l.ref, l.dominios]),
-  );
-  for (const { ref } of cobertura.lojasNaoSondadas) {
-    const dominios = dominiosDaLoja.get(ref);
-    if (!dominios?.length || !dominios.every((d) => semResposta.has(d)))
-      return null;
-  }
   return [...semResposta].sort();
 }
 
@@ -2367,7 +2372,7 @@ export async function publicarRelease(opcoes, deps) {
   const semResposta =
     ok || producaoDepois !== deploymentId
       ? null
-      : soEnderecosSemResposta(pos, [...lojas, ...foraDoAr]);
+      : soEnderecosSemResposta(pos, deploymentId);
   const incerto = semResposta !== null;
   const acordou = lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario, sha);
   linhas.push(
@@ -2384,11 +2389,11 @@ export async function publicarRelease(opcoes, deps) {
   if (incerto) {
     linhas.push(
       "",
-      `**INCERTO.** ${semResposta.length} endereço(s) não responderam nem depois de ${ESPERAS_DA_NOVA_TENTATIVA_MS.length + 1} tentativas: ${semResposta.join(", ")}. Nenhum outro problema apareceu e a produção oficial é o deployment promovido. Não é caso de voltar a frota; confira esses endereços de novo com:`,
+      `**INCERTO.** O version.json de ${semResposta.length} endereço(s) não respondeu (rede, tempo esgotado ou erro 5xx) nem depois de ${ESPERAS_DA_NOVA_TENTATIVA_MS.length + 1} tentativas: ${semResposta.join(", ")}. A página inicial deles respondeu (isolamento conferido), a Vercel diz que apontam para o deployment promovido, a produção oficial é ele e nenhum outro problema apareceu. Isto sozinho não pede voltar a frota; confira de novo com:`,
       "```",
       `node scripts/frota/conferir-frota.mjs --sha ${sha} --vercel`,
       "```",
-      "Se continuarem sem responder, abrir cada um no navegador.",
+      "Se continuarem sem responder, vira falha da conferência: siga a Saida 3 em docs/runbooks/producao-unica-fonte.md.",
     );
   } else if (!ok) {
     linhas.push(
