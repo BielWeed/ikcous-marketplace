@@ -1,4 +1,14 @@
 {
+  "1.5.240": {
+    "titulo": "Teste grátis mais claro no painel e loja que não fica travada quando demora",
+    "novidades": [],
+    "correcoes": [
+      "Quando a página da loja demora mais de 5 segundos para chegar, a cliente vê o aviso de manutenção em vez de ficar esperando sem fim ou ver uma página de erro."
+    ],
+    "melhorias": [
+      "No início do painel, o cartão da assinatura em teste grátis mostra o último dia grátis e quantos dias faltam, em vez do dia em que vence a primeira mensalidade."
+    ]
+  },
   "1.5.239": {
     "titulo": "Balcão mais rápido em loja grande e produto com muitas avaliações mais leve",
     "novidades": [],

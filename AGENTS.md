@@ -422,6 +422,13 @@ lote `20261209`/`20261210` até comprovar que `criar-pagamento` e `webhook-merca
 em cada loja conforme a release, mesmo que `scripts/frota/publicar-release.mjs` já imprima o
 comando de aplicar.
 
+**Trem do backend: terça e quinta (26/11/2026).** Backend é o que precisa rodar em CADA loja:
+migration, edge function, mudança de banco. Ele só sai na terça ou na quinta. Telas (só front)
+saem todo dia. **Exceção:** dinheiro ou segurança sai na hora, com o motivo escrito na nota da
+release e no PR. Por quê: com 6 a 300 lojas, cada mudança de banco é aplicada e conferida loja
+por loja; dois dias fixos por semana juntam o lote e cortam o risco e o trabalho repetido. A
+conferência é o passo 0 de [`.claude/commands/release.md`](.claude/commands/release.md).
+
 O preview da Vercel fala com o banco da loja (ADR 0001), então tela nova que chama RPC nova só funciona no
 preview depois das migrations. O
 [roteiro do PR #666](docs/runbooks/publicar-painel-cartao-devolucoes.md) é histórico.
