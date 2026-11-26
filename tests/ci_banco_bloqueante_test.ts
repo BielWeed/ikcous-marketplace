@@ -40,8 +40,8 @@ Deno.test("db-ci.yml: cada run é UM comando node/npm, sem || true, pipe ou ;", 
     .map((l) => l.slice("run:".length).trim());
   assertEquals(
     runs.length,
-    6,
-    `esperava 6 run: (npm ci + 5 passos), achei ${runs.length}`,
+    7,
+    `esperava 7 run: (npm ci + 5 passos + o instalador da loja nova), achei ${runs.length}`,
   );
   for (const r of runs) {
     assert(/^(node|npm) /.test(r), `run inesperado: ${r}`);
