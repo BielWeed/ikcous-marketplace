@@ -199,7 +199,11 @@ function montar(n, ajuste = {}) {
       if (u.pathname === "/")
         return new Response("<html></html>", {
           status: 503,
-          headers: { "x-ikcous-porteiro": "sem-loja" },
+          // O porteiro do candidato: a caderneta não conhece o endereço (miss).
+          headers: {
+            "x-ikcous-porteiro": "sem-loja",
+            "x-ikcous-caderneta": "miss",
+          },
         });
       return new Response(
         JSON.stringify({

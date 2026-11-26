@@ -33,7 +33,7 @@
  *   LOJAS-OPCOES-ASSINANTES-PRIMEIRO-INICIO/FIM assinantes, depois as legado
  *   LOJAS-GRUPO-DO-BANCO-INICIO/FIM uma linha `group:` do `concurrency` dos jobs
  *                                   que gravam no banco (apply e ledger):
- *                                   `banco-da-loja-<ref>` da loja pedida
+ *                                   `banco-da-loja-<nome canônico do banco>`
  *
  * POR QUE O GRUPO É POR BANCO (26/11/2026): o apply e o ledger só não podem
  * rodar ao mesmo tempo NO MESMO BANCO. Um grupo único para a frota punha todas
@@ -41,11 +41,21 @@
  * workflow runs can be `pending`" e, cheia, os seguintes são CANCELADOS
  * (documentação do GitHub, workflow-syntax, chave `queue`) — com lojas × lotes
  * > 101 um lote some no meio da fila de uma loja e o seguinte entra fora de
- * ordem. O grupo vem do `ref` do cadastro, não do nome: `loja` e
- * `ikcous-publicada` são o MESMO banco (a CAF) e caem no MESMO grupo. A
- * expressão é um mapa `fromJSON('{"<loja>":"<ref>",…}')[inputs.projeto]`
- * (uma entrada curta por loja, numa expressão só); nome fora do mapa cai em
- * `sem-cadastro` (o menu e o 1º passo já o recusam).
+ * ordem. `loja` e `ikcous-publicada` são o MESMO banco (a CAF) e caem no MESMO
+ * grupo.
+ *
+ * POR QUE O MAPA GUARDA SÓ A EXCEÇÃO (C2 da frota de 300, 26/11/2026): até
+ * aqui a expressão era `fromJSON('{"<loja>":"<ref>",…}')[inputs.projeto]`,
+ * uma entrada por loja NUMA expressão só — ~66 caracteres por loja, ~19,9 mil
+ * com 300 lojas, perto do teto que o GitHub aplica a uma expressão ("Exceeded
+ * max expression length 21000"). Agora a chave é o NOME da loja (único, como o
+ * ref), e o mapa só liga ao nome canônico do banco as lojas que DIVIDEM banco
+ * com outra (`mapaDoGrupoDoBanco`): `fromJSON('{"loja":"ikcous-publicada"}')
+ * [inputs.projeto] || inputs.projeto`. Loja nova de banco próprio deixa a
+ * linha byte a byte igual. tests/frota_expressoes_test.ts reprova qualquer
+ * expressão que volte a crescer com loja. Nome fora do cadastro cai no grupo
+ * com o próprio nome, que nunca é o de um banco real (o menu e o 1º passo já o
+ * recusam de qualquer forma).
  *
  * POR QUE O MENU CONTINUA `choice` (e não texto livre): o GitHub recusa no
  * disparo um valor fora de `options` ("Provided value ... not in the list of
@@ -69,6 +79,51 @@ const DIR_WORKFLOWS = path.resolve(
   ".github",
   "workflows",
 );
+
+/**
+ * O mapa do grupo POR BANCO, guardando só a EXCEÇÃO: as lojas que dividem banco
+ * com outra apontam para o nome CANÔNICO daquele banco (a loja assinante dele;
+ * sem assinante, a primeira do cadastro). Loja que não divide banco fica fora
+ * do mapa e usa o próprio nome, que já é único como o ref. Hoje o mapa é
+ * `{"loja":"ikcous-publicada"}`, e loja nova de banco próprio não o muda.
+ *
+ * Falha fechada se a chave que a expressão calcula não for um-para-um com o
+ * banco (dois bancos na mesma chave = dois applies juntos no mesmo grupo
+ * errado; um banco em duas chaves = dois applies juntos no mesmo banco). Com o
+ * cadastro validado isso não acontece (o nome da loja é a chave do JSON); a
+ * guarda pega um cadastro montado à mão fora de `validarCadastro`.
+ */
+function mapaDoGrupoDoBanco(cad) {
+  const lojas = Object.values(cad.lojas);
+  const porRef = new Map();
+  for (const l of lojas) {
+    if (!porRef.has(l.ref)) porRef.set(l.ref, []);
+    porRef.get(l.ref).push(l);
+  }
+  const mapa = {};
+  for (const doBanco of porRef.values()) {
+    const canonica = (
+      doBanco.find((l) => l.classe === "assinante") ?? doBanco[0]
+    ).projeto;
+    for (const l of doBanco)
+      if (l.projeto !== canonica) mapa[l.projeto] = canonica;
+  }
+  const bancoDaChave = new Map();
+  const chaveDoBanco = new Map();
+  for (const l of lojas) {
+    const chave = Object.hasOwn(mapa, l.projeto) ? mapa[l.projeto] : l.projeto;
+    if (
+      (bancoDaChave.has(chave) && bancoDaChave.get(chave) !== l.ref) ||
+      (chaveDoBanco.has(l.ref) && chaveDoBanco.get(l.ref) !== chave)
+    )
+      throw new Error(
+        `grupo do banco ambíguo: a chave ${chave} não corresponde a um banco só`,
+      );
+    bancoDaChave.set(chave, l.ref);
+    chaveDoBanco.set(l.ref, chave);
+  }
+  return mapa;
+}
 
 const BLOCOS = Object.freeze({
   "LOJAS-SEGREDOS": (cad) =>
@@ -103,17 +158,15 @@ const BLOCOS = Object.freeze({
   // publicar-functions: as lojas no ar primeiro (o padrão é a mais travada).
   "LOJAS-OPCOES-ASSINANTES-PRIMEIRO": (cad) =>
     [...assinantes(cad), ...legados(cad)].map((l) => `- ${l.projeto}`),
-  // O grupo de concorrência POR BANCO (ver o cabeçalho). Nomes e refs já
-  // passaram pelos regex do cadastro (sem aspas, sem `}`), então o JSON entra
-  // literal na string da expressão; a checagem abaixo falha fechada se não.
+  // O grupo de concorrência POR BANCO (ver o cabeçalho). Nomes já passaram
+  // pelos regex do cadastro (sem aspas, sem `}`), então o JSON entra literal
+  // na string da expressão; a checagem abaixo falha fechada se não.
   "LOJAS-GRUPO-DO-BANCO": (cad) => {
-    const mapa = {};
-    for (const l of Object.values(cad.lojas)) mapa[l.projeto] = l.ref;
-    const json = JSON.stringify(mapa);
+    const json = JSON.stringify(mapaDoGrupoDoBanco(cad));
     if (!/^[{}a-z0-9":,-]+$/.test(json))
       throw new Error("mapa do grupo do banco com caractere fora do cadastro");
     return [
-      `group: banco-da-loja-\${{ fromJSON('${json}')[inputs.projeto] || 'sem-cadastro' }}`,
+      `group: banco-da-loja-\${{ fromJSON('${json}')[inputs.projeto] || inputs.projeto }}`,
     ];
   },
 });
@@ -181,4 +234,10 @@ function main(argv) {
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
 
-module.exports = { BLOCOS, sincronizar, workflowsComBlocos, DIR_WORKFLOWS };
+module.exports = {
+  BLOCOS,
+  sincronizar,
+  workflowsComBlocos,
+  mapaDoGrupoDoBanco,
+  DIR_WORKFLOWS,
+};
