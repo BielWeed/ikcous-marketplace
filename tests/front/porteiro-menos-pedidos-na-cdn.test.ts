@@ -466,16 +466,20 @@ describe("T11 — o porteiro guarda o /index.html em memória por 5 min", () => 
     expect(deps.indexHtmlEmVoo.size).toBe(0);
   });
 
-  it("rede caindo na busca: nada é guardado, nada fica preso em voo, e o próximo pedido tenta de novo", async () => {
+  it("rede caindo na busca: o navegador recebe a 503 de manutenção NA HORA (nunca o erro da Vercel), nada é guardado nem fica em voo, e o próximo pedido tenta de novo", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const duble = criarDuble();
     const deps = criarDeps(duble, { t: 0 });
     duble.responderIndex = () => {
       throw new TypeError("fetch failed");
     };
 
-    await expect(
-      atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps),
-    ).rejects.toThrow("fetch failed");
+    const r1 = await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
+    expect(r1.status).toBe(503);
+    expect(r1.headers.get("x-ikcous-porteiro")).toBe("html-indisponivel");
+    const html1 = await r1.text();
+    expect(html1).toContain("manutenção");
+    expect(html1).not.toContain("CRU DE");
     expect(deps.cacheIndexHtml.size).toBe(0);
     expect(deps.indexHtmlEmVoo.size).toBe(0);
 
@@ -653,7 +657,8 @@ describe("T11 — a busca do /index.html tem prazo (caça 26/11/2026)", () => {
     expect(PRAZO_INDEX_HTML_MS).toBe(5_000);
   });
 
-  it("`/index.html` que nunca responde: os pedidos juntos soltam NO prazo, pelo caminho da rede caindo, e nada fica em voo nem guardado", async () => {
+  it("`/index.html` que nunca responde: os pedidos juntos recebem a 503 de manutenção NO prazo, e nada fica em voo nem guardado", async () => {
+    const erros = vi.spyOn(console, "error").mockImplementation(() => {});
     const duble = criarDuble();
     const deps = await prepararComTimersFalsos(duble);
     let sinal: AbortSignal | undefined;
@@ -685,9 +690,13 @@ describe("T11 — a busca do /index.html tem prazo (caça 26/11/2026)", () => {
     await vi.advanceTimersByTimeAsync(1);
     for (const j of juntos) {
       expect(j.terminou).toBe(true);
-      expect(j.erro).toBeInstanceOf(Error);
-      expect((j.erro as Error).message).toContain("prazo esgotado");
+      expect(j.erro).toBeUndefined();
+      const resp = j.valor as Response;
+      expect(resp.status).toBe(503);
+      expect(resp.headers.get("x-ikcous-porteiro")).toBe("html-indisponivel");
+      expect(await resp.text()).not.toContain("CRU DE");
     }
+    expect(String(erros.mock.calls)).toContain("prazo esgotado");
     expect(duble.buscasDoIndex).toHaveLength(1);
     expect(sinal?.aborted).toBe(true);
     expect(deps.indexHtmlEmVoo.size).toBe(0);
@@ -695,6 +704,7 @@ describe("T11 — a busca do /index.html tem prazo (caça 26/11/2026)", () => {
   });
 
   it("`/index.html` que responde DEPOIS do prazo: nada é guardado, e o pedido seguinte busca de novo e guarda", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const duble = criarDuble();
     const deps = await prepararComTimersFalsos(duble);
     duble.responderIndex = (url) =>
@@ -710,7 +720,7 @@ describe("T11 — a busca do /index.html tem prazo (caça 26/11/2026)", () => {
     );
     await vi.advanceTimersByTimeAsync(PRAZO_INDEX_HTML_MS);
     expect(atrasado.terminou).toBe(true);
-    expect((atrasado.erro as Error).message).toContain("prazo esgotado");
+    expect((atrasado.valor as Response).status).toBe(503);
 
     // A resposta atrasada chega: não pode entrar no cache.
     await vi.advanceTimersByTimeAsync(2_000);
@@ -722,6 +732,20 @@ describe("T11 — a busca do /index.html tem prazo (caça 26/11/2026)", () => {
     expect(r2.status).toBe(200);
     expect(duble.buscasDoIndex).toHaveLength(2);
     expect(deps.cacheIndexHtml.size).toBe(1);
+  });
+
+  it("busca que deu certo não deixa o temporizador do prazo pendurado (`clearTimeout`)", async () => {
+    const duble = criarDuble();
+    const deps = await prepararComTimersFalsos(duble);
+    expect(vi.getTimerCount()).toBe(0);
+    const resp = await atenderPorteiro(
+      pedido(HOST_A),
+      ambiente(ORIGEM_A),
+      deps,
+    );
+    expect(resp.status).toBe(200);
+    expect(duble.buscasDoIndex).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("`/index.html` que responde 1 ms ANTES do prazo: servido e guardado, como sempre", async () => {

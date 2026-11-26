@@ -2220,8 +2220,8 @@ async function cartazDaLoja(
 //     (com `/assets/` que este não serve); esse HTML sai como antes, só não é
 //     guardado. Sem variável, sem marca ou marca diferente = não guarda.
 //   - Só 200 entra. 404/5xx/rede caindo nunca ficam guardados: o próximo
-//     pedido busca de novo (e o de agora segue a regra de sempre: 503
-//     `html-indisponivel`, ou a exceção da rede).
+//     pedido busca de novo (e o de agora recebe a 503 `html-indisponivel`,
+//     também quando a rede cai ou o prazo estoura).
 //   - Pedidos simultâneos do mesmo endereço esperam a MESMA busca
 //     (`indexHtmlEmVoo`); a entrada sai quando ela termina, com ou sem erro.
 //   - Deploy novo: a instância nova nasce com o `Map` vazio, e a antiga deixa
@@ -2350,10 +2350,22 @@ export async function documentoDaLoja(
 ): Promise<Response> {
   // `opcoes.cartaz` só EXECUTA a decisão de `atenderPorteiro` (o robô de prévia
   // não passa `opcoes`). A leitura corre junto com o documento e nunca rejeita.
-  const [indexHtml, cartaz] = await Promise.all([
-    baixarIndexHtml(request, deps, opcoes.deploy),
-    opcoes.cartaz === true ? cartazDaLoja(ficha, deps) : Promise.resolve(null),
-  ]);
+  // Rede caindo ou prazo esgotado no `/index.html` = a MESMA 503 do não-200
+  // (antes só o robô a recebia, pelo `catch` do middleware; o navegador
+  // recebia o erro da Vercel). `cartazDaLoja` nunca rejeita.
+  let indexHtml: IndexHtmlBaixado;
+  let cartaz: Cartaz | null;
+  try {
+    [indexHtml, cartaz] = await Promise.all([
+      baixarIndexHtml(request, deps, opcoes.deploy),
+      opcoes.cartaz === true
+        ? cartazDaLoja(ficha, deps)
+        : Promise.resolve(null),
+    ]);
+  } catch (erro) {
+    console.error("[Porteiro] /index.html não baixado:", erro);
+    return respostaManutencao("html-indisponivel", estadoCaderneta);
+  }
   if (indexHtml.html === null)
     return respostaManutencao("html-indisponivel", estadoCaderneta);
   const injetado = injetarFichaNoHtml(indexHtml.html, ficha);
