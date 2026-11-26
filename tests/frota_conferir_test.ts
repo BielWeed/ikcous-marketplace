@@ -8,8 +8,9 @@
  *  - isolamento SEM manifesto de lojas: a loja de cada endereço é o ref da
  *    ficha que o porteiro serve; 3 amostras divergentes = falha; mesmo ref com
  *    títulos diferentes = LOJA_TROCADA; refs diferentes com o mesmo título =
- *    SUSPEITA_ISOLAMENTO, salvo quando o cadastro (publicUrl da ficha) ancora
- *    o ref de cada endereço: lojistas diferentes com o mesmo nome = AVISO;
+ *    SUSPEITA_ISOLAMENTO, salvo quando o BANCO de cada ref (v_store_config,
+ *    lido com a chave publicável da ficha) confirma o título que CADA
+ *    endereço serve: lojistas diferentes com o mesmo nome = AVISO;
  *  - inventário: endereço novo que aparece na Vercel entra sozinho; alias de
  *    preview não entra; sem --vercel o inventário é PARCIAL (nunca verde
  *    completo); --vercel que falha reprova;
@@ -35,11 +36,13 @@ import {
   inventariar,
   lerEnderecosDoArquivo,
   lerPolitica,
+  lerTituloNoBanco,
   main,
   maioriaEstrita,
   montarContexto,
   problemasDoContrato,
   sondarEndereco,
+  tituloDaLinhaDoBanco,
   titulosRepetidos,
   verificarCanonico,
   verificarIsolamentoCruzado,
@@ -99,15 +102,44 @@ function mundoBase({ comManutencao = false } = {}) {
   return m;
 }
 
-/** Ficha do porteiro: bloco <script id="ikcous-loja"> com identidade.publicUrl. */
-const bloco = (publicUrl) =>
+/** Chave publicável FICTÍCIA do banco de cada ref (a ficha real serve a da loja). */
+const CHAVE = (ref) => `chave-publica-de-teste-${ref}`;
+
+/**
+ * O banco de cada loja: a linha de v_store_config de onde o porteiro monta o
+ * título. Fica FORA do mundo (que é por endereço e é varrido por vários testes).
+ */
+const BANCOS = {
+  [REF.ikcous]: {
+    store_name: "IKCOUS - imports",
+    store_city: null,
+    store_state: null,
+  },
+  [REF.savy]: { store_name: "Savy", store_city: null, store_state: null },
+};
+
+/**
+ * Ficha do porteiro: bloco <script id="ikcous-loja"> com identidade.publicUrl e
+ * conexao (supabaseUrl + publishableKey do MESMO ref que a página usa), como
+ * `montarFicha` (src/hospedagem/porteiro.ts) monta.
+ */
+const bloco = (publicUrl, ref, chave) =>
   `<script type="application/json" id="ikcous-loja">${JSON.stringify({
     schemaVersion: 2,
     identidade: publicUrl === undefined ? {} : { publicUrl },
+    ...(ref
+      ? {
+          conexao: {
+            supabaseUrl: `https://${ref}.supabase.co`,
+            publishableKey: chave ?? CHAVE(ref),
+          },
+        }
+      : {}),
   })}</script>`;
 
-const html = (titulo, refs, publicUrl) =>
-  `<!doctype html><html><head><title>${titulo}</title>${bloco(publicUrl)}</head><body>${refs
+const html = (titulo, refs, publicUrl, chave) =>
+  `<!doctype html><html><head><title>${titulo}</title>${bloco(publicUrl, refs[0], chave)}</head><body>${refs
+
     .map((r) => `<script src="https://${r}.supabase.co/x.js"></script>`)
     .join("")}</body></html>`;
 
@@ -190,17 +222,44 @@ function responder(m, dominio, caminho, n, busca = "") {
       titulo,
       e.refsExtras ? [ref, ...e.refsExtras] : [ref],
       publicUrl,
+      e.chave,
     ),
   };
 }
 
-function fetchFalso(m) {
+/**
+ * O banco de uma loja respondendo a leitura anônima de v_store_config: 401 sem
+ * a chave publicável DAQUELE ref (como o Supabase real), 404 fora da view.
+ * `bancos[ref]` = linha | "derruba" | { status } ; ausente = 404.
+ */
+function responderBanco(bancos, u, init, leituras) {
+  const ref = u.hostname.split(".")[0];
+  leituras?.push(ref);
+  const banco = bancos[ref];
+  if (banco === "derruba") return "derruba";
+  if (!banco || u.pathname !== "/rest/v1/v_store_config")
+    return { status: 404, headers: {}, body: "[]" };
+  if (new Headers(init?.headers).get("apikey") !== CHAVE(ref))
+    return { status: 401, headers: {}, body: '{"message":"Invalid API key"}' };
+  if (banco.status) return { status: banco.status, headers: {}, body: "[]" };
+  return {
+    status: 200,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(banco.linhas ?? [banco]),
+  };
+}
+
+function fetchFalso(m, { bancos = BANCOS, leituras = null } = {}) {
   const contadores = {};
-  return (url) => {
+  return (url, init) => {
     const u = new URL(url);
-    const chave = `${u.hostname}${u.pathname}`;
-    const n = (contadores[chave] = (contadores[chave] ?? -1) + 1);
-    const r = responder(m, u.hostname, u.pathname, n, u.search);
+    const r = u.hostname.endsWith(".supabase.co")
+      ? responderBanco(bancos, u, init, leituras)
+      : (() => {
+          const chave = `${u.hostname}${u.pathname}`;
+          const n = (contadores[chave] = (contadores[chave] ?? -1) + 1);
+          return responder(m, u.hostname, u.pathname, n, u.search);
+        })();
     if (r === "trava" || r === "derruba")
       return Promise.reject(new TypeError("fetch failed"));
     return Promise.resolve(
@@ -731,17 +790,22 @@ Deno.test("verificarIsolamentoCruzado: refs diferentes com o MESMO título -> SU
   );
 });
 
-Deno.test("titulosRepetidos: mesmo título com cada ref ancorado no próprio cadastro (publicUrl provado) vira AVISO, não achado", () => {
-  const bella = (ref, publicUrl) =>
-    fichaDe(ref, publicUrl, { titulo: "Bella Modas" });
+// Título repetido entre refs diferentes: a âncora é o BANCO de cada ref, nunca
+// o publicUrl da ficha (o porteiro o monta com o próprio host atendido, então
+// ele "confirma" qualquer endereço).
+const REF_C = "c".repeat(20);
+const sondaComTitulo = (d, ref, titulo) =>
+  sonda(d, { pagina: { refs: [ref], titulo } });
+
+Deno.test("titulosRepetidos: mesmo título com o banco de CADA ref confirmando o nome vira AVISO, não achado", () => {
   const sondas = [
-    sondaFicha("a.vercel.app", bella(REF.savy, "https://a.vercel.app")),
-    // endereço extra da mesma loja, apontando para o canônico dela
-    sondaFicha("a2.vercel.app", bella(REF.savy, "https://a.vercel.app")),
-    sondaFicha("b.vercel.app", bella(REF.ikcous, "https://b.vercel.app")),
+    sondaComTitulo("a.vercel.app", REF.savy, "Bella Modas"),
+    sondaComTitulo("a2.vercel.app", REF.savy, "Bella Modas"),
+    sondaComTitulo("b.vercel.app", REF.ikcous, "Bella Modas"),
   ];
-  assertEquals(verificarIsolamentoCruzado(sondas), {});
-  const { suspeitas, avisos } = titulosRepetidos(sondas);
+  const noBanco = { [REF.savy]: "Bella Modas", [REF.ikcous]: "Bella Modas" };
+  assertEquals(verificarIsolamentoCruzado(sondas, new Set(), noBanco), {});
+  const { suspeitas, avisos } = titulosRepetidos(sondas, new Set(), noBanco);
   assertEquals(suspeitas, {});
   assertEquals(Object.keys(avisos).sort(), [
     "a.vercel.app",
@@ -751,56 +815,164 @@ Deno.test("titulosRepetidos: mesmo título com cada ref ancorado no próprio cad
   assertStringIncludes(avisos["b.vercel.app"][0], "Bella Modas");
   assertStringIncludes(avisos["b.vercel.app"][0], REF.savy);
   assertStringIncludes(avisos["b.vercel.app"][0], REF.ikcous);
-  // quem ancorou: só os endereços cujo canônico serve o mesmo ref
-  assertEquals([...verificarCanonico(sondas).ancorados].sort(), [
+});
+
+Deno.test("titulosRepetidos: basta o banco de UM ref não confirmar o título servido para o grupo inteiro seguir SUSPEITA_ISOLAMENTO", () => {
+  const sondas = [
+    sondaComTitulo("a.vercel.app", REF.savy, "Bella Modas"),
+    sondaComTitulo("b.vercel.app", REF.ikcous, "Bella Modas"),
+  ];
+  const casos = {
+    // a identidade da Bella Modas servida com o banco da IKCOUS
+    "banco de um ref tem outro nome": {
+      [REF.savy]: "Bella Modas",
+      [REF.ikcous]: "IKCOUS - imports",
+    },
+    "leitura do banco falhou (null)": {
+      [REF.savy]: "Bella Modas",
+      [REF.ikcous]: null,
+    },
+    "ref sem leitura": { [REF.savy]: "Bella Modas" },
+    "sem leitura nenhuma": {},
+    "só a caixa difere": {
+      [REF.savy]: "Bella Modas",
+      [REF.ikcous]: "bella modas",
+    },
+    "banco com cidade que a página não mostra": {
+      [REF.savy]: "Bella Modas",
+      [REF.ikcous]: "Bella Modas | Recife, PE",
+    },
+  };
+  for (const [nome, noBanco] of Object.entries(casos)) {
+    const r = verificarIsolamentoCruzado(sondas, new Set(), noBanco);
+    for (const d of ["a.vercel.app", "b.vercel.app"])
+      assertEquals(r[d]?.[0]?.classe, "SUSPEITA_ISOLAMENTO", `${nome}: ${d}`);
+    assertEquals(titulosRepetidos(sondas, new Set(), noBanco).avisos, {}, nome);
+  }
+  // título assado do build igual em todas, cada banco com o próprio nome
+  const assado = [
+    sondaComTitulo("a.vercel.app", REF.savy, "IKCOUS Marketplace"),
+    sondaComTitulo("b.vercel.app", REF.ikcous, "IKCOUS Marketplace"),
+    sondaComTitulo("c.vercel.app", REF_C, "IKCOUS Marketplace"),
+  ];
+  const r = verificarIsolamentoCruzado(assado, new Set(), {
+    [REF.savy]: "Savy",
+    [REF.ikcous]: "IKCOUS - imports",
+    [REF_C]: "Loja C",
+  });
+  assertEquals(Object.keys(r).sort(), [
     "a.vercel.app",
-    "a2.vercel.app",
     "b.vercel.app",
+    "c.vercel.app",
   ]);
 });
 
-Deno.test("titulosRepetidos: basta UM endereço do grupo sem âncora no cadastro para o grupo inteiro seguir SUSPEITA_ISOLAMENTO", () => {
-  const bella = (ref, publicUrl) =>
-    fichaDe(ref, publicUrl, { titulo: "Bella Modas" });
-  const casos = {
-    // o canônico declarado serve OUTRO ref
-    "canônico de outra loja": [
-      sondaFicha("a.vercel.app", bella(REF.savy, "https://a.vercel.app")),
-      sondaFicha("b.vercel.app", bella(REF.ikcous, "https://a.vercel.app")),
-    ],
-    "ficha sem publicUrl": [
-      sondaFicha("a.vercel.app", bella(REF.savy, "https://a.vercel.app")),
-      sondaFicha("b.vercel.app", bella(REF.ikcous, null)),
-    ],
-    "canônico fora do inventário": [
-      sondaFicha("a.vercel.app", bella(REF.savy, "https://a.vercel.app")),
-      sondaFicha("b.vercel.app", bella(REF.ikcous, "https://x.vercel.app")),
-    ],
-    "canônico que não responde 200": [
-      sondaFicha("a.vercel.app", bella(REF.savy, "https://a.vercel.app")),
-      sondaFicha("b.vercel.app", bella(REF.ikcous, "https://b.vercel.app")),
-    ].map((s) =>
-      s.dominio === "b.vercel.app"
-        ? sondaFicha("b.vercel.app", { ...s.ficha, status: 500 })
-        : s,
-    ),
-  };
-  for (const [nome, sondas] of Object.entries(casos)) {
-    const r = verificarIsolamentoCruzado(sondas);
-    for (const d of ["a.vercel.app", "b.vercel.app"])
-      assertEquals(r[d]?.[0]?.classe, "SUSPEITA_ISOLAMENTO", `${nome}: ${d}`);
-    assertEquals(titulosRepetidos(sondas).avisos, {}, nome);
-  }
-  // sem publicUrl nenhum (sondas cruas): nada ancora, nada vira aviso
-  const s = (d, ref) =>
-    sonda(d, { pagina: { refs: [ref], titulo: "Bella Modas" } });
+Deno.test("tituloDaLinhaDoBanco: monta o título como o porteiro (nome aparado, ' | cidade, UF')", () => {
+  const linha = (o) => ({
+    store_name: "Bella Modas",
+    store_city: null,
+    store_state: null,
+    ...o,
+  });
+  assertEquals(tituloDaLinhaDoBanco(linha({})), "Bella Modas");
   assertEquals(
-    titulosRepetidos([
-      s("a.vercel.app", REF.savy),
-      s("b.vercel.app", REF.ikcous),
-    ]).avisos,
-    {},
+    tituloDaLinhaDoBanco(
+      linha({
+        store_name: "  Bella  Modas ",
+        store_city: " Recife ",
+        store_state: "pe",
+      }),
+    ),
+    "Bella Modas | Recife, PE",
   );
+  assertEquals(
+    tituloDaLinhaDoBanco(linha({ store_state: "SP" })),
+    "Bella Modas | SP",
+  );
+  assertEquals(
+    tituloDaLinhaDoBanco(linha({ store_city: "  ", store_state: "" })),
+    "Bella Modas",
+  );
+  assertEquals(tituloDaLinhaDoBanco(linha({ store_name: "   " })), null);
+  assertEquals(tituloDaLinhaDoBanco(linha({ store_name: null })), null);
+  assertEquals(tituloDaLinhaDoBanco(null), null);
+  assertEquals(tituloDaLinhaDoBanco("x"), null);
+});
+
+Deno.test("lerTituloNoBanco: 1 GET anônimo em v_store_config com a chave publicável; qualquer falha = null", async () => {
+  const pedidos = [];
+  const espia = (bancos) => {
+    const f = fetchFalso({}, { bancos });
+    return (url, init) => {
+      pedidos.push({ url, headers: new Headers(init?.headers) });
+      return f(url, init);
+    };
+  };
+  const bella = {
+    store_name: "Bella Modas",
+    store_city: null,
+    store_state: null,
+  };
+  assertEquals(
+    await lerTituloNoBanco(REF.savy, CHAVE(REF.savy), {
+      fetchImpl: espia({ [REF.savy]: bella }),
+    }),
+    "Bella Modas",
+  );
+  assertEquals(
+    pedidos[0].url,
+    `https://${REF.savy}.supabase.co/rest/v1/v_store_config?select=store_name,store_city,store_state&id=eq.1&limit=2`,
+  );
+  // chave antiga (JWT) também vai em Authorization; a nova, só em apikey
+  assertEquals(
+    pedidos[0].headers.get("authorization"),
+    `Bearer ${CHAVE(REF.savy)}`,
+  );
+  pedidos.length = 0;
+  await lerTituloNoBanco(REF.savy, "sb_publishable_testeTESTEteste0123", {
+    fetchImpl: espia({ [REF.savy]: bella }),
+  });
+  assertEquals(pedidos[0].headers.get("authorization"), null);
+  assertEquals(
+    pedidos[0].headers.get("apikey"),
+    "sb_publishable_testeTESTEteste0123",
+  );
+
+  const casos = {
+    "chave de outro projeto (401)": [REF.savy, CHAVE(REF.ikcous), bella],
+    "nenhuma linha": [REF.savy, CHAVE(REF.savy), { linhas: [] }],
+    "duas linhas": [REF.savy, CHAVE(REF.savy), { linhas: [bella, bella] }],
+    "HTTP 500": [REF.savy, CHAVE(REF.savy), { status: 500 }],
+    "rede caiu": [REF.savy, CHAVE(REF.savy), "derruba"],
+    "nome vazio": [
+      REF.savy,
+      CHAVE(REF.savy),
+      { store_name: " ", store_city: null, store_state: null },
+    ],
+  };
+  for (const [nome, [ref, chave, banco]] of Object.entries(casos))
+    assertEquals(
+      await lerTituloNoBanco(ref, chave, {
+        fetchImpl: espia({ [REF.savy]: banco }),
+      }),
+      null,
+      nome,
+    );
+  // sem chave ou ref inválido: nem chega a pedir
+  pedidos.length = 0;
+  assertEquals(
+    await lerTituloNoBanco(REF.savy, null, {
+      fetchImpl: espia({ [REF.savy]: bella }),
+    }),
+    null,
+  );
+  assertEquals(
+    await lerTituloNoBanco("curto", CHAVE(REF.savy), {
+      fetchImpl: espia({ [REF.savy]: bella }),
+    }),
+    null,
+  );
+  assertEquals(pedidos.length, 0);
 });
 
 Deno.test("montarContexto exige --sha de 40 hex (sem referência por maioria)", () => {
@@ -1080,20 +1252,50 @@ Deno.test("conferirFrota: loja mostrando a ficha de OUTRA (ref+título de outra 
   assertEquals(por["savycollection.vercel.app"], "LOJA_TROCADA");
 });
 
-// Com 30, 300 lojas, duas lojistas reais com o mesmo nome é normal. Cada
-// endereço serve o ref que o CADASTRO diz ser dele (publicUrl da ficha provado
-// por verificarCanonico): o título repetido sozinho não prova ficha trocada, vira
-// AVISO no relatório e não barra a publicação da frota.
-Deno.test("conferirFrota: duas lojas com o MESMO nome, cada endereço com o ref do próprio cadastro, não barram a publicação (AVISO)", async () => {
+Deno.test("conferirFrota: dois refs diferentes com o mesmo título = SUSPEITA_ISOLAMENTO", async () => {
   const mundo = mundoBase();
-  mundo["ickous-marketplace.vercel.app"].titulo = "Bella Modas";
-  mundo["savycollection.vercel.app"].titulo = "Bella Modas";
+  mundo["ickous-marketplace.vercel.app"].titulo = "Savy";
   const r = await conferirFrota(POLITICA, {
     sha: SHA,
     fetchImpl: fetchFalso(mundo),
   });
-  const lojas = ["ickous-marketplace.vercel.app", "savycollection.vercel.app"];
-  for (const d of lojas) {
+  const por = Object.fromEntries(
+    r.resultados.map((x) => [x.dominio, x.classe]),
+  );
+  assertEquals(por["ickous-marketplace.vercel.app"], "SUSPEITA_ISOLAMENTO");
+  assertEquals(por["savycollection.vercel.app"], "SUSPEITA_ISOLAMENTO");
+  // o publicUrl é o do próprio endereço (estado real do porteiro): quem barra é
+  // o título, não o canônico
+  for (const x of r.resultados.filter((y) => !y.esperado))
+    assert(!x.achados.some((a) => a.classe === "CANONICO_INVALIDO"));
+  assertEquals(r.ok, false);
+  assert(problemasAntesDoPromote(r, SHA).length > 0);
+});
+
+// Com 30, 300 lojas, duas lojistas reais com o mesmo nome é normal. O banco de
+// cada ref confirma o nome que o endereço dele serve: o título repetido vira
+// AVISO no relatório e não barra a publicação.
+Deno.test("conferirFrota: duas lojas com o MESMO nome, cada endereço servindo o nome do PRÓPRIO banco, não barram a publicação (AVISO)", async () => {
+  const mundo = mundoBase();
+  mundo["ickous-marketplace.vercel.app"].titulo = "Bella Modas";
+  mundo["savycollection.vercel.app"].titulo = "Bella Modas";
+  const bella = {
+    store_name: "Bella Modas",
+    store_city: null,
+    store_state: null,
+  };
+  const leituras = [];
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundo, {
+      bancos: { [REF.ikcous]: bella, [REF.savy]: bella },
+      leituras,
+    }),
+  });
+  for (const d of [
+    "ickous-marketplace.vercel.app",
+    "savycollection.vercel.app",
+  ]) {
     const x = r.resultados.find((y) => y.dominio === d);
     assertEquals(x.classe, "OK", d);
     assertEquals(x.achados, [], d);
@@ -1103,17 +1305,69 @@ Deno.test("conferirFrota: duas lojas com o MESMO nome, cada endereço com o ref 
   assertEquals(r.ok, true);
   assertStringIncludes(r.relatorio, "AVISO");
   assertStringIncludes(r.relatorio, "Bella Modas");
-  // e o portão de antes do promote (publicar-release) não acha o que barrar
+  // o portão de antes do promote (publicar-release) não acha o que barrar
   assertEquals(problemasAntesDoPromote(r, SHA), []);
+  // uma leitura por ref do grupo, nada mais
+  assertEquals(leituras.sort(), [REF.ikcous, REF.savy].sort());
 });
 
-Deno.test("conferirFrota: mesmo título com um endereço SEM o ref do próprio cadastro continua SUSPEITA_ISOLAMENTO (barra)", async () => {
+Deno.test("conferirFrota: frota sem título repetido não lê banco nenhum", async () => {
+  const leituras = [];
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundoBase(), { leituras }),
+  });
+  assertEquals(r.ok, true);
+  assertEquals(leituras, []);
+  assert(r.resultados.every((x) => x.avisos.length === 0));
+});
+
+Deno.test("conferirFrota: a identidade de uma Bella Modas servida com o banco de OUTRA loja barra o grupo inteiro (SUSPEITA_ISOLAMENTO)", async () => {
   const mundo = mundoBase();
-  mundo["ickous-marketplace.vercel.app"].titulo = "Savy";
-  // a ficha da IKCOUS diz que o endereço dela é o da savy, que serve outro ref:
-  // o cadastro não ancora o ref servido, e o título repetido volta a ser suspeita
-  mundo["ickous-marketplace.vercel.app"].publicUrl =
-    "https://savycollection.vercel.app";
+  mundo["ickous-marketplace.vercel.app"].titulo = "Bella Modas";
+  mundo["savycollection.vercel.app"].titulo = "Bella Modas";
+  // terceira loja: o banco dela diz "Loja C", mas o endereço serve "Bella Modas"
+  mundo["lojac.vercel.app"] = {
+    ...mundo["savycollection.vercel.app"],
+    ref: REF_C,
+    titulo: "Bella Modas",
+  };
+  const bella = {
+    store_name: "Bella Modas",
+    store_city: null,
+    store_state: null,
+  };
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    enderecosExtras: ["lojac.vercel.app"],
+    fetchImpl: fetchFalso(mundo, {
+      bancos: {
+        [REF.ikcous]: bella,
+        [REF.savy]: bella,
+        [REF_C]: { store_name: "Loja C", store_city: null, store_state: null },
+      },
+    }),
+  });
+  for (const d of [
+    "ickous-marketplace.vercel.app",
+    "savycollection.vercel.app",
+    "lojac.vercel.app",
+  ]) {
+    const x = r.resultados.find((y) => y.dominio === d);
+    assertEquals(x.classe, "SUSPEITA_ISOLAMENTO", d);
+    assert(!x.achados.some((a) => a.classe === "CANONICO_INVALIDO"), d);
+  }
+  assertEquals(r.ok, false);
+  assert(problemasAntesDoPromote(r, SHA).length > 0);
+});
+
+Deno.test("conferirFrota: título ASSADO do build igual em todas as lojas barra (SUSPEITA_ISOLAMENTO)", async () => {
+  const mundo = mundoBase();
+  for (const d of [
+    "ickous-marketplace.vercel.app",
+    "savycollection.vercel.app",
+  ])
+    mundo[d].titulo = "IKCOUS Marketplace";
   const r = await conferirFrota(POLITICA, {
     sha: SHA,
     fetchImpl: fetchFalso(mundo),
@@ -1127,38 +1381,44 @@ Deno.test("conferirFrota: mesmo título com um endereço SEM o ref do próprio c
   assert(problemasAntesDoPromote(r, SHA).length > 0);
 });
 
-Deno.test("conferirFrota: endereço servindo o ref de OUTRA loja com o mesmo nome continua barrando (SUSPEITA_ISOLAMENTO)", async () => {
+Deno.test("conferirFrota: duas Bella Modas sem leitura confirmada do banco (falha, chave de outro projeto) continuam barrando", async () => {
+  const bella = {
+    store_name: "Bella Modas",
+    store_city: null,
+    store_state: null,
+  };
+  const casos = {
+    "banco fora do ar": { [REF.ikcous]: bella, [REF.savy]: "derruba" },
+    "HTTP 500": { [REF.ikcous]: bella, [REF.savy]: { status: 500 } },
+  };
+  for (const [nome, bancos] of Object.entries(casos)) {
+    const mundo = mundoBase();
+    mundo["ickous-marketplace.vercel.app"].titulo = "Bella Modas";
+    mundo["savycollection.vercel.app"].titulo = "Bella Modas";
+    const r = await conferirFrota(POLITICA, {
+      sha: SHA,
+      fetchImpl: fetchFalso(mundo, { bancos }),
+    });
+    assertEquals(r.ok, false, nome);
+    assertEquals(
+      r.resultados.find((y) => y.dominio === "savycollection.vercel.app")
+        .classe,
+      "SUSPEITA_ISOLAMENTO",
+      nome,
+    );
+  }
+  // a ficha da savy serve a chave publicável de OUTRO projeto: o banco recusa
   const mundo = mundoBase();
   mundo["ickous-marketplace.vercel.app"].titulo = "Bella Modas";
   mundo["savycollection.vercel.app"].titulo = "Bella Modas";
-  // um terceiro endereço, da IKCOUS pelo cadastro, serve o ref da savy
-  mundo["ikcous-alias.vercel.app"] = {
-    ...mundo["ickous-marketplace.vercel.app"],
-    ref: REF.savy,
-    publicUrl: "https://ickous-marketplace.vercel.app",
-  };
+  mundo["savycollection.vercel.app"].chave = CHAVE(REF.ikcous);
   const r = await conferirFrota(POLITICA, {
     sha: SHA,
-    enderecosExtras: ["ikcous-alias.vercel.app"],
-    fetchImpl: fetchFalso(mundo),
+    fetchImpl: fetchFalso(mundo, {
+      bancos: { [REF.ikcous]: bella, [REF.savy]: bella },
+    }),
   });
-  const x = r.resultados.find((y) => y.dominio === "ikcous-alias.vercel.app");
-  const classes = x.achados.map((a) => a.classe);
-  assert(classes.includes("SUSPEITA_ISOLAMENTO"), JSON.stringify(x.achados));
-  assert(classes.includes("CANONICO_INVALIDO"), JSON.stringify(x.achados));
-  assertEquals(x.classe, "SUSPEITA_ISOLAMENTO");
-  // sem âncora num endereço, o grupo inteiro do título volta a ser suspeita
-  for (const d of [
-    "ickous-marketplace.vercel.app",
-    "savycollection.vercel.app",
-  ])
-    assertEquals(
-      r.resultados.find((y) => y.dominio === d).classe,
-      "SUSPEITA_ISOLAMENTO",
-      d,
-    );
   assertEquals(r.ok, false);
-  assert(problemasAntesDoPromote(r, SHA).length > 0);
 });
 
 // ---- A) contrato do version.json, de ponta a ponta (sonda -> classificação)
