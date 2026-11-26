@@ -2,7 +2,7 @@
 /* eslint-disable security/detect-object-injection, security/detect-non-literal-require -- teste: chaves vêm de constantes e do cadastro de fixture; os caminhos são da árvore temporária criada aqui. */
 /**
  * O CADASTRO DE LOJAS como dado (scripts/frota/lojas.json, lido por
- * scripts/frota/lojas.cjs) e os 7 workflows + 5 scripts que antes tinham a lista
+ * scripts/frota/lojas.cjs) e os 8 workflows + 6 scripts que antes tinham a lista
  * de lojas e o nome de cada segredo escritos à mão (25/11/2026).
  *
  * O QUE ESTES TESTES MEDEM:
@@ -12,7 +12,7 @@
  *  2. O validador do cadastro falha FECHADO: ref torto, nome de segredo fora do
  *     regex, segredo repetido, assinante com o segredo legado, chave `__proto__`…
  *  3. "LOJA NOVA SÓ POR DADO": com um cadastro de fixture que tem uma loja inventada
- *     (`loja-teste-xyz`), os 5 scripts e os 7 workflows a aceitam sem NENHUMA outra
+ *     (`loja-teste-xyz`), os 6 scripts e os 8 workflows a aceitam sem NENHUMA outra
  *     edição (os workflows ganham só a linha de segredo GERADA, e o gerador
  *     devolve o arquivo idêntico ao de hoje quando a loja sai); e uma loja ausente
  *     do cadastro é recusada ("loja desconhecida") antes de qualquer segredo.
@@ -44,7 +44,8 @@ const lojasMod = require(LOJAS_CJS);
 const gerador = require(GERADOR_CJS);
 const CADASTRO_REAL = lojasMod.carregarLojas();
 
-const SETE_WORKFLOWS = [
+// O 8º (login-da-loja.yml, 26/11/2026) nasceu já gerado do cadastro.
+const OITO_WORKFLOWS = [
   "aplicar-migrations.yml",
   "conferir-banco-da-loja.yml",
   "publicar-functions.yml",
@@ -52,6 +53,7 @@ const SETE_WORKFLOWS = [
   "medir-auth-da-loja.yml",
   "ativar-email-do-login.yml",
   "ativar-google-do-login.yml",
+  "login-da-loja.yml",
 ];
 
 // A loja INVENTADA da fixture: ref, segredo e nome que não existem em lugar nenhum.
@@ -404,7 +406,7 @@ Deno.test("os workflows estão em sincronia com o cadastro: o gerador, rodado de
   const comBlocos = gerador
     .workflowsComBlocos()
     .map((p) => p.split(/[\\/]/).pop());
-  for (const nome of SETE_WORKFLOWS)
+  for (const nome of OITO_WORKFLOWS)
     assert(comBlocos.includes(nome), `${nome} não tem blocos LOJAS-SEGREDO*`);
   for (const caminho of gerador.workflowsComBlocos()) {
     const atual = Deno.readTextFileSync(caminho);
@@ -460,7 +462,7 @@ Deno.test("REGRA DA CASA: todo segredo de loja de cada workflow tem a guarda da 
       .filter((l) => l.segredoDoToken === segredo)
       .map((l) => l.projeto);
   let referencias = 0;
-  for (const nome of SETE_WORKFLOWS) {
+  for (const nome of OITO_WORKFLOWS) {
     const doc = docDe(nome);
     for (const [idJob, job] of Object.entries(doc.jobs) as any) {
       for (const passo of job.steps ?? []) {
@@ -506,7 +508,7 @@ Deno.test("REGRA DA CASA: todo segredo de loja de cada workflow tem a guarda da 
 
 Deno.test("cada passo com segredo de loja só vê o da loja pedida: as linhas geradas para uma loja nova NUNCA citam o segredo de outra", () => {
   const cad = cadastroComLojaNova();
-  for (const nome of SETE_WORKFLOWS) {
+  for (const nome of OITO_WORKFLOWS) {
     const novo = gerador.sincronizar(
       Deno.readTextFileSync(join(DIR_WF, nome)),
       cad,
@@ -565,8 +567,9 @@ Deno.test("todo workflow por loja tem `projeto` como menu FECHADO (choice) gerad
     "medir-auth-da-loja.yml": "savy",
     "ativar-email-do-login.yml": "ikcous-publicada",
     "ativar-google-do-login.yml": "ikcous-publicada",
+    "login-da-loja.yml": "ikcous-publicada",
   };
-  for (const nome of SETE_WORKFLOWS) {
+  for (const nome of OITO_WORKFLOWS) {
     const p = inputsDe(docDe(nome)).projeto;
     assertEquals(p.type, "choice", `${nome}: projeto voltou a ser texto livre`);
     assertEquals(p.options, menuEsperado(nome), nome);
@@ -594,7 +597,7 @@ Deno.test("todo workflow por loja tem `projeto` como menu FECHADO (choice) gerad
 });
 
 Deno.test("todo workflow por loja confere a loja no cadastro ANTES do primeiro passo que vê segredo", () => {
-  for (const nome of SETE_WORKFLOWS) {
+  for (const nome of OITO_WORKFLOWS) {
     const doc = docDe(nome);
     const passos = Object.values(doc.jobs).flatMap((j: any) =>
       (j.steps ?? []).map((p) => [j, p]),
@@ -682,11 +685,11 @@ Deno.test("o sha: toda loja fora de loja|sandbox (as do cadastro e as que ainda 
 });
 
 // ---------------------------------------------------------------------------
-// 3. LOJA NOVA SÓ POR DADO — os 7 workflows
+// 3. LOJA NOVA SÓ POR DADO — os 8 workflows
 // ---------------------------------------------------------------------------
 Deno.test("loja nova só por dado (workflows): o gerador acrescenta SÓ a linha de segredo da loja, e sem a loja o arquivo volta idêntico", () => {
   const nova = cadastroComLojaNova();
-  for (const nome of SETE_WORKFLOWS) {
+  for (const nome of OITO_WORKFLOWS) {
     const atual = Deno.readTextFileSync(join(DIR_WF, nome));
     const comNova = gerador.sincronizar(atual, nova);
     assert(comNova !== atual, `${nome}: a loja nova devia gerar uma linha`);
@@ -704,7 +707,7 @@ Deno.test("loja nova só por dado (workflows): o gerador acrescenta SÓ a linha 
         ),
       `${nome}: linhas novas inesperadas:\n${novasLinhas.join("\n")}`,
     );
-    // o menu ganha a loja nova (assinante: entra em todos os sete menus)
+    // o menu ganha a loja nova (assinante: entra em todos os oito menus)
     assertEquals(
       inputsDe(parse(comNova)).projeto.options,
       menuEsperado(nome, nova),
@@ -751,6 +754,8 @@ function arvoreComLojaNova() {
     "scripts/publicacao/instalar-chave-da-loja.cjs",
     "scripts/publicacao/ativar-email-do-login.cjs",
     "scripts/publicacao/ativar-google-do-login.cjs",
+    "scripts/publicacao/login-da-loja.cjs",
+    "scripts/publicacao/login-da-loja-regras.cjs",
     "scripts/publicacao/consultas/8f-conferir-201.sql",
     "supabase/functions/criar-pagamento/index.ts",
   ])
@@ -763,7 +768,7 @@ function arvoreComLojaNova() {
 }
 
 Deno.test({
-  name: "loja nova só por dado (passos dos 7 workflows): a validação aceita a loja inventada e recusa a ausente do cadastro, sem nenhum token no ambiente",
+  name: "loja nova só por dado (passos dos 8 workflows): a validação aceita a loja inventada e recusa a ausente do cadastro, sem nenhum token no ambiente",
   ...SEM_SANITIZAR,
   fn: async () => {
     const raiz = arvoreComLojaNova();
@@ -774,6 +779,7 @@ Deno.test({
         "medir-auth-da-loja.yml",
         "ativar-email-do-login.yml",
         "ativar-google-do-login.yml",
+        "login-da-loja.yml",
         "aplicar-migrations.yml",
         "conferir-banco-da-loja.yml",
       ]) {
@@ -793,7 +799,8 @@ Deno.test({
               PROJETO: p,
               EXPECTED_SHA: SHA,
               GITHUB_SHA: SHA,
-              ACAO: "medir",
+              // cada workflow recusa ação fora do SEU menu no 1º passo
+              ACAO: nome === "login-da-loja.yml" ? "conferir" : "medir",
               TURMA: "turma-1",
             },
             raiz,
@@ -934,7 +941,7 @@ const fetchQueNaoPodeSerChamado = () => {
 };
 
 Deno.test({
-  name: "loja nova só por dado (scripts): conferir-banco, medir-auth, instalar-chave, ativar-email e ativar-google a aceitam pelo cadastro e recusam a ausente",
+  name: "loja nova só por dado (scripts): conferir-banco, medir-auth, instalar-chave, ativar-email, ativar-google e login-da-loja a aceitam pelo cadastro e recusam a ausente",
   ...SEM_SANITIZAR,
   fn: async () => {
     const raiz = arvoreComLojaNova();
@@ -945,6 +952,7 @@ Deno.test({
       const instalar = pub("instalar-chave-da-loja.cjs");
       const email = pub("ativar-email-do-login.cjs");
       const google = pub("ativar-google-do-login.cjs");
+      const login = pub("login-da-loja.cjs");
 
       // conferir-banco: o ref vem do cadastro
       assertEquals(conferir.resolverRef(NOVA), REF_NOVA);
@@ -1122,6 +1130,58 @@ Deno.test({
         assertEquals(r7, 1, nome);
         assertStringIncludes(s7.tudo(), "projeto desconhecido");
       }
+
+      // login-da-loja: sem o token da loja nova PARA nela (sem rede); com ele, a
+      // 1ª chamada vai ao ref da loja nova com o token dela (401 aqui = PARA)
+      const envLogin = { EXPECTED_SHA: SHA, GITHUB_SHA: SHA };
+      const s8 = saidaCaptura();
+      assertEquals(
+        await login.executar({
+          projeto: NOVA,
+          acao: "conferir",
+          env: { ...envLogin, SUPABASE_ACCESS_TOKEN_SAVY: "tk-savy" },
+          fetchImpl: fetchQueNaoPodeSerChamado,
+          saida: s8,
+        }),
+        1,
+      );
+      assertStringIncludes(
+        s8.tudo(),
+        `sem acesso legítimo à Loja Teste por ${SEGREDO_NOVO}`,
+      );
+      const chamadasLogin: any[] = [];
+      const s9 = saidaCaptura();
+      assertEquals(
+        await login.executar({
+          projeto: NOVA,
+          acao: "conferir",
+          env: { ...envLogin, [SEGREDO_NOVO]: "tk-xyz" },
+          fetchImpl: async (url, init) => {
+            chamadasLogin.push({ url, auth: init.headers.Authorization });
+            return { status: 401, text: async () => "" };
+          },
+          saida: s9,
+        }),
+        1,
+      );
+      assertEquals(chamadasLogin, [
+        {
+          url: `https://api.supabase.com/v1/projects/${REF_NOVA}/config/auth`,
+          auth: "Bearer tk-xyz",
+        },
+      ]);
+      const s10 = saidaCaptura();
+      assertEquals(
+        await login.executar({
+          projeto: "loja-ausente",
+          acao: "conferir",
+          env: { ...envLogin, [SEGREDO_NOVO]: "tk" },
+          fetchImpl: fetchQueNaoPodeSerChamado,
+          saida: s10,
+        }),
+        1,
+      );
+      assertStringIncludes(s10.tudo(), "projeto desconhecido");
     } finally {
       // (require em cache de um caminho temporário não atrapalha: cada árvore tem caminho próprio)
       Deno.removeSync(raiz, { recursive: true });
