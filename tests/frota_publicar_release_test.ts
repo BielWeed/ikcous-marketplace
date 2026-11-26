@@ -52,6 +52,7 @@ import {
   resumoEmJson,
   soEnderecosSemResposta,
   sondarBancoDaLoja,
+  sondarCadernetaDoDeployment,
   verifyJwtDoConfig,
   versoesAplicadas,
   workflowSoGanhouLojas,
@@ -14911,6 +14912,7 @@ Deno.test("reserva DEPOIS do promote: FALHOU (código 1) sem vercel rollback, co
     aliasesDepois: TODOS,
     cadernetaDe: naReservaDepois(DOM_SAVY, DOM_SAVY_EXTRA),
   });
+  const pedidos = cadernetaPeloDeployment(d, "erro");
   const r = await executar(d, true);
   assertEquals(conferencias[0].ok, true, conferencias[0].relatorio);
   assertEquals(chamadas.promover, [DPL]);
@@ -14925,6 +14927,11 @@ Deno.test("reserva DEPOIS do promote: FALHOU (código 1) sem vercel rollback, co
     `node scripts/frota/conferir-frota.mjs --sha ${SHA} --vercel`,
   );
   assert(!r.relatorio.includes('Restore project" no painel'), r.relatorio);
+  // A caderneta foi perguntada pelo endereço PRÓPRIO do deployment promovido
+  // (o caminho miss que o candidato provou) e não respondeu nas 2 tentativas.
+  assertEquals(pedidos.length, 2, JSON.stringify(pedidos));
+  for (const p of pedidos) assert(p.url.startsWith("https://cand.vercel.app/"));
+  assertStringIncludes(r.relatorio, "x-ikcous-caderneta: erro");
 });
 
 Deno.test("reserva + banco fora DEPOIS do promote (banco confirmado fora pela sonda direta): FALHOU sem vercel rollback, com caderneta E banco", async () => {
@@ -14939,6 +14946,7 @@ Deno.test("reserva + banco fora DEPOIS do promote (banco confirmado fora pela so
     ),
   });
   bancoDireto(d, 540);
+  cadernetaPeloDeployment(d, "erro");
   const r = await executar(d, true);
   assertEquals(chamadas.promover, [DPL]);
   assertEquals(r.codigo, 1, r.relatorio);
@@ -15268,6 +15276,8 @@ Deno.test("reserva DEPOIS do promote abrindo a loja ERRADA (os endereços da Sav
         ? paginaDaIkcousNaReserva()
         : undefined,
   });
+  // A caderneta NÃO responde: o rollback vem só da loja errada na reserva.
+  cadernetaPeloDeployment(d, "erro");
   const r = await executar(d, true);
   assertEquals(conferencias[0].ok, true, conferencias[0].relatorio);
   assertEquals(chamadas.promover, [DPL]);
@@ -15275,4 +15285,157 @@ Deno.test("reserva DEPOIS do promote abrindo a loja ERRADA (os endereços da Sav
   assertStringIncludes(r.relatorio, "**FALHOU.**");
   assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
   assert(!r.relatorio.includes("NÃO é caso de rollback"), r.relatorio);
+});
+
+// O candidato `*.vercel.app` não é loja: antes do promote ele só exercita o
+// caminho `miss` do porteiro novo, nunca o `hit`. Um porteiro novo que falha
+// ao ler o hit cai na reserva em TODAS as lojas, com as páginas certas, e com a
+// caderneta no ar. Por isso, depois do promote, a reserva só dispensa o
+// rollback se a caderneta, perguntada de novo pelo endereço próprio do
+// deployment promovido (o caminho miss já provado), também NÃO responder.
+
+/**
+ * `d.sondarCaderneta` com o sondarCadernetaDoDeployment REAL sobre um fetch
+ * falso: `respostas` é a fila do x-ikcous-caderneta que o "/" do deployment
+ * devolve (Error = falha de rede); o último item se repete.
+ */
+function cadernetaPeloDeployment(d, ...respostas) {
+  const pedidos = [];
+  d.sondarCaderneta = (url) =>
+    sondarCadernetaDoDeployment(url, {
+      timeoutMs: 50,
+      fetchImpl: async (u, init) => {
+        pedidos.push({ url: u, init });
+        const r = respostas[Math.min(pedidos.length - 1, respostas.length - 1)];
+        if (r instanceof Error) throw r;
+        return new Response("<html></html>", {
+          status: 503,
+          headers: { "x-ikcous-porteiro": "sem-loja", "x-ikcous-caderneta": r },
+        });
+      },
+    });
+  return pedidos;
+}
+
+for (const [nome, respostas] of [
+  ["miss", ["miss"]],
+  ["erro e depois miss (a nova tentativa achou a caderneta)", ["erro", "miss"]],
+]) {
+  Deno.test(`reserva DEPOIS do promote com a caderneta RESPONDENDO ao deployment promovido (${nome}): o defeito é do porteiro novo, FALHOU COM o rollback`, async () => {
+    const { d, chamadas } = releaseComSondasReais({
+      aliasesAntes: TODOS,
+      aliasesDepois: TODOS,
+      cadernetaDe: naReservaDepois(DOM_IKCOUS, DOM_SAVY, DOM_SAVY_EXTRA),
+    });
+    cadernetaPeloDeployment(d, ...respostas);
+    const r = await executar(d, true);
+    assertEquals(chamadas.promover, [DPL]);
+    assertEquals(r.codigo, 1, r.relatorio);
+    assertStringIncludes(r.relatorio, "**FALHOU.**");
+    assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+    assert(!r.relatorio.includes("NÃO é caso de rollback"), r.relatorio);
+    assertStringIncludes(r.relatorio, "a caderneta respondeu");
+    assertStringIncludes(r.relatorio, "a causa é o porteiro novo");
+    assert(r.bloqueios.length > 0, JSON.stringify(r.bloqueios));
+  });
+}
+
+for (const [nome, preparar] of [
+  [
+    "a sonda LANÇA erro",
+    (d) => {
+      d.sondarCaderneta = async () => {
+        throw new Error("sonda quebrou");
+      };
+    },
+  ],
+  ["sem a dependência sondarCaderneta", () => {}],
+  [
+    "o deployment promovido não responde (rede)",
+    (d) => cadernetaPeloDeployment(d, new TypeError("fetch failed")),
+  ],
+  [
+    "o deployment responde sem o porteiro",
+    (d) => {
+      d.sondarCaderneta = (url) =>
+        sondarCadernetaDoDeployment(url, {
+          timeoutMs: 50,
+          fetchImpl: async () => new Response("<html></html>"),
+        });
+    },
+  ],
+]) {
+  Deno.test(`reserva DEPOIS do promote e ${nome}: sem prova de que a caderneta caiu, FALHOU COM o rollback`, async () => {
+    const { d, chamadas } = releaseComSondasReais({
+      aliasesAntes: TODOS,
+      aliasesDepois: TODOS,
+      cadernetaDe: naReservaDepois(DOM_SAVY, DOM_SAVY_EXTRA),
+    });
+    preparar(d);
+    const r = await executar(d, true);
+    assertEquals(chamadas.promover, [DPL]);
+    assertEquals(r.codigo, 1, r.relatorio);
+    assertStringIncludes(r.relatorio, "**FALHOU.**");
+    assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+    assert(!r.relatorio.includes("NÃO é caso de rollback"), r.relatorio);
+    assertStringIncludes(r.relatorio, "não provou que a caderneta caiu");
+  });
+}
+
+Deno.test("sondarCadernetaDoDeployment: miss/hit = no ar; erro nas 2 tentativas = fora; rede, sem porteiro, ausente, reserva ou endereço inválido = não rodou", async () => {
+  const URL_DPL = "cand.vercel.app";
+  const com = (...respostas) => {
+    const pedidos = [];
+    return {
+      pedidos,
+      fetchImpl: async (url, init) => {
+        pedidos.push({ url, init });
+        const r = respostas[Math.min(pedidos.length - 1, respostas.length - 1)];
+        if (r instanceof Error) throw r;
+        if (r instanceof Response) return r;
+        return new Response("x", {
+          status: 503,
+          headers: { "x-ikcous-porteiro": "sem-loja", "x-ikcous-caderneta": r },
+        });
+      },
+    };
+  };
+  for (const valor of ["miss", "hit"]) {
+    const f = com(valor);
+    const r = await sondarCadernetaDoDeployment(URL_DPL, f);
+    assertEquals(r.estado, "no-ar", valor);
+    assertStringIncludes(r.detalhe, `x-ikcous-caderneta: ${valor}`);
+    assertEquals(f.pedidos.length, 1);
+  }
+  const erro = com("erro");
+  const fora = await sondarCadernetaDoDeployment(URL_DPL, erro);
+  assertEquals(fora.estado, "fora");
+  assertStringIncludes(fora.detalhe, "x-ikcous-caderneta: erro");
+  assertEquals(erro.pedidos.length, 2);
+  // o pedido: GET "/" do endereço próprio, como a 1a abertura, sem seguir redirecionamento
+  const p = erro.pedidos[0];
+  assert(p.url.startsWith(`https://${URL_DPL}/?t=`), p.url);
+  assertEquals(p.init.redirect, "manual");
+  assert(p.init.signal instanceof AbortSignal);
+  assert(!p.init.method || p.init.method === "GET");
+  assertEquals(
+    (await sondarCadernetaDoDeployment(URL_DPL, com("erro", "miss"))).estado,
+    "no-ar",
+  );
+  for (const [nome, respostas] of [
+    ["rede", [new TypeError("fetch failed")]],
+    ["erro e depois rede", ["erro", new TypeError("fetch failed")]],
+    ["sem porteiro", [new Response("x")]],
+    ["ausente", ["ausente"]],
+    ["reserva", ["reserva"]],
+  ]) {
+    const r = await sondarCadernetaDoDeployment(URL_DPL, com(...respostas));
+    assertEquals(r.estado, "nao-rodou", nome);
+  }
+  for (const url of [null, "", "loja.com.br", "https://cand.vercel.app"]) {
+    const f = com("erro");
+    const r = await sondarCadernetaDoDeployment(url, f);
+    assertEquals(r.estado, "nao-rodou", String(url));
+    assertEquals(f.pedidos.length, 0);
+  }
 });
