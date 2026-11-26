@@ -158,6 +158,12 @@ export const ORIGEM_E = `https://${"e".repeat(20)}.supabase.co`;
 export const ORIGEM_F = `https://${"f".repeat(20)}.supabase.co`;
 export const ORIGEM_G = `https://${"g".repeat(20)}.supabase.co`;
 export const ORIGEM_H = `https://${"h".repeat(20)}.supabase.co`;
+// Lojas da prova da RESERVA da caderneta (T11 do plano
+// `PLANO-RESERVA-DA-CADERNETA-26-11.md`): caminho (a), a caderneta dublada as
+// conhece, e os bancos delas confirmam o proprio dominio. So letras no ref: o
+// endereco da reserva aceita `[a-z]{20}` (`ENDERECO_DA_RESERVA_REGEX`).
+export const ORIGEM_RESERVA_A = `https://${"i".repeat(20)}.supabase.co`;
+export const ORIGEM_RESERVA_B = `https://${"j".repeat(20)}.supabase.co`;
 
 export const HOSTS = {
   A: "loja-a.localhost",
@@ -191,6 +197,14 @@ export const HOSTS = {
    * nem chave. O banco dela (`ORIGEM_DORMINDO`) NÃO existe neste ensaio: um
    * pedido a ele lançaria, e `pedidosAoDuble` provaria que houve. */
   DORMINDO: "loja-dormindo.localhost",
+  /** Reserva (T11): caminho (a), banco `ORIGEM_RESERVA_A`. */
+  RESERVA_A: "loja-reserva-a.localhost",
+  /** Reserva (T11): caminho (a), banco `ORIGEM_RESERVA_B`. */
+  RESERVA_B: "loja-reserva-b.localhost",
+  /** Reserva (T11): o `.vercel.app` de um deploy CANDIDATO, com a sonda
+   * ligada (`IKCOUS_SONDA_DO_CANDIDATO=1`, `VERCEL_ENV=production` e
+   * `VERCEL_URL` igual a este host) e a mesma caderneta do caminho (a). */
+  CANDIDATO: "ikcous-candidato-de-brinquedo.vercel.app",
 } as const;
 
 /** L8: o `project_ref` da loja adormecida e o endereço do banco que ela TERIA
@@ -328,6 +342,28 @@ const BANCOS_POR_ORIGEM: Record<string, BancoDeBrinquedo> = {
     configuracao: CONFIGURACAO_DESLIGADA,
     banners: { tipo: "trava" },
   },
+  [ORIGEM_RESERVA_A]: {
+    linha: criarLinha(
+      "Loja Reserva A",
+      "#0A0A0A",
+      "c9".repeat(32),
+      ORIGEM_RESERVA_A,
+    ),
+    dominioPublico: HOSTS.RESERVA_A,
+    chavePublica: "sb_publishable_loja_reserva_a",
+    configuracao: CONFIGURACAO_DESLIGADA,
+  },
+  [ORIGEM_RESERVA_B]: {
+    linha: criarLinha(
+      "Loja Reserva B",
+      "#0B0B0B",
+      "d0".repeat(32),
+      ORIGEM_RESERVA_B,
+    ),
+    dominioPublico: HOSTS.RESERVA_B,
+    chavePublica: "sb_publishable_loja_reserva_b",
+    configuracao: CONFIGURACAO_DESLIGADA,
+  },
 };
 
 /** Host (caminho b) -> origem, para as lojas do ensaio do cartaz. */
@@ -364,7 +400,7 @@ export const CONFIGURACAO_ESPERADA: Record<string, ConfiguracaoDeBrinquedo> = {
 
 // ─── A caderneta central dublada (caminho "a") ─────────────────────────────
 
-const FROTA_URL = "https://frota-principal-de-brinquedo.supabase.co";
+export const FROTA_URL = "https://frota-principal-de-brinquedo.supabase.co";
 const FROTA_APIKEY = "sb_publishable_frota_principal";
 const FROTA_CHAVE = "segredo-de-32-bytes-so-para-este-ensaio";
 
@@ -374,7 +410,18 @@ const FROTA_CHAVE = "segredo-de-32-bytes-so-para-este-ensaio";
 const CADERNETA_MAPEAMENTO: Record<string, string> = {
   [HOSTS.C]: ORIGEM_C,
   [HOSTS.TROCADA]: ORIGEM_B,
+  [HOSTS.RESERVA_A]: ORIGEM_RESERVA_A,
+  [HOSTS.RESERVA_B]: ORIGEM_RESERVA_B,
 };
+
+/** A caderneta "fora do ar" (T11, reserva): com isto ligado, TODA pergunta à
+ * RPC da caderneta falha como falha um endereço que não resolve (o `fetch` do
+ * Node lança `TypeError: fetch failed`). Desligado por padrão, e volta a
+ * desligado em `fechar()`: os outros ensaios desta pasta nunca o veem. */
+let cadernetaForaDoAr = false;
+export function deixarCadernetaInalcancavel(valor: boolean): void {
+  cadernetaForaDoAr = valor;
+}
 
 // ─── process.env por host ───────────────────────────────────────────────────
 
@@ -387,6 +434,8 @@ const CHAVES_DE_AMBIENTE_DO_PORTEIRO = [
   "IKCOUS_FROTA_CHAVE",
   "VERCEL_ENV",
   "IKCOUS_DOMINIO_PRINCIPAL",
+  "VERCEL_URL",
+  "IKCOUS_SONDA_DO_CANDIDATO",
 ] as const;
 
 /** Regra estrita (ADENDO B/T6, item do servidor): `VERCEL_ENV` e
@@ -398,7 +447,10 @@ const CHAVES_DE_AMBIENTE_DO_PORTEIRO = [
  * num projeto multi-loja — ver `decidirConcordancia`) e passou a ser a
  * nossa, cadastrada no projeto — nenhum cenário deste servidor de ensaio é
  * preview, então a chave nunca precisou de valor aqui, só do nome certo
- * para a limpeza. */
+ * para a limpeza. ÚNICA exceção (T11, reserva): `HOSTS.CANDIDATO` recebe
+ * `VERCEL_ENV=production`, que a sonda do candidato exige. Nunca é
+ * `preview`, e as lojas que a sonda consulta não terminam em `.vercel.app`:
+ * a concordância delas segue byte a byte. */
 function aplicarAmbientePorHost(hostname: string): void {
   // eslint-disable-next-line security/detect-object-injection -- `chave` percorre SÓ o array literal fixo `CHAVES_DE_AMBIENTE_DO_PORTEIRO` declarado acima, nunca entrada externa.
   for (const chave of CHAVES_DE_AMBIENTE_DO_PORTEIRO) delete process.env[chave];
@@ -420,11 +472,22 @@ function aplicarAmbientePorHost(hostname: string): void {
   if (
     hostname === HOSTS.C ||
     hostname === HOSTS.TROCADA ||
-    hostname === HOSTS.DORMINDO
+    hostname === HOSTS.DORMINDO ||
+    hostname === HOSTS.RESERVA_A ||
+    hostname === HOSTS.RESERVA_B
   ) {
     process.env.IKCOUS_FROTA_URL = FROTA_URL;
     process.env.IKCOUS_FROTA_APIKEY = FROTA_APIKEY;
     process.env.IKCOUS_FROTA_CHAVE = FROTA_CHAVE;
+    return;
+  }
+  if (hostname === HOSTS.CANDIDATO) {
+    process.env.IKCOUS_FROTA_URL = FROTA_URL;
+    process.env.IKCOUS_FROTA_APIKEY = FROTA_APIKEY;
+    process.env.IKCOUS_FROTA_CHAVE = FROTA_CHAVE;
+    process.env.VERCEL_ENV = "production";
+    process.env.VERCEL_URL = HOSTS.CANDIDATO;
+    process.env.IKCOUS_SONDA_DO_CANDIDATO = "1";
     return;
   }
   if (hostname === HOSTS.D) {
@@ -482,6 +545,7 @@ async function fetchDeBrinquedo(
   // reserva que ela é — e, como no banco de verdade, só conhece loja ativa.
   const comEstado = url.pathname === "/rest/v1/rpc/resolver_loja_com_estado";
   if (comEstado || url.pathname === "/rest/v1/rpc/resolver_loja") {
+    if (cadernetaForaDoAr) throw new TypeError("fetch failed");
     const corpo = await lerCorpoDoInit(init);
     const { p_host, p_chave } = corpo
       ? (JSON.parse(corpo) as { p_host?: unknown; p_chave?: unknown })
@@ -757,6 +821,7 @@ export async function iniciarServidorDoisHosts(
         servidor.close((erro) => {
           globalThis.fetch = fetchOriginal;
           deployDoBuildDeEnsaio = undefined;
+          cadernetaForaDoAr = false;
           if (erro) reject(erro);
           else resolve();
         }),

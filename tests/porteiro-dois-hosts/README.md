@@ -61,6 +61,29 @@ módulos novo: o cache do porteiro começa vazio, e dá para contar as buscas ao
   runtime recebe o mesmo id. Um teste troca o id do runtime e prova que o HTML
   de outro deploy é servido, mas buscado a cada pedido.
 
+## A reserva da caderneta (T11, 26/11/2026)
+
+`porteiro-reserva.test.ts` usa o mesmo servidor e o `middleware()` real, com a
+Global Config dublada (`vi.mock("@vercel/global-config")`) atrás do leitor
+real. Ele usa estas lojas do `servidor.ts`:
+
+- `HOSTS.RESERVA_A` e `HOSTS.RESERVA_B`, no caminho (a);
+- `HOSTS.CANDIDATO`, o `.vercel.app` com a sonda ligada.
+
+A caderneta fica inalcançável com `deixarCadernetaInalcancavel(true)`.
+
+O que ele prova:
+
+- Com a caderneta fora, cada host abre a própria loja (`x-ikcous-caderneta: reserva`).
+- A reserva que aponta A para o banco de B dá 503 `discorda`, sem nenhum byte de B.
+- Quando a caderneta volta, os dois saem `hit`.
+- Se o leitor da reserva falha, sai o mesmo 503 `banco-indisponivel`/`erro` de
+  quando a reserva está desligada.
+- A sonda do candidato responde igual.
+
+O relógio é falso só no `Date`, e os testes rodam em ordem, compartilhando o
+cache do porteiro.
+
 ## As seis fichas
 
 | Host | Caminho do porteiro | O que prova |
