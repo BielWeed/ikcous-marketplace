@@ -116,3 +116,29 @@ it("voltar à aba confere, mas trocar de aba de novo em menos de 1 min não repe
     limpar();
   }
 });
+
+it("relógio que volta para trás (carimbo da última checagem no futuro) não trava a conferência", async () => {
+  vi.useFakeTimers();
+  const { lerVersao, atualizar, voltarParaAba, limpar } = montarEfeito();
+  try {
+    await vi.advanceTimersByTimeAsync(10_000);
+    await voltarParaAba();
+    expect(lerVersao).toHaveBeenCalledTimes(1);
+
+    // O aparelho corrige o relógio 2 h para trás: a última checagem fica
+    // "no futuro". Sem tratar a idade negativa, o piso pularia toda
+    // conferência pelas próximas 2 h.
+    vi.setSystemTime(Date.now() - 120 * MINUTO);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await voltarParaAba();
+    expect(lerVersao).toHaveBeenCalledTimes(2);
+    expect(atualizar).toHaveBeenCalledTimes(2);
+
+    // Com o carimbo refeito no relógio novo, o piso de 1 min volta a valer.
+    await vi.advanceTimersByTimeAsync(20_000);
+    await voltarParaAba();
+    expect(lerVersao).toHaveBeenCalledTimes(2);
+  } finally {
+    limpar();
+  }
+});

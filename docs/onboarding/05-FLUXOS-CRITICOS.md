@@ -370,7 +370,7 @@ sequenceDiagram
 
 Sete mecanismos de autocura sobrepostos, sem fonte da verdade — **seis reagem a alguma coisa, o G não**. O caminho normal é o **A**:
 
-- **A** — `registration.update()` por intervalo de 20 min e por `visibilitychange` (piso de 1 min): `useUpdateCheck.ts:96-131`
+- **A** — `registration.update()` por intervalo de 20 min e por `visibilitychange` (piso de 1 min): `useUpdateCheck.ts:168-225`
 - **B** — broadcast `deploy-ping` no canal `pwa-system-signals`, **sem emissor**: `useRealtimeUpdate.ts:50-54`
 - **C** — update obrigatório por `store_config.min_app_version` → purge total: `useUpdateCheck.ts:257-310`
 - **D** — `addEventListener("error")` com texto de chunk → purge real em 1500 ms: `useUpdateCheck.ts:343-386` (o listener em `:384`; **não existe `window.onerror` no repo**, não adianta grepar por esse nome)
