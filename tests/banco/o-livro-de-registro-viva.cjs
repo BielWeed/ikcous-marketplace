@@ -1020,8 +1020,12 @@ async function comportamento(c) {
 // ---------------------------------------------------------------------------
 // (F) nunca no caminho de quem compra: as travas de outra conexao, o custo e o ROLLBACK.
 // ---------------------------------------------------------------------------
+// A transacao da `outra` morre sozinha depois de 20 s ociosa: uma espera que ninguem desfaz vira erro, nunca o job parado ate o teto.
 async function comOutra(url, fn) {
-  const outra = new Client({ connectionString: url });
+  const outra = new Client({
+    connectionString: url,
+    idle_in_transaction_session_timeout: 20000,
+  });
   await outra.connect();
   try {
     return await fn(outra);
@@ -1038,7 +1042,11 @@ async function travaNoLivro(c, url) {
       "LOCK TABLE public.livro_de_registro IN ACCESS EXCLUSIVE MODE",
     );
     await desfeita(c, async () => {
+      // O preparo (o UPSERT de store_config) ja passa pelo gatilho do livro travado. Sem o lock_timeout da funcao (o mutante
+      // sem-lock-timeout) ele esperaria para sempre, antes de o relogio de 3 s existir: 1 s aqui, e o preparo segue com a falha contada.
+      await c.query("SET LOCAL lock_timeout = '1s'");
       await semearV24(c);
+      await c.query("SET LOCAL lock_timeout = 0");
       await c.query("SET LOCAL statement_timeout = '3s'");
       const antes = await falhasDe(c, "produtos", "55P03");
       const sp = "sp_1510_v24_travada";
@@ -1083,6 +1091,7 @@ async function nuncaNoCaminho(c, url) {
     await desfeita(c, async () => {
       const id = await cupom(c, "L1510F3");
       const antes = await falhasDe(c, "coupons", "55P03");
+      await c.query("SET LOCAL statement_timeout = '3s'");
       const t0 = Date.now();
       const r = await c.query(
         "UPDATE public.coupons SET value = 9 WHERE id = $1",

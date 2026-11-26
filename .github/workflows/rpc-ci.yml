@@ -1612,16 +1612,19 @@ jobs:
       # CLONE proprio.
       - name: Prova viva do livro de registro (migration 20261510000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 3
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-livro-de-registro-viva.cjs
       # 20261510000000: as consultas 188a/188b/188m EXECUTADAS por um papel sem privilegio nas 17 tabelas, com defeitos plantados (cada
       # um reprova so o item certo), papel cego do cron, e a 181a positiva com os gatilhos do livro em fornecedores. CLONE proprio.
       - name: Prova viva do portao do livro de registro (consultas 188a/188b/188m)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 3
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-livro-de-registro-portao-viva.cjs
       # 20261510000000: o roteiro docs/runbooks/desfazer-pelo-livro-de-registro.md EXECUTADO bloco a bloco (achar, restaurar a linha
       # apagada, valor no instante, desfazer a transacao) em ENSAIO e confirmado, contra um estragador real. CLONE proprio.
       - name: Prova viva do roteiro de desfazer pelo livro (migration 20261510000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 3
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-livro-de-registro-desfazer-ensaio-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
