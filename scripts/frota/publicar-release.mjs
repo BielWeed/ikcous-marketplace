@@ -96,6 +96,7 @@ import {
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { criarAcessoOAuth } from "./acesso-oauth.mjs";
 import { CofreTravado, ErroDoCofre, criarCofreDpapi } from "./cofre-local.mjs";
@@ -113,7 +114,13 @@ import {
   validarVersao,
 } from "./conferir-frota.mjs";
 import { criarLeitorOAuth } from "./leitor-oauth.mjs";
-import { ErroDaPonte } from "./ponte-oauth.mjs";
+import {
+  ErroDaPonte,
+  MINIMO_PADRAO_MS,
+  abrirSessao,
+  criarGhReal,
+  faxinar,
+} from "./ponte-oauth.mjs";
 import {
   ESTADO_DESCONHECIDO,
   ErroDaGestao,
@@ -2267,6 +2274,9 @@ export async function contextoDaRelease({ sha, politica, canais, deps }) {
 
 export async function publicarRelease(opcoes, deps) {
   const { sha, deploymentId, promover } = opcoes;
+  // Dentro da sessão (--sessao): o segredo da loja OAuth existe, e o passo
+  // seguinte é o Enter/`promover` do laço, não outro comando.
+  const emSessao = opcoes.emSessao === true;
   const politica = deps.politica;
   const canais = deps.canais;
   const agora = deps.agora ? deps.agora() : Date.now();
@@ -2512,7 +2522,9 @@ export async function publicarRelease(opcoes, deps) {
     const c = comandosDeConserto(loja, pront, canal, ctxConserto);
     if (c.length)
       consertos.push(
-        ...(oauth.mapa.has(loja.ref) ? [AVISO_DA_SESSAO_OAUTH] : []),
+        ...(oauth.mapa.has(loja.ref) && !emSessao
+          ? [AVISO_DA_SESSAO_OAUTH]
+          : []),
         ...c,
         "",
       );
@@ -2545,7 +2557,9 @@ export async function publicarRelease(opcoes, deps) {
     if (consertos.length) {
       consertos.push(
         "# quando cada run acima terminar (gh run watch <id>), o ensaio de novo imprime o passo seguinte:",
-        `node scripts/frota/publicar-release.mjs --sha ${sha} --deployment ${deploymentId}`,
+        emSessao
+          ? "# (na sessão: aperte Enter na janela da sessão)"
+          : `node scripts/frota/publicar-release.mjs --sha ${sha} --deployment ${deploymentId}`,
       );
       linhas.push(
         "",
@@ -2570,10 +2584,14 @@ export async function publicarRelease(opcoes, deps) {
     linhas.push(
       "## 4. PRONTO — nenhum alvo bloqueia",
       "",
-      "Para publicar (o mesmo comando, com --promover):",
-      "```",
-      `node scripts/frota/publicar-release.mjs --sha ${sha} --deployment ${deploymentId} --promover`,
-      "```",
+      ...(emSessao
+        ? ["Para publicar: digite `promover` na janela da sessão."]
+        : [
+            "Para publicar (o mesmo comando, com --promover):",
+            "```",
+            `node scripts/frota/publicar-release.mjs --sha ${sha} --deployment ${deploymentId} --promover`,
+            "```",
+          ]),
     );
     return {
       codigo: 0,
@@ -3223,13 +3241,440 @@ export function dependenciasReais({ rodarGh, rodarSupabase } = {}) {
   };
 }
 
+// ------------------------------------------------------------------ sessão de publicação (ponte A)
+
+/** A sessão fecha sozinha quando falta menos que isto para o token vencer. */
+export const AVISO_DE_VENCIMENTO_MS = 45 * 60 * 1000;
+
+/** Teto do fechar: a janela fechada dá ~10 s antes de o Windows matar o processo. */
+export const TETO_DO_FECHAR_MS = 8000;
+
+/** Os sinais que fecham a sessão (no Windows: Ctrl+C, Ctrl+Break, janela fechada). */
+export const SINAIS_DA_SESSAO = ["SIGINT", "SIGBREAK", "SIGHUP"];
+
+/**
+ * O fechar renova cada loja mais uma vez DEPOIS de apagar o segredo (mudança 4
+ * do crítico): se a renovação invalidar o token anterior (prova P6b), o token
+ * que esteve no GitHub morre. Ligado até a P6b medir: se renovar NÃO
+ * invalida, custa só uma renovação a mais. PONTO DE TROCA DA T0 (P6b).
+ */
+export const MATAR_TOKEN_NO_FECHAR = true;
+
+/** Os workflows que leem o segredo da loja (lojas.cjs/exigir-segredo): com um
+ * run deles vivo, `sair` e `promover` não fecham (mudança 3 do crítico). */
+export const WORKFLOWS_COM_SEGREDO_DA_LOJA = [
+  "aplicar-migrations.yml",
+  "ativar-email-do-login.yml",
+  "ativar-google-do-login.yml",
+  "conferir-banco-da-loja.yml",
+  "instalar-chave-da-loja.yml",
+  "login-da-loja.yml",
+  "medir-auth-da-loja.yml",
+  "publicar-functions.yml",
+];
+
+const PROMPT_DA_SESSAO =
+  "\nEnter = ensaio de novo · promover = publicar · sair = fechar a sessão > ";
+const APAGANDO =
+  "já estou apagando os segredos do GitHub; espere terminar (não feche a janela).";
+
+/**
+ * `git remote get-url origin` -> "OWNER/REPO". Só github.com (https, ssh ou
+ * git@), com ou sem `.git`; o resto recusa SEM ecoar a URL (ela pode levar
+ * credencial, `https://usuario:token@...`).
+ */
+export function repoDoRemoto(url) {
+  const t = typeof url === "string" ? url.trim() : "";
+  const m =
+    /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?$/.exec(
+      t,
+    );
+  if (!m || m[2] === "." || m[2] === "..") {
+    throw new Error(
+      "o remoto origin não é um repositório github.com/OWNER/REPO (a URL não é impressa: pode levar credencial)",
+    );
+  }
+  return `${m[1]}/${m[2]}`;
+}
+
+/** Tira de um texto qualquer token visto e tudo com a cara de token. */
+function semTokens(texto, tokens) {
+  let t = String(texto ?? "");
+  for (const s of tokens ?? []) if (s) t = t.split(s).join("[token]");
+  return t.replace(
+    /\b(?:gh[opsur]_|github_pat_|sbp_)[A-Za-z0-9_]+/g,
+    "[token]",
+  );
+}
+
+/** HH:MM no relógio desta máquina (o que o dono lê na parede). */
+function horaLocal(ms) {
+  const d = new Date(ms);
+  const dois = (n) => String(n).padStart(2, "0");
+  return `${dois(d.getHours())}:${dois(d.getMinutes())}`;
+}
+
+/** Resolve com `valor` ou com ESTOUROU depois de `ms`; nunca lança. */
+const ESTOUROU = Symbol("estourou");
+function comTeto(promessa, ms) {
+  let relogio;
+  return Promise.race([
+    Promise.resolve(promessa).catch(() => ESTOUROU),
+    new Promise((ok) => {
+      relogio = setTimeout(() => ok(ESTOUROU), ms);
+    }),
+  ]).finally(() => clearTimeout(relogio));
+}
+
+/**
+ * `--faxina`: apaga do GitHub os segredos de TODA loja OAuth do cadastro que
+ * estiverem lá. Nada renova. Imprime só nomes. 0 = nada sobrou; 1 = algum não
+ * saiu (com o comando exato) ou a faxina falhou.
+ */
+export async function rodarFaxina({ cadastro, gh, escrever }) {
+  let r;
+  try {
+    r = await faxinar({ cadastro, gh });
+  } catch (e) {
+    escrever(`A faxina falhou: ${detalheSeguro(e)}`);
+    return 1;
+  }
+  escrever(
+    r.apagados.length
+      ? `segredos apagados: ${r.apagados.join(", ")}`
+      : "nenhum segredo de loja OAuth no GitHub: nada a apagar",
+  );
+  for (const x of r.naoApagados)
+    escrever(`NÃO apagado: ${x.nome} — rode: ${x.comando}`);
+  return r.naoApagados.length ? 1 : 0;
+}
+
+/**
+ * `--sessao` (T8 do plano PORTAO-OAUTH-PONTE-A). Abre a ponte (ponte-oauth.mjs:
+ * uma renovação por loja OAuth, segredo gravado pelo stdin do gh) e roda o
+ * ensaio em laço com o token DA SESSÃO: Enter ensaia de novo, `promover`
+ * publica, `sair` encerra. O `fechar` da ponte roda em TODO final: `sair`,
+ * promover que publicou, exceção no ensaio, SIGINT/SIGBREAK/SIGHUP do processo,
+ * Ctrl+C e fim da entrada no prompt (rl "SIGINT"/"close": com o readline em
+ * modo cru o Ctrl+C não vira sinal do processo), e o token a menos de
+ * AVISO_DE_VENCIMENTO_MS de vencer (antes de cada rodada e por um relógio
+ * enquanto o prompt espera). O tratador é persistente: o 2º sinal só avisa que
+ * está apagando. Sinal na abertura interrompe a ponte, que apaga todos os nomes
+ * OAuth. `sair` e `promover` só fecham sem run vivo dos workflows que leem o
+ * segredo; sinal e vencimento fecham mesmo assim, avisando.
+ *
+ * `amb` (tudo injetado; o real é montado no main):
+ *   deps, cadastro, acesso, gh, escrever, entrada { perguntar, on, off, close },
+ *   sinais { on, off }, runsEmAndamento, agora?, agendar?, publicar?,
+ *   matarTokenNoFechar?, minimoMs?, tetoDoFecharMs?, gravarJson?
+ * Devolve o código de saída: o da última rodada (1 se nenhuma terminou; 2 se o
+ * ensaio lançou exceção).
+ */
+export async function rodarSessao(opcoes, amb) {
+  const { sha, deploymentId } = opcoes;
+  const { deps, cadastro, acesso, gh, entrada, sinais, escrever } = amb;
+  if (typeof amb.runsEmAndamento !== "function")
+    throw new Error("sessão montada sem a leitura de runs em andamento");
+  const agora = amb.agora ?? Date.now;
+  const agendar =
+    amb.agendar ??
+    ((fn, ms) => {
+      const t = setTimeout(fn, ms);
+      return () => clearTimeout(t);
+    });
+  const publicar = amb.publicar ?? publicarRelease;
+  const tetoMs = amb.tetoDoFecharMs ?? TETO_DO_FECHAR_MS;
+  const vistos = new Set();
+  const dizer = (t) => escrever(semTokens(t, vistos));
+
+  let fase = "abrindo"; // abrindo -> aberta -> fechando -> fechada
+  let sessao = null;
+  let ultimo = null;
+  const abortar = new AbortController();
+  let terminou;
+  const fim = new Promise((ok) => {
+    terminou = ok;
+  });
+  let pararRelogio = () => {};
+
+  function relatarFechamento(r) {
+    const nomes = sessao.lojas.map((l) => l.nome);
+    if (r === ESTOUROU) {
+      dizer(
+        `NÃO confirmei em ${Math.round(tetoMs / 1000)} s que os segredos (${nomes.join(", ")}) saíram do GitHub. Rode AGORA: node scripts/frota/publicar-release.mjs --faxina`,
+      );
+      return;
+    }
+    dizer(`segredos apagados: ${r.apagados.length} de ${nomes.length}`);
+    for (const x of r.naoApagados)
+      dizer(`NÃO apagado: ${x.nome} — rode: ${x.comando}`);
+    for (const p of r.tokensNaoMortos)
+      dizer(
+        `o token da loja ${p} não foi invalidado no fechar (vence sozinho às ${horaLocal(sessao.validaAte)})`,
+      );
+    for (const p of r.travasPresas)
+      dizer(
+        `a trava do cofre da loja ${p} não soltou: o próximo comando dela diz qual arquivo apagar`,
+      );
+  }
+
+  /** Fecha UMA vez e resolve o fim com `codigo`. Nunca lança. */
+  async function terminar(codigo, aviso) {
+    if (fase !== "aberta") return;
+    fase = "fechando";
+    pararRelogio();
+    if (aviso) dizer(aviso);
+    dizer(
+      "Fechando a sessão: tirando os segredos das lojas OAuth do GitHub...",
+    );
+    try {
+      relatarFechamento(await comTeto(sessao.fechar(), tetoMs));
+    } catch {
+      dizer(
+        "o fechar falhou: rode AGORA node scripts/frota/publicar-release.mjs --faxina",
+      );
+    }
+    fase = "fechada";
+    terminou(codigo);
+  }
+
+  const avisoDeVencimento = () =>
+    `o token vence às ${horaLocal(sessao.validaAte)}; feche e abra outra sessão. Esta fecha agora.`;
+
+  function aoSinal(origem) {
+    if (fase === "abrindo") {
+      if (abortar.signal.aborted) dizer(APAGANDO);
+      else {
+        dizer(`${origem}: interrompendo a abertura da sessão...`);
+        abortar.abort();
+      }
+    } else if (fase === "aberta") {
+      void terminar(
+        ultimo ?? 1,
+        `${origem}: fechando sem conferir runs em andamento — um run que ainda está na fila fica sem o segredo e para em SEM_ACESSO.`,
+      );
+    } else if (fase === "fechando") {
+      dizer(APAGANDO);
+    }
+  }
+
+  const tratadores = SINAIS_DA_SESSAO.map((nome) => [
+    nome,
+    () => aoSinal(nome),
+  ]);
+  const aoCtrlC = () => aoSinal("Ctrl+C");
+  const aoFimDaEntrada = () => aoSinal("entrada fechada");
+  for (const [nome, fn] of tratadores) sinais.on(nome, fn);
+  entrada.on("SIGINT", aoCtrlC);
+  entrada.on("close", aoFimDaEntrada);
+
+  /** `sair`/`promover`: só fecha sem run vivo que leia o segredo da loja. */
+  async function semRunVivo() {
+    let runs;
+    try {
+      runs = await amb.runsEmAndamento();
+    } catch (e) {
+      dizer(
+        `não consegui ler os runs em andamento (${semTokens(e?.message, vistos).slice(0, 200)}): a sessão continua aberta. Digite sair de novo, ou aperte Ctrl+C para fechar mesmo assim.`,
+      );
+      return false;
+    }
+    if (runs.length === 0) return true;
+    dizer(
+      `${runs.length} run(s) ainda em andamento ou na fila, e eles leem o segredo da loja: ${runs.map((r) => `${r.workflow} #${r.id}`).join(", ")}. Espere terminar (gh run watch <id>) e digite sair de novo; Ctrl+C fecha mesmo assim.`,
+    );
+    return false;
+  }
+
+  const tokenDaSessao = ({ ref }) => {
+    const accessToken = sessao.tokenDe(ref);
+    vistos.add(accessToken);
+    return { accessToken, expiraEm: sessao.validaAte };
+  };
+
+  async function laco() {
+    let promover = false;
+    for (;;) {
+      if (fase !== "aberta") return;
+      if (sessao.validaAte - agora() < AVISO_DE_VENCIMENTO_MS) {
+        await terminar(ultimo ?? 1, avisoDeVencimento());
+        return;
+      }
+      let r;
+      try {
+        r = await publicar(
+          { sha, deploymentId, promover, emSessao: true },
+          { ...deps, tokenOAuth: tokenDaSessao },
+        );
+      } catch (e) {
+        await terminar(
+          2,
+          `erro inesperado no ensaio: ${semTokens(e?.message, vistos).slice(0, 400)}`,
+        );
+        return;
+      }
+      if (fase !== "aberta") return;
+      ultimo = r.codigo;
+      dizer(r.relatorio);
+      amb.gravarJson?.(r);
+      if (promover && r.codigo === 0 && (await semRunVivo())) {
+        await terminar(0);
+        return;
+      }
+      promover = false;
+      for (;;) {
+        const resposta = String(await entrada.perguntar(PROMPT_DA_SESSAO))
+          .trim()
+          .toLowerCase();
+        if (fase !== "aberta") return;
+        if (resposta === "") break;
+        if (resposta === "promover") {
+          promover = true;
+          break;
+        }
+        if (resposta === "sair") {
+          if (!(await semRunVivo())) continue;
+          await terminar(ultimo);
+          return;
+        }
+        dizer(
+          "não entendi: aperte Enter (ensaio de novo), digite promover ou sair.",
+        );
+      }
+    }
+  }
+
+  try {
+    try {
+      sessao = await abrirSessao({
+        cadastro,
+        acesso,
+        gh,
+        agora,
+        minimoMs: amb.minimoMs ?? MINIMO_PADRAO_MS,
+        matarTokenNoFechar: amb.matarTokenNoFechar ?? MATAR_TOKEN_NO_FECHAR,
+        sinal: abortar.signal,
+      });
+    } catch (e) {
+      fase = "fechada";
+      dizer(`A sessão NÃO abriu: ${detalheSeguro(e, vistos)}`);
+      const l = e?.limpeza;
+      if (l) {
+        if (l.apagados.length)
+          dizer(`apagados na limpeza: ${l.apagados.join(", ")}`);
+        for (const x of l.naoApagados)
+          dizer(`NÃO apagado: ${x.nome} — rode: ${x.comando}`);
+        for (const p of l.travasPresas)
+          dizer(`a trava do cofre da loja ${p} não soltou`);
+      }
+      return 1;
+    }
+    fase = "aberta";
+    dizer(
+      `Sessão aberta. Segredos gravados no GitHub: ${sessao.lojas.map((l) => l.nome).join(", ")}; vale até ${horaLocal(sessao.validaAte)} (fecha sozinha às ${horaLocal(sessao.validaAte - AVISO_DE_VENCIMENTO_MS)}). Cole os comandos gh workflow run em OUTRA janela.`,
+    );
+    pararRelogio = agendar(
+      () => void terminar(ultimo ?? 1, avisoDeVencimento()),
+      Math.max(0, sessao.validaAte - AVISO_DE_VENCIMENTO_MS - agora()),
+    );
+    laco().catch((e) =>
+      terminar(
+        2,
+        `erro inesperado na sessão: ${semTokens(e?.message, vistos).slice(0, 400)}`,
+      ),
+    );
+    return await fim;
+  } finally {
+    for (const [nome, fn] of tratadores) sinais.off(nome, fn);
+    entrada.off("SIGINT", aoCtrlC);
+    entrada.off("close", aoFimDaEntrada);
+    entrada.close();
+  }
+}
+
+/**
+ * Os runs vivos (não `completed`) dos workflows que leem o segredo da loja,
+ * pelo `gh run list` (os 100 mais novos de cada: run na fila é recente).
+ * Lista torta lança: nunca "nenhum run" no escuro.
+ */
+export function runsEmAndamentoPelaCli(
+  executarGh,
+  workflows = WORKFLOWS_COM_SEGREDO_DA_LOJA,
+) {
+  return async () => {
+    const listas = await Promise.all(
+      workflows.map(async (w) => {
+        const runs = JSON.parse(
+          await executarGh([
+            "run",
+            "list",
+            "--workflow",
+            w,
+            "--limit",
+            "100",
+            "--json",
+            "databaseId,status,displayTitle",
+          ]),
+        );
+        if (!Array.isArray(runs))
+          throw new Error(`gh run list ${w} não devolveu uma lista`);
+        return runs
+          .filter((r) => r?.status !== "completed")
+          .map((r) => ({ workflow: w, id: Number(r?.databaseId) }));
+      }),
+    );
+    return listas.flat();
+  };
+}
+
+/** O teclado do dono pelo readline; rl "SIGINT"/"close" chegam por `on`. */
+function entradaDoTerminal() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  return {
+    perguntar: (texto) => new Promise((ok) => rl.question(texto, ok)),
+    on: (evento, fn) => rl.on(evento, fn),
+    off: (evento, fn) => rl.off(evento, fn),
+    close: () => rl.close(),
+  };
+}
+
+/** O gh real da sessão e da faxina: repositório do `origin`, token em memória. */
+function ghDaSessao(cadastro) {
+  const url = execFileSync("git", ["-C", RAIZ, "remote", "get-url", "origin"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  return criarGhReal({
+    repo: repoDoRemoto(url),
+    cadastro,
+    executavel: comandoNoWindows("gh"),
+  });
+}
+
 // ------------------------------------------------------------------ CLI
 
 export function lerArgumentos(argv) {
-  const a = { sha: null, deployment: null, promover: false, json: null };
+  const a = {
+    sha: null,
+    deployment: null,
+    promover: false,
+    json: null,
+    sessao: false,
+    faxina: false,
+  };
+  if (argv.includes("--faxina")) {
+    if (argv.length !== 1)
+      throw new Error("--faxina roda sozinha, sem nenhum outro argumento");
+    a.faxina = true;
+    return a;
+  }
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === "--promover") a.promover = true;
+    else if (x === "--sessao") a.sessao = true;
     else if (x === "--sha" || x === "--deployment" || x === "--json") {
       const v = argv[++i];
       if (!v || v.startsWith("--")) throw new Error(`${x} exige um valor`);
@@ -3240,6 +3685,10 @@ export function lerArgumentos(argv) {
     throw new Error("--sha <40 hex> é obrigatório");
   if (!a.deployment || !RE_DEPLOYMENT.test(a.deployment))
     throw new Error("--deployment <dpl_…> é obrigatório");
+  if (a.sessao && a.promover)
+    throw new Error(
+      "--promover não se usa com --sessao: dentro da sessão, digite promover",
+    );
   a.sha = a.sha.toLowerCase();
   return a;
 }
@@ -3261,16 +3710,68 @@ export function resumoEmJson(r, geradoEm) {
   )}\n`;
 }
 
-const USO =
-  "Uso: node scripts/frota/publicar-release.mjs --sha <40hex> --deployment <dpl_…> [--promover] [--json <arquivo>]";
+const USO = [
+  "Uso: node scripts/frota/publicar-release.mjs --sha <40hex> --deployment <dpl_…> [--promover] [--json <arquivo>]",
+  "     node scripts/frota/publicar-release.mjs --sessao --sha <40hex> --deployment <dpl_…> [--json <arquivo>]",
+  "     node scripts/frota/publicar-release.mjs --faxina",
+].join("\n");
 
-export async function main(argv = process.argv.slice(2)) {
+/** A faxina de verdade: o cadastro do lojas.json e o gh do `origin`. */
+function ambienteDaFaxinaReal() {
+  const cadastro = carregarLojas();
+  return {
+    cadastro,
+    gh: ghDaSessao(cadastro),
+    escrever: (t) => console.log(t),
+  };
+}
+
+/** A sessão de verdade: dependências do portão, cofre DPAPI, gh, teclado e sinais. */
+function ambienteDaSessaoReal() {
+  const deps = dependenciasReais();
+  const ghCli = comandoNoWindows("gh");
+  return {
+    deps,
+    cadastro: deps.cadastro,
+    gh: ghDaSessao(deps.cadastro),
+    acesso: criarAcessoOAuth({ cofre: criarCofreDpapi() }),
+    entrada: entradaDoTerminal(),
+    sinais: process,
+    escrever: (t) => console.log(t),
+    runsEmAndamento: runsEmAndamentoPelaCli((args) => rodar(ghCli, args)),
+  };
+}
+
+/**
+ * `fabricas` só existe para os testes trocarem o ambiente da sessão e da
+ * faxina por dublês; em produção valem os reais.
+ */
+export async function main(argv = process.argv.slice(2), fabricas = {}) {
   let a;
   try {
     a = lerArgumentos(argv);
   } catch (e) {
     console.error(`${e.message}\n${USO}`);
     return 2;
+  }
+  if (a.faxina) return rodarFaxina((fabricas.faxina ?? ambienteDaFaxinaReal)());
+  if (a.sessao) {
+    const amb = (fabricas.sessao ?? ambienteDaSessaoReal)();
+    return rodarSessao(
+      { sha: a.sha, deploymentId: a.deployment },
+      {
+        ...amb,
+        ...(a.json
+          ? {
+              gravarJson: (r) =>
+                writeFileSync(
+                  a.json,
+                  resumoEmJson(r, new Date().toISOString()),
+                ),
+            }
+          : {}),
+      },
+    );
   }
   const r = await publicarRelease(
     { sha: a.sha, deploymentId: a.deployment, promover: a.promover },
@@ -3285,13 +3786,18 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
 ) {
+  // A sessão sai com process.exit depois de a saída escoar: um ensaio ainda em
+  // voo (interrompido por sinal) não pode segurar o processo aberto.
+  const encerrarJa = process.argv.includes("--sessao");
   main().then(
     (c) => {
       process.exitCode = c;
+      if (encerrarJa) process.stdout.write("", () => process.exit(c));
     },
     (e) => {
       console.error(`erro inesperado: ${e.message}`);
       process.exitCode = 2;
+      if (encerrarJa) process.stderr.write("", () => process.exit(2));
     },
   );
 }
