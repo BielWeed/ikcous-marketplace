@@ -383,6 +383,8 @@ describe("precacheNucleo", () => {
     { url: "icons/heart-96x96.png", revision: "c" },
     { url: "icons/cart-96x96.png", revision: "d" },
     { url: "icons/badge-96x96.png", revision: "e" },
+    { url: "silent-guardian.js", revision: "g" },
+    { url: "loading.css", revision: "h" },
     { url: "logos/transportadoras/correios.svg", revision: "f" },
     { url: "assets/index-h1.js", revision: null },
     { url: "assets/index-h1.css", revision: null },
@@ -390,13 +392,27 @@ describe("precacheNucleo", () => {
     { url: "assets/CheckoutView-h19.js", revision: null },
     { url: "assets/CartView-h7.js", revision: null },
     { url: "assets/framer-h15.js", revision: null },
+    // O resto do JS/CSS do núcleo: tem de estar no manifesto (falha fechada
+    // abaixo). A fonte e o .svg do núcleo não são cobrados.
+    ...NUCLEO_ESPERADO.filter(
+      (a) =>
+        /\.(?:js|css)$/.test(a) &&
+        ![
+          "assets/index-h1.js",
+          "assets/index-h1.css",
+          "assets/HomeView-h3.js",
+          "assets/framer-h15.js",
+        ].includes(a),
+    ).map((url) => ({ url, revision: null })),
   ];
 
-  it("os arquivos públicos do núcleo são a página offline e os ícones de coração e carrinho", () => {
+  it("os arquivos públicos do núcleo são a página offline, os ícones de coração e carrinho e o que a página inicial pede fora de /assets/", () => {
     expect([...ARQUIVOS_PUBLICOS_DO_NUCLEO]).toEqual([
       "offline.html",
       "icons/heart-96x96.png",
       "icons/cart-96x96.png",
+      "silent-guardian.js",
+      "loading.css",
     ]);
   });
 
@@ -408,12 +424,19 @@ describe("precacheNucleo", () => {
         "offline.html",
         "icons/heart-96x96.png",
         "icons/cart-96x96.png",
+        "silent-guardian.js",
+        "loading.css",
         "assets/index-h1.js",
         "assets/index-h1.css",
         "assets/HomeView-h3.js",
         "assets/framer-h15.js",
+        ...entradas.slice(14).map((e) => e.url),
       ],
     );
+    // Só o JS/CSS do núcleo, nada de fora dele.
+    expect(
+      entradas.slice(14).every((e) => NUCLEO_ESPERADO.includes(e.url)),
+    ).toBe(true);
     expect(warnings).toEqual([]);
   });
 
@@ -460,6 +483,25 @@ describe("precacheNucleo", () => {
     expect(() =>
       marcar(entradas.filter((e) => e.url !== "icons/cart-96x96.png")),
     ).toThrow(/PRECACHE_NUCLEO.*cart-96x96/);
+  });
+
+  it("falha FECHADA se um JS ou CSS do núcleo não está no manifesto", () => {
+    // O `globIgnores` ou o filtro do painel tirou do manifesto uma peça que a
+    // vitrine usa: a primeira instalação guardaria um núcleo que não abre sem
+    // internet, com o build verde.
+    const marcar = rodarOPlugin(bundleDeExemplo());
+    expect(() =>
+      marcar(entradas.filter((e) => e.url !== "assets/card-produto-h11.js")),
+    ).toThrow(/PRECACHE_NUCLEO.*card-produto-h11\.js/);
+    expect(() =>
+      marcar(entradas.filter((e) => e.url !== "assets/AvisoCarrinho-h12.css")),
+    ).toThrow(/PRECACHE_NUCLEO.*AvisoCarrinho-h12\.css/);
+  });
+
+  it("a fonte e a imagem do núcleo fora do manifesto não quebram o build (só JS/CSS)", () => {
+    // `inter-h9.woff2` e `selo-h14.svg` são do núcleo e não estão em `entradas`.
+    const { manifest } = rodarOPlugin(bundleDeExemplo())(entradas);
+    expect(manifest.map((e) => e.url)).not.toContain("assets/inter-h9.woff2");
   });
 
   it("falha FECHADA se o filtro rodar antes de o núcleo ser marcado no build", () => {

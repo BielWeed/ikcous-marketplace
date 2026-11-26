@@ -48,10 +48,14 @@ function lerOuFalhar(caminho: string): string {
 }
 
 /** Os `url` do manifesto que o Workbox injeta em `self.__WB_MANIFEST`. O
- * formato é o do Workbox: `{"revision":"…" | null,"url":"…"}`. */
+ * formato é o do Workbox: `{"revision":"…" | null,"url":"…"}`, com a marca
+ * `"nucleo":true` na frente nas entradas do núcleo (scripts/precacheNucleo.ts;
+ * o Workbox serializa as chaves em ordem alfabética). */
 function manifestoDoSw(sw: string): string[] {
   return [
-    ...sw.matchAll(/\{"revision":(?:"[^"]*"|null),"url":"([^"]+)"\}/g),
+    ...sw.matchAll(
+      /\{(?:"nucleo":true,)?"revision":(?:"[^"]*"|null),"url":"([^"]+)"\}/g,
+    ),
   ].map((m) => m[1]);
 }
 
