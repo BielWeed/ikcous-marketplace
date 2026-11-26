@@ -3351,7 +3351,30 @@ const ROL_DA_182B = [
   "frota_lojas e frota_segredo existem com a forma da 20261141000000 (as 6 colunas de texto e ativa boolean NOT NULL) e o mesmo dono da resolver_loja",
   "extensions.crypt(text, text) existe (pgcrypto, a porta da chave da frota)",
 ];
+// Lote 183 (20261470000000, a loja muda de estado so pela porta: a tabela frota_estado_historico, a porta frota_mudar_estado so do dono e o
+// gatilho frota_lojas_estado_so_pela_porta em frota_lojas). A 183a prova o estado novo (9 itens, so catalogo, nenhuma linha da caderneta nem do
+// historico e lida). A 183b prova os objetos novos AUSENTES e a base que o pre-voo da migration exige (5 itens: a 20261460000000 aplicada).
+const ROL_DA_183A = [
+  "controle: catalogo publico visivel",
+  "frota_mudar_estado: uma so, com o corpo da 20261470000000 (md5)",
+  "frota_mudar_estado: atributos (plpgsql, SECURITY INVOKER, VOLATILE, search_path vazio, os 9 argumentos e as 6 colunas, o dono de frota_lojas) e EXECUTE so do dono",
+  "frota_lojas_estado_so_pela_porta: uma so, com o corpo da 20261470000000 (md5), funcao de gatilho sem SECURITY DEFINER, search_path vazio e EXECUTE so do dono",
+  "frota_lojas: um so gatilho frota_lojas_estado_so_pela_porta, BEFORE INSERT OR UPDATE OF estado, estado_desde, estado_sha e project_ref, por linha, habilitado, apontando para a funcao dele",
+  "frota_estado_historico: colunas com o tipo, a nulidade e o padrao da migration (id bigint identity, quem padrao session_user, em padrao now())",
+  "frota_estado_historico: chave primaria em id e os CHECKs de estados, sha e motivo, todos validados",
+  "frota_estado_historico: tabela comum com RLS ligada, nenhuma politica, o dono de frota_lojas e nada para PUBLIC, anon, authenticated e service_role (tabela, colunas e sequencia)",
+  "a base da 20261460000000 continua: frota_lojas com as colunas estado, estado_desde e estado_sha e o CHECK dos tres estados",
+];
+const ROL_DA_183B = [
+  "controle: catalogo publico visivel",
+  "frota_mudar_estado: ainda NAO existe",
+  "frota_lojas_estado_so_pela_porta: ainda NAO existe (nem a funcao nem o gatilho em frota_lojas)",
+  "frota_estado_historico: a tabela ainda NAO existe",
+  "a 20261460000000 esta aplicada: as colunas estado, estado_desde e estado_sha e o CHECK dos tres estados em frota_lojas, e a resolver_loja e a resolver_loja_com_estado com os corpos dela (md5)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado": ROL_DA_183A,
+  "183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente": ROL_DA_183B,
   "182a-conferir-o-estado-de-vida-da-loja-aplicado": ROL_DA_182A,
   "182b-antes-o-estado-de-vida-da-loja-ausente": ROL_DA_182B,
   "181a-conferir-os-fornecedores-aplicado": ROL_DA_181A,

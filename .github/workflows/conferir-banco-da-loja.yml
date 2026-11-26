@@ -396,6 +396,8 @@ on:
           - 181b-antes-os-fornecedores-ausentes
           - 182a-conferir-o-estado-de-vida-da-loja-aplicado
           - 182b-antes-o-estado-de-vida-da-loja-ausente
+          - 183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado
+          - 183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

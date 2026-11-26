@@ -8,6 +8,10 @@ Com `store_config.manutencao = true` a vitrine mostra a tela "Servidor em
 Manutenção" para quem abre ou recarrega o app. Só a ferramenta de
 administração das lojas liga e desliga esse valor (não existe botão no painel).
 
+Não confunda com o **estado de vida** da loja (adormecida ou encerrada, na caderneta da frota): ali a
+loja inteira sai do ar com a página de "fechada", sem tocar o banco dela. Esse é outro caminho, com
+roteiro próprio: [estado de vida da loja](estado-de-vida-da-loja.md).
+
 ## O que ele NÃO faz (leia antes de ligar numa emergência)
 
 **Manutenção esconde a vitrine, mas NÃO para pedidos de quem já está com o app

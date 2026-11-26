@@ -210,6 +210,11 @@ O detalhe que importa: as duas chaves antigas são assinadas pela mesma chave-me
 >     where project_ref = 'cafkrminfnokvgjqtkle';
 >    ```
 >
+>    Esta troca continua um `update` direto mesmo depois da migration `20261470000000`: o gatilho
+>    dela só barra `estado`, `estado_desde` e `estado_sha` (o estado de vida da loja muda só pelo
+>    roteiro [estado de vida da loja](estado-de-vida-da-loja.md)); `publishable_key` e `updated_at`
+>    seguem livres.
+>
 >    Confira também a variável `IKCOUS_FROTA_APIKEY` (a chave pública que o porteiro usa para
 >    perguntar à caderneta quem é a loja) **no projeto da Vercel que serve pelo porteiro (hoje um; o
 >    CHANGELOG de 11/09 fala em dois: confira na lista da Vercel)** e, se houver mais de um, em

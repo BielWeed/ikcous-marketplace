@@ -1967,6 +1967,14 @@ Classes: `OK`, `ENDERECO_ANTIGO` (aponta para outro deployment: recuperar com o 
 (sem segredo; inventario PARCIAL porque o CI nao le a Vercel). Nao ha vigia agendado: o ramo
 padrao do GitHub e `develop`, e agendamento so dispara de la.
 
+## Loja adormecida, encerrada ou acordando
+
+Loja fora do ar por decisao (`adormecida` = 503, `encerrada` = 410) nao recebe a release e nao
+bloqueia o portao (IKCOUS e Savy fora do ar BLOQUEIAM). Mudar o estado de uma loja, e acorda-la
+depois de releases que ela perdeu, e so pelo roteiro
+[estado de vida da loja](estado-de-vida-da-loja.md) (`scripts/frota/estado-da-loja.mjs`): ele confere
+a prontidao daquela loja contra a release atual antes de imprimir a instrucao.
+
 ## Loja assinante nova (sem lista por release)
 
 O inventario vem do cadastro oficial (aliases da Vercel + ficha `frota_lojas`), entao a loja nova

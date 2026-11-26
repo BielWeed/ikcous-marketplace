@@ -321,6 +321,8 @@ on:
       - "scripts/publicacao/consultas/181b-antes-os-fornecedores-ausentes.sql"
       - "scripts/publicacao/consultas/182a-conferir-o-estado-de-vida-da-loja-aplicado.sql"
       - "scripts/publicacao/consultas/182b-antes-o-estado-de-vida-da-loja-ausente.sql"
+      - "scripts/publicacao/consultas/183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado.sql"
+      - "scripts/publicacao/consultas/183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -615,6 +617,8 @@ on:
       - "scripts/publicacao/consultas/181b-antes-os-fornecedores-ausentes.sql"
       - "scripts/publicacao/consultas/182a-conferir-o-estado-de-vida-da-loja-aplicado.sql"
       - "scripts/publicacao/consultas/182b-antes-o-estado-de-vida-da-loja-ausente.sql"
+      - "scripts/publicacao/consultas/183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado.sql"
+      - "scripts/publicacao/consultas/183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1552,6 +1556,16 @@ jobs:
       - name: Prova viva do estado de vida da loja na caderneta (migration 20261460000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-tem-estado-de-vida-viva.cjs
+      # Migration 20261470000000 (a loja muda de estado so pela porta): tabela frota_estado_historico (fechada), porta frota_mudar_estado
+      # (so o dono executa) e gatilho em frota_lojas. Cada recusa da porta (vencida, validade longa, estado desconhecido, de = para, sha,
+      # motivo, ENCERRAR, REABRIR, estado atual diferente, base diferente, loja inexistente) sem escrever; adormecer/acordar/encerrar/reabrir
+      # deixam UMA linha no historico; IKCOUS e Savy nunca saem de ativa (nem pela porta); UPDATE direto do estado recusado e rotacao da
+      # publishable_key passando; duas conexoes na mesma loja = uma muda e a outra recusa; reaplicar 2x (LF e CRLF); rollback comum preserva o
+      # historico e o destrutivo exige confirmacao e o comum antes; pre-voo recusa estado divergente sem escrever; consultas 183a/183b
+      # EXECUTADAS com defeitos plantados; mutantes. CLONE proprio.
+      - name: Prova viva da porta do estado da loja (migration 20261470000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-muda-de-estado-so-pela-porta-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam
