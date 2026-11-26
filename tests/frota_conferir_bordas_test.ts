@@ -1819,9 +1819,12 @@ Deno.test("inventariar --vercel: sonda os aliases do projeto (sem preview, sem a
 });
 
 Deno.test("inventariar --vercel: lista de aliases incompleta deixa o inventário PARCIAL e diz por quê", async () => {
+  // a 2ª página falha nas 3 tentativas (a 1ª falha sozinha é refeita)
   const { executor } = executorFalso({
     paginas: [
       { aliases: [aliasOk("a.example.app")], pagination: { next: 5 } },
+      new Error("boom"),
+      new Error("boom"),
       new Error("boom"),
     ],
   });
@@ -1830,6 +1833,7 @@ Deno.test("inventariar --vercel: lista de aliases incompleta deixa o inventário
     executorVercel: executor,
     fetchImpl: fetchQueAnota(new Set()),
     agora: NOW,
+    esperar: semEspera,
   });
   assertEquals(inv.origem, "vercel");
   assertEquals(inv.completo, false);
@@ -1848,6 +1852,7 @@ Deno.test("inventariar: Vercel que falha cai na lista de reserva, PARCIAL, com o
     },
     fetchImpl: fetchQueAnota(hosts),
     agora: NOW,
+    esperar: semEspera,
   });
   assertEquals(falha.origem, "reserva");
   assertEquals(falha.completo, false);

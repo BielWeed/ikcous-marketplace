@@ -372,6 +372,11 @@ export const CAMINHO_DA_SONDA_DE_REDIRECT = "/produto/frota-conferencia";
  */
 export const ESPERAS_DA_NOVA_TENTATIVA_MS = Object.freeze([2000, 5000]);
 const esperarDeVerdade = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Tempo máximo de cada pedido da sonda (FROTA_TIMEOUT_MS troca no `main`). */
+export const TIMEOUT_DA_SONDA_MS = 15000;
+/** Quantos endereços a sonda abre ao mesmo tempo. O teto de tempo do
+ * workflow frota-conferir.yml é calculado a partir disto (teste do 2'). */
+export const CONCORRENCIA_DA_SONDA = 6;
 
 /**
  * Faz `pedido(n)` (n = 0 na 1ª vez; 1, 2… nas novas) e repete SÓ enquanto o
@@ -387,6 +392,38 @@ async function comNovasTentativas(pedido, esperas, esperar) {
     r = await pedido(n + 1);
   }
   return r;
+}
+
+/**
+ * Embrulha o executor das leituras da Vercel (`vercel api … -X GET`): quando
+ * ele LANÇA (rede, CLI que caiu, socket hang up), refaz o MESMO caminho depois
+ * de cada pausa de `esperas`; esgotadas, relança o erro da última tentativa.
+ * Resposta que CHEGOU, mesmo fora do contrato ({} , null), volta como veio e
+ * não se repete: quem decide é o contrato de `consultarVercel`. Com 300 lojas
+ * a lista de aliases vem em ~7 páginas, e 1 tropeço numa delas depois do
+ * promote imprimia FALHOU + rollback da frota (achado 4c, 26/11/2026).
+ * Só leitura (GET): refazer não muda nada do lado da Vercel.
+ */
+export function comNovasTentativasNaVercel(
+  executor,
+  esperas = ESPERAS_DA_NOVA_TENTATIVA_MS,
+  esperar = esperarDeVerdade,
+) {
+  return async (caminho) => {
+    const r = await comNovasTentativas(
+      async () => {
+        try {
+          return { resposta: await executor(caminho) };
+        } catch (erro) {
+          return { tropecou: true, erro };
+        }
+      },
+      esperas,
+      esperar,
+    );
+    if (r.tropecou) throw r.erro;
+    return r.resposta;
+  };
 }
 
 // O carimbo da nova tentativa é outro: não cai na mesma resposta guardada.
@@ -804,11 +841,20 @@ export function tituloDaLinhaDoBanco(linha) {
  * navegador do cliente leem), com a chave publicável que a ficha serve.
  * Devolve o título ou null em QUALQUER falha (sem chave, HTTP != 200, linha
  * != 1, nome vazio, rede): null nunca confirma nada (falha fechada).
+ * Tropeço (erro de rede, tempo esgotado, HTTP 5xx) é refeito com as pausas de
+ * `esperasDeNovaTentativaMs` (`esperar` injetável para teste não dormir);
+ * resposta que contradiz (401 da chave de outro projeto, 0 ou 2 linhas,
+ * não-JSON) vale de primeira.
  */
 export async function lerTituloNoBanco(
   ref,
   chave,
-  { fetchImpl = fetch, timeoutMs = 15000 } = {},
+  {
+    fetchImpl = fetch,
+    timeoutMs = 15000,
+    esperasDeNovaTentativaMs = ESPERAS_DA_NOVA_TENTATIVA_MS,
+    esperar = esperarDeVerdade,
+  } = {},
 ) {
   if (!RE_REF_SUPABASE.test(String(ref)) || typeof chave !== "string")
     return null;
@@ -818,21 +864,37 @@ export async function lerTituloNoBanco(
   const headers = { apikey: chave, accept: "application/json" };
   if (!chave.startsWith("sb_publishable_"))
     headers.authorization = `Bearer ${chave}`;
-  try {
-    const res = await fetchImpl(url, {
-      cache: "no-store",
-      redirect: "error",
-      headers,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const texto = await res.text();
-    if (res.status !== 200) return null;
-    const linhas = JSON.parse(texto);
-    if (!Array.isArray(linhas) || linhas.length !== 1) return null;
-    return tituloDaLinhaDoBanco(linhas[0]);
-  } catch {
-    return null;
-  }
+  const r = await comNovasTentativas(
+    async () => {
+      try {
+        const res = await fetchImpl(url, {
+          cache: "no-store",
+          redirect: "error",
+          headers,
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        const texto = await res.text();
+        if (res.status >= 500 && res.status <= 599)
+          return { tropecou: true, titulo: null };
+        if (res.status !== 200) return { titulo: null };
+        const linhas = JSON.parse(texto);
+        if (!Array.isArray(linhas) || linhas.length !== 1)
+          return { titulo: null };
+        return { titulo: tituloDaLinhaDoBanco(linhas[0]) };
+      } catch (e) {
+        // fetch sem rede lança TypeError; o AbortSignal.timeout, TimeoutError.
+        // O JSON.parse de um corpo que não é JSON (SyntaxError) é resposta.
+        const tropecou =
+          e instanceof TypeError ||
+          e?.name === "TimeoutError" ||
+          e?.name === "AbortError";
+        return { tropecou, titulo: null };
+      }
+    },
+    esperasDeNovaTentativaMs,
+    esperar,
+  );
+  return r.titulo;
 }
 
 /**
@@ -1560,10 +1622,10 @@ export async function inventariar(politica, opcoes = {}) {
     enderecosExtras = [],
     executorVercel = null,
     modelo = "https://{dominio}",
-    timeoutMs = 15000,
+    timeoutMs = TIMEOUT_DA_SONDA_MS,
     fetchImpl = fetch,
     agora = Date.now(),
-    concorrencia = 6,
+    concorrencia = CONCORRENCIA_DA_SONDA,
     esperasDeNovaTentativaMs = ESPERAS_DA_NOVA_TENTATIVA_MS,
     esperar = esperarDeVerdade,
   } = opcoes;
@@ -1573,10 +1635,15 @@ export async function inventariar(politica, opcoes = {}) {
   let vercel = null;
   if (pedirVercel) {
     try {
+      // As leituras da Vercel que LANÇAM são refeitas (comNovasTentativasNaVercel).
       vercel = await consultarVercel(
         politica,
         obrigatorios,
-        executorVercel ?? criarExecutorVercel(),
+        comNovasTentativasNaVercel(
+          executorVercel ?? criarExecutorVercel(),
+          esperasDeNovaTentativaMs,
+          esperar,
+        ),
       );
     } catch (e) {
       vercel = { ok: false, erro: e.message };
@@ -1857,6 +1924,8 @@ export async function conferirFrota(politica, opcoes = {}) {
     {
       fetchImpl: opcoes.fetchImpl ?? fetch,
       timeoutMs: opcoes.timeoutMs ?? 15000,
+      esperasDeNovaTentativaMs: opcoes.esperasDeNovaTentativaMs,
+      esperar: opcoes.esperar,
     },
   );
   const { grupos, ctx } = montarContexto(inventario.sondas, {
@@ -2016,7 +2085,9 @@ export async function main(
     enderecosExtras: extras,
     modelo: env.FROTA_URL_MODELO || "https://{dominio}",
     timeoutMs:
-      Number(env.FROTA_TIMEOUT_MS) > 0 ? Number(env.FROTA_TIMEOUT_MS) : 15000,
+      Number(env.FROTA_TIMEOUT_MS) > 0
+        ? Number(env.FROTA_TIMEOUT_MS)
+        : TIMEOUT_DA_SONDA_MS,
     ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
     ...(deps.executorVercel ? { executorVercel: deps.executorVercel } : {}),
     ...(deps.esperar ? { esperar: deps.esperar } : {}),
