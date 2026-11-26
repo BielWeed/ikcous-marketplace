@@ -578,9 +578,10 @@ export function CartaoPeloAppBloco({
           {CARTAO_PELO_APP.semPix}
         </p>
       )}
-      {/* Só ANTES de ligar (pedido do dono, 26/11/2026): com crédito ou
-          débito já ligado e funcionando, o aviso de "ao ligar…" vira ruído. */}
-      {config && !config.credito && !config.debito && (
+      {/* Só sai quando a leitura CONFIRMA crédito ou débito ligado (pedido
+          do dono, 26/11/2026). Carregando ou com a leitura falha não se sabe
+          se o cartão está no ar: o aviso continua, como antes. */}
+      {(!config || (!config.credito && !config.debito)) && (
         <p className="flex items-start gap-2 rounded-xl border border-orange-500/20 bg-orange-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-orange-200/90">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-orange-400" />
           {CARTAO_PELO_APP.testeAntes}

@@ -340,6 +340,12 @@ describe("Formas de pagamento — Cartão pelo app", () => {
     ).toBeNull();
   });
 
+  it("leitura que falha não esconde o aviso de 'ao ligar': sem saber, avisa", async () => {
+    banco.erroDeLeitura = { message: "permission denied" };
+    await montar();
+    expect(hospedeiro.textContent).toContain("Ao ligar, o cartão");
+  });
+
   it("RPC recusando: toast com a frase curada e a tela continua no que o banco tinha", async () => {
     banco.rpc.mockResolvedValue({
       data: null,
