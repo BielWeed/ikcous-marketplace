@@ -3404,6 +3404,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado",
     "187a-conferir-a-saude-da-reconciliacao-aplicado",
     "188a-conferir-o-livro-de-registro-aplicado",
+    "191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado",
     "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.

@@ -44,11 +44,11 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    // getReviewsByProduct: .from("reviews").select(...).eq(...).order(...)
+    // getReviewsByProduct: .from("reviews").select(...).eq(...).order(...).limit(...)
     from: () => ({
       select: () => ({
         eq: () => ({
-          order: () => Promise.resolve(h.lista),
+          order: () => ({ limit: () => Promise.resolve(h.lista) }),
         }),
       }),
     }),

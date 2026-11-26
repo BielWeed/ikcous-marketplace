@@ -35,6 +35,7 @@ function builder(promessa: Promise<Resultado>, consulta?: Consulta) {
   const b = {
     select: () => b,
     order: () => b,
+    limit: () => b,
     in: () => b,
     maybeSingle: () => b,
     eq: (coluna: string, valor: string) => {

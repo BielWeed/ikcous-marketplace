@@ -45,8 +45,11 @@
  * retoma com a marca EM CURSO; sem marca (todas as lojas de hoje) ou com ela
  * concluída é "loja já instalada" e RECUSA: loja que vende e está atrasada
  * recebe migration nova pelo aplicar-migrations.yml (portão de publicação),
- * nunca por aqui. (Guarda por store_config não serve: 10 migrations a semeiam,
- * inclusive a baseline.) A ÚNICA exceção é a loja que ESTE instalador
+ * nunca por aqui. (Guarda por store_config não serve: toda loja instalada tem
+ * a ficha id=1 — quem a semeia é a 20261540000000, na própria fila, e antes
+ * dela nenhuma migration a gravava: os INSERT das antigas estão dentro do corpo
+ * de upsert_store_config. A linha não distingue loja instalada de loja que
+ * vende.) A ÚNICA exceção é a loja que ESTE instalador
  * terminou e que está completa (marca concluída + ledger == fila inteira):
  * rodar de novo dá JA_INSTALADA, saída de sucesso, só leituras (26/11/2026;
  * antes devolvia o mesmo RECUSADO das recusas perigosas).

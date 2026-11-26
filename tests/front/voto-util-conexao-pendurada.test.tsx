@@ -49,7 +49,8 @@ vi.mock("@/lib/supabase", () => ({
         select: () => builder,
         eq: () => builder,
         in: async () => ({ data: [], error: null }),
-        order: async () => ({
+        order: () => builder,
+        limit: async () => ({
           data: [
             {
               id: "avaliacao-inventada",

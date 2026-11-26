@@ -51,6 +51,54 @@ const bc = criarCanalDeAbas("ikcous_reviews_sync");
 // impede uma releitura silenciosa de terminar depois de fechar o formulário.
 const ultimaConsultaDoCachePorProduto = new Map<string, symbol>();
 
+// Loja grande (26/11/2026): a página do produto lê as avaliações em levas
+// (as mais recentes primeiro), nunca o produto inteiro de uma vez. "Ver mais
+// avaliações" sobe o teto em mais uma leva (`carregarMaisAvaliacoes`).
+export const AVALIACOES_POR_LEITURA = 20;
+
+// Produto com mais avaliações do que a lista trouxe: a nota, a contagem e as
+// barras não podem sair da lista (seriam as das 20 mais recentes). `porNota`
+// é quantas PUBLICADAS o banco conta de cada estrela (índice 0 = 1 estrela);
+// `null` quando a contagem falhou ou ainda não chegou (a tela usa os números
+// do catálogo). Sem `temMais`, a lista é o produto inteiro e a tela conta
+// por ela, como sempre.
+export interface ResumoDasAvaliacoes {
+  productId: string;
+  temMais: boolean;
+  porNota: number[] | null;
+}
+
+// Último resumo do banco de cada produto: a lista guardada (SWR) volta à tela
+// antes da rede, e sem ele a nota piscaria a das 20 guardadas. É contagem de
+// avaliações PUBLICADAS (o que qualquer visitante vê), não dado de quem está
+// logado: não precisa sumir no logout.
+const resumoDoBancoPorProduto = new Map<string, ResumoDasAvaliacoes>();
+
+const contarPublicadasPorNota = async (
+  productId: string,
+  anonimo: boolean,
+): Promise<number[]> =>
+  Promise.all(
+    [1, 2, 3, 4, 5].map(async (nota) => {
+      // A vitrine pública só tem publicadas; a tabela (quem está logado)
+      // também devolve as pendentes da própria cliente, que não entram na nota.
+      let consulta: any = supabase
+        .from((anonimo ? "vw_reviews_public" : "reviews") as any)
+        .select("id", { count: "exact", head: true })
+        .eq("product_id", productId)
+        .eq("rating", nota);
+      if (!anonimo) consulta = consulta.eq("status", "publicada");
+      const { count, error } = await aguardarComPrazo(
+        Promise.resolve(consulta),
+        15000,
+        erroDeConsultaSemResposta,
+      );
+      if (error) throw error;
+      if (typeof count !== "number") throw new Error("Contagem sem número.");
+      return count;
+    }),
+  );
+
 const mensagemDeAvaliacaoRecebida =
   "Recebemos sua avaliação! Ela aparece no produto após a aprovação da loja.";
 
@@ -155,6 +203,11 @@ export function useReviews() {
   const [produtoRespondido, setProdutoRespondido] = useState<string | null>(
     null,
   );
+  const [resumoDasAvaliacoes, setResumoDasAvaliacoes] =
+    useState<ResumoDasAvaliacoes | null>(null);
+  // Quantas avaliações a página do produto aberto pede ao banco: volta a uma
+  // leva ao trocar de produto e sobe a cada "Ver mais avaliações".
+  const limiteDaListaRef = useRef(AVALIACOES_POR_LEITURA);
   const latestProductIdRef = useRef<string | null>(null);
   const rodadaAdminRef = useRef(0);
   const consultaDoProdutoRef = useRef(0);
@@ -172,6 +225,7 @@ export function useReviews() {
     setErroDaListagemAdmin(null);
     setErroDaListagemProduto(null);
     setProdutoRespondido(null);
+    setResumoDasAvaliacoes(null);
     setLoading(false);
     setDonoDasAvaliacoes(user?.id);
   }, [user?.id]);
@@ -184,8 +238,12 @@ export function useReviews() {
       if (usuarioAtualRef.current !== user?.id) return;
       const tokenDoCache = Symbol();
       ultimaConsultaDoCachePorProduto.set(productId, tokenDoCache);
-      if (latestProductIdRef.current !== productId) setVotosUteis(new Set());
+      if (latestProductIdRef.current !== productId) {
+        setVotosUteis(new Set());
+        limiteDaListaRef.current = AVALIACOES_POR_LEITURA;
+      }
       latestProductIdRef.current = productId;
+      const limite = limiteDaListaRef.current;
       const consulta = ++consultaDoProdutoRef.current;
       setErroDaListagemProduto(null);
       // Geração do cache ao COMEÇAR: se uma limpeza (Sair, troca de conta)
@@ -200,9 +258,18 @@ export function useReviews() {
       const cached = getReviewsCache(productId);
       if (cached) {
         setReviews(cached);
+        // Lista guardada cheia, sem resumo conhecido: pode haver mais no
+        // banco. Até a rede responder, a tela usa os números do catálogo.
+        setResumoDasAvaliacoes(
+          resumoDoBancoPorProduto.get(productId) ??
+            (cached.length >= AVALIACOES_POR_LEITURA
+              ? { productId, temMais: true, porNota: null }
+              : null),
+        );
         setLoading(false);
       } else {
         setReviews([]); // Clear previous product reviews if not cached
+        setResumoDasAvaliacoes(null);
         setLoading(true);
       }
 
@@ -214,6 +281,7 @@ export function useReviews() {
         // logado continua lendo a tabela direto, comportamento inalterado.
         const anonimo = !user;
 
+        // Uma a mais que o teto: se ela vier, há mais no banco.
         const { data, error } = await aguardarComPrazo(
           Promise.resolve(
             anonimo
@@ -222,6 +290,7 @@ export function useReviews() {
                   .select("*")
                   .eq("product_id", productId)
                   .order("created_at", { ascending: false })
+                  .limit(limite + 1)
               : supabase
                   .from("reviews" as any)
                   .select(`
@@ -229,7 +298,8 @@ export function useReviews() {
           user:public_profiles(nome_publico, avatar_url)
         `)
                   .eq("product_id", productId)
-                  .order("created_at", { ascending: false }),
+                  .order("created_at", { ascending: false })
+                  .limit(limite + 1),
           ),
           15000,
           erroDeConsultaSemResposta,
@@ -238,38 +308,60 @@ export function useReviews() {
         if (!atual()) return;
         if (error) throw error;
 
-        const formattedReviews: Review[] = data.map((item: any) =>
-          anonimo
-            ? {
-                id: item.id,
-                productId: item.product_id,
-                customerName: item.author_name || "Cliente",
-                customerAvatar: item.author_avatar_url || undefined,
-                rating: item.rating,
-                comment: item.comment,
-                verified: item.verified,
-                helpful: item.helpful,
-                createdAt: item.created_at,
-                merchantReply: item.merchant_reply,
-              }
-            : {
-                id: item.id,
-                productId: item.product_id,
-                userId: item.user_id,
-                customerName: item.user?.nome_publico || "Cliente",
-                customerAvatar: item.user?.avatar_url || undefined,
-                rating: item.rating,
-                comment: item.comment,
-                verified: item.verified,
-                status: item.status,
-                helpful: item.helpful,
-                createdAt: item.created_at,
-                merchantReply: item.merchant_reply,
-              },
-        );
+        const temMais = data.length > limite;
+        let porNota: number[] | null = null;
+        if (temMais) {
+          // Falha aqui não derruba a lista, que já chegou: a tela cai nos
+          // números do catálogo em vez de mostrar a nota das 20.
+          try {
+            porNota = await contarPublicadasPorNota(productId, anonimo);
+          } catch (erroDaContagem) {
+            if (atual())
+              console.error("Error counting reviews:", erroDaContagem);
+          }
+          if (!atual()) return;
+        }
+        const resumo: ResumoDasAvaliacoes | null = temMais
+          ? { productId, temMais, porNota }
+          : null;
+        if (resumo?.porNota) resumoDoBancoPorProduto.set(productId, resumo);
+        else if (!resumo) resumoDoBancoPorProduto.delete(productId);
+
+        const formattedReviews: Review[] = data
+          .slice(0, limite)
+          .map((item: any) =>
+            anonimo
+              ? {
+                  id: item.id,
+                  productId: item.product_id,
+                  customerName: item.author_name || "Cliente",
+                  customerAvatar: item.author_avatar_url || undefined,
+                  rating: item.rating,
+                  comment: item.comment,
+                  verified: item.verified,
+                  helpful: item.helpful,
+                  createdAt: item.created_at,
+                  merchantReply: item.merchant_reply,
+                }
+              : {
+                  id: item.id,
+                  productId: item.product_id,
+                  userId: item.user_id,
+                  customerName: item.user?.nome_publico || "Cliente",
+                  customerAvatar: item.user?.avatar_url || undefined,
+                  rating: item.rating,
+                  comment: item.comment,
+                  verified: item.verified,
+                  status: item.status,
+                  helpful: item.helpful,
+                  createdAt: item.created_at,
+                  merchantReply: item.merchant_reply,
+                },
+          );
 
         if (latestProductIdRef.current === productId) {
           setReviews(formattedReviews);
+          setResumoDasAvaliacoes(resumo);
           setErroDaListagemProduto(null);
           setProdutoRespondido(productId);
         }
@@ -354,6 +446,17 @@ export function useReviews() {
     // de `useDataVault.ts:35`).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user?.id],
+  );
+
+  // "Ver mais avaliações" depois da última que chegou: relê o produto com
+  // uma leva a mais (a mesma leitura de sempre, com prazo, cache e votos).
+  const carregarMaisAvaliacoes = useCallback(
+    async (productId: string) => {
+      if (latestProductIdRef.current !== productId) return;
+      limiteDaListaRef.current += AVALIACOES_POR_LEITURA;
+      await getReviewsByProduct(productId, { silencioso: true });
+    },
+    [getReviewsByProduct],
   );
 
   const addReview = useCallback(
@@ -1206,6 +1309,8 @@ export function useReviews() {
   return {
     userIdAtual: user?.id,
     reviews: donoDasAvaliacoes === user?.id ? reviews : [],
+    resumoDasAvaliacoes:
+      donoDasAvaliacoes === user?.id ? resumoDasAvaliacoes : null,
     votosUteis:
       donoDasAvaliacoes === user?.id && user ? votosUteis : new Set<string>(),
     adminReviews: donoDasAvaliacoes === user?.id && isAdmin ? adminReviews : [],
@@ -1214,6 +1319,7 @@ export function useReviews() {
     erroDaListagemProduto,
     produtoRespondido,
     getReviewsByProduct,
+    carregarMaisAvaliacoes,
     addReview,
     markHelpful,
     getAllReviews,

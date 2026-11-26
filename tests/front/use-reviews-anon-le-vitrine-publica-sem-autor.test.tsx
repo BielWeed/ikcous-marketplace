@@ -51,7 +51,8 @@ vi.mock("@/lib/supabase", () => ({
       const builder: any = {};
       builder.select = () => builder;
       builder.eq = () => builder;
-      builder.order = () =>
+      builder.order = () => builder;
+      builder.limit = () =>
         Promise.resolve({
           data: tabela === "vw_reviews_public" ? h.linhaAnon : h.linhaLogado,
           error: null,
