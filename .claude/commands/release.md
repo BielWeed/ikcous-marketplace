@@ -5,6 +5,16 @@ argument-hint: [patch|minor|major]
 
 # Release do Core — parte: ${ARGUMENTS:-patch}
 
+## 0. Dia do trem (antes de tudo)
+Backend (migration, edge function, mudança de banco — o que roda em CADA loja) só sai na **terça ou na quinta**; telas (só front) saem todo dia. Regra em `AGENTS.md`, "Deploy e logs".
+1. **A release leva migration ou edge function?** Compare a release anterior com o topo, sem os `rollback-manual*` (não vão ao ar):
+   ```
+   git diff --name-only <release anterior> <topo> -- supabase/migrations supabase/functions ':!**/rollback-manual*'
+   ```
+   Saída vazia: não leva backend, siga para o passo 1.
+2. **Se leva: é terça ou quinta?** Se for, siga.
+3. **Se não é dia do trem**, só sai com a exceção de dinheiro ou segurança, com o motivo escrito na nota da release e no PR. Sem esse motivo escrito, não sai.
+
 ## 1. Gate completo (antes de qualquer bump)
 ```
 npx biome check .
