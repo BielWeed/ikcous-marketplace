@@ -98,9 +98,12 @@ pagar. "Dia 0" é o vencimento da mensalidade ou o fim do teste.
 ## Quando adormecer uma loja de teste que não pagou
 
 - **Quem avisa e quando.** O app de gestão de assinantes mostra a loja no grupo "Testes vencidos
-  sem pagamento", com a frase "fecha em DD/MM (se não houver pedido em aberto)". O dia de fechar é
-  o fim do teste + 3 dias. Antes dele, não se adormece.
-- **Quem roda.** Nesse dia, quem opera (a sessão, por ordem do dono, ou o dono) roda o
+  sem pagamento", com a frase "pausa os pedidos em DD/MM". O dia da pausa é o fim do teste + 4
+  dias; se cair na sexta, no sábado ou no domingo, passa para a segunda. Do dia da pausa até o
+  dia 29, a loja aparece na lista "Os pedidos deveriam estar pausados desde DD/MM" (a pausa ainda
+  é manual). Só a partir do dia 30 ela vai para a lista de adormecer. Antes do dia 30, não se
+  adormece.
+- **Quem roda.** Do dia 30 em diante, quem opera (a sessão, por ordem do dono, ou o dono) roda o
   `--adormecer` da seção seguinte com `--motivo "por <nome>: teste vencido sem pagamento"`.
 - **Antes, conferir que não há pedido em aberto.** O comando não olha os pedidos (ele só fala com
   a caderneta). Pelo MCP, no banco **da loja** (o `--ref` dela, não o da caderneta), rode esta
