@@ -13802,6 +13802,42 @@ Deno.test("C6 no portão: conferir-banco.cjs diferente invalida mesmo com o work
   assertStringIncludes(r.motivo, "ferramenta de conferência");
 });
 
+// conferir-banco.cjs faz require("../frota/lojas.cjs"): o leitor do cadastro
+// é parte da ferramenta que imprime o veredicto, e mudar só ele (sem loja nova)
+// tem de invalidar a prova como mudar o próprio conferir-banco.cjs.
+const CAMINHO_LOJAS_CJS = "scripts/frota/lojas.cjs";
+
+Deno.test("lojas.cjs igual no commit do run e no topo: a prova continua POSITIVA (workflow igual ou só ganhando loja)", async () => {
+  for (const [ymlTopo, lojasTopo] of [
+    [WF_REAL, LOJAS_REAL],
+    [WF_COM_UMA_NOVA, LOJAS_COM_UMA_NOVA],
+  ]) {
+    const arvore = arvoreDosWorkflows(ymlTopo, lojasTopo);
+    arvore[OUTRO][CAMINHO_LOJAS_CJS] = "leitor";
+    arvore[TOPO][CAMINHO_LOJAS_CJS] = "leitor";
+    const r = await evidenciaComWorkflows({ arvore });
+    assertEquals(r.estado, "POSITIVA", r.motivo);
+  }
+});
+
+Deno.test("lojas.cjs diferente entre o commit do run e o topo: SEM_EVIDENCIA, com o workflow igual ou só ganhando loja", async () => {
+  for (const [ymlTopo, lojasTopo] of [
+    [WF_REAL, LOJAS_REAL],
+    [WF_COM_UMA_NOVA, LOJAS_COM_UMA_NOVA],
+  ]) {
+    const arvore = arvoreDosWorkflows(ymlTopo, lojasTopo);
+    arvore[OUTRO][CAMINHO_LOJAS_CJS] = "leitor antigo";
+    arvore[TOPO][CAMINHO_LOJAS_CJS] = "leitor novo";
+    const r = await evidenciaComWorkflows({ arvore });
+    assertEquals(
+      r.estado,
+      "SEM_EVIDENCIA",
+      ymlTopo === WF_REAL ? "wf igual" : "wf com loja nova",
+    );
+    assertStringIncludes(r.motivo, "ferramenta de conferência");
+  }
+});
+
 Deno.test("C6 no portão: dependências sem o leitor de arquivo e workflow diferente — SEM_EVIDENCIA, sem lançar", async () => {
   const r = await evidenciaComWorkflows({
     arvore: arvoreDosWorkflows(WF_COM_UMA_NOVA, LOJAS_COM_UMA_NOVA),
