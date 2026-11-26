@@ -801,6 +801,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-livro-de-registro-desfazer-ensaio-viva.cjs",
     // 20261540: a loja nova nasce com a ficha (linha id = 1 e a marca no catalogo; porteiro, identidade e pix acham a ficha; linha de antes intacta; reaplicar; rollback so da marca; pre-voo; consultas 191a/191b).
     "tests/banco/a-loja-nova-nasce-com-a-ficha-viva.cjs",
+    // Sem migration: a escrita do passo dominio do nova-loja (sqlDoDominio pela consulta simples; trava dominio_publico_so_muda_pela_frota recusa authenticated, sessao sem JWT grava; guarda IS NULL; mutante).
+    "tests/banco/o-nova-loja-grava-o-dominio-viva.cjs",
     // 20261530: a loja grande nao trava o balcao nem os avisos (porta leve sem ler pedido, diferencial contra a antiga, guardas, indices com EXPLAIN e tempos impressos, mutantes, rollback, consultas 190a/190b).
     "tests/banco/a-loja-grande-nao-trava-o-balcao-viva.cjs",
     // 20261550: o admin copia e apaga as fotos da loja (politicas SELECT so do admin de agora em products/banners; DELETE RETURNING 1/0; cliente e visitante 0; Public Display convive; reaplicar; rollback; consultas 192a/192b).
