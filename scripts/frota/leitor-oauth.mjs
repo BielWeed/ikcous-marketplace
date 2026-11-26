@@ -21,7 +21,9 @@
 // O QUE ESTE ARQUIVO GARANTE (e tests/frota_leitor_oauth_test.ts trava):
 //  - ledger vazio, versão fora de ^\d{13,14}$, versão repetida ou corpo que não
 //    é lista LANÇAM: no portão isso é "ledger não lido", nunca "nada falta";
-//  - verify_jwt não booleano, slug repetido ou não-texto LANÇAM;
+//  - verify_jwt não booleano (a mensagem diz a function e o ref), slug
+//    repetido ou não-texto, ou status desconhecido LANÇAM; function REMOVED ou
+//    THROTTLED sai da lista (o portão a trata como ausente e gera o comando);
 //  - caminho de arquivo fora de "supabase/functions/", com "..", ".", "\",
 //    segmento vazio ou absoluto, conteúdo que não é texto, ou caminho repetido
 //    LANÇAM (o pacote inteiro é recusado, nunca filtrado);
@@ -40,8 +42,15 @@ const { RE_REF } = require("./lojas.cjs");
 /** Versão do ledger (a mesma régua de `versoesAplicadas` para a tabela do CLI). */
 const RE_VERSAO = /^\d{13,14}$/;
 /** Nome de function como o portão o aceita (o RE_FUNCAO de publicar-release.mjs,
- * copiado: importar de lá criaria um ciclo quando o portão importar este). */
-const RE_FUNCAO = /^[a-z0-9][a-z0-9_-]*$/;
+ * copiado: importar de lá criaria um ciclo, porque o portão importa este).
+ * tests/frota_publicar_release_oauth_test.ts trava que as duas cópias são iguais. */
+export const RE_FUNCAO = /^[a-z0-9][a-z0-9_-]*$/;
+/** `status` de FunctionResponse na spec da Management API. Só ACTIVE está no ar
+ * de verdade; REMOVED e THROTTLED contam como AUSENTES (o portão gera o comando
+ * de publicar, nunca "em dia"). Valor fora desta lista LANÇA. Sem o campo, vale
+ * como ACTIVE: é a forma do caminho pelo CLI, que não lê status. */
+const STATUS_NO_AR = "ACTIVE";
+const STATUS_FORA_DO_AR = new Set(["REMOVED", "THROTTLED"]);
 const PREFIXO_DAS_FUNCOES = "supabase/functions/";
 /** Caracteres de caminho aceitos (os mesmos do deploy em supabase-gestao.mjs). */
 const RE_CAMINHO = /^[A-Za-z0-9._\-/]+$/;
@@ -113,16 +122,28 @@ export function criarLeitorOAuth({ gestao, baixar } = {}) {
     if (!Array.isArray(corpo))
       throw erroDoLeitor("a lista de functions da API não é uma lista.");
     const vistos = new Set();
-    return corpo.map((f) => {
+    const noAr = [];
+    for (const f of corpo) {
       if (!objeto(f) || typeof f.slug !== "string" || f.slug === "")
         throw erroDoLeitor("function sem slug em texto.");
-      if (typeof f.verify_jwt !== "boolean")
-        throw erroDoLeitor("function com verify_jwt que não é booleano.");
+      // o slug vem da resposta: só sai na mensagem se tiver a forma do portão
+      const qual = `a function ${RE_FUNCAO.test(f.slug) ? f.slug : "(nome fora do padrão, não impresso)"} da loja ${ref}`;
       if (vistos.has(f.slug))
         throw erroDoLeitor("slug repetido na lista de functions.");
       vistos.add(f.slug);
-      return { slug: f.slug, verify_jwt: f.verify_jwt };
-    });
+      if (Object.hasOwn(f, "status") && f.status !== STATUS_NO_AR) {
+        if (STATUS_FORA_DO_AR.has(f.status)) continue;
+        throw erroDoLeitor(
+          `${qual} veio com um status que o portão não conhece (só ACTIVE, REMOVED ou THROTTLED).`,
+        );
+      }
+      if (typeof f.verify_jwt !== "boolean")
+        throw erroDoLeitor(
+          `${qual} veio com verify_jwt ausente ou que não é booleano.`,
+        );
+      noAr.push({ slug: f.slug, verify_jwt: f.verify_jwt });
+    }
+    return noAr;
   }
 
   async function baixarFuncao(ref, nome) {

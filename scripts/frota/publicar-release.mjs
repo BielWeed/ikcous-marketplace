@@ -56,10 +56,26 @@
  *      meio da publicação, sem a prontidão desta release) também reprova, com o
  *      `estado-da-loja.mjs --depois-de-acordar` pronto.
  *
+ * LOJA OAUTH (`acesso: "oauth"` no lojas.json: a loja aberta pelo nova-loja,
+ * que o login do CLI do dono não enxerga). As três leituras dela (ledger, lista
+ * e código das functions) vão pela Management API com o token da lojista
+ * (scripts/frota/leitor-oauth.mjs), NUNCA pelo CLI; o roteamento é por ref
+ * (lojasOAuth + comLeituraOAuth) e a IKCOUS e a Savy seguem pelo CLI sem
+ * mudança. O ensaio com loja OAuth renova o acesso dela e grava o refresh novo
+ * no cofre local (acesso-oauth.mjs, tokenVigente: reaproveita o token guardado
+ * enquanto faltar mais de 2 h, então um ensaio por hora gira o refresh cerca de
+ * uma vez por dia); o token é pedido UMA vez por loja em cada execução e nunca
+ * uma segunda. Sem refresh no cofre, cofre travado, SemAcesso, token sem prazo
+ * ou vencido, API fora, resposta ilegível ou código que ainda não se baixa pela
+ * API (T3): a loja fica NÃO LIDA, com o motivo e o que fazer, e BLOQUEIA —
+ * nunca passa. Cadastro OAuth incoerente (canal ausente ou que não aponta para
+ * a própria loja) bloqueia pelo nome, sem ler nada. Os comandos de conserto
+ * dela saem com o aviso de que só funcionam dentro da sessão de publicação.
+ *
  * QUEM RODA: o dono, no PowerShell, de uma worktree limpa do ramo da release
  * com os CLIs do Supabase, da Vercel e do GitHub (gh) logados. As permissões
  * do projeto negam ao agente `vercel promote`/`rollback`; o ensaio (sem
- * --promover) só lê.
+ * --promover) só lê (fora o cofre local da loja OAuth, acima).
  *
  * Uso:
  *   node scripts/frota/publicar-release.mjs --sha <40hex> --deployment <dpl_…> [--promover] [--json <arquivo>]
@@ -81,6 +97,8 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { criarAcessoOAuth } from "./acesso-oauth.mjs";
+import { CofreTravado, ErroDoCofre, criarCofreDpapi } from "./cofre-local.mjs";
 import {
   CABECALHOS_DE_PRIMEIRA_ABERTURA,
   conferirFrota,
@@ -94,12 +112,19 @@ import {
   resolverCliVercel,
   validarVersao,
 } from "./conferir-frota.mjs";
+import { criarLeitorOAuth } from "./leitor-oauth.mjs";
+import { ErroDaPonte } from "./ponte-oauth.mjs";
+import {
+  ESTADO_DESCONHECIDO,
+  ErroDaGestao,
+  criarClienteGestao,
+} from "./supabase-gestao.mjs";
 
 const require = createRequire(import.meta.url);
 const {
   sincronizar: blocosDoCadastroNoWorkflow,
 } = require("./lojas-nos-workflows.cjs");
-const { validarCadastro } = require("./lojas.cjs");
+const { validarCadastro, carregarLojas } = require("./lojas.cjs");
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.resolve(AQUI, "..", "..");
@@ -107,7 +132,10 @@ const RE_SHA = /^[0-9a-f]{40}$/;
 const RE_DEPLOYMENT = /^dpl_[A-Za-z0-9]+$/;
 const RE_REF = /^[a-z]{20}$/;
 const RE_MIGRATION = /^(\d{13,14})_[^/]+\.sql$/;
-const RE_FUNCAO = /^[a-z0-9][a-z0-9_-]*$/;
+/** Nome de function. O leitor OAuth (leitor-oauth.mjs) tem uma CÓPIA (importar
+ * daqui criaria um ciclo); tests/frota_publicar_release_oauth_test.ts trava que
+ * as duas são iguais. */
+export const RE_FUNCAO = /^[a-z0-9][a-z0-9_-]*$/;
 const RE_CONSULTA = /^[0-9a-z][0-9a-z-]*$/;
 /** Classes da conferência da frota que podem existir ANTES do promote. */
 const CLASSES_ACEITAS_ANTES = new Set([
@@ -1516,6 +1544,280 @@ function comRetentativaNasLeituras(deps) {
   };
 }
 
+// ------------------------------------------------------------------ etapa 3: loja OAuth
+
+/** Quanto o token guardado no cofre ainda tem de valer para o ensaio avulso o
+ * reaproveitar (acesso-oauth.mjs, tokenVigente); abaixo disso, renova. Com o
+ * token de 24 h, um ensaio por hora gira o refresh cerca de uma vez por dia. */
+export const MINIMO_DO_TOKEN_NO_ENSAIO_MS = 2 * 3600 * 1000;
+
+/** Vem antes dos comandos de conserto de uma loja OAuth: o segredo dela só
+ * existe no GitHub enquanto a sessão de publicação está aberta. */
+export const AVISO_DA_SESSAO_OAUTH =
+  "# loja OAuth: estes comandos só funcionam dentro de `--sessao`";
+
+/**
+ * As lojas OAuth do cadastro (lojas.json já normalizado por carregarLojas),
+ * por ref: `{ mapa: Map<ref, { slug, segredo, incoerente }>, bloqueios }`.
+ * A loja OAuth só é coerente se o canal do ref existir e tiver `migrations` e
+ * `functions` iguais ao slug (o que o cadastro-da-loja.mjs grava) e se nenhuma
+ * outra entrada do cadastro usar o mesmo ref. Incoerente: bloqueia PELO NOME e
+ * entra no mapa marcada, para que nada dela seja lido (nem pelo CLI).
+ * Sem cadastro (dependências antigas): mapa vazio, o caminho de antes. Cadastro
+ * ilegível: bloqueia, nunca vira "nenhuma loja OAuth".
+ */
+export function lojasOAuth(cadastro, canais) {
+  const mapa = new Map();
+  const bloqueios = [];
+  if (cadastro === undefined || cadastro === null) return { mapa, bloqueios };
+  const lojas = cadastro?.lojas;
+  if (lojas === null || typeof lojas !== "object" || Array.isArray(lojas)) {
+    bloqueios.push({
+      alvo: "scripts/frota/lojas.json",
+      motivo:
+        "cadastro de lojas ilegível: sem ele não há como saber quais lojas são OAuth (lidas pela API) — corrigir o lojas.json antes de publicar",
+    });
+    return { mapa, bloqueios };
+  }
+  const entradas = Object.entries(lojas);
+  const texto = (v) => JSON.stringify(String(v ?? "").slice(0, 40));
+  for (const [slug, l] of entradas) {
+    if (l?.acesso !== "oauth") continue;
+    const refOk = typeof l.ref === "string" && RE_REF.test(l.ref);
+    const alvo = `${slug} (${refOk ? l.ref : "ref fora do formato"})`;
+    const canal = refOk ? canais?.canais?.[l.ref] : undefined;
+    let incoerente = null;
+    if (!refOk) incoerente = "o ref da loja OAuth está fora do formato";
+    else if (!canal)
+      incoerente = `a loja OAuth está sem canal em canais-de-backend.json (ref ${l.ref})`;
+    else if (canal.migrations !== slug || canal.functions !== slug)
+      incoerente = `o canal ${l.ref} aponta migrations ${texto(canal.migrations)} e functions ${texto(canal.functions)}, e a loja OAuth é "${slug}"`;
+    else if (entradas.some(([outra, o]) => outra !== slug && o?.ref === l.ref))
+      incoerente = `o ref ${l.ref} também é de outra entrada do lojas.json`;
+    if (incoerente) {
+      bloqueios.push({
+        alvo,
+        motivo: `cadastro OAuth incoerente: ${incoerente}. O que fazer: corrigir lojas.json e canais-de-backend.json juntos (o cadastro-da-loja.mjs grava os dois); até lá nada desta loja é lido`,
+      });
+    }
+    if (refOk) mapa.set(l.ref, { slug, segredo: l.segredoDoToken, incoerente });
+  }
+  return { mapa, bloqueios };
+}
+
+/**
+ * O `baixar` da loja OAuth enquanto a T3 (corpo da function pela Management
+ * API, que depende da prova P8) não existe: recusa sempre. A loja fica com as
+ * functions NÃO LIDAS (bloqueia), que é o lado seguro.
+ * PONTO DE TROCA DA T3: `dependenciasReais().baixarOAuth` passa a ser
+ * `(ref, nome, gestao) => <código pela API, já em [{ caminho:
+ * "supabase/functions/…", conteudo }]>`; `gestao` é o cliente da gestão da
+ * loja, com o token dela.
+ */
+export function baixarOAuthIndisponivel(_ref, nome) {
+  return Promise.reject(
+    new ErroDaPonte(
+      `o código da function ${RE_FUNCAO.test(String(nome)) ? nome : "(nome inválido)"} ainda não se baixa pela API (falta a T3 do plano da ponte OAuth).`,
+      { codigo: "BAIXAR_INDISPONIVEL" },
+    ),
+  );
+}
+
+/**
+ * `tokenDe(slug, ref)` com memo da PROMESSA: um pedido por loja em cada
+ * execução, mesmo com ledger, lista e N downloads em paralelo, e nunca um
+ * segundo — nem depois de uma falha (a falha fica guardada). Token sem prazo
+ * (expiraEm nulo) não se usa; token vencido lança "token venceu: rode o ensaio
+ * de novo". `tokenDe.tokens` guarda os valores vistos, só para tirá-los de
+ * mensagem de erro.
+ */
+function memoDeToken(obter, relogio) {
+  const promessas = new Map();
+  const tokens = new Set();
+  const tokenDe = (slug, ref) => {
+    let p = promessas.get(slug);
+    if (!p) {
+      p = (async () => {
+        if (typeof obter !== "function")
+          throw new ErroDaPonte(
+            "o portão foi montado sem fonte de token OAuth (deps.tokenOAuth).",
+            { codigo: "SEM_FONTE_DE_TOKEN" },
+          );
+        const t = await obter({ slug, ref });
+        const accessToken = t?.accessToken;
+        if (typeof accessToken !== "string" || accessToken === "")
+          throw new ErroDaPonte(
+            "a fonte de token não devolveu um access token.",
+            { codigo: "TOKEN_INVALIDO" },
+          );
+        tokens.add(accessToken);
+        if (typeof t.expiraEm !== "number" || !Number.isFinite(t.expiraEm))
+          throw new ErroDaPonte(
+            "o token veio sem prazo de validade (expiraEm nulo): o portão não usa token que não sabe quando vence.",
+            { codigo: "TOKEN_SEM_PRAZO" },
+          );
+        return { accessToken, expiraEm: t.expiraEm };
+      })();
+      p.catch(() => {});
+      promessas.set(slug, p);
+    }
+    return p.then((t) => {
+      if (t.expiraEm <= relogio())
+        throw new ErroDaPonte(
+          "token venceu: rode o ensaio de novo (nesta execução nada renova duas vezes).",
+          { codigo: "TOKEN_VENCEU" },
+        );
+      return t.accessToken;
+    });
+  };
+  tokenDe.tokens = tokens;
+  return tokenDe;
+}
+
+/** A mensagem de um erro de baixo nível, só se ele for de uma classe que já
+ * nasce sem segredo (gestão, acesso, ponte, cofre, leitor); e, por cinto, sem
+ * nenhum token visto nem nada com a cara de token do Supabase. */
+function detalheSeguro(e, tokens) {
+  const confiavel =
+    e instanceof ErroDaGestao ||
+    e instanceof ErroDoCofre ||
+    (e instanceof Error && String(e.message).startsWith("leitor OAuth: "));
+  if (!confiavel) {
+    const nome =
+      typeof e?.name === "string" && /^[A-Za-z]{1,40}$/.test(e.name)
+        ? e.name
+        : "erro";
+    return `${nome} (mensagem não impressa: pode carregar segredo)`;
+  }
+  let m = String(e.message);
+  for (const t of tokens ?? []) if (t) m = m.split(t).join("[token]");
+  return m.replace(/sbp_[A-Za-z0-9_]+/g, "[token]").slice(0, 400);
+}
+
+/** "loja OAuth <slug> não lida — <motivo>. O que fazer: <passo>. Detalhe: …" */
+function explicarFalhaOAuth(e, slug, tokens) {
+  const abrir = `rode \`node scripts/frota/nova-loja.mjs abrir --loja ${slug}\` e depois \`node scripts/frota/nova-loja.mjs receber --loja ${slug} --aplicar\` (a lojista autoriza de novo)`;
+  const deNovo =
+    "rode o ensaio de novo; se repetir, chame o dev com este relatório";
+  const codigo = e?.codigo;
+  let motivo;
+  let fazer;
+  if (e instanceof CofreTravado) {
+    motivo =
+      "o cofre da loja está travado por outro comando (sessão de publicação ou nova-loja em andamento)";
+    fazer =
+      "espere ele terminar e rode o ensaio de novo; se nenhum estiver rodando, a trava é órfã: apague o arquivo que o detalhe diz";
+  } else if (codigo === "NAO_CONECTADA") {
+    motivo = "sem acesso: o cofre deste PC não tem o refresh dela";
+    fazer = abrir;
+  } else if (codigo === "SEM_ACESSO") {
+    motivo =
+      "sem acesso: o Supabase recusou (a lojista revogou a autorização, ou ela venceu)";
+    fazer = abrir;
+  } else if (codigo === "TOKEN_VENCEU") {
+    motivo = "token vencido";
+    fazer = "rode o ensaio de novo (ele pega um token novo)";
+  } else if (codigo === "TOKEN_SEM_PRAZO") {
+    motivo = "o token veio sem prazo de validade";
+    fazer = deNovo;
+  } else if (
+    codigo === ESTADO_DESCONHECIDO ||
+    (codigo === "HTTP" && (e.status === 429 || e.status >= 500))
+  ) {
+    motivo = "a API do Supabase não respondeu (rede ou Supabase fora do ar)";
+    fazer = "rode o ensaio de novo em alguns minutos";
+  } else if (codigo === "BAIXAR_INDISPONIVEL") {
+    motivo = "o código das functions dela ainda não se baixa pela API (T3)";
+    fazer =
+      "nada no PC: a loja fica não lida (e bloqueia) até o download pela API entrar";
+  } else if (codigo === "CADASTRO_INCOERENTE") {
+    motivo = "cadastro OAuth incoerente";
+    fazer =
+      "corrigir lojas.json e canais-de-backend.json juntos (o cadastro-da-loja.mjs grava os dois)";
+  } else if (
+    codigo === "SEM_FONTE_DE_TOKEN" ||
+    codigo === "SEM_FETCH_DA_GESTAO" ||
+    codigo === "TOKEN_INVALIDO"
+  ) {
+    motivo = "o portão foi montado sem o acesso OAuth";
+    fazer = "chame o dev com este relatório";
+  } else if (
+    e instanceof Error &&
+    String(e.message).startsWith("leitor OAuth: ")
+  ) {
+    motivo = "a resposta da API veio ilegível (fora do formato esperado)";
+    fazer = deNovo;
+  } else {
+    motivo = `falha ao usar o acesso dela (${typeof codigo === "string" && /^[A-Z_]{1,40}$/.test(codigo) ? codigo : "sem código"})`;
+    fazer = deNovo;
+  }
+  return `loja OAuth ${slug} não lida — ${motivo}. O que fazer: ${fazer}. Detalhe: ${detalheSeguro(e, tokens)}`;
+}
+
+/**
+ * As dependências com `migrationList`, `listarFuncoes` e `baixarFuncao` da
+ * loja OAuth (o ref está no `mapa`) trocadas pelo leitor OAuth; os outros refs
+ * (IKCOUS, Savy) chamam as MESMAS funções de antes, com o mesmo `this`. Sem
+ * loja OAuth, devolve `deps` como veio. Toda falha da loja OAuth sobe como
+ * "loja OAuth <slug> não lida — …" (vira "ledger não lido", "functions não
+ * listadas" ou "download falhou" na prontidão: bloqueia). Nada da loja OAuth
+ * cai no CLI, nem na falha. Aplicada ANTES de comRetentativaNasLeituras (os
+ * erros daqui não têm a marca `transitorio`: não se repetem).
+ * @param {{ mapa: Map<string, { slug: string, incoerente: string|null }>,
+ *   tokenDe: (slug: string, ref: string) => Promise<string> }} opcoes
+ */
+export function comLeituraOAuth(deps, { mapa, tokenDe }) {
+  if (!(mapa instanceof Map) || mapa.size === 0) return deps;
+  const baixar =
+    typeof deps.baixarOAuth === "function"
+      ? deps.baixarOAuth
+      : baixarOAuthIndisponivel;
+  const leitores = new Map();
+  const leitorDe = (ref, slug) => {
+    let leitor = leitores.get(ref);
+    if (!leitor) {
+      if (typeof deps.fetchGestao !== "function")
+        throw new ErroDaPonte(
+          "o portão foi montado sem o fetch da Management API (deps.fetchGestao).",
+          { codigo: "SEM_FETCH_DA_GESTAO" },
+        );
+      const gestao = criarClienteGestao({
+        token: () => tokenDe(slug, ref),
+        fetch: deps.fetchGestao,
+      });
+      leitor = criarLeitorOAuth({
+        gestao,
+        baixar: (r, nome) => baixar(r, nome, gestao),
+      });
+      leitores.set(ref, leitor);
+    }
+    return leitor;
+  };
+  const rotear =
+    (nome) =>
+    async (...args) => {
+      const entrada =
+        typeof args[0] === "string" ? mapa.get(args[0]) : undefined;
+      if (!entrada) return deps[nome].apply(deps, args);
+      try {
+        if (entrada.incoerente)
+          throw new ErroDaPonte(
+            `${entrada.incoerente}; nada desta loja foi lido.`,
+            { codigo: "CADASTRO_INCOERENTE" },
+          );
+        return await leitorDe(args[0], entrada.slug)[nome](...args);
+      } catch (e) {
+        throw new Error(explicarFalhaOAuth(e, entrada.slug, tokenDe.tokens));
+      }
+    };
+  return {
+    ...deps,
+    migrationList: rotear("migrationList"),
+    listarFuncoes: rotear("listarFuncoes"),
+    baixarFuncao: rotear("baixarFuncao"),
+  };
+}
+
 // ------------------------------------------------------------------ etapa 3: por loja
 
 export async function prontidaoDaLoja(loja, canal, ctx) {
@@ -2113,6 +2415,10 @@ export async function publicarRelease(opcoes, deps) {
     problemas: problemasDoContexto,
   } = await contextoDaRelease({ sha, politica, canais, deps });
   bloqueios.push(...problemasDoContexto);
+  // Loja OAuth: lida pela API com o token do cofre, nunca pelo CLI; o
+  // cadastro incoerente bloqueia pelo nome aqui.
+  const oauth = lojasOAuth(deps.cadastro, canais);
+  bloqueios.push(...oauth.bloqueios);
   const sobreOTopo = topo
     ? ` (migrations/consultas ${topoBancoIgual ? "iguais" : "DIFERENTES"} e functions ${topoFunctionsIgual ? "iguais" : "DIFERENTES"} às da release)`
     : "";
@@ -2130,7 +2436,14 @@ export async function publicarRelease(opcoes, deps) {
   //  (2) o relatório, os bloqueios e os comandos de conserto são montados
   //      depois, UMA loja por vez, na ordem do inventário.
   // Uma exceção em qualquer loja derruba o portão (fail-closed), como antes.
-  const depsDaProntidao = comRetentativaNasLeituras(deps);
+  const depsDaProntidao = comRetentativaNasLeituras(
+    comLeituraOAuth(deps, {
+      mapa: oauth.mapa,
+      tokenDe: memoDeToken(deps.tokenOAuth, () =>
+        deps.agora ? deps.agora() : Date.now(),
+      ),
+    }),
+  );
   const limiteDeLojas = Math.min(
     PRONTIDAO_LOJAS_EM_PARALELO,
     Number.isInteger(Number(deps.lojasEmParalelo)) &&
@@ -2197,7 +2510,12 @@ export async function publicarRelease(opcoes, deps) {
         motivo: `function ${f.nome}: ${f.motivo}`,
       });
     const c = comandosDeConserto(loja, pront, canal, ctxConserto);
-    if (c.length) consertos.push(...c, "");
+    if (c.length)
+      consertos.push(
+        ...(oauth.mapa.has(loja.ref) ? [AVISO_DA_SESSAO_OAUTH] : []),
+        ...c,
+        "",
+      );
   }
   // Sem bloqueio, o único conserto possível é o de function que FALTA numa loja
   // e que a release não mudou (não bloqueia): os comandos saem aqui, porque a
@@ -2699,9 +3017,27 @@ export function dependenciasReais({ rodarGh, rodarSupabase } = {}) {
   const git = (args) => rodar("git", ["-C", RAIZ, ...args]);
   const cache = new Map();
   const cacheRuns = new Map();
+  let acessoOAuth = null;
   return {
     politica,
     canais,
+    // Quais lojas são OAuth (lojasOAuth): essas o portão lê pela API.
+    cadastro: carregarLojas(),
+    fetchGestao: fetch,
+    // Ensaio avulso: o token guardado no cofre enquanto faltar mais que o
+    // mínimo, senão renova e grava o refresh novo (tokenVigente). O cofre
+    // DPAPI só abre aqui, na primeira leitura de uma loja OAuth.
+    tokenOAuth: ({ slug }) => {
+      acessoOAuth ??= criarAcessoOAuth({ cofre: criarCofreDpapi() });
+      return acessoOAuth.tokenVigente({
+        slug,
+        minimoMs: MINIMO_DO_TOKEN_NO_ENSAIO_MS,
+      });
+    },
+    // T3: trocar por (ref, nome, gestao) => o código pela API (ver
+    // baixarOAuthIndisponivel). Até lá, as functions da loja OAuth ficam
+    // não lidas e bloqueiam.
+    baixarOAuth: baixarOAuthIndisponivel,
     fetchImpl: fetch,
     vercelApi: executor,
     inventariar: (p) =>

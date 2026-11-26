@@ -236,6 +236,62 @@ Deno.test("3. verify_jwt que não é booleano LANÇA (ausente, texto, número, n
   }
 });
 
+Deno.test("3. (T6, revisão Opus) a mensagem do verify_jwt torto diz QUAL function e QUAL loja", async () => {
+  const { leitor } = leitorCom({
+    funcoes: [{ slug: "webhook-pagamento", status: "ACTIVE" }],
+  });
+  const e = await assertRejects(() => leitor.listarFuncoes(REF), Error);
+  assert(e.message.includes("webhook-pagamento"), e.message);
+  assert(e.message.includes(REF), e.message);
+  assert(e.message.includes("verify_jwt"), e.message);
+});
+
+Deno.test("3. (T6) slug fora do padrão do portão NÃO é impresso na mensagem do verify_jwt", async () => {
+  const { leitor } = leitorCom({
+    funcoes: [{ slug: "Webhook\nforjado", verify_jwt: "sim" }],
+  });
+  const e = await assertRejects(() => leitor.listarFuncoes(REF), Error);
+  assert(!e.message.includes("forjado"), e.message);
+  assert(e.message.includes(REF), e.message);
+});
+
+Deno.test("3. (T6, revisão Opus) function REMOVED ou THROTTLED conta como AUSENTE (gera o comando de publicar, não esconde nada)", async () => {
+  for (const status of ["REMOVED", "THROTTLED"]) {
+    const { leitor } = leitorCom({
+      funcoes: [
+        { slug: "criar-pedido", status: "ACTIVE", verify_jwt: true },
+        // fora da lista mesmo sem verify_jwt: o que não está ativo não se compara
+        { slug: "webhook-pagamento", status },
+      ],
+    });
+    assertEquals(
+      await leitor.listarFuncoes(REF),
+      [{ slug: "criar-pedido", verify_jwt: true }],
+      status,
+    );
+  }
+});
+
+Deno.test("3. (T6) status desconhecido LANÇA (lista não lida, nunca 'em dia' no escuro); status ausente vale como ativa (a forma do CLI)", async () => {
+  for (const status of ["DEPLOYING", "active", "", 1, null]) {
+    const { leitor } = leitorCom({
+      funcoes: [{ slug: "criar-pedido", status, verify_jwt: true }],
+    });
+    const e = await assertRejects(
+      () => leitor.listarFuncoes(REF),
+      Error,
+      "status",
+    );
+    assert(e.message.includes("criar-pedido"), e.message);
+  }
+  const { leitor } = leitorCom({
+    funcoes: [{ slug: "criar-pedido", verify_jwt: false }],
+  });
+  assertEquals(await leitor.listarFuncoes(REF), [
+    { slug: "criar-pedido", verify_jwt: false },
+  ]);
+});
+
 Deno.test("3. slug ausente/não-texto, slug repetido, item não-objeto ou corpo não-lista LANÇAM", async () => {
   const casos = [
     [{ verify_jwt: true }],
