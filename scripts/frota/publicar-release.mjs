@@ -881,7 +881,13 @@ export async function evidenciaDaProva({
   const lerRuns = (workflow, opcoes) =>
     Promise.resolve(deps.listarRuns(workflow, { ...opcoes, ate })).catch(
       (e) => {
-        if (e?.code !== "JANELA_ESTOUROU") throw e;
+        // comUmaRetentativa embrulha a falha da 2ª tentativa num Error novo:
+        // o estouro chega como `cause` (rede caiu na 1ª, a 2ª estourou).
+        if (
+          e?.code !== "JANELA_ESTOUROU" &&
+          e?.cause?.code !== "JANELA_ESTOUROU"
+        )
+          throw e;
         estouro = e;
         return null;
       },
@@ -2589,8 +2595,11 @@ export function dependenciasReais({ rodarGh } = {}) {
           );
         const lida = lerRunsEmFaixas({ desde, ate, emAndamento, buscar });
         cacheRuns.set(chave, lida);
-        lida.catch(() => {
-          if (cacheRuns.get(chave) === lida) cacheRuns.delete(chave);
+        // O estouro FICA no cache: a mesma janela estoura igual, e reler para
+        // cada loja de cada lote esgotaria a cota do token. Falha de rede sai.
+        lida.catch((e) => {
+          if (e?.code !== "JANELA_ESTOUROU" && cacheRuns.get(chave) === lida)
+            cacheRuns.delete(chave);
         });
       }
       return cacheRuns.get(chave);

@@ -27,6 +27,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  comUmaRetentativa,
   decidirLote,
   dependenciasReais,
   evidenciaDaProva,
@@ -343,6 +344,104 @@ Deno.test("janela: o filtro de data devolve VAZIO para runs que existem — a co
     },
     { rodarGh: gh.rodarGh },
   );
+});
+
+/** Falha de rede como o `rodar` real a marca (`transitorio: true`). */
+const falhaDeRede = () =>
+  Object.assign(new Error("gh run list falhou: HTTP 502"), {
+    transitorio: true,
+  });
+
+/** O gh do dublê, mas a PRIMEIRA chamada cai por rede (passageira). */
+function comPrimeiraChamadaCaindo(gh) {
+  let primeira = true;
+  return async (args) => {
+    if (primeira) {
+      primeira = false;
+      gh.chamadas.push(args);
+      throw falhaDeRede();
+    }
+    return await gh.rodarGh(args);
+  };
+}
+
+Deno.test("janela: rede cai na 1ª leitura e a 2ª (nova tentativa) estoura — a prova continua JANELA_ESTOUROU, não vira SEM_EVIDENCIA/CONFERIR", async () => {
+  const gh = githubComFiltros({
+    [CONFERIR]: [provaDoAlvo(42, AGORA - 3_600_000)],
+    [APLICAR]: applysNoMesmoSegundo(1200),
+  });
+  const caindoUmaVez = comPrimeiraChamadaCaindo(gh);
+  const rodarGh = async (args) =>
+    valorDe(args, "--workflow") === APLICAR
+      ? await caindoUmaVez(args)
+      : await gh.rodarGh(args);
+  await comDependenciasReais(
+    async (reais) => {
+      // como comRetentativaNasLeituras embrulha o listarRuns no portão
+      const listarRuns = (...a) =>
+        comUmaRetentativa(() => reais.listarRuns(...a), { esperaMs: 0 });
+      const r = await provar({ listarRuns });
+      assertEquals(r.ok, false);
+      assertEquals(r.estado, "JANELA_ESTOUROU", r.motivo);
+      assertStringIncludes(r.motivo, "JANELA_ESTOUROU");
+      assertStringIncludes(r.motivo, "nova tentativa");
+      assertEquals(
+        decidirLote({
+          lote: { consulta: PROVA, versoes: ["1"] },
+          faltam: [],
+          exigeProva: true,
+          prova: r,
+        }).acao,
+        "PARAR",
+      );
+    },
+    { rodarGh },
+  );
+});
+
+Deno.test("janela: o JANELA_ESTOUROU fica no cache — a 2ª loja não chama o gh de novo (a mesma janela estoura igual)", async () => {
+  const gh = githubComFiltros({
+    [CONFERIR]: [
+      provaDoAlvo(42, AGORA - 3_600_000),
+      {
+        ...provaDoAlvo(43, AGORA - 3_500_000),
+        displayTitle: `conferir ${PROVA} em loja-07`,
+      },
+    ],
+    [APLICAR]: applysNoMesmoSegundo(1200),
+  });
+  await comDependenciasReais(
+    async (reais) => {
+      const primeira = await provar(reais);
+      assertEquals(primeira.estado, "JANELA_ESTOUROU", primeira.motivo);
+      const depoisDaPrimeira = gh.chamadas.length;
+      assert(depoisDaPrimeira > 2, "a 1ª leitura dividiu as faixas");
+      const segunda = await provar(reais, {
+        loja: "loja-07",
+        ref: "c".repeat(20),
+      });
+      assertEquals(segunda.estado, "JANELA_ESTOUROU", segunda.motivo);
+      assertEquals(
+        gh.chamadas.length,
+        depoisDaPrimeira,
+        "a 2ª loja releu os runs depois do estouro",
+      );
+    },
+    { rodarGh: gh.rodarGh },
+  );
+});
+
+Deno.test("janela: falha de REDE continua fora do cache — a nova leitura chama o gh de novo e vale", async () => {
+  const gh = githubComFiltros({ [APLICAR]: applysNoMesmoSegundo(10) });
+  const rodarGh = comPrimeiraChamadaCaindo(gh);
+  await comDependenciasReais(
+    async (reais) => {
+      await assertRejects(() => reais.listarRuns(APLICAR), Error, "HTTP 502");
+      assertEquals((await reais.listarRuns(APLICAR)).length, 10);
+    },
+    { rodarGh },
+  );
+  assertEquals(gh.chamadas.length, 2);
 });
 
 Deno.test("janela: listarRuns SEM faixa e com 1000+ runs recusa (JANELA_ESTOUROU), nunca devolve a lista cortada", async () => {
