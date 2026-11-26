@@ -90,7 +90,8 @@ Deno.test("1560: avaliarFase0 nao recusa o par; sem BEGIN/COMMIT; LF; lock_timeo
 });
 
 // 20261590000000: a loja guarda o dia da pausa do teste (PR do aviso de teste encerrado).
-const SUCESSORAS = ["20261590000000"];
+// 20261600000000: a loja pausa o pedido novo (lote 1 da pausa de vendas).
+const SUCESSORAS = ["20261590000000", "20261600000000"];
 
 Deno.test("1560: depois dela so migrations sucessoras conhecidas", () => {
   const versoes = [];
