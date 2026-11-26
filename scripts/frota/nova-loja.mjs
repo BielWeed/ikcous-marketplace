@@ -190,6 +190,7 @@ const {
 const { carregarOrgCentral } = require("./org-central.cjs");
 
 export const PASSOS = Object.freeze([
+  "autorizar",
   "abrir",
   "receber",
   "criar-projeto",
@@ -220,6 +221,21 @@ export const AGUARDANDO = Object.freeze({
   "chave-do-plano":
     "pendente: a chave do plano vai pelo instalar-chave-da-loja.yml, que só usa o segredo fixo do repositório e não alcança loja só-OAuth; aguarda a decisão da release para loja OAuth (CACA-PORTAO-LE-LOJA-NOVA). Nada foi feito.",
 });
+/** O OAuth da ORG CENTRAL (modelo de 01/12/2026): uma autorização só, do dono,
+ * para a org "IKCOUS Lojas", guardada no cofre sob `chaveDoCofre` de
+ * scripts/frota/org-central.json. `abrir`/`receber` por loja não existem mais. */
+const USE_AUTORIZAR =
+  "o acesso agora é UM só, da org central (a lojista não tem conta técnica): rode node scripts/frota/nova-loja.mjs autorizar --client-id <id> --redirect <url> --aplicar e depois autorizar --receber --aplicar. Nada foi feito.";
+/** Passos parados DENTRO da branch claude/nova-loja-central até a A15 do plano
+ * da org central: o trocar-dono de hoje troca a autorização DA LOJA, que deixou
+ * de existir. Fora de PENDENTES do conferir (não é pendência da loja). */
+export const AGUARDANDO_A15 = Object.freeze({
+  "trocar-dono":
+    "aguardando A15: a troca de dona está sendo reescrita para o modelo da org central (sem conta da lojista; pedido escrito e dupla confirmação). Nada foi feito.",
+});
+/** A chave do cofre da autorização da org (nunca o nome de uma loja). */
+const chaveDaOrg = () => carregarOrgCentral().chaveDoCofre;
+
 /** As lojas que já vendem: o dono delas é cadastrado pelo dono do produto
  * (docs/runbooks/definir-o-dono-da-loja.md, seção 3.3), nunca por este
  * comando. Recusadas pelo nome e pelo ref (de lojas.json e, de reserva, os
@@ -592,7 +608,8 @@ function contexto(pedido, d) {
     agora: d.agora,
   });
   const sinal = { limite: false };
-  const token = fonteDeToken(acesso, slug, d.agora);
+  // a autorização é da ORG (uma só, sob a chave da org no cofre), nunca da loja
+  const token = fonteDeToken(acesso, chaveDaOrg(), d.agora);
   const gestao = criarClienteGestao({
     token,
     fetch: fetchQueVeOLimite(d.fetch, sinal),
@@ -695,6 +712,85 @@ async function passoAbrir(pedido, d) {
   return resultado(
     SIM,
     `autorização pendente guardada no cofre da loja ${slug}; o link está acima.`,
+  );
+}
+
+// ─── autorizar (a org central) ──────────────────────────────────────────────
+
+function passosDoDono(url) {
+  const org = carregarOrgCentral();
+  return [
+    "Para o DONO, no navegador dele (a conta Supabase da IKCOUS):",
+    "  1. Abra este link:",
+    `     ${url}`,
+    `  2. Na tela "Authorize IKCOUS", confira que a organização marcada é "${org.nome}" (e só ela) e toque em "Authorize".`,
+    '  3. Na página seguinte aparece um código com o botão "Copiar". Copie.',
+    "Depois, aqui: node scripts/frota/nova-loja.mjs autorizar --receber --aplicar   (cole o código quando ele pedir)",
+  ].join("\n");
+}
+
+async function passoAutorizar(pedido, d) {
+  const chave = pedido.slug; // o despachante pôs a chave da org aqui
+  const { acesso } = contexto(pedido, d);
+  if (pedido.receber === true) {
+    const e = await d.estado.ler(chave);
+    if (e?.passos?.abrir?.veredito !== SIM) {
+      return resultado(
+        NAO,
+        "a org central não tem autorização aberta: rode autorizar --aplicar antes.",
+      );
+    }
+    const colado = await lerUmaEntrada(
+      d,
+      "Cole o código da autorização da org (ou o endereço inteiro) e tecle Enter: ",
+    );
+    let r;
+    try {
+      r = await acesso.receber({ slug: chave, colado });
+    } catch (erro) {
+      await registrar(d, chave, "receber", {
+        veredito: resultadoDoErro(erro).veredito,
+      });
+      throw erro;
+    }
+    await registrar(d, chave, "receber", { veredito: SIM });
+    const validade =
+      r.expiraEm === null
+        ? "validade não informada"
+        : `vale até ${new Date(r.expiraEm).toISOString()}`;
+    return resultado(
+      SIM,
+      `autorização da org recebida; o refresh está no cofre DPAPI sob ${chave} (o acesso desta rodada ${validade} e nunca é gravado).`,
+    );
+  }
+  const { clientId, redirect } = pedido;
+  if (!clientId || !redirect) {
+    return resultado(
+      NAO,
+      "autorizar precisa de --client-id e --redirect (os do OAuth App da IKCOUS).",
+    );
+  }
+  const clientSecret = await lerUmaEntrada(
+    d,
+    "Cole o client_secret do OAuth App da IKCOUS e tecle Enter: ",
+  );
+  const { url } = await acesso.abrir({
+    slug: chave,
+    clientId,
+    clientSecret,
+    redirectUri: redirect,
+  });
+  await registrar(
+    d,
+    chave,
+    "abrir",
+    { veredito: SIM },
+    { apagar: ["receber"] },
+  );
+  d.saida.out(passosDoDono(url));
+  return resultado(
+    SIM,
+    `autorização pendente da org guardada no cofre sob ${chave}; o link está acima.`,
   );
 }
 
@@ -3422,6 +3518,28 @@ async function ensaio(pedido, d) {
   const { passo, slug } = pedido;
   const e = await d.estado.ler(slug);
   const passos = e?.passos ?? {};
+  if (passo === "autorizar") {
+    if (pedido.receber === true) {
+      if (passos.abrir?.veredito !== SIM)
+        return resultado(
+          NAO,
+          `${ENSAIO} a org central não tem autorização aberta (rode autorizar).`,
+        );
+      return resultado(
+        INCERTO,
+        `${ENSAIO} leria o código pela entrada, trocaria pelo acesso da org e gravaria o refresh no cofre DPAPI sob ${slug} antes de qualquer uso.`,
+      );
+    }
+    if (!pedido.clientId || !pedido.redirect)
+      return resultado(
+        NAO,
+        `${ENSAIO} autorizar precisa de --client-id e --redirect.`,
+      );
+    return resultado(
+      INCERTO,
+      `${ENSAIO} leria o client_secret pela entrada, guardaria a autorização pendente da org (PKCE) no cofre DPAPI sob ${slug} e imprimiria o link e os passos do dono.`,
+    );
+  }
   if (passo === "abrir") {
     if (!pedido.clientId || !pedido.redirect)
       return resultado(
@@ -3556,6 +3674,7 @@ async function ensaio(pedido, d) {
 // ─── o despachante ──────────────────────────────────────────────────────────
 
 const EXECUTORES = Object.freeze({
+  autorizar: passoAutorizar,
   abrir: passoAbrir,
   receber: passoReceber,
   "criar-projeto": passoCriarProjeto,
@@ -3601,13 +3720,29 @@ function completar(deps) {
  * `itens`) e imprime a linha do veredito. Nunca lança: erro vira NÃO ou
  * INCERTO com mensagem sem segredo.
  */
-export async function executarPasso(pedido, deps = {}) {
-  const passo = pedido?.passo;
+export async function executarPasso(pedidoRecebido, deps = {}) {
+  const passo = pedidoRecebido?.passo;
+  let pedido = pedidoRecebido;
   let r;
   let d;
   try {
-    if (!PASSOS.includes(passo)) {
+    if (passo === "autorizar") {
+      // o passo da ORG: sem --loja; o estado e a trava são os da chave da org
+      if (pedido.slug !== undefined) {
+        r = resultado(
+          NAO,
+          "autorizar é da org central inteira: não leva --loja. Nada foi feito.",
+        );
+      } else {
+        pedido = { ...pedido, slug: chaveDaOrg() };
+      }
+    }
+    if (r) {
+      // recusado acima
+    } else if (!PASSOS.includes(passo)) {
       r = resultado(NAO, `passo desconhecido: ${textoSeguro(passo)}`);
+    } else if (passo === "abrir" || passo === "receber") {
+      r = resultado(NAO, USE_AUTORIZAR);
     } else if (
       typeof pedido.slug !== "string" ||
       !RE_PROJETO.test(pedido.slug)
@@ -3617,6 +3752,12 @@ export async function executarPasso(pedido, deps = {}) {
       r = resultado(NAO, "--org fora do formato.");
     } else if (Object.hasOwn(AGUARDANDO, passo)) {
       r = resultado(NAO, Reflect.get(AGUARDANDO, passo));
+    } else if (Object.hasOwn(AGUARDANDO_A15, passo)) {
+      r = resultado(NAO, Reflect.get(AGUARDANDO_A15, passo));
+    } else if (passo !== "autorizar" && slugQueNaoCabe(pedido.slug)) {
+      // TODO passo de loja: nome que não cabe no cadastro, que é a chave do
+      // cofre da org ou cujo segredo seria o da org, para antes de rede e estado
+      r = resultado(NAO, slugQueNaoCabe(pedido.slug));
     } else if (
       PASSOS_DA_DONA.includes(passo) &&
       LOJAS_PROTEGIDAS.includes(pedido.slug)
@@ -3630,8 +3771,6 @@ export async function executarPasso(pedido, deps = {}) {
       LOJAS_LEGADAS.includes(pedido.slug)
     ) {
       r = resultado(NAO, recusaDoLegado(pedido.slug, passo));
-    } else if (passo === "abrir" && slugQueNaoCabe(pedido.slug)) {
-      r = resultado(NAO, slugQueNaoCabe(pedido.slug));
     }
     if (!r) {
       d = completar(deps);
@@ -3707,11 +3846,24 @@ export function lerArgumentos(argv) {
       );
     }
   }
-  if (a.receber === true && a.passo !== "trocar-dono") {
+  if (
+    a.receber === true &&
+    a.passo !== "trocar-dono" &&
+    a.passo !== "autorizar"
+  ) {
     throw new ErroDoComando(
-      "--receber só existe no trocar-dono (a fase do código da dona: trocar-dono --aplicar --receber).",
+      "--receber só existe no autorizar (autorizar --receber --aplicar) e no trocar-dono.",
       { codigo: "USO" },
     );
+  }
+  if (a.passo === "autorizar") {
+    if (a.slug !== undefined) {
+      throw new ErroDoComando(
+        "autorizar é da org central inteira: não leva --loja.",
+        { codigo: "USO" },
+      );
+    }
+    return a;
   }
   if (typeof a.slug !== "string" || !RE_PROJETO.test(a.slug)) {
     throw new ErroDoComando(
@@ -3760,7 +3912,7 @@ async function principal() {
       e instanceof ErroDoComando ? e.message : "argumentos ilegíveis.",
     );
     console.error(
-      `Uso: node scripts/frota/nova-loja.mjs <${PASSOS.join("|")}> --loja <slug> [--aplicar] [--receber] [--client-id <id> --redirect <url>] [--org <org>] [--nome <apelido>]`,
+      `Uso: node scripts/frota/nova-loja.mjs autorizar [--receber] [--client-id <id> --redirect <url>] --aplicar | <${PASSOS.join("|")}> --loja <slug> [--aplicar] [--receber] [--client-id <id> --redirect <url>] [--org <org>] [--nome <apelido>]`,
     );
     return 1;
   }
