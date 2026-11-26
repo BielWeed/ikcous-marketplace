@@ -19,7 +19,9 @@ import { type ChunkParaOPrecache, arquivosDoPainel } from "./precacheSemPainel";
  *     aviso de "adicionado ao carrinho", uma gaveta, uma animação), parando
  *     nas telas-rota (`ROTAS_DA_LOJA`) e no painel;
  *   - o CSS/arquivos de apoio de todos esses chunks;
- *   - a página offline e os ícones de coração e carrinho (dos avisos).
+ *   - a página offline e os ícones de coração e carrinho (dos avisos);
+ *   - o que a página inicial pede fora de /assets/ (`silent-guardian.js`,
+ *     `loading.css`).
  * Decisão do sócio (26/11/2026): se um pedaço puxado dentro da vitrine faltar
  * sem internet, o app recarrega NA vitrine; a TELA de outra rota (carrinho,
  * checkout) fica de fora. O que só a ENTRADA pede por `import()` (o lembrete
@@ -75,11 +77,17 @@ export const ROTAS_DA_LOJA: readonly string[] = [
   "src/views/admin/AdminLoginView.tsx",
 ];
 
-/** Arquivos de `public/` que entram no núcleo, como aparecem no manifesto. */
+/** Arquivos de `public/` que entram no núcleo, como aparecem no manifesto.
+ * O `silent-guardian.js` e o `loading.css` a página inicial pede antes do
+ * app (index.html): sem eles no núcleo, reabrir sem internet depois de UMA
+ * visita abria a `/` guardada sem os dois (medido em navegador, 26/11/2026;
+ * guarda em tests/porteiro-dois-hosts/precache-nucleo.test.ts). */
 export const ARQUIVOS_PUBLICOS_DO_NUCLEO: readonly string[] = [
   "offline.html",
   "icons/heart-96x96.png",
   "icons/cart-96x96.png",
+  "silent-guardian.js",
+  "loading.css",
 ];
 
 const comBarraNormal = (caminho: string) => caminho.replace(/\\/g, "/");
@@ -229,6 +237,17 @@ export function precacheNucleo(opcoes: { root: string }): {
     if (faltando.length > 0)
       throw new Error(
         `PRECACHE_NUCLEO: arquivo público do núcleo fora do manifesto: ${faltando.join(", ")}. Conferir public/ e ARQUIVOS_PUBLICOS_DO_NUCLEO em scripts/precacheNucleo.ts.`,
+      );
+    // JS/CSS do núcleo que o `globIgnores` ou o filtro do painel tirou do
+    // manifesto: a primeira instalação guardaria um núcleo que não abre sem
+    // internet. Fonte e imagem do bundle ficam de fora da cobrança (o
+    // `globPatterns` decide quais tipos entram no precache).
+    const foraDoManifesto = [...doNucleo].filter(
+      (arquivo) => /\.(?:js|css)$/.test(arquivo) && !urls.has(arquivo),
+    );
+    if (foraDoManifesto.length > 0)
+      throw new Error(
+        `PRECACHE_NUCLEO: JS/CSS do núcleo fora do manifesto: ${foraDoManifesto.join(", ")}. Conferir o globIgnores do vite.config.ts e a classificação do painel (scripts/precacheSemPainel.ts).`,
       );
     const publicos = new Set(ARQUIVOS_PUBLICOS_DO_NUCLEO);
     return {

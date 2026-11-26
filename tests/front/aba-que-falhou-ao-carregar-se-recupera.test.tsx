@@ -220,6 +220,7 @@ function recargasGastas(): number {
 describe("aba principal que falhou ao carregar - a cliente consegue se recuperar", () => {
   it("o duble e fiel: depois de falhar, o navegador nao vai mais ao servidor", async () => {
     definirOnLine(true);
+    instalarSondaDeRede(true);
     await montarPagina();
     navegador.servidorOk = true; // a rede voltou, mas...
 
@@ -231,6 +232,8 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
 
   it("falha de chunk mostra frase simples, sem texto de painel e sem culpar a rede sem prova", async () => {
     definirOnLine(true);
+    // A tela testa a internet ao aparecer: aqui a rede responde.
+    instalarSondaDeRede(true);
 
     await montarPagina();
 
@@ -244,6 +247,7 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
 
   it("o aviso usa so cores do tema (legivel no tema claro): nada de cores fixas de tema escuro", async () => {
     definirOnLine(true);
+    instalarSondaDeRede(true);
 
     await montarPagina();
 
@@ -504,6 +508,7 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
 
   it("variante cliente com tela que não baixou: segue a frase de chunk de sempre", async () => {
     definirOnLine(true);
+    instalarSondaDeRede(true);
     const { LocalErrorBoundary, lazyWithPreload } = await modulosDoApp();
     const Aba = lazyWithPreload(async () => {
       throw new TypeError("Failed to fetch dynamically imported module: x");
@@ -520,6 +525,163 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     await descarregar();
     expect(hospedeiro.textContent).toContain(TELA_NAO_BAIXOU);
     expect(hospedeiro.textContent).not.toContain("Algo deu errado nesta tela");
+  });
+});
+
+// Decisao do socio (26/11/2026): com a rede MUDA (onLine=true, mas nada
+// responde) a tela que nao baixou dizia "Use o botao Tentar de novo" ate a
+// cliente tocar. Agora ela testa a internet sozinha (o mesmo /version.json do
+// botao) assim que aparece, e so troca a frase se ninguem mexeu nela.
+describe("tela que nao baixou testa a internet sozinha, sem esperar toque", () => {
+  function sondaQueEspera() {
+    const pendentes: ((r: Response | Error) => void)[] = [];
+    const fetchFalso = vi.fn(
+      () =>
+        new Promise<Response>((resolve, reject) => {
+          pendentes.push((r) => (r instanceof Error ? reject(r) : resolve(r)));
+        }),
+    );
+    vi.stubGlobal("fetch", fetchFalso);
+    return { fetchFalso, pendentes };
+  }
+  const versaoValida = () =>
+    new Response(JSON.stringify({ version: "1.0.0-x" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  it("(a) version.json nao responde: 'Verifique sua conexao' aparece sem nenhum toque", async () => {
+    definirOnLine(true);
+    instalarSondaDeRede(false);
+
+    await montarPagina();
+
+    expect(hospedeiro.textContent).toContain(TELA_NAO_BAIXOU);
+    expect(hospedeiro.textContent).toContain(FRASE_DE_REDE);
+    expect(hospedeiro.textContent).not.toContain(FRASE_PRIMEIRA_VEZ);
+    // So avisou: nao recarregou nem gastou a guarda de laco.
+    expect(reloadEspiao).not.toHaveBeenCalled();
+    expect(recargasGastas()).toBe(0);
+    expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(false);
+  });
+
+  it("(a') version.json pendurado ate o prazo da sonda: tambem vira 'Verifique sua conexao'", async () => {
+    definirOnLine(true);
+    // Conecta e nunca responde: so o prazo da sonda (abort) encerra.
+    const { PRAZO_SONDA_DE_REDE_MS } = await import("@/lib/recuperacao-chunk");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string, init: { signal: AbortSignal }) =>
+          new Promise<Response>((_resolve, reject) => {
+            init.signal.addEventListener("abort", () =>
+              reject(new DOMException("aborted", "AbortError")),
+            );
+          }),
+      ),
+    );
+
+    await montarPagina();
+    expect(hospedeiro.textContent).toContain(FRASE_PRIMEIRA_VEZ);
+
+    await act(async () => {
+      vi.advanceTimersByTime(PRAZO_SONDA_DE_REDE_MS);
+    });
+    await descarregar();
+
+    expect(hospedeiro.textContent).toContain(FRASE_DE_REDE);
+  });
+
+  it("(b) version.json responde com versao valida: continua 'Use o botao Tentar de novo'", async () => {
+    definirOnLine(true);
+    instalarSondaDeRede(true);
+
+    await montarPagina();
+
+    // A sonda rodou de fato (sem isto, a frase igual nao provaria nada).
+    expect(fetch).toHaveBeenCalledWith(
+      "/version.json",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+    expect(hospedeiro.textContent).toContain(FRASE_PRIMEIRA_VEZ);
+    expect(hospedeiro.textContent).not.toContain(FRASE_DE_REDE);
+    expect(reloadEspiao).not.toHaveBeenCalled();
+  });
+
+  it("onLine=false: nao testa a rede (a frase ja fala da conexao)", async () => {
+    definirOnLine(false);
+    instalarSondaDeRede(true);
+
+    await montarPagina();
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain(FRASE_DE_REDE);
+  });
+
+  it("a cliente tocou antes da sonda voltar: a resposta atrasada nao troca a frase do toque", async () => {
+    definirOnLine(true);
+    const { fetchFalso, pendentes } = sondaQueEspera();
+    await montarPagina();
+    expect(fetchFalso).toHaveBeenCalledTimes(1);
+
+    // O toque faz a propria sonda; esta responde com rede boa -> recarrega,
+    // a pagina nao sai (aviso do navegador cancelado) e vira "ainda carregando".
+    await tocarEmTentarDeNovo();
+    expect(fetchFalso).toHaveBeenCalledTimes(2);
+    pendentes[1]?.(versaoValida());
+    await descarregar();
+    await act(async () => {
+      vi.advanceTimersByTime(PRAZO_DA_PAGINA_SAIR_MS);
+    });
+    await descarregar();
+    expect(reloadEspiao).toHaveBeenCalledTimes(1);
+    expect(hospedeiro.textContent).toContain(FRASE_AINDA_CARREGANDO);
+
+    // Agora a sonda de quando a tela apareceu volta falhando: ignorada.
+    pendentes[0]?.(new TypeError("Failed to fetch"));
+    await descarregar();
+
+    expect(hospedeiro.textContent).toContain(FRASE_AINDA_CARREGANDO);
+    expect(hospedeiro.textContent).not.toContain(FRASE_DE_REDE);
+  });
+
+  it("a tela saiu antes da sonda voltar: a resposta atrasada nao faz nada (nem erro)", async () => {
+    definirOnLine(true);
+    const { pendentes } = sondaQueEspera();
+    await montarPagina();
+
+    await act(async () => {
+      raiz.unmount();
+    });
+    pendentes[0]?.(new TypeError("Failed to fetch"));
+    await descarregar();
+
+    expect(hospedeiro.textContent).toBe("");
+    expect(console.error).not.toHaveBeenCalledWith(
+      expect.stringMatching(/unmounted|Can't perform a React state update/),
+      expect.anything(),
+    );
+    // O afterEach desmonta de novo: uma raiz nova evita desmontar duas vezes.
+    raiz = createRoot(hospedeiro);
+  });
+
+  it("falha que NAO e de chunk nao testa a rede", async () => {
+    definirOnLine(true);
+    instalarSondaDeRede(false);
+    const { LocalErrorBoundary } = await modulosDoApp();
+    function Quebrada(): never {
+      throw new Error("cannot read properties of undefined");
+    }
+    await act(async () => {
+      raiz.render(
+        <LocalErrorBoundary variante="cliente">
+          <Quebrada />
+        </LocalErrorBoundary>,
+      );
+    });
+    await descarregar();
+
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

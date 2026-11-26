@@ -37,6 +37,7 @@ const {
   anexarAoSummary,
 } = require("./efemero.cjs");
 const CONF = require("../../scripts/publicacao/conferir-banco.cjs");
+const { tirarOLivroDoClone } = require("./o-livro-de-registro-posterior.cjs");
 
 const NOME = "20261450000000_a_loja_guarda_os_fornecedores.sql";
 const T = "public.fornecedores";
@@ -1238,6 +1239,9 @@ async function main() {
       null,
       "o clone deve estar com a migration nova",
     );
+    // A 20261510 (livro de registro) poe gatilhos tr_livro_* em public.fornecedores; o pre-voo e o pos-voo desta migration exigem
+    // so o gatilho dela. No clone exclusivo, o livro sai ANTES (rollback comum, gravado); ver o-livro-de-registro-posterior.cjs.
+    await tirarOLivroDoClone(c);
     await semente(c);
     await provar(
       "admin atual: insere, lê, upsert por id (não duplica), atualiza, favorita, apaga; datas e id vêm do servidor",

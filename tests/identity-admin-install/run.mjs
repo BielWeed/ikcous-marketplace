@@ -68,7 +68,10 @@ export function readPrecache(code) {
             property.value.value,
           );
         }
-        return fields.size === 2 &&
+        // A marca do núcleo do precache (scripts/precacheNucleo.ts) é o
+        // único terceiro campo aceito, e só como `true`.
+        const comNucleo = fields.size === 3 && fields.get("nucleo") === true;
+        return (fields.size === 2 || comNucleo) &&
           typeof fields.get("url") === "string" &&
           (fields.get("revision") === null ||
             typeof fields.get("revision") === "string")

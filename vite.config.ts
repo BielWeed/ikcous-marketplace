@@ -15,6 +15,7 @@ import { graficoEnxuto } from "./scripts/graficoEnxuto";
 import { helpersCompartilhadosDoGrafico } from "./scripts/helpersCompartilhadosDoGrafico";
 import { notasRecentesDasVersoes } from "./scripts/notasRecentesDasVersoes";
 import { portaoDividido } from "./scripts/portaoDividido";
+import { precacheNucleo } from "./scripts/precacheNucleo";
 import { precacheSemPainel } from "./scripts/precacheSemPainel";
 import { MANIFESTO_BASE } from "./src/config/manifestoBase";
 // Endereço público de CADA loja — MESMO corpo de `resolverEnderecoPublico`
@@ -58,6 +59,7 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     "./scripts/identityBuildConfig"
   );
   const semPainel = precacheSemPainel();
+  const nucleo = precacheNucleo({ root });
   const pwaOptions: Partial<VitePWAOptions> = {
     strategies: "injectManifest",
     srcDir: "src/sw",
@@ -90,7 +92,10 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       // O resto do painel (JS, CSS, leitor) sai do precache pelo MESMO critério
       // do portão de tamanho: o grafo real do Rollup, não uma lista de nomes.
       // Ver scripts/precacheSemPainel.ts. O plugin vem junto do portão, abaixo.
-      manifestTransforms: [semPainel.tirarOPainel],
+      // DEPOIS dele, a marca `nucleo: true` no que a primeira instalação guarda
+      // (scripts/precacheNucleo.ts): o resto do app entra depois, não no
+      // primeiro acesso de todo visitante.
+      manifestTransforms: [semPainel.tirarOPainel, nucleo.marcarONucleo],
       maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
     },
     devOptions: {
@@ -190,6 +195,8 @@ export default defineConfig(async (context): Promise<UserConfig> => {
             // service worker (manifestTransforms acima). Roda no generateBundle,
             // antes de o PWA montar o manifesto no closeBundle.
             semPainel.plugin,
+            // O núcleo do precache sai do MESMO bundle, no mesmo momento.
+            nucleo.plugin,
           ]
         : []),
     ],
