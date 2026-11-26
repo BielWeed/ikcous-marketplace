@@ -1504,6 +1504,29 @@ Deno.test("function AUSENTE e inalterada que o canal NÃO publica: não bloqueia
   );
 });
 
+Deno.test("sem bloqueio, o título do bloco das functions que faltam só promete comando quando há um", async () => {
+  const titulo =
+    "Functions que faltam em loja (NÃO bloqueiam esta release: a release não as mudou).";
+  // canal que publica: há comando, e o título o anuncia
+  const comCmd = deps();
+  tirarDoAr(comCmd.estado, SAVY, "webhook-mercadopago");
+  const r1 = await executar(comCmd.d);
+  assertEquals(r1.codigo, 0, r1.relatorio);
+  assertStringIncludes(r1.relatorio, `${titulo} Para publicá-las:`);
+  // canal que não publica: o bloco só tem a linha "# … sem comando", e o título não promete o que não existe
+  const semCmd = deps();
+  tirarDoAr(semCmd.estado, SAVY, "calculate-shipping");
+  const r2 = await executar(semCmd.d);
+  assertEquals(r2.codigo, 0, r2.relatorio);
+  assertEquals(comandosGh(r2.relatorio), []);
+  assertStringIncludes(r2.relatorio, titulo);
+  assert(!r2.relatorio.includes("Para publicá-las"), r2.relatorio);
+  assertStringIncludes(
+    r2.relatorio,
+    `${titulo} Nenhuma tem comando de publicar daqui; o motivo:`,
+  );
+});
+
 Deno.test("deriva antiga de function PRESENTE (conteúdo velho, release não mudou): continua sem comando algum", async () => {
   const { d, estado } = deps();
   estado.noAr[SAVY]["webhook-mercadopago"] = new Map([
