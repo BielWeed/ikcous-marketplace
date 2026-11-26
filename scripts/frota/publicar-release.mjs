@@ -74,8 +74,10 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -92,6 +94,12 @@ import {
   resolverCliVercel,
   validarVersao,
 } from "./conferir-frota.mjs";
+
+const require = createRequire(import.meta.url);
+const {
+  sincronizar: blocosDoCadastroNoWorkflow,
+} = require("./lojas-nos-workflows.cjs");
+const { validarCadastro } = require("./lojas.cjs");
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.resolve(AQUI, "..", "..");
@@ -842,6 +850,95 @@ export function lerVeredicto(log, consulta) {
   return achados.length === 1 ? achados[0] : null; // zero ou ambíguo = sem evidência
 }
 
+const FERRAMENTA_DE_CONFERENCIA = "scripts/publicacao/conferir-banco.cjs";
+const WORKFLOW_DE_CONFERENCIA = ".github/workflows/conferir-banco-da-loja.yml";
+const CADASTRO_DE_LOJAS = "scripts/frota/lojas.json";
+
+/**
+ * O workflow de conferência do commit do run "é o do topo" mesmo quando o topo
+ * só GANHOU lojas no cadastro? Cada loja cadastrada regrava os blocos LOJAS-*
+ * do workflow (scripts/frota/lojas-nos-workflows.cjs --escrever), e comparar o
+ * arquivo inteiro derrubava a prova de banco de TODAS as lojas a cada loja nova
+ * (C6 da caça da frota de 300, 26/11/2026).
+ *
+ * Em vez de reconhecer o diff por padrão de texto, REFAZ o que o gerador faz e
+ * compara bytes, como um build reproduzível: aceita só se
+ *   1. toda loja do cadastro do run existe no do topo, IDÊNTICA (loja removida
+ *      ou alterada invalida; só acréscimo passa) — com as entradas de cada loja
+ *      iguais, toda expressão dos blocos avaliada com `inputs.projeto` de uma
+ *      loja antiga dá o mesmo valor nos dois commits;
+ *   2. o workflow do topo, com os blocos regerados do cadastro do RUN, é
+ *      byte a byte o workflow do run (a diferença mora só dentro dos blocos, e
+ *      os blocos do run são exatamente a saída do gerador);
+ *   3. o workflow do topo é a saída do gerador para o cadastro do TOPO (nada
+ *      escrito à mão dentro de um bloco: sem esta, um passo novo dentro de um
+ *      bloco sumiria no item 2).
+ * Arquivo ausente, cadastro inválido ou bloco malformado: { ok: false }.
+ */
+export function workflowSoGanhouLojas({
+  ymlDoRun,
+  ymlDoTopo,
+  lojasDoRun,
+  lojasDoTopo,
+}) {
+  const nao = (motivo) => ({ ok: false, motivo });
+  if (typeof ymlDoRun !== "string" || typeof ymlDoTopo !== "string")
+    return nao("workflow de conferência ausente num dos commits");
+  if (typeof lojasDoRun !== "string" || typeof lojasDoTopo !== "string")
+    return nao(`${CADASTRO_DE_LOJAS} ausente num dos commits`);
+  let cadRun;
+  let cadTopo;
+  try {
+    cadRun = validarCadastro(JSON.parse(lojasDoRun));
+    cadTopo = validarCadastro(JSON.parse(lojasDoTopo));
+  } catch (e) {
+    return nao(`cadastro de lojas ilegível: ${e.message}`);
+  }
+  for (const [nome, loja] of Object.entries(cadRun.lojas)) {
+    if (!Object.hasOwn(cadTopo.lojas, nome))
+      return nao(`loja ${nome} removida do cadastro depois do run`);
+    if (JSON.stringify(cadTopo.lojas[nome]) !== JSON.stringify(loja))
+      return nao(`loja ${nome} alterada no cadastro depois do run`);
+  }
+  try {
+    if (blocosDoCadastroNoWorkflow(ymlDoTopo, cadRun) !== ymlDoRun)
+      return nao("o workflow mudou fora dos blocos gerados do cadastro");
+    if (blocosDoCadastroNoWorkflow(ymlDoTopo, cadTopo) !== ymlDoTopo)
+      return nao(
+        "um bloco gerado do workflow do topo não é o que o gerador escreve para o cadastro",
+      );
+  } catch (e) {
+    return nao(`blocos gerados ilegíveis: ${e.message}`);
+  }
+  return { ok: true, motivo: null };
+}
+
+/** Lê os dois workflows e os dois cadastros (commit do run e topo) e aplica
+ * workflowSoGanhouLojas. Qualquer falha de leitura é "não equivale". */
+async function workflowDeConferenciaEquivale(deps, shaDoRun, topo) {
+  if (typeof deps.lerArquivoNoSha !== "function")
+    return { ok: false, motivo: "sem leitor de arquivo no commit" };
+  // `git show <sha>:<caminho>`: só SHA completo, nunca texto vindo do GitHub cru
+  if (!RE_SHA.test(String(shaDoRun)) || !RE_SHA.test(String(topo)))
+    return { ok: false, motivo: "commit do run ou topo sem SHA de 40 hex" };
+  try {
+    const [ymlDoRun, ymlDoTopo, lojasDoRun, lojasDoTopo] = await Promise.all([
+      deps.lerArquivoNoSha(shaDoRun, WORKFLOW_DE_CONFERENCIA),
+      deps.lerArquivoNoSha(topo, WORKFLOW_DE_CONFERENCIA),
+      deps.lerArquivoNoSha(shaDoRun, CADASTRO_DE_LOJAS),
+      deps.lerArquivoNoSha(topo, CADASTRO_DE_LOJAS),
+    ]);
+    return workflowSoGanhouLojas({
+      ymlDoRun,
+      ymlDoTopo,
+      lojasDoRun,
+      lojasDoTopo,
+    });
+  } catch (e) {
+    return { ok: false, motivo: `leitura dos arquivos falhou: ${e.message}` };
+  }
+}
+
 /**
  * Procura a evidência fresca de UMA consulta numa loja. Devolve
  * { ok, estado, motivo, run }, com estado:
@@ -978,17 +1075,27 @@ export async function evidenciaDaProva({
   }
   // A ferramenta que imprime o veredicto também tem de ser a do topo do ramo
   // (um ramo com conferir-banco.cjs alterado poderia imprimir qualquer VEREDITO).
-  if (
-    !topo ||
-    !(await deps.arvoreIgual(run.headSha, topo, [
-      "scripts/publicacao/conferir-banco.cjs",
-      ".github/workflows/conferir-banco-da-loja.yml",
-    ]))
-  ) {
-    return sem(
-      `run ${run.databaseId}: a ferramenta de conferência daquele commit difere da do topo do ramo (ou o topo não foi lido)`,
+  // O workflow pode diferir SÓ pelo que o gerador escreve quando uma loja é
+  // cadastrada (workflowDeConferenciaEquivale): loja nova não derruba a prova
+  // das que já existiam (C6 da caça da frota de 300, 26/11/2026).
+  const ferramentaDifere = (detalhe) =>
+    sem(
+      `run ${run.databaseId}: a ferramenta de conferência daquele commit difere da do topo do ramo (ou o topo não foi lido)${detalhe ? ` — ${detalhe}` : ""}`,
       run,
     );
+  if (!topo) return ferramentaDifere();
+  if (
+    !(await deps.arvoreIgual(run.headSha, topo, [
+      FERRAMENTA_DE_CONFERENCIA,
+      WORKFLOW_DE_CONFERENCIA,
+    ]))
+  ) {
+    if (
+      !(await deps.arvoreIgual(run.headSha, topo, [FERRAMENTA_DE_CONFERENCIA]))
+    )
+      return ferramentaDifere();
+    const wf = await workflowDeConferenciaEquivale(deps, run.headSha, topo);
+    if (!wf.ok) return ferramentaDifere(wf.motivo);
   }
   const v = lerVeredicto(await deps.logDoRun(run.databaseId), consulta);
   if (!v)
@@ -2409,6 +2516,22 @@ function lerNoSha(sha, caminho, cache) {
 }
 
 /**
+ * Apaga uma pasta criada por mkdtemp nesta leitura (C8 da caça da frota de 300,
+ * 26/11/2026: o portão deixava ~14 pastas por loja em cada ensaio, nunca
+ * apagadas — 1.457 com 2 lojas, ~4.200 por ensaio com 300). Nada é lido delas
+ * depois: migrationList devolve a saída do CLI e baixarFuncao o conteúdo já em
+ * memória. Falha ao apagar (arquivo preso pelo antivírus no Windows) não muda o
+ * resultado da leitura: sobra a pasta, como antes, e o portão segue.
+ */
+function apagarPastaTemporaria(dir) {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+  } catch {
+    // a pasta fica; a decisão do portão não depende dela
+  }
+}
+
+/**
  * Quantos runs o GitHub entrega por busca (`gh run list --limit`): 1000 é o
  * TETO da API (com filtro de `created`, `status` ou `head_sha`, "up to 1,000
  * results for each search"). A lista vem do mais novo para o mais antigo e o
@@ -2550,17 +2673,20 @@ export async function lerRunsEmFaixas({
 }
 
 /**
- * `rodarGh(args, opcoes)` existe só para os testes trocarem o `gh` por um
- * dublê (nunca rede, nunca token); em produção ninguém passa nada e vale o
- * `gh` real do PATH, exatamente como antes.
+ * `rodarGh(args, opcoes)` e `rodarSupabase(args, opcoes)` existem só para os
+ * testes trocarem o `gh` e o CLI do Supabase por dublês (nunca rede, nunca
+ * token); em produção ninguém passa nada e valem os CLIs reais do PATH,
+ * exatamente como antes.
  */
-export function dependenciasReais({ rodarGh } = {}) {
+export function dependenciasReais({ rodarGh, rodarSupabase } = {}) {
   const politica = lerPolitica();
   const canais = lerCanais();
   const executor = criarExecutorVercel();
   const supabase = comandoNoWindows("supabase");
   const gh = comandoNoWindows("gh");
   const executarGh = rodarGh ?? ((args, opcoes) => rodar(gh, args, opcoes));
+  const executarSupabase =
+    rodarSupabase ?? ((args, opcoes) => rodar(supabase, args, opcoes));
   const git = (args) => rodar("git", ["-C", RAIZ, ...args]);
   const cache = new Map();
   const cacheRuns = new Map();
@@ -2670,30 +2796,35 @@ export function dependenciasReais({ rodarGh } = {}) {
     migrationList: async (ref) => {
       if (!RE_REF.test(ref)) throw new Error(`ref inválido ${ref}`);
       const dir = mkdtempSync(path.join(os.tmpdir(), `frota-ledger-${ref}-`));
-      mkdirSync(path.join(dir, "supabase", "migrations"), { recursive: true });
-      await rodar(
-        supabase,
-        ["link", "--project-ref", ref, "--workdir", dir, "--password", ""],
-        { cwd: dir },
-      );
-      // `--output-format json` (o `-o json` é ignorado pelo CLI 2.118); o leitor aceita JSON e a tabela.
-      return rodar(
-        supabase,
-        [
-          "migration",
-          "list",
-          "--linked",
-          "--workdir",
-          dir,
-          "--output-format",
-          "json",
-        ],
-        { cwd: dir },
-      );
+      try {
+        mkdirSync(path.join(dir, "supabase", "migrations"), {
+          recursive: true,
+        });
+        await executarSupabase(
+          ["link", "--project-ref", ref, "--workdir", dir, "--password", ""],
+          { cwd: dir },
+        );
+        // `--output-format json` (o `-o json` é ignorado pelo CLI 2.118); o leitor aceita JSON e a tabela.
+        // `return await`: sem o await, o finally apagaria a pasta com o CLI ainda rodando nela.
+        return await executarSupabase(
+          [
+            "migration",
+            "list",
+            "--linked",
+            "--workdir",
+            dir,
+            "--output-format",
+            "json",
+          ],
+          { cwd: dir },
+        );
+      } finally {
+        apagarPastaTemporaria(dir);
+      }
     },
     listarFuncoes: async (ref) => {
       if (!RE_REF.test(ref)) throw new Error(`ref inválido ${ref}`);
-      const saida = await rodar(supabase, [
+      const saida = await executarSupabase([
         "functions",
         "list",
         "--project-ref",
@@ -2714,31 +2845,35 @@ export function dependenciasReais({ rodarGh } = {}) {
       if (!RE_REF.test(ref) || !RE_FUNCAO.test(nome))
         throw new Error("ref ou nome inválido");
       const dir = mkdtempSync(path.join(os.tmpdir(), `frota-fn-${nome}-`));
-      mkdirSync(path.join(dir, "supabase"), { recursive: true });
-      // `--use-api`: o `download` padrão (eszip extraído no Docker) passou a
-      // devolver o bundle TRANSPILADO (tipos apagados, código reformatado) e
-      // acusava "difere" em TODA function, até nas que a release não tocou
-      // (07/11/2026, release 1.5.153). Pela API sai o fonte que foi publicado.
-      await rodar(
-        supabase,
-        [
-          "functions",
-          "download",
-          nome,
-          "--project-ref",
-          ref,
-          "--workdir",
-          dir,
-          "--use-api",
-        ],
-        { cwd: dir },
-      );
-      const raiz = path.join(dir, "supabase", "functions");
-      if (!existsSync(raiz)) return [];
-      return listarArquivos(raiz).map((rel) => ({
-        caminho: `supabase/functions/${rel}`,
-        conteudo: readFileSync(path.join(raiz, rel), "utf8"),
-      }));
+      try {
+        mkdirSync(path.join(dir, "supabase"), { recursive: true });
+        // `--use-api`: o `download` padrão (eszip extraído no Docker) passou a
+        // devolver o bundle TRANSPILADO (tipos apagados, código reformatado) e
+        // acusava "difere" em TODA function, até nas que a release não tocou
+        // (07/11/2026, release 1.5.153). Pela API sai o fonte que foi publicado.
+        await executarSupabase(
+          [
+            "functions",
+            "download",
+            nome,
+            "--project-ref",
+            ref,
+            "--workdir",
+            dir,
+            "--use-api",
+          ],
+          { cwd: dir },
+        );
+        const raiz = path.join(dir, "supabase", "functions");
+        if (!existsSync(raiz)) return [];
+        // o conteúdo é lido AQUI, antes do finally: quem chama só vê a memória
+        return listarArquivos(raiz).map((rel) => ({
+          caminho: `supabase/functions/${rel}`,
+          conteudo: readFileSync(path.join(raiz, rel), "utf8"),
+        }));
+      } finally {
+        apagarPastaTemporaria(dir);
+      }
     },
   };
 }
