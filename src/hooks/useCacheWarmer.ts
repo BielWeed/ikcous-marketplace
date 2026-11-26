@@ -78,8 +78,9 @@ export function useCacheWarmer() {
         const faltando = (
           await Promise.all(
             CRITICAL_URLS.map((url) =>
-              cache
-                .match(url)
+              // Promise.resolve().then: erro síncrono de match também cai na busca.
+              Promise.resolve()
+                .then(() => cache.match(url))
                 .then((guardada) => (guardada ? null : url))
                 .catch(() => url),
             ),
