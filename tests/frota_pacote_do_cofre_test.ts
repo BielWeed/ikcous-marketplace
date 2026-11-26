@@ -168,6 +168,13 @@ Deno.test("frase curta ou que não é texto é recusada (cifrar e decifrar)", as
   assertEquals(await decifrar(doze, await cifrar(doze, MAPA)), MAPA);
 });
 
+Deno.test("frase com acento: cifrada em NFD e decifrada em NFC (outro teclado) abre igual", async () => {
+  const nfc = "frase FALSA da ação no coração";
+  const nfd = nfc.normalize("NFD");
+  assertNotEquals(nfd, nfc, "o teste precisa de bytes diferentes");
+  assertEquals(await decifrar(nfc, await cifrar(nfd, MAPA)), MAPA);
+});
+
 Deno.test("mapa que não é objeto de textos é recusado", async () => {
   for (const ruim of [
     null,
