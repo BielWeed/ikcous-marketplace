@@ -73,6 +73,72 @@ Todo comando que muda o estado exige `--sha` = a release que a produção serve 
 
 O valor é o `codeSha`. Se você passar outro, o comando recusa e diz qual é o certo.
 
+## Quando adormecer uma loja de teste que não pagou
+
+- **Quem avisa e quando.** O app de gestão de assinantes mostra a loja no grupo "Testes vencidos
+  sem pagamento", com a frase "fecha em DD/MM (se não houver pedido em aberto)". O dia de fechar é
+  o fim do teste + 3 dias. Antes dele, não se adormece.
+- **Quem roda.** Nesse dia, quem opera (a sessão, por ordem do dono, ou o dono) roda o
+  `--adormecer` da seção seguinte com `--motivo "por <nome>: teste vencido sem pagamento"`.
+- **Antes, conferir que não há pedido em aberto.** O comando não olha os pedidos (ele só fala com
+  a caderneta). Pelo MCP, no banco **da loja** (o `--ref` dela, não o da caderneta), rode esta
+  consulta, só leitura:
+
+```sql
+select status, payment_status, count(*) as pedidos, min(created_at) as mais_antigo
+  from public.marketplace_orders
+ where status not in ('cancelled', 'delivered')
+ group by status, payment_status
+ order by status, payment_status;
+```
+
+"Em aberto" é o mesmo corte do filtro "Em Aberto" da tela de Pedidos do painel
+(`get_admin_orders_paged` com `p_status = 'open'`, migration `20260911000000`): todo pedido que não
+está `cancelled` nem `delivered`. Isso pega o pedido pago ainda não entregue ou retirado
+(`processing`, `shipping` — a retirada pronta também é `shipping`) e o pedido com pagamento
+pendente (`pending` com `payment_status = 'aguardando'`; a reserva vencida vira `cancelled` sozinha
+pelo `expirar_pedidos_vencidos`).
+
+Rode também estas três, no mesmo banco. A consulta de cima não vê o que a loja ainda deve à
+cliente depois que o pedido fecha, e a loja adormecida tira o painel da lojista:
+
+```sql
+-- dinheiro recebido em pedido cancelado que ainda não virou "estornado"
+-- (estorno pedido, em andamento, que falhou ou recusado: olha o resultado, não a etapa)
+select payment_status, count(*) as pedidos, min(created_at) as mais_antigo
+  from public.marketplace_orders
+ where status = 'cancelled'
+   and payment_status in ('pago', 'pago_apos_expirar', 'recebido_na_entrega')
+ group by payment_status
+ order by payment_status;
+```
+
+```sql
+-- devolução que a cliente abriu e ainda não terminou (prazo legal correndo)
+select status, count(*) as devolucoes, min(created_at) as mais_antiga
+  from public.devolucoes
+ where status in ('solicitada', 'aprovada', 'em_transito', 'recebida')
+ group by status
+ order by status;
+```
+
+```sql
+-- reembolso de devolução já concluída que ainda não chegou à cliente
+-- (o pedido segue "delivered" e "pago"; o refund_id aponta sempre o reembolso que vale agora)
+select r.status, count(*) as reembolsos, min(r.created_at) as mais_antigo
+  from public.devolucoes d
+  join public.order_refunds r on r.id = d.refund_id
+ where d.status = 'concluida'
+   and r.status <> 'concluido'
+ group by r.status
+ order by r.status;
+```
+
+- **Nenhuma linha nas quatro:** pode adormecer.
+- **Alguma linha em qualquer uma:** **não adormeça.** Adie até o pedido fechar (entregue, retirado
+  ou cancelado), o dinheiro voltar à cliente e a devolução terminar, e rode as quatro de novo antes
+  de tentar outra vez.
+
 ## Pôr uma loja para dormir
 
 ```powershell

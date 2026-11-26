@@ -181,5 +181,7 @@ Action, não alguém que grave por outro caminho). O hash não abre a porta, mas
 
 No SQL Editor do projeto da loja: `SELECT * FROM public.assinatura_da_loja;`
 — `atualizado_em` mostra a última sincronização. Se estiver velho, o app de gestão
-avisa no topo quando o último envio real de uma loja ativa tem mais de 2 dias; em
+avisa no topo só depois de 6 dias sem envio real de uma loja ativa: quando nada
+mudou, ele reenvia o cartão a cada 5 dias, então 5 dias sem envio é normal e o aviso
+vem no dia seguinte a esse limite. Em
 "Lojas" a frase da loja diz o motivo (por exemplo "chave recusada").
