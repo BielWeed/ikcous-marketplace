@@ -1130,30 +1130,46 @@ async function nuncaNoCaminho(c, url) {
     "ROLLBACK nao deixa anotacao",
   );
 
-  // (f5) custo: 2000 UPDATEs (cada um na sua transacao), desligado x ligado.
+  // (f5) custo: UPDATEs (cada um na sua transacao), desligado x ligado. O runner do CI e compartilhado: uma unica
+  // medida desligado-depois-ligado reprovou em 26/11 (778 us) por ruido da maquina, nao do livro. Por isso 7 rodadas
+  // ALTERNADAS de 400 UPDATEs (desligado, ligado, desligado, ...) e a MEDIANA das diferencas: um pico de carga cai numa
+  // rodada so e nao decide; um livro caro de verdade encarece TODAS as rodadas ligadas e a mediana sobe junto.
   const custo = await cupom(c, "L1510CUSTO");
+  const POR_RODADA = 400;
+  const RODADAS = 7;
   const rodar = async () => {
     const t0 = process.hrtime.bigint();
-    for (let i = 0; i < 2000; i++)
+    for (let i = 0; i < POR_RODADA; i++)
       await c.query(
         "UPDATE public.coupons SET value = value + 1 WHERE id = $1",
         [custo],
       );
-    return Number(process.hrtime.bigint() - t0) / 1000; // microssegundos
+    return Number(process.hrtime.bigint() - t0) / 1000 / POR_RODADA; // microssegundos por UPDATE
   };
+  const ligar = (v) =>
+    c.query(
+      "UPDATE public.livro_de_registro_chave SET ligado = $1 WHERE id = 1",
+      [v],
+    );
   try {
     await rodar(); // aquecimento
-    await c.query(
-      "UPDATE public.livro_de_registro_chave SET ligado = false WHERE id = 1",
-    );
-    const desligado = await rodar();
-    await c.query(
-      "UPDATE public.livro_de_registro_chave SET ligado = true WHERE id = 1",
-    );
-    const ligado = await rodar();
-    const porComando = (ligado - desligado) / 2000;
+    const diferencas = [];
+    const desligados = [];
+    const ligados = [];
+    for (let r = 0; r < RODADAS; r++) {
+      await ligar(false);
+      const desligado = await rodar();
+      await ligar(true);
+      const ligado = await rodar();
+      desligados.push(desligado);
+      ligados.push(ligado);
+      diferencas.push(ligado - desligado);
+    }
+    const mediana = (xs) =>
+      [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+    const porComando = mediana(diferencas);
     console.log(
-      `    custo: desligado ${(desligado / 2000).toFixed(1)} us/UPDATE, ligado ${(ligado / 2000).toFixed(1)} us/UPDATE, diferenca ${porComando.toFixed(1)} us`,
+      `    custo (mediana de ${RODADAS} rodadas alternadas de ${POR_RODADA}): desligado ${mediana(desligados).toFixed(1)} us/UPDATE, ligado ${mediana(ligados).toFixed(1)} us/UPDATE, diferenca ${porComando.toFixed(1)} us [${diferencas.map((d) => d.toFixed(0)).join(", ")}]`,
     );
     assert.ok(
       porComando <= 500,
