@@ -3236,7 +3236,7 @@ for (
 ) {
   Deno.test(`pagar a si mesma: reconhece ${rotulo}`, () => {
     for (const status of [400, 402, 404, 422]) {
-      assertEquals(recusaPorPagarASiMesma(status, corpo), true, `status ${status}`);
+      assertEquals(recusaPorPagarASiMesma(status, corpo, { sandbox: false }), true, `status ${status}`);
     }
   });
 }
@@ -3250,25 +3250,51 @@ for (
     ["payer.email recusado (sem collector)", { errors: [{ code: "property_value", message: "The domain provided in payer.email is not allowed" }] }],
     ["collector_id como CHAVE, não como frase", { message: "invalid access token", collector_id: "conta-1", payer: { email: "a@b.c" } }],
     ["'collector' e 'payer' em frases DIFERENTES", { errors: [{ code: "x", details: ["collector inválido", "payer.email ausente"] }] }],
+    // Ressalva 1 da revisão Opus: collector + payer SEM palavra de identidade
+    // (same/equal/different/igual/mism) não diz "a mesma conta".
+    ["collector + payer sem palavra de identidade", { message: "card token does not belong to the collector of this payer" }],
+    ["collector + customer sem palavra de identidade", { errors: [{ code: "x", details: ["customer not found for this collector"] }] }],
   ] as const
 ) {
   Deno.test(`pagar a si mesma: NÃO reconhece ${rotulo}`, () => {
-    assertEquals(recusaPorPagarASiMesma(400, corpo), false);
+    assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: false }), false);
   });
 }
 
 Deno.test("pagar a si mesma: status de credencial, ambíguo, 5xx, rede e 2xx ficam como hoje, mesmo com o sinal no corpo", () => {
   const corpo = { errors: [{ code: "invalid_users", message: "Invalid users involved" }] };
   for (const status of [0, 200, 201, 401, 403, 408, 409, 423, 429.5, 500, 502, 503]) {
-    assertEquals(recusaPorPagarASiMesma(status, corpo), false, `status ${status}`);
+    assertEquals(recusaPorPagarASiMesma(status, corpo, { sandbox: false }), false, `status ${status}`);
   }
 });
 
 Deno.test("pagar a si mesma: corpo ausente, não-objeto ou lista não reconhece e não lança", () => {
   for (const corpo of [undefined, null, "Invalid users involved", 2062, [], [{ message: "Invalid users involved" }]]) {
-    assertEquals(recusaPorPagarASiMesma(400, corpo), false, String(corpo));
+    assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: false }), false, String(corpo));
   }
   // Campos com tipo errado são ignorados, nunca lançam.
-  assertEquals(recusaPorPagarASiMesma(400, { errors: "x", cause: 3, message: 7 }), false);
-  assertEquals(recusaPorPagarASiMesma(400, { errors: [null, 3, { details: [null, 5] }], cause: [null, "x"] }), false);
+  assertEquals(recusaPorPagarASiMesma(400, { errors: "x", cause: 3, message: 7 }, { sandbox: false }), false);
+  assertEquals(recusaPorPagarASiMesma(400, { errors: [null, 3, { details: [null, 5] }], cause: [null, "x"] }, { sandbox: false }), false);
+});
+
+// Ressalva 2 da revisão Opus: com MP_SANDBOX_PAYER_EMAIL ligada, o pagador é
+// um usuário de TESTE — "Invalid users involved" ali é, pela doc (145/2034),
+// a mistura teste/real, não a mesma conta. Fica a frase genérica de hoje.
+Deno.test("pagar a si mesma: em sandbox, 'Invalid users involved' NÃO reconhece (a causa provável é teste misturado com real)", () => {
+  for (
+    const corpo of [
+      { errors: [{ code: "invalid_users", message: "Invalid users involved" }] },
+      { message: "Invalid users involved.", cause: [{ code: 2034 }] },
+      { errors: [{ code: "invalid_users", details: ["invalid users involved"] }] },
+    ]
+  ) {
+    assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: true }), false, JSON.stringify(corpo));
+    assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: false }), true, JSON.stringify(corpo));
+  }
+});
+
+Deno.test("pagar a si mesma: em sandbox, a frase EXPLÍCITA de mesma conta (collector + payer + same) continua reconhecida", () => {
+  const corpo = { message: "Payer and collector cannot be the same user" };
+  assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: true }), true);
+  assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: false }), true);
 });

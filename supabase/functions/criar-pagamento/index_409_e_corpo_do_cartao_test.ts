@@ -83,7 +83,7 @@ function bancoComUmPedido() {
   };
 }
 
-async function criarPix(respostaDoPost: () => Response) {
+async function criarPix(respostaDoPost: () => Response, opcoes: { sandbox?: string } = {}) {
   const banco = bancoComUmPedido();
   const chamadas: string[] = [];
   const fetchImpl = (entrada: string | URL | Request, init?: RequestInit) => {
@@ -99,6 +99,9 @@ async function criarPix(respostaDoPost: () => Response) {
   console.log = () => {};
   console.warn = () => {};
   console.error = () => {};
+  const sandboxAntes = Deno.env.get("MP_SANDBOX_PAYER_EMAIL");
+  if (opcoes.sandbox !== undefined) Deno.env.set("MP_SANDBOX_PAYER_EMAIL", opcoes.sandbox);
+  else Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
   try {
     const resposta = await handler(
       new Request("http://localhost/criar-pagamento", {
@@ -114,6 +117,8 @@ async function criarPix(respostaDoPost: () => Response) {
     );
     return { status: resposta.status, corpo: await resposta.json(), chamadas, banco };
   } finally {
+    if (sandboxAntes === undefined) Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+    else Deno.env.set("MP_SANDBOX_PAYER_EMAIL", sandboxAntes);
     console.log = consolePrev.log;
     console.warn = consolePrev.warn;
     console.error = consolePrev.error;
@@ -199,6 +204,41 @@ for (
     assertEquals(r.banco.linha.gateway_payment_id, null);
   });
 }
+
+// Ressalva 2 da revisão Opus: com MP_SANDBOX_PAYER_EMAIL ligada o pagador é um
+// usuário de TESTE, e "Invalid users involved" ali é a mistura teste/real — a
+// frase genérica de hoje, não a de "mesma conta". Os dois lados.
+Deno.test("PIX sandbox LIGADO: 400 'Invalid users involved' -> 502 com a frase genérica de hoje", async () => {
+  const r = await criarPix(
+    () => resp(400, { errors: [{ code: "invalid_users", message: "Invalid users involved" }] }),
+    { sandbox: "test_payer_123@testuser.com" },
+  );
+  assertEquals(r.status, 502);
+  assertEquals(r.corpo.error, FRASE_GENERICA_DA_CRIACAO);
+  assertEquals(r.corpo.terminal, undefined);
+  assertEquals(r.banco.linha.gateway_payment_id, null);
+});
+
+Deno.test("PIX sandbox LIGADO: a frase EXPLÍCITA de mesma conta (payer + collector + same) continua dando a frase nova", async () => {
+  const r = await criarPix(
+    () => resp(400, { message: "Payer and collector cannot be the same user" }),
+    { sandbox: "test_payer_123@testuser.com" },
+  );
+  assertEquals(r.status, 502);
+  assertEquals(r.corpo.error, FRASE_PAGAR_A_SI_MESMA);
+});
+
+Deno.test("PIX sandbox DESLIGADO (contraste): o MESMO 400 'Invalid users involved' -> frase de pagar a si mesma", async () => {
+  const r = await criarPix(() => resp(400, { errors: [{ code: "invalid_users", message: "Invalid users involved" }] }));
+  assertEquals(r.status, 502);
+  assertEquals(r.corpo.error, FRASE_PAGAR_A_SI_MESMA);
+});
+
+Deno.test("PIX CONTROLE: 400 'card token does not belong to the collector of this payer' (sem identidade) -> frase genérica", async () => {
+  const r = await criarPix(() => resp(400, { message: "card token does not belong to the collector of this payer" }));
+  assertEquals(r.status, 502);
+  assertEquals(r.corpo.error, FRASE_GENERICA_DA_CRIACAO);
+});
 
 // ── validarCorpoDoCartao ─────────────────────────────────────────────────────
 

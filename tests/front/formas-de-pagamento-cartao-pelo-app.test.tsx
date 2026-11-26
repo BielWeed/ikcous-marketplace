@@ -51,7 +51,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // mesma conta que recebe — o Mercado Pago recusa, e a lojista concluía que o
 // app não funciona. O aviso manda outro e-mail na loja e outra conta pagando.
 const TESTE_ANTES =
-  "Ao ligar, o cartão já aparece para todos os clientes. Para conferir, faça uma compra de valor baixo e devolva o valor depois, no Mercado Pago. Atenção: o Mercado Pago não deixa a mesma conta pagar e receber. Por isso, entre na loja com outro e-mail (não o da sua conta do Mercado Pago) e pague com outra conta, por exemplo a de alguém da sua família. Cartão de teste só funciona com a chave de teste; com a chave de produção ele é recusado.";
+  "Ao ligar, o cartão já aparece para todos os clientes. Para conferir, faça uma compra de valor baixo e devolva o valor depois, no Mercado Pago. Atenção: o Mercado Pago não deixa a mesma conta pagar e receber. O Mercado Pago compara a conta de quem paga, que é ligada ao e-mail: por isso, entre na loja com OUTRO e-mail, que não seja o da sua conta do Mercado Pago. Cartão de teste só funciona com a chave de teste; com a chave de produção ele é recusado.";
 
 describe("Formas de pagamento — Cartão pelo app", () => {
   let raiz: Root;
@@ -145,6 +145,12 @@ describe("Formas de pagamento — Cartão pelo app", () => {
     expect(hospedeiro.textContent).not.toContain("com um cartão seu");
     expect(hospedeiro.textContent).toContain(
       "o Mercado Pago não deixa a mesma conta pagar e receber",
+    );
+    // Ressalva 3 da revisão Opus: o que o MP compara é a conta do pagador (o
+    // e-mail), não o cartão — nada de empurrar o cartão de outra pessoa.
+    expect(hospedeiro.textContent).toContain("entre na loja com OUTRO e-mail");
+    expect(hospedeiro.textContent).not.toMatch(
+      /família|cartão de outra pessoa/i,
     );
     // Não manda mais fazer "pedido de teste antes de ligar": o interruptor liga
     // para a loja inteira e o cartão de teste é recusado com chave de produção.

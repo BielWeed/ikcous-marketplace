@@ -5506,6 +5506,64 @@ for (
   });
 }
 
+// Ressalva 2 da revisão Opus: sandbox ligado (MP_SANDBOX_PAYER_EMAIL) ->
+// "Invalid users involved" é a mistura teste/real; a frase genérica de hoje.
+// O desligado é o caso "400 'Invalid users involved'" logo acima.
+for (const status of [400, 422]) {
+  Deno.test(`handler cartão sandbox LIGADO: ${status} 'Invalid users involved' -> 502 com a frase genérica de hoje, reserva solta`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao();
+    Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "test_payer_123@testuser.com");
+    try {
+      const mp = fetchMP({ criar: { status, corpo: CORPO_USUARIOS_INVALIDOS } });
+      const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+        supabase,
+        fetchImpl: mp.fn,
+      });
+      const corpo = await resposta.json();
+
+      assertEquals(resposta.status, 502);
+      assertEquals(corpo.error, "Não foi possível gerar a cobrança.");
+      assertEquals(corpo.cartaoEmAnalise, undefined);
+      assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: sentinelaDaReserva(registro) }]);
+    } finally {
+      Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+    }
+  });
+}
+
+Deno.test("handler cartão sandbox LIGADO: a frase EXPLÍCITA de mesma conta continua dando a frase nova", async () => {
+  const { supabase } = cenarioCartao();
+  Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "test_payer_123@testuser.com");
+  try {
+    const mp = fetchMP({ criar: { status: 400, corpo: { message: "Payer and collector cannot be the same user" } } });
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 502);
+    assertEquals(corpo.error, FRASE_PAGAR_A_SI_MESMA);
+  } finally {
+    Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  }
+});
+
+Deno.test("handler cartão CONTROLE: 400 'card token does not belong to the collector of this payer' -> frase genérica", async () => {
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP({
+    criar: { status: 400, corpo: { message: "card token does not belong to the collector of this payer" } },
+  });
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(corpo.error, "Não foi possível gerar a cobrança.");
+});
+
 Deno.test("handler cartão: token, CPF e e-mail NUNCA aparecem em log nem na resposta — nem na recusa 402 cujo corpo traz o pagador", async () => {
   const { supabase } = cenarioCartao({
     pedido: pedidoBase({ user_id: DONO_LOGADO, customer_data: { email: "titular@exemplo.com" } }),

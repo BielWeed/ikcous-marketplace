@@ -2938,6 +2938,9 @@ async function handler(
   // TITULAR digitado no formulário do Brick, e forçar o pagador aqui
   // misturaria as duas coisas.
   const nomePagadorSandbox = emailPagadorSandbox ? "APRO" : undefined;
+  // Pagar a si mesma: em sandbox o pagador é usuário de TESTE, e "Invalid
+  // users involved" ali é a mistura teste/real — ver `recusaPorPagarASiMesma`.
+  const emSandbox = emailPagadorSandbox !== undefined;
   if (emailPagadorSandbox) {
     // ANOTADO 1 da revisão: sem log, ligar esta variável num deploy de
     // PRODUÇÃO troca o e-mail do cliente em SILÊNCIO — nada quebra alto,
@@ -3029,7 +3032,7 @@ async function handler(
         });
       }
       if (!r.ok) {
-        if (recusaPorPagarASiMesma(r.status, r.corpoDoErro)) return respostaPagarASiMesma();
+        if (recusaPorPagarASiMesma(r.status, r.corpoDoErro, { sandbox: emSandbox })) return respostaPagarASiMesma();
         return json({ error: r.erro }, 502);
       }
     }
@@ -3584,7 +3587,7 @@ async function handler(
         // BLINDAGEM (02/10/2026): com a reserva antes do POST, "vaga livre"
         // virou "sentinela desta chamada" — é ele que sai aqui.
         await soltarReservaDestaChamada();
-        if (recusaPorPagarASiMesma(r.status, r.corpoDoErro)) return respostaPagarASiMesma();
+        if (recusaPorPagarASiMesma(r.status, r.corpoDoErro, { sandbox: emSandbox })) return respostaPagarASiMesma();
         return json({ error: r.erro }, 502);
       }
       // Achado R6-P5 (7ª revisão de risco, 26/09/2026): REDE (status 0),
@@ -3628,7 +3631,7 @@ async function handler(
       // REQUISIÇÃO inteira — nada criado. Sem soltar a reserva, o pedido
       // ficaria preso em "cartão em análise" sem cobrança nenhuma.
       await soltarReservaDestaChamada();
-      if (recusaPorPagarASiMesma(r.status, r.corpoDoErro)) return respostaPagarASiMesma();
+      if (recusaPorPagarASiMesma(r.status, r.corpoDoErro, { sandbox: emSandbox })) return respostaPagarASiMesma();
       return json({ error: r.erro }, 502);
     }
 
