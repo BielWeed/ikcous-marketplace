@@ -36,8 +36,8 @@ Plano de origem: `PLANO-RESERVA-DA-CADERNETA-26-11.md` (T12 e T13). Scripts:
 
   Troque só o texto `COLE-AQUI-O-SHA` pelo valor que o agente mandou, **mantendo os apóstrofos** (`'`), e aperte
   Enter. Os comandos seguintes usam `$sha` sozinhos; não mexa neles. A caixinha vale enquanto a janela do
-  PowerShell estiver aberta: se fechar a janela, preencha de novo. Se esquecer de trocar o texto, o comando recusa e
-  nada acontece. Não invente esses valores: o agente manda cada um.
+  PowerShell estiver aberta: se fechar a janela, preencha de novo. Se esquecer de trocar o texto, os scripts do
+  IKCOUS recusam; o `vercel` NÃO recusa, então confira a caixinha antes de cada deploy. Não invente esses valores: o agente manda cada um.
 - **Nunca copie o token nem a "connection string"** da Global Config (o texto que começa com
   `https://global-config.vercel.com/...?token=`). Esse texto é segredo: não cole em conversa, arquivo nem commit. O
   **ID** da store (começa com `ecfg_`) não é segredo.
