@@ -409,6 +409,8 @@ on:
           - 188a-conferir-o-livro-de-registro-aplicado
           - 188b-antes-o-livro-de-registro-ausente
           - 188m-medir-o-volume-para-o-livro-de-registro
+          - 191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado
+          - 191b-antes-a-loja-nova-nasce-com-a-ficha-ausente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

@@ -3470,9 +3470,28 @@ const ROL_DA_187B = [
   "saude_da_loja: ainda NAO existe (nenhuma funcao com esse nome em public)",
   "os papeis anon, authenticated e service_role existem (a base que o pre-voo exige)",
 ];
+// Lote 191 (20261540000000, a loja nova nasce com a ficha: INSERT da linha id = 1 de store_config com ON CONFLICT DO NOTHING e a MARCA no
+// catalogo, o comentario 'ficha_da_loja_20261540000000' da tabela). A 191a prova a marca E a ficha (4 itens): na IKCOUS e na Savy a linha ja
+// existia, entao so a marca distingue o antes do depois. A 191b prova a base do pre-voo (chave em id, NOT NULL com default, comentario NULL) e
+// traz uma linha INFORMATIVA (a ficha ja existe? esperado = vivo, nunca reprova; molde da 111a) (5 itens).
+const ROL_DA_191A = [
+  "controle: catalogo publico visivel",
+  "store_config: o comentario da tabela e a marca desta migration (ficha_da_loja_20261540000000)",
+  "store_config: a ficha (linha id = 1) existe",
+  "v_store_config: a leitura publica devolve exatamente 1 linha (a que o porteiro e a identidade leem)",
+];
+const ROL_DA_191B = [
+  "controle: catalogo publico visivel",
+  "store_config: a tabela existe com chave primaria ou unica exatamente em (id) (o alvo do ON CONFLICT)",
+  "store_config: toda coluna NOT NULL alem de id tem default (o INSERT so com id nao falha)",
+  "store_config: o comentario da tabela ainda e NULL (a marca desta migration ainda NAO existe, nem outro comentario)",
+  "informativo: a ficha (linha id = 1 de store_config) ja existe antes do apply",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "188a-conferir-o-livro-de-registro-aplicado": ROL_DA_188A,
   "188b-antes-o-livro-de-registro-ausente": ROL_DA_188B,
+  "191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado": ROL_DA_191A,
+  "191b-antes-a-loja-nova-nasce-com-a-ficha-ausente": ROL_DA_191B,
   "187a-conferir-a-saude-da-reconciliacao-aplicado": ROL_DA_187A,
   "187b-antes-a-saude-da-reconciliacao-ausente": ROL_DA_187B,
   "186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado": ROL_DA_186A,

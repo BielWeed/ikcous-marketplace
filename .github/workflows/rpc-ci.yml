@@ -336,6 +336,8 @@ on:
       - "scripts/publicacao/consultas/188a-conferir-o-livro-de-registro-aplicado.sql"
       - "scripts/publicacao/consultas/188b-antes-o-livro-de-registro-ausente.sql"
       - "scripts/publicacao/consultas/188m-medir-o-volume-para-o-livro-de-registro.sql"
+      - "scripts/publicacao/consultas/191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado.sql"
+      - "scripts/publicacao/consultas/191b-antes-a-loja-nova-nasce-com-a-ficha-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -644,6 +646,8 @@ on:
       - "scripts/publicacao/consultas/188a-conferir-o-livro-de-registro-aplicado.sql"
       - "scripts/publicacao/consultas/188b-antes-o-livro-de-registro-ausente.sql"
       - "scripts/publicacao/consultas/188m-medir-o-volume-para-o-livro-de-registro.sql"
+      - "scripts/publicacao/consultas/191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado.sql"
+      - "scripts/publicacao/consultas/191b-antes-a-loja-nova-nasce-com-a-ficha-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1639,6 +1643,14 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         timeout-minutes: 3
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-livro-de-registro-desfazer-ensaio-viva.cjs
+      # Migration 20261540000000 (a loja nova nasce com a ficha): INSERT da linha id = 1 de store_config (ON CONFLICT DO NOTHING) e a marca
+      # no catalogo (comentario ficha_da_loja_20261540000000). Num banco recem-montado pela fila: a ficha existe, v_store_config devolve 1 linha,
+      # como anon e authenticated (o porteiro e a identidade) e forma_de_pagamento_aceita(pix) e true; loja que JA tinha a ficha fica byte a byte;
+      # loja sem a ficha ganha a linha com os defaults; reaplicar 2x (LF e CRLF) nao muda nada; rollback (2x) tira so a marca e mantem a
+      # ficha; pre-voo recusa comentario alheio, coluna NOT NULL sem default e chave fora de id sem escrever; consultas 191a/191b EXECUTADAS.
+      - name: Prova viva da loja nova que nasce com a ficha (migration 20261540000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nova-nasce-com-a-ficha-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam
