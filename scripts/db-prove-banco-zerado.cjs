@@ -171,6 +171,14 @@ const EXCECOES_DE_PROVISIONAMENTO = {
     /can only create extension in database postgres|schema "cron" does not exist|function cron\./i,
 };
 
+/** Tag de dollar-quote do Postgres: abre com letra/`_` (ou code point
+ * ≥ U+0080) e continua com dígito também (`$preflight_2026$`); vazia é
+ * `$$`; `$1` é parâmetro, nunca tag. Mesmo padrão de PADRAO_TAG_DOLLAR_QUOTE
+ * em scripts/ci/banco/util.cjs. */
+const PADRAO_TAG_DOLLAR_QUOTE =
+  // eslint-disable-next-line security/detect-unsafe-regex -- um quantificador só, sem aninhamento; entrada é .sql local, nunca rede.
+  /^\$((?:[A-Za-z_]|\P{ASCII})(?:[A-Za-z0-9_]|\P{ASCII})*)?\$/u;
+
 /** UMA passada única, na ordem de leitura: comentários (-- até o fim da linha,
  * barra-estrela até o fechamento), strings '...' com escape '' e
  * dollar-quoting $tag$...$tag$ ficam OPACOS; só o que sobra é código. Depois
@@ -211,7 +219,7 @@ function comandosNoNivelDeInstrucao(arquivo) {
       continue;
     }
     if (texto[i] === "$") {
-      const m = /^\$[A-Za-z_]*\$/.exec(restante);
+      const m = PADRAO_TAG_DOLLAR_QUOTE.exec(restante);
       if (m) {
         const fim = texto.indexOf(m[0], i + m[0].length);
         i = fim === -1 ? texto.length : fim + m[0].length;

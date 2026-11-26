@@ -241,6 +241,16 @@ async function aplicarComProvisionamento(cliente, nome, texto) {
   }
 }
 
+/** Tag de dollar-quote do Postgres: segue a regra do identificador sem aspas
+ * (sem o `$`) — abre com letra/`_` (ou qualquer code point ≥ U+0080) e
+ * continua com dígito também; vazia é `$$`. `$1` é parâmetro, nunca tag. O
+ * regex antigo (`[A-Za-z_]*`) recusava `$preflight_20261460000000$` e o corpo
+ * da função vazava como código. Mesmo padrão de PADRAO_TAG_DOLLAR_QUOTE em
+ * scripts/publicacao/conferir-banco.cjs. */
+const PADRAO_TAG_DOLLAR_QUOTE =
+  // eslint-disable-next-line security/detect-unsafe-regex -- grupo com um quantificador só, sem aninhamento; entrada é um .sql local, nunca rede.
+  /^\$((?:[A-Za-z_]|\P{ASCII})(?:[A-Za-z0-9_]|\P{ASCII})*)?\$/u;
+
 /**
  * UMA passada única, na ordem de leitura: comentários (-- até o fim da linha,
  * barra-estrela até o fechamento), strings '...' com escape '' e
@@ -281,7 +291,7 @@ function codigoSemLiteral(texto) {
       continue;
     }
     if (texto[i] === "$") {
-      const m = /^\$[A-Za-z_]*\$/.exec(restante);
+      const m = PADRAO_TAG_DOLLAR_QUOTE.exec(restante);
       if (m) {
         const fim = texto.indexOf(m[0], i + m[0].length);
         i = fim === -1 ? texto.length : fim + m[0].length;
