@@ -36,6 +36,7 @@ import {
 import { ehPaginaContavel } from "./contador";
 import { montarDataBlock } from "./ficha";
 import { buscarIdsDosProdutos, robotsTxt, sitemapXml } from "./mapaDoSite";
+import { deployDoHtml, idDoDeploy } from "./marcaDoDeploy";
 
 // ─── Matcher: só DOCUMENTOS invocam o porteiro ─────────────────────────────
 //
@@ -178,6 +179,10 @@ export interface AmbientePorteiro {
    * adormecida/encerrada. Só vira link se for uma URL `https:` válida;
    * ausente ou qualquer outra coisa = a frase sai sem link. */
   readonly IKCOUS_LINK_ACORDAR?: string;
+  /** Variável de sistema da Vercel (build E runtime): o id deste deploy. O
+   * porteiro só guarda em memória o `/index.html` marcado com ele (ver
+   * `src/hospedagem/marcaDoDeploy.ts`). Ausente = nunca guarda. */
+  readonly VERCEL_DEPLOYMENT_ID?: string;
 }
 
 export interface ConexaoResolvida {
@@ -1095,6 +1100,12 @@ export interface DependenciasPorteiro {
   /** `Map` de modulo em `middleware.ts` (um por isolate). Opcional: sem ele
    * (teste, chamada avulsa) cada primeira visita le o banco. */
   readonly cacheCartaz?: Map<string, EntradaCacheCartaz>;
+  /** O `/index.html` CRU por endereço, 5 min (`Map` de modulo em
+   * `middleware.ts`). Opcional: sem ele, cada documento busca o arquivo. */
+  readonly cacheIndexHtml?: Map<string, EntradaCacheIndexHtml>;
+  /** Buscas do `/index.html` em andamento por endereço: pedidos simultâneos
+   * esperam a MESMA busca. Opcional: sem ele, cada pedido busca sozinho. */
+  readonly indexHtmlEmVoo?: Map<string, Promise<IndexHtmlBaixado>>;
   readonly resolverNaCaderneta?: ResolverLojaNaCaderneta;
   /** Injetável só para teste; produção usa `readPublicStoreIdentity` real. */
   readonly lerIdentidade?: typeof readPublicStoreIdentity;
@@ -1572,6 +1583,14 @@ function iconesManifestParaUrls(
   ];
 }
 
+/** O navegador pede o manifesto a cada página aberta; cada pedido é uma
+ * invocação do porteiro e um pedido na CDN (lote C do plano "primeira visita
+ * leve", 26/11/2026). 5 min no cache do PRÓPRIO navegador (`private`: nunca
+ * numa cache compartilhada, o manifesto muda por host): a marca nova da loja
+ * chega em até 5 min. Loja em manutenção segue `no-store`, para a volta dela
+ * aparecer no próximo pedido. */
+export const CACHE_CONTROL_DO_MANIFESTO = "private, max-age=300";
+
 /**
  * Monta o manifest inteiramente A PARTIR DA FICHA, sem self-fetch de
  * `/manifest.webmanifest` (correção do achado 4 da revisão: esse caminho
@@ -1597,7 +1616,9 @@ function atenderManifest(
   return new Response(JSON.stringify(manifest), {
     headers: {
       "content-type": "application/manifest+json; charset=utf-8",
-      "cache-control": "no-store",
+      "cache-control": ficha.configuracao.manutencao
+        ? "no-store"
+        : CACHE_CONTROL_DO_MANIFESTO,
       "x-ikcous-porteiro": "ok",
       "x-ikcous-caderneta": caderneta,
     },
@@ -1940,7 +1961,7 @@ export async function atenderPorteiro(
     estadoCaderneta,
     deps,
     {},
-    { cartaz },
+    { cartaz, deploy: ambiente.VERCEL_DEPLOYMENT_ID },
   );
   // Só conta o que a pessoa de fato recebeu: documento 200 (503 de manutenção
   // do porteiro e `html-indisponivel` ficam de fora), de uma página da loja
@@ -2177,6 +2198,95 @@ async function cartazDaLoja(
   }
 }
 
+// ─── O /index.html em memória (lote C do plano "primeira visita leve",
+// 26/11/2026) ───────────────────────────────────────────────────────────────
+//
+// Todo documento fazia um self-fetch do `/index.html` estático (`no-store` no
+// `vercel.json`): um pedido a mais na CDN da Vercel por página aberta. Agora
+// a instância guarda o arquivo por 5 min. SUPOSIÇÕES DE ESTADO, em voz alta:
+//   - Guarda o HTML CRU, ANTES de qualquer injeção. A ficha
+//     (`injetarFichaNoHtml`) e o cartaz continuam montados a CADA pedido, com
+//     a ficha validada daquele host: o que muda entre lojas nunca entra no
+//     cache.
+//   - Chave = o endereço EXATO do self-fetch (`origin` do pedido +
+//     `/index.html`: protocolo, host e porta). Dois hosts nunca dividem uma
+//     entrada, nem quando o arquivo de um deploy é o mesmo para todos. O
+//     `cookie` repassado fica FORA da chave: o arquivo estático não varia por
+//     ele, e o porteiro só roda depois da Deployment Protection da Vercel.
+//   - Só entra o HTML DESTE deploy (ressalva do revisor, PR #1910): a marca
+//     `<meta name="ikcous-deploy">` gravada pelo build tem de ser igual ao
+//     `VERCEL_DEPLOYMENT_ID` do runtime. O self-fetch vai ao domínio público,
+//     que numa troca de domínio ou rollback pode servir o HTML de OUTRO deploy
+//     (com `/assets/` que este não serve); esse HTML sai como antes, só não é
+//     guardado. Sem variável, sem marca ou marca diferente = não guarda.
+//   - Só 200 entra. 404/5xx/rede caindo nunca ficam guardados: o próximo
+//     pedido busca de novo (e o de agora segue a regra de sempre: 503
+//     `html-indisponivel`, ou a exceção da rede).
+//   - Pedidos simultâneos do mesmo endereço esperam a MESMA busca
+//     (`indexHtmlEmVoo`); a entrada sai quando ela termina, com ou sem erro.
+//   - Deploy novo: a instância nova nasce com o `Map` vazio, e a antiga deixa
+//     de receber o host quando o domínio passa para o deploy novo. O relógio
+//     da entrada é o INÍCIO da busca, então nenhum HTML é servido mais de
+//     5 min depois de ter sido pedido à CDN.
+//   - Idempotente: repetir o pedido repete o resultado; nenhuma escrita além
+//     do `Map` da instância (teto `TETO_ENTRADAS_CACHE`).
+
+/** O `/index.html` guardado por até 5 min (ver acima). */
+export const CACHE_INDEX_HTML_MS = 300_000;
+
+/** O `/index.html` CRU de um endereço, guardado por `origin` + caminho. */
+export interface EntradaCacheIndexHtml {
+  readonly html: string;
+  readonly quando: number;
+}
+
+/** O que a busca do `/index.html` deu: `html` só existe com 200. */
+export interface IndexHtmlBaixado {
+  readonly status: number;
+  readonly html: string | null;
+}
+
+/** O `/index.html` do endereço deste pedido: do cache, da busca em voo, ou
+ * da CDN. Rejeita só se a própria busca rejeitar (como antes). */
+async function baixarIndexHtml(
+  request: Request,
+  deps: Pick<
+    DependenciasPorteiro,
+    "fetchImpl" | "agora" | "cacheIndexHtml" | "indexHtmlEmVoo"
+  >,
+  deployDoRuntime: string | undefined,
+): Promise<IndexHtmlBaixado> {
+  const endereco = new URL("/index.html", request.url);
+  const chave = endereco.href;
+  const agora = (deps.agora ?? Date.now)();
+  const guardado = deps.cacheIndexHtml?.get(chave);
+  if (guardado && agora - guardado.quando < CACHE_INDEX_HTML_MS)
+    return { status: 200, html: guardado.html };
+  const emVoo = deps.indexHtmlEmVoo?.get(chave);
+  if (emVoo) return emVoo;
+
+  const busca = (async (): Promise<IndexHtmlBaixado> => {
+    const resposta = await deps.fetchImpl(endereco, {
+      headers: { cookie: request.headers.get("cookie") ?? "" },
+    });
+    if (resposta.status !== 200) return { status: resposta.status, html: null };
+    const html = await resposta.text();
+    const deste = idDoDeploy(deployDoRuntime);
+    if (deste !== null && deployDoHtml(html) === deste)
+      guardarComTeto(deps.cacheIndexHtml, chave, { html, quando: agora });
+    return { status: 200, html };
+  })();
+  const emAndamento = deps.indexHtmlEmVoo;
+  if (emAndamento) {
+    emAndamento.set(chave, busca);
+    const sair = () => {
+      if (emAndamento.get(chave) === busca) emAndamento.delete(chave);
+    };
+    busca.then(sair, sair);
+  }
+  return busca;
+}
+
 /**
  * O documento da loja daquele endereço: baixa o `/index.html` estático do
  * build, injeta a ficha JÁ VALIDADA (`injetarFichaNoHtml`) e responde. É o
@@ -2195,22 +2305,26 @@ export async function documentoDaLoja(
   request: Request,
   ficha: FichaDaLoja,
   estadoCaderneta: EstadoCaderneta,
-  deps: Pick<DependenciasPorteiro, "fetchImpl" | "cacheCartaz" | "agora">,
+  deps: Pick<
+    DependenciasPorteiro,
+    "fetchImpl" | "cacheCartaz" | "agora" | "cacheIndexHtml" | "indexHtmlEmVoo"
+  >,
   extras: Readonly<Record<string, string>> = {},
-  opcoes: { readonly cartaz?: boolean } = {},
+  opcoes: {
+    readonly cartaz?: boolean;
+    /** O `VERCEL_DEPLOYMENT_ID` do runtime: só com ele o HTML é guardado. */
+    readonly deploy?: string;
+  } = {},
 ): Promise<Response> {
   // `opcoes.cartaz` só EXECUTA a decisão de `atenderPorteiro` (o robô de prévia
   // não passa `opcoes`). A leitura corre junto com o documento e nunca rejeita.
-  const [respostaHtml, cartaz] = await Promise.all([
-    deps.fetchImpl(new URL("/index.html", request.url), {
-      headers: { cookie: request.headers.get("cookie") ?? "" },
-    }),
+  const [indexHtml, cartaz] = await Promise.all([
+    baixarIndexHtml(request, deps, opcoes.deploy),
     opcoes.cartaz === true ? cartazDaLoja(ficha, deps) : Promise.resolve(null),
   ]);
-  if (respostaHtml.status !== 200)
+  if (indexHtml.html === null)
     return respostaManutencao("html-indisponivel", estadoCaderneta);
-  const html = await respostaHtml.text();
-  const injetado = injetarFichaNoHtml(html, ficha);
+  const injetado = injetarFichaNoHtml(indexHtml.html, ficha);
   const comCartaz =
     cartaz === null ? null : injetarCartazNoHtml(injetado, cartaz);
   const cabecalhos = {

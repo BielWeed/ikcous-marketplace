@@ -7,9 +7,11 @@ import type {
   AmbientePorteiro,
   EntradaCacheCartaz,
   EntradaCacheForaDoAr,
+  EntradaCacheIndexHtml,
   EntradaCacheMapa,
   EntradaCachePorteiro,
   EntradaCacheSemLoja,
+  IndexHtmlBaixado,
   ResolucaoEmVoo,
   ResolverLojaNaCaderneta,
 } from "./src/hospedagem/porteiro";
@@ -111,6 +113,13 @@ const cacheMapaDoSite = new Map<string, EntradaCacheMapa>();
 // Banners do topo por loja (15 s; falha 10 s), para o cartaz pré-impresso da
 // 1ª visita: ver `CACHE_CARTAZ_FRESCO_MS` no porteiro. Chave `host|supabaseUrl`.
 const cacheCartazDaLoja = new Map<string, EntradaCacheCartaz>();
+
+// O `/index.html` CRU por endereço (5 min, só 200) e as buscas dele em voo:
+// um self-fetch à CDN a cada 5 min por host, não um por página aberta. A ficha
+// e o cartaz continuam injetados a cada pedido: ver `CACHE_INDEX_HTML_MS` no
+// porteiro.
+const cacheIndexHtml = new Map<string, EntradaCacheIndexHtml>();
+const indexHtmlEmVoo = new Map<string, Promise<IndexHtmlBaixado>>();
 
 // Contador de visitas da loja (spec "visitas da loja", 02/11/2026): lojas cujo
 // banco ainda nao tem `contar_entrada` (404) ficam 10 min caladas, por
@@ -637,6 +646,8 @@ export default async function middleware(
     waitUntil,
     cacheMapa: cacheMapaDoSite,
     cacheCartaz: cacheCartazDaLoja,
+    cacheIndexHtml,
+    indexHtmlEmVoo,
     // Pessoa abrindo a loja (ou previa de link) -> uma entrada no banco DESTA
     // loja. Quem decide se o pedido conta e' `classificarEntrada`.
     contarEntrada:
