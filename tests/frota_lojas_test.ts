@@ -399,6 +399,200 @@ Deno.test("CLI exigir-segredo: só o token DA LOJA conta, a mensagem de parada �
 });
 
 // ---------------------------------------------------------------------------
+// A marca `acesso: "oauth"` (plano do portão OAuth, T1, 26/11/2026): a loja
+// aberta pelo nova-loja só tem acesso OAuth (refresh no cofre do PC do dono). O
+// campo só vale em assinante, o único valor escrito é "oauth", e sem ele a
+// normalização devolve "cli" — IKCOUS, Savy e os alvos de teste seguem iguais.
+// ---------------------------------------------------------------------------
+const NOVA_OAUTH = "loja-oauth-xyz";
+const REF_OAUTH = "zyxwvutsrqponmlkjihg";
+const SEGREDO_OAUTH = "SUPABASE_ACCESS_TOKEN_LOJA_OAUTH_XYZ";
+/** O cadastro de hoje + uma loja OAuth nova (sem `comAcesso`, a mesma loja sem o campo). */
+function jsonComLojaOAuth(comAcesso = true) {
+  const j = jsonDeHoje();
+  j.lojas[NOVA_OAUTH] = {
+    ref: REF_OAUTH,
+    classe: "assinante",
+    apelido: "Loja OAuth",
+    segredoDoToken: SEGREDO_OAUTH,
+    functionsNomeadas: true,
+    ...(comAcesso ? { acesso: "oauth" } : {}),
+  };
+  return j;
+}
+const msgDe = (j: any) => {
+  try {
+    lojasMod.validarCadastro(j);
+  } catch (e) {
+    return e.message;
+  }
+  return "";
+};
+
+Deno.test("acesso: 'oauth' vale numa loja assinante e sai na normalização", () => {
+  const cad = lojasMod.validarCadastro(jsonComLojaOAuth());
+  assertEquals(cad.lojas[NOVA_OAUTH].acesso, "oauth");
+  assert(Object.isFrozen(cad.lojas[NOVA_OAUTH]));
+});
+
+Deno.test("acesso: recusado em loja legado (o legado divide o segredo e lê pelo CLI)", () => {
+  const j = jsonDeHoje();
+  j.lojas.loja.acesso = "oauth";
+  assertStringIncludes(msgDe(j), "loja: acesso só existe em assinante");
+  const k = jsonDeHoje();
+  k.lojas.sandbox.acesso = "cli";
+  assertStringIncludes(msgDe(k), "sandbox: acesso só existe em assinante");
+});
+
+Deno.test("acesso: qualquer valor fora de 'oauth' é recusado — inclusive 'cli' escrito à mão", () => {
+  for (const ruim of [
+    "cli",
+    "OAuth",
+    "OAUTH",
+    "oauth ",
+    "",
+    "pat",
+    null,
+    true,
+    1,
+    ["oauth"],
+    { oauth: true },
+  ]) {
+    const j = jsonComLojaOAuth();
+    j.lojas[NOVA_OAUTH].acesso = ruim;
+    assertStringIncludes(
+      msgDe(j),
+      `${NOVA_OAUTH}: acesso só aceita "oauth"`,
+      JSON.stringify(ruim),
+    );
+  }
+});
+
+Deno.test("acesso: sem o campo a normalização devolve 'cli' — toda loja de hoje continua pelo CLI", () => {
+  for (const l of Object.values(CADASTRO_REAL.lojas))
+    assertEquals(l.acesso, "cli", l.projeto);
+  // o lojas.json de hoje não escreve o campo em loja nenhuma
+  for (const [nome, l] of Object.entries(jsonDeHoje().lojas))
+    assert(!Object.hasOwn(l, "acesso"), nome);
+  const semCampo = lojasMod.validarCadastro(jsonComLojaOAuth(false));
+  assertEquals(semCampo.lojas[NOVA_OAUTH].acesso, "cli");
+  // o campo não muda mais nada da loja: só o `acesso` difere
+  const comCampo = lojasMod.validarCadastro(jsonComLojaOAuth(true));
+  assertEquals(
+    { ...comCampo.lojas[NOVA_OAUTH], acesso: "cli" },
+    { ...semCampo.lojas[NOVA_OAUTH] },
+  );
+  // e as lojas de sempre saem idênticas nos dois cadastros
+  for (const nome of Object.keys(CADASTRO_REAL.lojas))
+    assertEquals(
+      JSON.stringify(comCampo.lojas[nome]),
+      JSON.stringify(CADASTRO_REAL.lojas[nome]),
+      nome,
+    );
+});
+
+Deno.test("acesso: o gerador de workflows não lê o campo — com e sem ele, o mesmo texto em todo workflow", () => {
+  const com = lojasMod.validarCadastro(jsonComLojaOAuth(true));
+  const sem = lojasMod.validarCadastro(jsonComLojaOAuth(false));
+  for (const caminho of gerador.workflowsComBlocos()) {
+    const atual = Deno.readTextFileSync(caminho);
+    const comOAuth = gerador.sincronizar(atual, com);
+    // controle: a loja nova de fato entra no arquivo (senão o teste não prova nada)
+    assertStringIncludes(comOAuth, NOVA_OAUTH, caminho);
+    assertEquals(comOAuth, gerador.sincronizar(atual, sem), caminho);
+  }
+});
+
+Deno.test({
+  name: "acesso: a prova de banco de um run de ANTES do campo continua valendo com uma loja OAuth nova no topo (C6)",
+  ...SEM_SANITIZAR,
+  fn: async () => {
+    const { workflowSoGanhouLojas } = await import(
+      "../scripts/frota/publicar-release.mjs"
+    );
+    const wf = Deno.readTextFileSync(
+      join(DIR_WF, "conferir-banco-da-loja.yml"),
+    );
+    const lojasDoRun = Deno.readTextFileSync(
+      join(RAIZ, "scripts/frota/lojas.json"),
+    );
+    assert(!lojasDoRun.includes('"acesso"'), "o run é de antes do campo");
+    const lojasDoTopo = JSON.stringify(jsonComLojaOAuth(true), null, 2);
+    const ymlDoTopo = gerador.sincronizar(
+      wf,
+      lojasMod.validarCadastro(JSON.parse(lojasDoTopo)),
+    );
+    assert(ymlDoTopo !== wf, "controle: o topo ganhou a loja nos blocos");
+    assertEquals(
+      workflowSoGanhouLojas({
+        ymlDoRun: wf,
+        lojasDoRun,
+        ymlDoTopo,
+        lojasDoTopo,
+      }),
+      { ok: true, motivo: null },
+    );
+    // e uma loja que JÁ existia trocar de caminho (CLI → OAuth) é alteração
+    const trocou = JSON.parse(lojasDoTopo);
+    trocou.lojas.savy.acesso = "oauth";
+    const r = workflowSoGanhouLojas({
+      ymlDoRun: wf,
+      lojasDoRun,
+      ymlDoTopo,
+      lojasDoTopo: JSON.stringify(trocou, null, 2),
+    });
+    assertEquals(r.ok, false);
+    assertStringIncludes(r.motivo, "savy");
+    assertStringIncludes(r.motivo, "alterada");
+  },
+});
+
+Deno.test("CLI exigir-segredo de loja OAuth sem token: manda disparar dentro da sessão de publicação, e nunca imprime valor", () => {
+  const cad = lojasMod.validarCadastro(jsonComLojaOAuth());
+  // canário montado em tempo de execução (literal no fonte dispara o secretlint)
+  const canario = `sbp_oauth_${"ab".repeat(20)}`;
+  const sem = cli(
+    ["exigir-segredo", NOVA_OAUTH],
+    // o token de OUTRA loja presente não serve a esta
+    { SUPABASE_ACCESS_TOKEN_SAVY: canario, SUPABASE_ACCESS_TOKEN: canario },
+    cad,
+  );
+  assertEquals(sem.codigo, 1);
+  assertStringIncludes(sem.texto, "::error::");
+  assertStringIncludes(
+    sem.texto,
+    "loja OAuth: dispare dentro da sessão de publicação (publicar-release.mjs --sessao)",
+  );
+  assertStringIncludes(sem.texto, SEGREDO_OAUTH);
+  assert(!sem.texto.includes(canario));
+  assert(!sem.texto.includes("sbp_"));
+  assertEquals(sem.texto.split("\n").length, 1, "uma linha só");
+  // com o token da loja presente (vazio não conta): passa e não o imprime
+  assertEquals(
+    cli(["exigir-segredo", NOVA_OAUTH], { [SEGREDO_OAUTH]: "" }, cad).codigo,
+    1,
+  );
+  const ok = cli(
+    ["exigir-segredo", NOVA_OAUTH],
+    { [SEGREDO_OAUTH]: canario },
+    cad,
+  );
+  assertEquals(ok.codigo, 0);
+  assert(!ok.texto.includes(canario));
+  // a mesma loja SEM a marca: a mensagem de sempre, sem falar de sessão
+  const cli2 = cli(
+    ["exigir-segredo", NOVA_OAUTH],
+    {},
+    lojasMod.validarCadastro(jsonComLojaOAuth(false)),
+  );
+  assertEquals(cli2.codigo, 1);
+  assertEquals(
+    cli2.texto,
+    `::error::sem acesso legítimo à Loja OAuth por ${SEGREDO_OAUTH} — bloqueio concreto`,
+  );
+});
+
+// ---------------------------------------------------------------------------
 // 4/5. O YAML dos workflows: em sincronia com o cadastro, sem segredo dinâmico,
 //      cada segredo de loja só com a guarda da SUA loja
 // ---------------------------------------------------------------------------
