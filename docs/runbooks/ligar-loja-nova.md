@@ -93,9 +93,10 @@ loja de teste.
   marcador como está (`<slug>`) dá erro, porque `<` é um símbolo do próprio PowerShell.
 - **PowerShell 5.1**: nada de `&&`. Um comando por vez.
 - **O apelido da loja (`<slug>`)** usa minúsculas, dígitos e hífen. Começa com letra, tem **até 24
-  caracteres** e **não termina em hífen**. O comando aceita até 40, mas o cadastro na frota só
-  aceita até 24 (o nome do segredo `SUPABASE_ACCESS_TOKEN_<SLUG>` tem esse teto). Escolha uma
-  vez e não troque: é a chave do cofre, do estado e do cadastro.
+  caracteres** e **não termina em hífen**. O `abrir` recusa, antes de qualquer autorização, um
+  nome com mais de 24 caracteres ou que termina em hífen: o nome do segredo
+  `SUPABASE_ACCESS_TOKEN_<SLUG>` tem esse teto, e `<slug>.vercel.app` não pode terminar em hífen.
+  Escolha uma vez e não troque: é a chave do cofre, do estado e do cadastro.
 
 ### Abrir o terminal no lugar certo
 
@@ -802,8 +803,10 @@ GitHub) já logado. O agente te passa o comando com o `<sha>` e o `<dpl_...>` j�
   `o token vence às HH:MM; feche e abra outra sessão. Esta fecha agora.` Para continuar, abra
   outra sessão (passo 1).
 - **Não rode o `nova-loja` da mesma loja enquanto a sessão estiver aberta.** A sessão segura a
-  autorização da loja do começo ao fim. Outro comando da mesma loja fica esperando por ela ou
-  atrapalha.
+  trava do cofre da loja do começo ao fim. Outro comando da mesma loja recusa na hora, com uma
+  mensagem que diz que a loja `já está travada por outra operação` e manda apagar o arquivo da
+  trava. **Com a sessão aberta, NÃO apague a trava:** feche a sessão primeiro (passo 5 ou 6) e só
+  então rode o outro comando.
 - **Só o dono pode ter escrita no repositório.** Se mais alguém tiver permissão de escrever (push)
   no repositório do GitHub, a sessão **não abre**: quem escreve consegue ler qualquer segredo por um
   workflow. Atenção: essa conferência olha só **pessoas**. Um **GitHub App** (um aplicativo
@@ -847,6 +850,13 @@ Se o relatório disser `BLOQUEADO`, ele lista comandos `gh workflow run ...` (po
 migration ou publicar function na loja). **Não cole na janela da sessão**: ali o que você digita é
 lido como Enter, `promover` ou `sair`.
 
+**Se o relatório disser `BLOQUEADO` sem nenhum comando `gh workflow run`, ou se aparecer
+`loja OAuth <slug> não lida`:** não há o que colar, e repetir o ensaio não muda nada. Digite
+`sair` na janela da sessão, confira o fechamento (passo 6) e mande para o agente **só a linha**
+do bloqueio. Hoje (26/11/2026) esse é o único resultado possível com uma loja OAuth na frota: o
+motivo que aparece é `o código das functions dela ainda não se baixa pela API (T3)` (ver
+[Lacunas conhecidas](#lacunas-conhecidas-26112026)).
+
 1. Abra **outra** janela do Windows PowerShell (menu Iniciar, **Windows PowerShell**) e vá para a
    mesma pasta (`Set-Location "<pasta do repositório>"`).
 2. Cole **um** comando `gh workflow run ...` por vez, na ordem em que o relatório mostra.
@@ -878,14 +888,16 @@ Volte para a janela da **sessão** e aperte **Enter** (sem digitar nada).
   seguido da frase "Para publicar: digite promover na janela da sessão".
 - **Se ainda disser `BLOQUEADO`:** volte ao passo 3 com os comandos novos que ele mostrar. Repita
   passo 3 e passo 4 até dar `PRONTO`.
+- **Se disser `BLOQUEADO` sem nenhum comando `gh workflow run`, ou `loja OAuth <slug> não lida`:** digite `sair` e mande a linha do bloqueio para o agente (veja o começo do passo 3).
 - **Se aparecer `não entendi: aperte Enter (ensaio de novo), digite promover ou sair.`:** você
   digitou outra coisa. Aperte só Enter.
 
 ### Passo 5 — Digitar `promover`
 
-Com o relatório dizendo `PRONTO`, digite na janela da sessão e aperte Enter:
+Com o relatório dizendo `PRONTO`, digite na **janela da sessão** (não é um comando do
+PowerShell: é a resposta à pergunta da sessão) e aperte Enter:
 
-```powershell
+```text
 promover
 ```
 
@@ -896,6 +908,12 @@ promover
   workflow da loja rodando, e ele precisa do segredo. A sessão **não fecha** enquanto isso. Espere
   o run terminar (o `gh run watch <id>` do passo 3, na outra janela) e digite `sair` na janela da
   sessão.
+- **Se aparecer `não consegui ler os runs em andamento (...): a sessão continua aberta`:** a sessão
+  não conseguiu perguntar ao GitHub se ainda há workflow rodando (internet ou `gh` fora do ar), e
+  por isso não fecha. Espere um minuto e digite `sair` de novo. Se a mensagem voltar, confira na
+  outra janela que nenhum run da loja está rodando, com
+  `gh run list --workflow <arquivo>.yml --limit 1` para cada workflow que você disparou. Com tudo terminado, aperte **Ctrl+C** na janela da
+  sessão: ela fecha sem conferir os runs e apaga os segredos. Depois, passo 6.
 - **Se a conferência depois de publicar falhar:** a sessão continua aberta e o relatório traz o
   comando de desfazer. **Não rode nada sozinho:** copie a parte do relatório e mande para o agente.
 
@@ -919,8 +937,16 @@ vale do mesmo jeito.
 - **Se aparecer diferente:**
   - `segredos apagados: 1 de 2` (números diferentes), `NÃO apagado: ...`, `NÃO confirmei em 8 s
     ...` ou `o fechar falhou`: **sobrou segredo no GitHub.** Vá para o passo 7 agora.
-  - `$LASTEXITCODE` deu `1`: ou o último ensaio estava `BLOQUEADO`, ou sobrou segredo. Na dúvida,
-    rode o passo 7: ele não estraga nada se não houver o que apagar.
+  - `$LASTEXITCODE` deu `1`: um destes três casos. (a) O último ensaio estava `BLOQUEADO` e você
+    digitou `sair`. (b) Sobrou segredo no GitHub. (c) Você digitou `promover`, a conferência
+    depois de publicar falhou e você digitou `sair`: nesse caso **a publicação aconteceu** e a
+    conferência reprovou; mande para o agente a parte do relatório com o comando de desfazer,
+    sem rodar nada. Nos três casos, rode o passo 7: ele não estraga nada se não houver o que
+    apagar.
+  - `$LASTEXITCODE` deu `2` e apareceu `erro inesperado no ensaio: ...`,
+    `erro inesperado na sessão: ...` ou `erro inesperado: ...`: o comando quebrou de um jeito que
+    não estava previsto. Rode o passo 7 (a faxina) e mande para o agente **só a linha** do
+    `erro inesperado`. Não abra outra sessão antes de ele responder.
   - `o token da loja ... não foi invalidado no fechar (vence sozinho às HH:MM)`: o segredo saiu do
     GitHub, mas o acesso que esteve lá só morre nesse horário. Avise o agente.
 
@@ -996,8 +1022,11 @@ travas possíveis:
 - `$env:LOCALAPPDATA\ikcous\frota\acesso\<slug>.trava`, a do cofre.
 
 **A mensagem do script diz o caminho exato do arquivo.** Antes de apagar, confira que nenhum
-comando da loja está rodando (nenhuma outra janela com `node scripts/frota/...` da mesma loja).
-Depois:
+comando da loja está rodando: nenhuma outra janela com `node scripts/frota/...` da mesma loja,
+e **nenhuma janela com a sessão de publicação** (`publicar-release.mjs --sessao`) aberta. A
+sessão segura a trava do cofre de propósito enquanto está aberta: se houver uma, feche a sessão
+(digite `sair` nela, ou veja a [sessão](#publicar-quando-há-loja-oauth-a-sessão)) em vez de
+apagar o arquivo. Depois:
 
 ```powershell
 Remove-Item "<caminho que a mensagem mostrou>"
