@@ -272,6 +272,11 @@ Deno.test("anotar(): SECURITY DEFINER, search_path fixo, lock_timeout 200ms, EXC
   // O filtro do carimbo e a chave.
   assertStringIncludes(b, "ARRAY['updated_at', 'ultima_atualizacao']");
   assertStringIncludes(b, "public.livro_de_registro_chave");
+  // O par antigo/novo e' casado por AGRUPAMENTO (n log n com qualquer plano), nunca por JOIN das tabelas de transicao: o plano
+  // generico do plpgsql (estimativa de 1 linha) fazia laco aninhado, n x n (10.000 linhas passavam de 30 s na prova viva).
+  const semComentario = b.replace(/--.*$/gm, "");
+  assert(!/\bJOIN\b/i.test(semComentario), "JOIN no corpo do gatilho");
+  assertStringIncludes(semComentario, "GROUP BY x.j ->> 'id'");
   // Toda tabela qualificada (search_path vazio de public).
   for (const m of b.matchAll(/\b(FROM|INTO|JOIN)\s+([a-z_]+)(\s|\.)/g))
     if (!["antigos", "novos", "jsonb_each"].includes(m[2]) && m[3] !== ".")
@@ -506,6 +511,23 @@ Deno.test("188m: medicao so de catalogo e estatistica, UM statement, sem pg_stat
   ])
     assertStringIncludes(sql, trecho);
   for (const t of TABELAS) assertStringIncludes(sql, `'${t}'`);
+  // round(x, casas) so existe para numeric: com double precision (reltuples e' real; bytes / reltuples vira double) a 188m ERRA
+  // 42883 na loja. Todo round desta consulta leva o ::numeric explicito, com ou sem casas (double imprime 1e+06).
+  const rounds = [...cod.matchAll(/\bround\(/g)].map((m) => {
+    let nivel = 1;
+    let i = (m.index ?? 0) + "round(".length;
+    const ini = i;
+    const virgulas: number[] = [];
+    for (; nivel > 0; i++) {
+      if (cod[i] === "(") nivel++;
+      else if (cod[i] === ")") nivel--;
+      else if (cod[i] === "," && nivel === 1) virgulas.push(i);
+    }
+    return cod.slice(ini, virgulas[0] ?? i - 1).trim();
+  });
+  assertEquals(rounds.length, 6, "os 6 round da 188m");
+  for (const arg of rounds)
+    assert(arg.endsWith("::numeric"), `round sem ::numeric: round(${arg}`);
 });
 
 Deno.test("registro: lote de UMA migration em provasDeObjetos (188a depois, 188b antes) logo depois da fila, menu do conferir-banco-da-loja (188a/188b/188m), dois caminhos do rpc-ci, portao de rol fechado e as provas vivas no rpc-ci", async () => {

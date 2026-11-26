@@ -46,7 +46,7 @@ WITH anotar AS (
 ), itens(item, esperado, vivo) AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'livro_de_registro_anotar: uma so, com o corpo da 20261510000000 (md5)', 'sim', CASE WHEN
-    (SELECT count(*) FROM anotar) = 1 AND EXISTS (SELECT 1 FROM anotar WHERE h = '92d8e7f0a463efb3b52b7656f63a8d2d') THEN 'sim' ELSE 'nao' END
+    (SELECT count(*) FROM anotar) = 1 AND EXISTS (SELECT 1 FROM anotar WHERE h = '80db6ca427538fb22a3cc1b04f7f7f61') THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'livro_de_registro_anotar: plpgsql, trigger, SECURITY DEFINER, search_path pg_catalog e pg_temp, lock_timeout 200ms, e EXECUTE para ninguem de aplicacao', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(f.lanname = 'plpgsql' AND f.prosecdef AND f.resultado = 'trigger'
         AND f.proconfig = ARRAY['search_path=pg_catalog, pg_temp', 'lock_timeout=200ms']::text[]

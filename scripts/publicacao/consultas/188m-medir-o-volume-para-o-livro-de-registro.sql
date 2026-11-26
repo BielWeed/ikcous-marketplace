@@ -53,9 +53,9 @@ WITH tabelas(ordem, tabela) AS (
   SELECT 0, 'controle', 'servidor', 'server_version_num=' || current_setting('server_version_num')
   UNION ALL
   SELECT 0, 'controle', 'banco',
-         'pg_database_size_mb=' || round(pg_database_size(current_database()) / 1048576.0, 1)::text
+         'pg_database_size_mb=' || round((pg_database_size(current_database()) / 1048576.0)::numeric, 1)::text
          || '|stats_reset=' || COALESCE((SELECT stats_reset::text FROM banco), 'nulo')
-         || '|dias_de_contagem=' || COALESCE((SELECT round(dias, 1)::text FROM banco), '?')
+         || '|dias_de_contagem=' || COALESCE((SELECT round(dias::numeric, 1)::text FROM banco), '?')
   UNION ALL
   SELECT 10 + m.ordem, 'tabela', m.tabela,
          CASE WHEN m.oid IS NULL THEN 'AUSENTE' ELSE
@@ -78,13 +78,13 @@ WITH tabelas(ordem, tabela) AS (
                       'livro_de_registro_anotar', 'livro_de_registro_limpar']) AS x(nome)
   UNION ALL
   SELECT 60 + e.ordem, 'ESTIMATIVA', e.tabela,
-         'anotacoes_90d=' || round(e.upd_90 + e.del_90)::text
-         || '|bytes_90d=' || round(e.upd_90 * 320 + e.del_90 * e.bytes_por_linha)::text
+         'anotacoes_90d=' || round((e.upd_90 + e.del_90)::numeric)::text
+         || '|bytes_90d=' || round((e.upd_90 * 320 + e.del_90 * e.bytes_por_linha)::numeric)::text
     FROM estimativa e
   UNION ALL
   SELECT 99, 'ESTIMATIVA', 'total das 17',
-         'anotacoes_90d=' || round(sum(e.upd_90 + e.del_90))::text
-         || '|mb_90d=' || round(sum(e.upd_90 * 320 + e.del_90 * e.bytes_por_linha) / 1048576.0, 1)::text
+         'anotacoes_90d=' || round(sum(e.upd_90 + e.del_90)::numeric)::text
+         || '|mb_90d=' || round((sum(e.upd_90 * 320 + e.del_90 * e.bytes_por_linha) / 1048576.0)::numeric, 1)::text
          || '|teto_linhas=200000|teto_banco_mb=400'
     FROM estimativa e
 )

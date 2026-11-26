@@ -797,15 +797,25 @@ async function comportamento(c) {
     );
   });
 
-  // (n) 10.000 linhas num comando = 10.000 anotacoes.
+  // (n) 10.000 linhas num comando = 10.000 anotacoes, em menos de 10 s. Os UPDATEs pequenos de cima ja firmaram o plano generico do
+  // gatilho (estimativa de 1 linha), como numa conexao de producao: casar antigo/novo por JOIN virava laco aninhado (n x n, mais de
+  // 30 s aqui). O SET LOCAL volta no ROLLBACK TO SAVEPOINT do isolado.
   await isolado(c, async () => {
     await c.query(
       "INSERT INTO public.coupons (code, type, value, active, usage_count, usage_limit) SELECT 'L1510M' || g, 'fixed', 1, true, 0, 10 FROM generate_series(1, 10000) g",
     );
     m = await marca(c);
-    const r = await c.query(
-      "UPDATE public.coupons SET value = 2 WHERE code LIKE 'L1510M%'",
-    );
+    await c.query("SET LOCAL statement_timeout = '10s'");
+    let r = null;
+    try {
+      r = await c.query(
+        "UPDATE public.coupons SET value = 2 WHERE code LIKE 'L1510M%'",
+      );
+    } catch (e) {
+      assert.fail(
+        `10.000 linhas num comando em menos de 10 s (veio ${e.code}: ${e.message})`,
+      );
+    }
     assert.equal(r.rowCount, 10000);
     const n = await um(
       c,
@@ -1427,9 +1437,9 @@ const MUTANTES = {
   "guarda-o-novo": {
     muta: (s) =>
       trocar(
-        trocar(s, "jsonb_each(a.j) AS k", "jsonb_each(n.j) AS k"),
-        "(n.j -> k.key)",
-        "(a.j -> k.key)",
+        trocar(s, "jsonb_each(par.velha) AS k", "jsonb_each(par.nova) AS k"),
+        "(par.nova -> k.key)",
+        "(par.velha -> k.key)",
       ),
     motivo: "antes guarda o valor ANTIGO",
   },

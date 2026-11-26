@@ -242,7 +242,10 @@ BEGIN
     END IF;
 
     IF TG_OP = 'UPDATE' THEN
-      -- So as colunas que mudaram, com o valor ANTIGO; o par antigo/novo e' casado pelo id.
+      -- So as colunas que mudaram, com o valor ANTIGO; o par antigo/novo e' casado pelo id num AGRUPAMENTO, nunca casando as duas
+      -- tabelas de transicao por JOIN: depois das primeiras chamadas o plpgsql reusa o plano generico, feito com a estimativa de UMA
+      -- linha, e a juncao virava laco aninhado (n x n comparacoes: 10.000 linhas num UPDATE passavam de 30 s, e 57014 nao e'
+      -- engolido). Agrupar custa n log n com qualquer plano. Sem par dos dois lados (troca de id) nao anota, como antes.
       INSERT INTO public.livro_de_registro (tabela, linha_id, titular, operacao, antes, quem, papel, transacao, quando)
       SELECT TG_TABLE_NAME, d.linha_id,
              CASE v_origem
@@ -252,12 +255,18 @@ BEGIN
              END,
              'U', d.antes, auth.uid(), COALESCE(NULLIF(current_setting('role', true), 'none'), session_user::text),
              pg_current_xact_id()::text::bigint, clock_timestamp()
-        FROM (SELECT a.j ->> 'id' AS linha_id, a.j AS velha,
+        FROM (SELECT par.linha_id, par.velha,
                      (SELECT jsonb_object_agg(k.key, k.value)
-                        FROM jsonb_each(a.j) AS k
-                       WHERE k.value IS DISTINCT FROM (n.j -> k.key)) AS antes
-                FROM (SELECT to_jsonb(ant) AS j FROM antigos ant) AS a
-                JOIN (SELECT to_jsonb(nov) AS j FROM novos nov) AS n ON (n.j -> 'id') = (a.j -> 'id')) AS d
+                        FROM jsonb_each(par.velha) AS k
+                       WHERE k.value IS DISTINCT FROM (par.nova -> k.key)) AS antes
+                FROM (SELECT x.j ->> 'id' AS linha_id,
+                             (array_agg(x.j) FILTER (WHERE x.lado = 'antiga'))[1] AS velha,
+                             (array_agg(x.j) FILTER (WHERE x.lado = 'nova'))[1] AS nova
+                        FROM (SELECT 'antiga' AS lado, to_jsonb(ant) AS j FROM antigos ant
+                              UNION ALL
+                              SELECT 'nova', to_jsonb(nov) FROM novos nov) AS x
+                       GROUP BY x.j ->> 'id') AS par
+               WHERE par.velha IS NOT NULL AND par.nova IS NOT NULL) AS d
        WHERE d.antes IS NOT NULL
          AND (d.antes - ARRAY['updated_at', 'ultima_atualizacao']) <> '{}'::jsonb;
     ELSIF TG_OP = 'DELETE' THEN
