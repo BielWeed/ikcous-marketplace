@@ -220,7 +220,9 @@ describe("Inicio -- cartao 'Loja pronta' quando a leitura da loja falha", () => 
       definirLoja({ products: [{ isActive: false }], catalogoErro: true });
       await montar();
 
-      expect(texto(hospedeiro)).toContain("Cadastrar um produto ativo");
+      // O produto oculto conta: o passo manda conferir e ativar, sem "Conferindo".
+      expect(texto(hospedeiro)).not.toContain("Conferindo sua loja");
+      expect(texto(hospedeiro)).toContain("Conferir e ativar o produto oculto");
     });
   });
 
