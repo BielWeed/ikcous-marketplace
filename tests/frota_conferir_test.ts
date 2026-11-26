@@ -1226,15 +1226,24 @@ Deno.test("conferirFrota: endereço que não responde = INALCANCAVEL; version.js
   const mundo = mundoBase();
   mundo["ickous-marketplace.vercel.app"].falha = "derruba";
   mundo["savycollection.vercel.app"].versaoHttp = 500;
+  const esperas = [];
   const r = await conferirFrota(POLITICA, {
     sha: SHA,
     fetchImpl: fetchFalso(mundo),
+    // as pausas da nova tentativa, anotadas em vez de dormidas
+    esperar: async (ms) => {
+      esperas.push(ms);
+    },
   });
   const por = Object.fromEntries(
     r.resultados.map((x) => [x.dominio, x.classe]),
   );
   assertEquals(por["ickous-marketplace.vercel.app"], "INALCANCAVEL");
   assertEquals(por["savycollection.vercel.app"], "INALCANCAVEL");
+  // só depois de 2 novas tentativas (2 s e 5 s) em cada pedido que tropeçou
+  assert(
+    esperas.length > 0 && esperas.every((ms) => ms === 2000 || ms === 5000),
+  );
 });
 
 Deno.test("conferirFrota: loja mostrando a ficha de OUTRA (ref+título de outra loja) é LOJA_TROCADA nos dois", async () => {
@@ -2087,15 +2096,39 @@ Deno.test({
 });
 
 Deno.test({
-  name: "script: endereço que não responde -> INALCANCAVEL, exit 1",
+  // No processo (main), contra o MESMO stub HTTP: um subprocesso dormiria de
+  // verdade as pausas da nova tentativa (2 s + 5 s); aqui `esperar` é falso.
+  name: "main contra o stub HTTP: endereço que não responde -> INALCANCAVEL, exit 1, sem dormir as pausas",
   ...SEM_SANITIZAR,
   async fn() {
     const mundo = mundoBase();
     mundo["savycollection.vercel.app"].falha = "trava";
-    const r = await rodar(["--sha", SHA], mundo);
-    assertEquals(r.codigo, 1);
-    assertStringIncludes(r.saida, "INALCANCAVEL");
-    assertStringIncludes(r.saida, "timeout");
+    const stub = subirStub(mundo);
+    const esperas = [];
+    const logs = [];
+    const antes = console.log;
+    console.log = (...a) => logs.push(a.join(" "));
+    let codigo;
+    try {
+      codigo = await main(
+        ["--sha", SHA],
+        {
+          FROTA_URL_MODELO: `${stub.base}/{dominio}`,
+          FROTA_TIMEOUT_MS: "800",
+          GITHUB_STEP_SUMMARY: "",
+        },
+        { esperar: async (ms) => void esperas.push(ms) },
+      );
+    } finally {
+      console.log = antes;
+      await stub.parar();
+    }
+    const saida = logs.join("\n");
+    assertEquals(codigo, 1);
+    assertStringIncludes(saida, "INALCANCAVEL");
+    assertStringIncludes(saida, "timeout");
+    // as pausas foram pedidas (houve nova tentativa), mas não dormidas
+    assert(esperas.includes(2000) && esperas.includes(5000), `${esperas}`);
   },
 });
 

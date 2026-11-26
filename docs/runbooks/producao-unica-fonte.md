@@ -1956,6 +1956,20 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    SHA (versao, isolamento e canonico de TODOS os enderecos, e a producao oficial = o deployment
    promovido). Saida 0 = publicado e conferido.
 
+   Saida 3 (**INCERTO**) = publicado, mas a conferencia nao conseguiu ler o `version.json` de
+   algum endereco: o pedido tropecou (rede, tempo esgotado ou 5xx) nas 3 tentativas da sonda
+   (cada endereco morto custa ~52 s: 3 x 15 s de tempo esgotado + pausas de 2 s e 5 s). So sai 3
+   quando todo o resto foi provado: a pagina inicial desses enderecos respondeu (isolamento
+   conferido), a Vercel diz que eles apontam para o deployment promovido, a producao oficial e
+   ele e nenhum outro achado apareceu. Por si so, a Saida 3 NAO pede rollback. Rode o
+   `node scripts/frota/conferir-frota.mjs --sha <sha40> --vercel` que o relatorio imprime; se
+   sair 0, esta publicado e conferido. Se o endereco continuar sem responder, escale para FALHOU:
+   trate como conferencia pos-promote que falhou (Saida 1) e siga o [rollback](#rollback) com o
+   `producaoAnterior` do PRIMEIRO JSON.
+   Nunca e Saida 3: `version.json` que responde 404 ou HTML no lugar do JSON, pagina inicial ou
+   loja inteira sem resposta, ou endereco que a Vercel nao liga ao deployment promovido — isso
+   sai 1 (FALHOU).
+
    Saida 1 com a secao "PRIORIDADE ALTA — loja que acordou durante a publicação" (texto exato do relatorio) NAO pede
    rollback da frota: uma loja que estava fora do ar acordou no meio da publicacao e nao passou
    pela prontidao desta release. Rode, para cada loja listada, o
