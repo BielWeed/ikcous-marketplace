@@ -775,6 +775,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/definir-cargo-so-o-dono-viva.cjs",
     // Sem migration: a escrita do definir-dono do nova-loja (SQL_DEFINIR_DONO pela consulta simples, sessao nao-superusuario, consulta 88c, IKD01..IKD06, concorrencia, mutantes).
     "tests/banco/o-nova-loja-define-o-dono-viva.cjs",
+    // Sem migration: a escrita do trocar-dono do nova-loja (sqlTrocarDono pela consulta simples, IKT01..IKT05 byte a byte, 88c, concorrencia, sonda A1, conexao depois da recusa, mutantes).
+    "tests/banco/o-nova-loja-troca-o-dono-viva.cjs",
     // 20261440: a loja guarda o cadastro fiscal e so o dono altera (prova da migration; consultas 180a/180b abaixo).
     "tests/banco/o-cadastro-fiscal-so-o-dono-altera-viva.cjs",
     "tests/banco/o-cadastro-fiscal-portao-viva.cjs",

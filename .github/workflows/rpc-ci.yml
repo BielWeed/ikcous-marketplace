@@ -1570,6 +1570,13 @@ jobs:
       - name: Prova viva do definir-dono do nova-loja (SQL_DEFINIR_DONO, consulta 88c)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-nova-loja-define-o-dono-viva.cjs
+      # Sem migration: a ESCRITA do trocar-dono do nova-loja (sqlTrocarDono e sqlDaTroca de scripts/frota/nova-loja.mjs), o
+      # texto inteiro numa consulta simples como o pg-meta, de uma sessao NAO-superusuario que so vira postgres pelo SET LOCAL
+      # ROLE. IKT01..IKT05 com as 4 tabelas byte a byte iguais; trocada e ja_era_dona com a 88c verde; duas trocas simultaneas;
+      # definir_cargo antes da troca = IKT02; sonda do achado A1 (registra, nao reprova); conexao depois da recusa; 11 mutantes. CLONE proprio.
+      - name: Prova viva do trocar-dono do nova-loja (sqlTrocarDono, consulta 88c)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-nova-loja-troca-o-dono-viva.cjs
       # Migration 20261440000000 (a loja guarda o cadastro fiscal, e so o dono altera): as tabelas fiscal_cadastro e
       # fiscal_cadastro_log nascem VAZIAS (sem regime padrao) e so fiscal_cadastro_salvar grava, so para o dono da loja
       # (dono_da_loja) que seja admin atual. Sem dono ninguem grava (42501, ate o admin atual); dono grava e o log ganha uma
