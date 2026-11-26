@@ -509,4 +509,26 @@ describe("src/sw/sw.ts — fotos do Storage em pedido no-cors (<img> sem crossor
     expect(resposta.status).toBe(200);
     expect(rejeicoes).toEqual([]);
   });
+
+  // Plano das miniaturas (26/11/2026): a foto marcada e as 3 cópias reduzidas
+  // são arquivos públicos comuns do Storage -- entram na gaveta como qualquer
+  // foto, e a vitrine sem sinal continua mostrando a cópia que já viu.
+  it("a foto marcada e as 3 cópias reduzidas entram na gaveta", async () => {
+    const { variantesDe } = await import("@/lib/piramide-da-foto-nomes");
+    const marcada = `${SUPA}/storage/v1/object/public/products/3f2b8c1e-9a4d-4e7b-8c21-5d6f7a8b9c0d-vw.jpg`;
+    const copias = variantesDe(marcada) ?? [];
+    expect(copias).toHaveLength(3);
+    const { aoBuscar, urlsEm } = await importarSw();
+
+    for (const url of [marcada, ...copias]) {
+      const ev = evento(pedidoDeImg(url));
+      aoBuscar(ev);
+      await ev.respondWith.mock.calls[0][0];
+    }
+    await esvaziarFila();
+
+    expect(urlsEm(IMAGE_CACHE_NAME).sort()).toEqual(
+      [marcada, ...copias].map((u) => new URL(u).href).sort(),
+    );
+  });
 });

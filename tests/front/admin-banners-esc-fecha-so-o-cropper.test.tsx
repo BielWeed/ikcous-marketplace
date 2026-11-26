@@ -31,6 +31,7 @@
 // 3. Um SEGUNDO Escape, agora só com o diálogo aberto (adjuster já
 //    fechado), continua fechando o diálogo normalmente — a correção não
 //    quebra o comportamento existente do Escape no diálogo puro.
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -248,7 +249,9 @@ describe("AdminBannersView — Escape com o ImageAdjuster aberto fecha só o rec
       await esperarMicrotarefas();
       await esperarMicrotarefas();
     });
-    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo);
+    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo, {
+      piramide: gerarPiramide,
+    });
 
     const botaoAjustar = localizarBotaoPorTexto(hospedeiro, "Ajustar")!;
     expect(

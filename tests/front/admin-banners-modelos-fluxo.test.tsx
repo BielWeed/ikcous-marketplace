@@ -8,6 +8,7 @@
 //    páginas não oferece mais `/produtos`.
 //  - O atalho "Categoria: Cama & Banho" montava `/?category=Cama & Banho` cru;
 //    o "&" cortava o nome. Agora o nome vai codificado.
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -331,7 +332,9 @@ describe("novo editor de banners prontos", () => {
       entrada.dispatchEvent(new Event("change", { bubbles: true })),
     );
     expect(host.textContent).toContain("Imagem própria");
-    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo);
+    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo, {
+      piramide: gerarPiramide,
+    });
     await clicar("Salvar Banner");
     expect(addBanner).toHaveBeenCalledWith(
       expect.objectContaining({

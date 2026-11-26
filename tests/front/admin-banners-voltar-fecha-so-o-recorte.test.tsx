@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -135,7 +136,9 @@ describe("AdminBannersView — Voltar com o recorte aberto", () => {
       Object.defineProperty(input, "files", { value: [arquivo] });
       input.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo);
+    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo, {
+      piramide: gerarPiramide,
+    });
     await act(async () => botao("Ajustar")!.click());
     expect(recorteAberto()).toBe(true);
   }
