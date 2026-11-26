@@ -1,7 +1,9 @@
 // Acesso OAuth à conta da LOJISTA no Supabase (peças T4–T5 do L4b). A lojista
 // toca "Autorizar" na tela do Supabase; a IKCOUS recebe um código, troca por
-// access token (24 h, só em memória) + refresh token (guardado no cofre local,
-// scripts/frota/cofre-local.mjs, junto com o client_secret do app).
+// access token (24 h) + refresh token (guardado no cofre local,
+// scripts/frota/cofre-local.mjs, junto com o client_secret do app). O access
+// token só vai ao cofre pelo tokenVigente (abaixo); os outros caminhos o
+// devolvem só em memória.
 //
 // FLUXO (cada passo é um comando separado do nova-loja.mjs):
 //   abrir    -> gera PKCE (S256) e state de 128 bits, guarda no cofre o
@@ -16,10 +18,29 @@
 //               acesso em silêncio). Sem refresh na resposta, fica o antigo.
 //   revogar  -> POST /v1/oauth/revoke; só apaga o cofre se o Supabase aceitou
 //               ou disse que o refresh já não vale (regra em ERROS_JA_REVOGADO).
+//   renovarComTravaLonga -> para a sessão de publicação: trava a loja, renova
+//               e SEGURA a trava até o liberar() (nenhuma outra renovação da
+//               loja anda nesse meio, nem de outro processo). renovarDeNovo()
+//               renova sob a mesma trava (o fechar da sessão usa para matar o
+//               token que foi ao GitHub, se a renovação invalidar o anterior).
+//   tokenVigente -> para o ensaio avulso do portão: reaproveita o access token
+//               GUARDADO no cofre (token + vencimento) enquanto faltar MAIS que
+//               minimoMs; senão renova e guarda o novo. Um ensaio por hora
+//               gira o refresh uma vez por dia, não 24.
+//
+// O TOKEN GUARDADO nunca é mais velho que a última renovação da loja: TODA
+// renovação (renovar, sessão, tokenVigente) o tira do cofre ANTES de pedir o
+// token novo, e receber o descarta. Assim o cofre fica certo nos dois casos que
+// a prova P6b decide: se o Supabase invalida o access token anterior a cada
+// renovação, o guardado morreria ali (e já saiu); se não invalida, perde-se só
+// um reaproveitamento. Se a limpeza não grava, nada é renovado.
 //
 // CONCORRÊNCIA: toda operação que lê-e-grava o cofre segura cofre.travar(slug).
 // Duas renovações da mesma loja no MESMO processo esperam a mesma (um pedido
 // só); vinda de OUTRO processo (trava em disco) é recusada com CofreTravado.
+// A trava longa é a mesma trava: enquanto ela vive, tudo da loja recebe
+// CofreTravado. Se o processo morrer segurando-a, ela fica órfã e a mensagem
+// do CofreTravado diz qual arquivo apagar (cofre-local.mjs, TRAVA ÓRFÃ).
 //
 // SEGREDOS: nenhuma mensagem de erro carrega token, refresh, client_secret,
 // código, verificador ou state, nem o corpo cru das respostas. Prazo estourado
@@ -251,6 +272,19 @@ async function lerRegistro(cofre, slug) {
   return r;
 }
 
+/** O token guardado pelo tokenVigente, se estiver bem formado; senão null
+ * (guardado estranho é ignorado e substituído, nunca tranca a loja). */
+function guardadoDo(reg) {
+  const a = reg?.acesso;
+  return a !== null &&
+    typeof a === "object" &&
+    opacoValido(a.token) &&
+    Number.isFinite(a.expiraEm) &&
+    a.expiraEm > 0
+    ? a
+    : null;
+}
+
 /**
  * @param {{
  *   cofre: { ler: Function, gravar: Function, apagar: Function, travar: Function },
@@ -268,6 +302,7 @@ export function criarAcessoOAuth({
   agora = Date.now,
 } = {}) {
   const emVoo = new Map();
+  const vigenteEmVoo = new Map();
 
   async function comTrava(slug, fn) {
     const liberar = await cofre.travar(slug);
@@ -361,6 +396,62 @@ export function criarAcessoOAuth({
     }
   }
 
+  /**
+   * O miolo de toda renovação, SEM trava (quem chama já a segura). Tira o
+   * token guardado do cofre ANTES do pedido; grava o refresh novo (e, com
+   * `guardar`, o token novo com o vencimento) ANTES de devolver.
+   * @param {string} slug
+   * @param {{ guardar?: boolean, lido?: object|null }} [opcoes]  `lido` evita
+   *   ler o cofre de novo quando quem chama acabou de ler.
+   */
+  async function renovarSemTrava(slug, { guardar = false, lido } = {}) {
+    const registro = lido === undefined ? await lerRegistro(cofre, slug) : lido;
+    if (!registro?.refresh) {
+      throw new ErroDeAcesso(
+        `Acesso: a loja ${slug} não tem refresh no cofre (rode abrir/receber).`,
+        { codigo: "NAO_CONECTADA" },
+      );
+    }
+    const { acesso: guardadoVelho, ...reg } = registro;
+    if (guardadoVelho !== undefined) {
+      try {
+        await cofre.gravar(slug, JSON.stringify(reg));
+      } catch {
+        throw new ErroDeAcesso(
+          `Acesso: não consegui tirar do cofre o token guardado da loja ${slug}; nada foi renovado. Repita o comando.`,
+          { codigo: "GUARDADO_NAO_SAIU" },
+        );
+      }
+    }
+    const r = await pedirToken(reg, {
+      grant_type: "refresh_token",
+      refresh_token: reg.refresh,
+    });
+    const girou = r.refresh !== undefined && r.refresh !== reg.refresh;
+    const guarda = guardar && r.expiraEm !== null;
+    if (girou || guarda) {
+      const novo = girou ? { ...reg, refresh: r.refresh } : reg;
+      try {
+        await gravarRegistro(
+          slug,
+          guarda
+            ? {
+                ...novo,
+                acesso: { token: r.accessToken, expiraEm: r.expiraEm },
+              }
+            : novo,
+          `Acesso: o Supabase entregou um refresh NOVO para a loja ${slug}, mas o cofre não gravou; o antigo pode ter sido invalidado. Se a próxima renovação der SemAcesso, rode abrir/receber de novo.`,
+        );
+      } catch (e) {
+        // Só o token guardado deixou de gravar: o refresh do cofre continua
+        // o certo, o token vale, e o cofre fica sem guardado (a limpeza acima
+        // já o tirou). O próximo tokenVigente renova.
+        if (girou) throw e;
+      }
+    }
+    return { accessToken: r.accessToken, expiraEm: r.expiraEm };
+  }
+
   return {
     async abrir({ slug, clientId, clientSecret, redirectUri }) {
       exigirApp({ clientId, clientSecret, redirectUri });
@@ -425,7 +516,8 @@ export function criarAcessoOAuth({
             { codigo: "SEM_REFRESH" },
           );
         }
-        const { pendente: _usada, ...resto } = reg;
+        // o token guardado de antes da autorização nova sai junto
+        const { pendente: _usada, acesso: _guardado, ...resto } = reg;
         await gravarRegistro(
           slug,
           { ...resto, refresh: r.refresh },
@@ -438,30 +530,103 @@ export function criarAcessoOAuth({
     renovar({ slug }) {
       const andando = emVoo.get(slug);
       if (andando) return andando;
-      const p = comTrava(slug, async () => {
-        const reg = await lerRegistro(cofre, slug);
-        if (!reg?.refresh) {
-          throw new ErroDeAcesso(
-            `Acesso: a loja ${slug} não tem refresh no cofre (rode abrir/receber).`,
-            { codigo: "NAO_CONECTADA" },
-          );
-        }
-        const r = await pedirToken(reg, {
-          grant_type: "refresh_token",
-          refresh_token: reg.refresh,
-        });
-        if (r.refresh !== undefined && r.refresh !== reg.refresh) {
-          await gravarRegistro(
-            slug,
-            { ...reg, refresh: r.refresh },
-            `Acesso: o Supabase entregou um refresh NOVO para a loja ${slug}, mas o cofre não gravou; o antigo pode ter sido invalidado. Se a próxima renovação der SemAcesso, rode abrir/receber de novo.`,
-          );
-        }
-        return { accessToken: r.accessToken, expiraEm: r.expiraEm };
-      }).finally(() => {
+      const p = comTrava(slug, () => renovarSemTrava(slug)).finally(() => {
         emVoo.delete(slug);
       });
       emVoo.set(slug, p);
+      return p;
+    },
+
+    /**
+     * Sessão de publicação: trava a loja, renova UMA vez e devolve o token com
+     * a trava PRESA. Falha na renovação solta a trava e o erro sobe. O token
+     * desta sessão não é guardado no cofre (ele vai ao GitHub).
+     * @returns {Promise<{ accessToken: string, expiraEm: number|null,
+     *   renovarDeNovo: () => Promise<{ accessToken: string, expiraEm: number|null }>,
+     *   liberar: () => Promise<void> }>}
+     */
+    async renovarComTravaLonga({ slug }) {
+      const soltarTrava = await cofre.travar(slug);
+      let r;
+      try {
+        r = await renovarSemTrava(slug);
+      } catch (e) {
+        await soltarTrava().catch(() => {});
+        throw e;
+      }
+      let solta = false;
+      let deNovoEmVoo = null;
+      let liberando = null;
+      return {
+        accessToken: r.accessToken,
+        expiraEm: r.expiraEm,
+        // Renova sob a MESMA trava; duas chamadas juntas esperam a mesma.
+        renovarDeNovo() {
+          if (solta) {
+            return Promise.reject(
+              new ErroDeAcesso(
+                `Acesso: a sessão da loja ${slug} já soltou a trava; nada foi renovado.`,
+                { codigo: "TRAVA_SOLTA" },
+              ),
+            );
+          }
+          deNovoEmVoo ??= renovarSemTrava(slug).finally(() => {
+            deNovoEmVoo = null;
+          });
+          return deNovoEmVoo;
+        },
+        // Idempotente. Espera a renovação que estiver no ar: soltar antes
+        // deixaria outro processo renovar com o refresh que ela vai trocar.
+        liberar() {
+          solta = true;
+          liberando ??= (async () => {
+            await deNovoEmVoo?.catch(() => {});
+            await soltarTrava();
+          })();
+          return liberando;
+        },
+      };
+    },
+
+    /**
+     * Ensaio avulso: o token guardado no cofre, se faltar MAIS que minimoMs
+     * para ele vencer; senão renova e guarda o novo (token + vencimento).
+     * Renovação sem prazo (expires_in ausente) não é guardada.
+     * @returns {Promise<{ accessToken: string, expiraEm: number|null,
+     *   reaproveitado: boolean }>}
+     */
+    tokenVigente({ slug, minimoMs }) {
+      if (
+        typeof minimoMs !== "number" ||
+        !Number.isFinite(minimoMs) ||
+        minimoMs <= 0
+      ) {
+        return Promise.reject(
+          new ErroDeAcesso(
+            "Acesso: tokenVigente precisa de um minimoMs positivo, em milissegundos.",
+            { codigo: "PEDIDO_INVALIDO" },
+          ),
+        );
+      }
+      const chave = `${slug}\n${minimoMs}`;
+      const andando = vigenteEmVoo.get(chave);
+      if (andando) return andando;
+      const p = comTrava(slug, async () => {
+        const reg = await lerRegistro(cofre, slug);
+        const g = guardadoDo(reg);
+        if (reg?.refresh && g && g.expiraEm - agora() > minimoMs) {
+          return {
+            accessToken: g.token,
+            expiraEm: g.expiraEm,
+            reaproveitado: true,
+          };
+        }
+        const r = await renovarSemTrava(slug, { guardar: true, lido: reg });
+        return { ...r, reaproveitado: false };
+      }).finally(() => {
+        vigenteEmVoo.delete(chave);
+      });
+      vigenteEmVoo.set(chave, p);
       return p;
     },
 

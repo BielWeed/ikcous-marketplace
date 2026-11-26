@@ -19,7 +19,13 @@
  *    ou disse (400/404 invalid_grant/refresh_token_not_found) que o refresh
  *    já não vale; 401/403/429/5xx/rede/outro erro mantêm o cofre;
  *  - nenhum erro carrega token, refresh, client_secret, código, verificador
- *    nem state.
+ *    nem state;
+ *  - renovarComTravaLonga (sessão de publicação) SEGURA a trava até o liberar:
+ *    nenhuma outra renovação da loja anda nesse meio, nem de outro processo;
+ *  - tokenVigente reaproveita o access token guardado no cofre enquanto faltar
+ *    MAIS que o mínimo, e toda renovação apaga o guardado ANTES de pedir o
+ *    token novo (o guardado nunca é mais velho que a última renovação, gire
+ *    ou não o Supabase o access token anterior).
  *
  * Nenhuma chamada de rede real: todo fetch aqui é falso; o cofre é o de memória.
  */
@@ -41,6 +47,9 @@ import {
 } from "../scripts/frota/acesso-oauth.mjs";
 import {
   CofreTravado,
+  SCRIPT_CIFRAR,
+  SCRIPT_DECIFRAR,
+  criarCofreDpapi,
   criarCofreMemoria,
 } from "../scripts/frota/cofre-local.mjs";
 import {
@@ -883,4 +892,677 @@ Deno.test("revogar: com outra operação travando a loja, recusa sem chamar", as
   await assertRejects(() => acesso.revogar({ slug: SLUG }), CofreTravado);
   assertEquals(f.chamadas.length, 0);
   await liberar();
+});
+
+// ------------------------------------------------- trava longa e token guardado --
+// Canários montados em tempo de execução (literal no fonte dispara o secretlint).
+const canario = (par) => `sbp_oauth_${par.repeat(20)}`;
+const ACESSO_A = canario("ab");
+const ACESSO_B = canario("cd");
+const ACESSO_C = canario("ef");
+const HORA = 3_600_000;
+const DIA = 24 * HORA;
+
+/** Resposta 200 do /token com um access token escolhido. */
+const tokenCom = (access, refresh = SEM_REFRESH, expiresIn = 86400) =>
+  resposta(200, {
+    access_token: access,
+    ...(refresh === SEM_REFRESH ? {} : { refresh_token: refresh }),
+    ...(expiresIn === null ? {} : { expires_in: expiresIn }),
+    token_type: "Bearer",
+  });
+
+/** Erro sem nenhum dos canários de access token. */
+function assertSemCanario(erro) {
+  assertSemVazamento(erro, [ACESSO_A, ACESSO_B, ACESSO_C]);
+}
+
+async function cofreComGuardado(token, expiraEm, refresh = REFRESH_1) {
+  const cofre = criarCofreMemoria();
+  await cofre.gravar(
+    SLUG,
+    JSON.stringify({
+      versao: 1,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      redirectUri: REDIRECT,
+      refresh,
+      acesso: { token, expiraEm },
+    }),
+  );
+  return cofre;
+}
+
+/** Cofre que anota cada gravação (com o registro gravado). */
+function cofreQueAnota(base, eventos, { falharGravacao } = {}) {
+  return {
+    ...base,
+    async gravar(slug, valor) {
+      const reg = JSON.parse(valor);
+      eventos.push({ tipo: "gravar", reg });
+      if (falharGravacao?.(reg)) throw new Error(`disco cheio ${valor}`);
+      await base.gravar(slug, valor);
+    },
+  };
+}
+
+function fetchQueAnota(eventos, ...respostas) {
+  const f = fetchFalso(...respostas);
+  const g = (url, init) => {
+    eventos.push({ tipo: "fetch" });
+    return f(url, init);
+  };
+  g.chamadas = f.chamadas;
+  return g;
+}
+
+/** A trava da loja está livre? (pega e solta na hora) */
+async function travaLivre(cofre) {
+  try {
+    const l = await cofre.travar(SLUG);
+    await l();
+    return true;
+  } catch (e) {
+    if (e instanceof CofreTravado) return false;
+    throw e;
+  }
+}
+
+Deno.test("renovarComTravaLonga: devolve o token e SEGURA a trava até o liberar", async () => {
+  const cofre = await cofreConectado();
+  const f = fetchFalso(tokenCom(ACESSO_A, REFRESH_2));
+  const acesso = criarAcessoOAuth({ cofre, fetch: f, agora: () => AGORA });
+  const s = await acesso.renovarComTravaLonga({ slug: SLUG });
+  assertEquals(s.accessToken, ACESSO_A);
+  assertEquals(s.expiraEm, AGORA + DIA);
+  assertEquals(typeof s.liberar, "function");
+  assertEquals(typeof s.renovarDeNovo, "function");
+  assertEquals(f.chamadas.length, 1);
+
+  // mesmo processo (mesma instância) e "outro processo" (outra instância no
+  // mesmo cofre): renovar, tokenVigente, outra sessão e revogar são recusados
+  const outro = criarAcessoOAuth({ cofre, fetch: f, agora: () => AGORA });
+  for (const tentar of [
+    () => acesso.renovar({ slug: SLUG }),
+    () => outro.renovar({ slug: SLUG }),
+    () => outro.tokenVigente({ slug: SLUG, minimoMs: HORA }),
+    () => outro.renovarComTravaLonga({ slug: SLUG }),
+    () => acesso.revogar({ slug: SLUG }),
+  ]) {
+    await assertRejects(tentar, CofreTravado);
+  }
+  assertEquals(f.chamadas.length, 1, "alguém renovou com a sessão aberta");
+  assertEquals(await travaLivre(cofre), false);
+
+  await s.liberar();
+  assertEquals(await travaLivre(cofre), true);
+  const f2 = fetchFalso(tokenCom(ACESSO_B));
+  await criarAcessoOAuth({ cofre, fetch: f2 }).renovar({ slug: SLUG });
+  assertEquals(f2.chamadas.length, 1, "depois do liberar, renovar voltou");
+});
+
+Deno.test("renovarComTravaLonga: o refresh NOVO é gravado ANTES do token sair", async () => {
+  const base = await cofreConectado();
+  const eventos = [];
+  let soltarGravacao;
+  const portao = new Promise((r) => {
+    soltarGravacao = r;
+  });
+  const cofre = {
+    ...base,
+    async gravar(slug, valor) {
+      eventos.push("gravar-comecou");
+      await portao;
+      await base.gravar(slug, valor);
+      eventos.push("gravar-terminou");
+    },
+  };
+  const acesso = criarAcessoOAuth({
+    cofre,
+    fetch: fetchFalso(tokenCom(ACESSO_A, REFRESH_2)),
+  });
+  const p = acesso.renovarComTravaLonga({ slug: SLUG }).then((s) => {
+    eventos.push("devolveu");
+    return s;
+  });
+  await new Promise((r) => setTimeout(r, 30));
+  assertEquals(eventos, ["gravar-comecou"], "devolveu antes de gravar");
+  soltarGravacao();
+  const s = await p;
+  assertEquals(eventos, ["gravar-comecou", "gravar-terminou", "devolveu"]);
+  assertEquals((await lerRegistro(base)).refresh, REFRESH_2);
+  assert(
+    !JSON.stringify(await lerRegistro(base)).includes(ACESSO_A),
+    "o token da sessão (que vai ao GitHub) foi guardado no cofre",
+  );
+  await s.liberar();
+});
+
+Deno.test("renovarComTravaLonga: renovação que falha SOLTA a trava e o erro sobe sem segredo", async () => {
+  for (const [rotulo, montar, Classe, quebrarCofre] of [
+    ["401", () => resposta(401, corpoQueEcoa), SemAcesso, false],
+    ["500", () => resposta(500, corpoQueEcoa), ErroDaGestao, false],
+    [
+      "cofre não grava o refresh novo",
+      () => tokenCom(ACESSO_A, REFRESH_2),
+      ErroDeAcesso,
+      true,
+    ],
+  ]) {
+    const base = await cofreConectado();
+    const cofre = quebrarCofre
+      ? cofreQueAnota(base, [], { falharGravacao: () => true })
+      : base;
+    const acesso = criarAcessoOAuth({ cofre, fetch: fetchFalso(montar()) });
+    const e = await pegarErro(() =>
+      acesso.renovarComTravaLonga({ slug: SLUG }),
+    );
+    assert(e instanceof Classe, `${rotulo}: ${e?.name}`);
+    assertSemCanario(e);
+    assertEquals(
+      await travaLivre(base),
+      true,
+      `${rotulo}: a trava ficou presa`,
+    );
+  }
+  // loja sem refresh: recusa sem chamar e solta a trava
+  const vazio = criarCofreMemoria();
+  const f = fetchFalso();
+  await assertRejects(
+    () =>
+      criarAcessoOAuth({ cofre: vazio, fetch: f }).renovarComTravaLonga({
+        slug: SLUG,
+      }),
+    ErroDeAcesso,
+  );
+  assertEquals(f.chamadas.length, 0);
+  assertEquals(await travaLivre(vazio), true);
+});
+
+Deno.test("renovarComTravaLonga: trava já presa (outro processo) = CofreTravado sem chamar o Supabase", async () => {
+  const cofre = await cofreConectado();
+  const liberarOutro = await cofre.travar(SLUG);
+  const f = fetchFalso(tokenCom(ACESSO_A));
+  const acesso = criarAcessoOAuth({ cofre, fetch: f });
+  await assertRejects(
+    () => acesso.renovarComTravaLonga({ slug: SLUG }),
+    CofreTravado,
+  );
+  assertEquals(f.chamadas.length, 0);
+  // a recusa não mexeu na trava de quem já a tinha
+  assertEquals(await travaLivre(cofre), false);
+  await liberarOutro();
+  assertEquals(await travaLivre(cofre), true);
+});
+
+Deno.test("renovarComTravaLonga: liberar duas vezes não solta a trava de quem travou depois", async () => {
+  const cofre = await cofreConectado();
+  const acesso = criarAcessoOAuth({
+    cofre,
+    fetch: fetchFalso(tokenCom(ACESSO_A)),
+  });
+  const s = await acesso.renovarComTravaLonga({ slug: SLUG });
+  await s.liberar();
+  const liberarDepois = await cofre.travar(SLUG); // outro comando entrou
+  await s.liberar(); // segunda chamada: sem efeito
+  await Promise.all([s.liberar(), s.liberar()]);
+  assertEquals(await travaLivre(cofre), false, "soltou a trava alheia");
+  await liberarDepois();
+});
+
+Deno.test("renovarDeNovo: renova SOB a trava longa (para matar o token no fechar) e grava o refresh novo", async () => {
+  const REFRESH_3 = "refresh-FALSO-tres-0123456789";
+  const cofre = await cofreConectado();
+  const f = fetchFalso(
+    tokenCom(ACESSO_A, REFRESH_2),
+    tokenCom(ACESSO_B, REFRESH_3),
+  );
+  const acesso = criarAcessoOAuth({ cofre, fetch: f, agora: () => AGORA });
+  const s = await acesso.renovarComTravaLonga({ slug: SLUG });
+  const r = await s.renovarDeNovo();
+  assertEquals(r, { accessToken: ACESSO_B, expiraEm: AGORA + DIA });
+  assertEquals(
+    new URLSearchParams(f.chamadas[1].init.body).get("refresh_token"),
+    REFRESH_2,
+    "a renovação sob a trava não usou o refresh gravado pela primeira",
+  );
+  assertEquals((await lerRegistro(cofre)).refresh, REFRESH_3);
+  assertEquals(await travaLivre(cofre), false, "renovarDeNovo soltou a trava");
+  await s.liberar();
+  assertEquals(await travaLivre(cofre), true);
+});
+
+Deno.test("renovarDeNovo: depois do liberar recusa sem chamar o Supabase", async () => {
+  const cofre = await cofreConectado();
+  const f = fetchFalso(tokenCom(ACESSO_A));
+  const s = await criarAcessoOAuth({ cofre, fetch: f }).renovarComTravaLonga({
+    slug: SLUG,
+  });
+  await s.liberar();
+  const e = await pegarErro(() => s.renovarDeNovo());
+  assert(e instanceof ErroDeAcesso);
+  assertEquals(e.codigo, "TRAVA_SOLTA");
+  assertEquals(f.chamadas.length, 1);
+});
+
+Deno.test("renovarDeNovo: duas chamadas juntas = UMA renovação; liberar espera ela acabar", async () => {
+  const cofre = await cofreConectado();
+  let soltar;
+  const f = fetchFalso(
+    tokenCom(ACESSO_A),
+    () =>
+      new Promise((r) => {
+        soltar = () => r(tokenCom(ACESSO_B, REFRESH_2));
+      }),
+  );
+  const s = await criarAcessoOAuth({ cofre, fetch: f }).renovarComTravaLonga({
+    slug: SLUG,
+  });
+  const a = s.renovarDeNovo();
+  const b = s.renovarDeNovo();
+  await new Promise((r) => setTimeout(r, 10));
+  const liberou = s.liberar().then(() => "liberou");
+  await new Promise((r) => setTimeout(r, 10));
+  // com o pedido ainda no ar, a trava NÃO pode ter sido entregue a ninguém
+  assertEquals(await travaLivre(cofre), false, "soltou com a renovação no ar");
+  soltar();
+  const [ra, rb] = await Promise.all([a, b]);
+  assertEquals(f.chamadas.length, 2, "renovou duas vezes sob a mesma trava");
+  assertEquals(ra.accessToken, ACESSO_B);
+  assertEquals(rb.accessToken, ACESSO_B);
+  assertEquals(await liberou, "liberou");
+  assertEquals((await lerRegistro(cofre)).refresh, REFRESH_2);
+  assertEquals(await travaLivre(cofre), true);
+});
+
+// ---- a corrida entre PROCESSOS: trava em disco do cofre DPAPI (PowerShell falso)
+
+function executorDpapiFalso() {
+  const hex = (t) =>
+    Array.from(new TextEncoder().encode(t), (b) =>
+      b.toString(16).padStart(2, "0"),
+    ).join("");
+  const deHex = (h) =>
+    new TextDecoder().decode(
+      Uint8Array.from(h.match(/../g), (x) => Number.parseInt(x, 16)),
+    );
+  return async (_comando, args, { entrada }) => {
+    const i = args.indexOf("-EncodedCommand");
+    const bytes = Uint8Array.from(atob(args[i + 1]), (c) => c.charCodeAt(0));
+    const script = new TextDecoder("utf-16le").decode(bytes);
+    if (script === SCRIPT_CIFRAR) {
+      return { codigo: 0, saida: hex(entrada.trim()), erro: "" };
+    }
+    if (script === SCRIPT_DECIFRAR) {
+      return { codigo: 0, saida: deHex(entrada.trim()), erro: "" };
+    }
+    throw new Error("script inesperado");
+  };
+}
+
+Deno.test("corrida entre processos: sessão e renovação ao mesmo tempo = UM pedido ao Supabase, refresh não se perde", async () => {
+  const pasta = await Deno.makeTempDir({ prefix: "acesso-oauth-corrida-" });
+  try {
+    // dois "processos": cada um com o SEU cofre (mesma pasta) e o SEU acesso
+    const cofreA = criarCofreDpapi({ pasta, executar: executorDpapiFalso() });
+    const cofreB = criarCofreDpapi({ pasta, executar: executorDpapiFalso() });
+    await cofreA.gravar(
+      SLUG,
+      JSON.stringify({
+        versao: 1,
+        clientId: CLIENT_ID,
+        clientSecret: CLIENT_SECRET,
+        redirectUri: REDIRECT,
+        refresh: REFRESH_1,
+      }),
+    );
+    // o Supabase falso GIRA o refresh: quem reusar um refresh já trocado
+    // recebe invalid_grant (o que aconteceria aos dois sem a trava)
+    const usados = new Set();
+    let pedidos = 0;
+    const supabase = (_u, init) => {
+      pedidos++;
+      const n = pedidos;
+      const refresh = new URLSearchParams(init.body).get("refresh_token");
+      if (usados.has(refresh)) {
+        return Promise.resolve(resposta(400, { error: "invalid_grant" }));
+      }
+      usados.add(refresh);
+      return new Promise((r) =>
+        setTimeout(
+          () => r(tokenCom(ACESSO_A, `refresh-FALSO-novo-${n}-0123`)),
+          20,
+        ),
+      );
+    };
+    const a = criarAcessoOAuth({ cofre: cofreA, fetch: supabase });
+    const b = criarAcessoOAuth({ cofre: cofreB, fetch: supabase });
+    const [ra, rb] = await Promise.allSettled([
+      a.renovarComTravaLonga({ slug: SLUG }),
+      b.renovar({ slug: SLUG }),
+    ]);
+    const venceu = [ra, rb].filter((x) => x.status === "fulfilled");
+    const perdeu = [ra, rb].filter((x) => x.status === "rejected");
+    assertEquals(venceu.length, 1, "os dois renovaram (ou nenhum)");
+    assert(perdeu[0].reason instanceof CofreTravado, String(perdeu[0].reason));
+    assertEquals(pedidos, 1, "o perdedor chegou a pedir token");
+    // o refresh no disco é o do vencedor, legível pelo outro processo
+    assertEquals(
+      JSON.parse(await cofreB.ler(SLUG)).refresh,
+      "refresh-FALSO-novo-1-0123",
+    );
+    if (ra.status === "fulfilled") await ra.value.liberar();
+    // trava solta: a próxima renovação do outro processo usa o refresh novo
+    await b.renovar({ slug: SLUG });
+    assertEquals(pedidos, 2);
+    assertEquals(
+      JSON.parse(await cofreA.ler(SLUG)).refresh,
+      "refresh-FALSO-novo-2-0123",
+    );
+    const sobrou = [];
+    for await (const x of Deno.readDir(pasta)) sobrou.push(x.name);
+    assertEquals(sobrou, [`${SLUG}.dpapi`], "ficou trava ou temporário");
+  } finally {
+    await Deno.remove(pasta, { recursive: true });
+  }
+});
+
+// -------------------------------------------------------------- tokenVigente --
+
+Deno.test("tokenVigente: sem token guardado renova UMA vez e guarda token + vencimento numa gravação só", async () => {
+  const base = await cofreConectado();
+  const eventos = [];
+  const cofre = cofreQueAnota(base, eventos);
+  const f = fetchQueAnota(eventos, tokenCom(ACESSO_A, REFRESH_2));
+  const acesso = criarAcessoOAuth({ cofre, fetch: f, agora: () => AGORA });
+  const r = await acesso.tokenVigente({ slug: SLUG, minimoMs: 2 * HORA });
+  assertEquals(r, {
+    accessToken: ACESSO_A,
+    expiraEm: AGORA + DIA,
+    reaproveitado: false,
+  });
+  assertEquals(
+    eventos.map((e) => e.tipo),
+    ["fetch", "gravar"],
+  );
+  const reg = await lerRegistro(base);
+  assertEquals(reg.refresh, REFRESH_2);
+  assertEquals(reg.acesso, { token: ACESSO_A, expiraEm: AGORA + DIA });
+  assertEquals(await travaLivre(base), true);
+});
+
+Deno.test("tokenVigente: reaproveita o guardado enquanto falta MAIS que o mínimo (1 renovação por dia)", async () => {
+  const cofre = await cofreConectado();
+  let agora = AGORA;
+  const f = fetchFalso(tokenCom(ACESSO_A, REFRESH_2), tokenCom(ACESSO_B));
+  // um ensaio por hora, cada um num "processo" novo (instância nova)
+  const tokens = [];
+  for (let h = 0; h <= 22; h++) {
+    agora = AGORA + h * HORA;
+    const acesso = criarAcessoOAuth({ cofre, fetch: f, agora: () => agora });
+    const r = await acesso.tokenVigente({ slug: SLUG, minimoMs: 2 * HORA });
+    tokens.push(r.accessToken);
+    assertEquals(r.reaproveitado, h > 0 && h < 22, `hora ${h}`);
+  }
+  // 0h renova; 1h..21h reaproveitam; 22h: falta EXATAMENTE o mínimo -> renova
+  assertEquals(f.chamadas.length, 2, "renovou mais de uma vez no dia");
+  assertEquals(tokens.slice(0, 22), Array(22).fill(ACESSO_A));
+  assertEquals(tokens[22], ACESSO_B);
+  assertEquals((await lerRegistro(cofre)).acesso.token, ACESSO_B);
+});
+
+Deno.test("tokenVigente: guardado com pouco tempo é trocado, e o velho sai do cofre ANTES do pedido", async () => {
+  const base = await cofreComGuardado(ACESSO_A, AGORA + HORA);
+  const eventos = [];
+  const cofre = cofreQueAnota(base, eventos);
+  const f = fetchQueAnota(eventos, tokenCom(ACESSO_B));
+  const acesso = criarAcessoOAuth({ cofre, fetch: f, agora: () => AGORA });
+  const r = await acesso.tokenVigente({ slug: SLUG, minimoMs: 2 * HORA });
+  assertEquals(r.accessToken, ACESSO_B);
+  assertEquals(r.reaproveitado, false);
+  assertEquals(
+    eventos.map((e) => e.tipo),
+    ["gravar", "fetch", "gravar"],
+  );
+  assertEquals(eventos[0].reg.acesso, undefined, "o velho não saiu antes");
+  assertEquals(eventos[0].reg.refresh, REFRESH_1, "a limpeza mexeu no refresh");
+  assertEquals((await lerRegistro(base)).acesso, {
+    token: ACESSO_B,
+    expiraEm: AGORA + DIA,
+  });
+});
+
+Deno.test("renovar (outro comando) apaga o token guardado ANTES do pedido e não guarda o novo", async () => {
+  // Se o Supabase invalidar o access token anterior a cada renovação (P6b),
+  // o guardado morre aqui; se não invalidar, perde-se só uma renovação. Nos
+  // dois casos o cofre nunca oferece um token mais velho que a última troca.
+  const base = await cofreComGuardado(ACESSO_A, AGORA + 20 * HORA);
+  const eventos = [];
+  const cofre = cofreQueAnota(base, eventos);
+  const f = fetchQueAnota(eventos, tokenCom(ACESSO_B), tokenCom(ACESSO_C));
+  const acesso = criarAcessoOAuth({ cofre, fetch: f, agora: () => AGORA });
+  const r = await acesso.renovar({ slug: SLUG });
+  assertEquals(r, { accessToken: ACESSO_B, expiraEm: AGORA + DIA });
+  assertEquals(
+    eventos.map((e) => e.tipo),
+    ["gravar", "fetch"],
+  );
+  assertEquals(eventos[0].reg.acesso, undefined);
+  const reg = await lerRegistro(base);
+  assertEquals(reg.acesso, undefined);
+  assertEquals(reg.refresh, REFRESH_1);
+  // o próximo ensaio NÃO recebe o ACESSO_A: renova
+  const v = await acesso.tokenVigente({ slug: SLUG, minimoMs: 2 * HORA });
+  assertEquals(v.accessToken, ACESSO_C);
+  assertEquals(v.reaproveitado, false);
+});
+
+Deno.test("renovarComTravaLonga e receber também tiram o token guardado do cofre", async () => {
+  const base = await cofreComGuardado(ACESSO_A, AGORA + 20 * HORA);
+  const s = await criarAcessoOAuth({
+    cofre: base,
+    fetch: fetchFalso(tokenCom(ACESSO_B, REFRESH_2)),
+    agora: () => AGORA,
+  }).renovarComTravaLonga({ slug: SLUG });
+  const reg = await lerRegistro(base);
+  assertEquals(reg.acesso, undefined, "a sessão deixou o guardado velho");
+  assertEquals(reg.refresh, REFRESH_2);
+  await s.liberar();
+
+  // receber (autorização nova) com um guardado de antes
+  const f = fetchFalso(tokenCom(ACESSO_C, REFRESH_1));
+  const { acesso, cofre, state } = await abrirComFetch(f);
+  const atual = await lerRegistro(cofre);
+  await cofre.gravar(
+    SLUG,
+    JSON.stringify({
+      ...atual,
+      acesso: { token: ACESSO_A, expiraEm: AGORA + DIA },
+    }),
+  );
+  await acesso.receber({
+    slug: SLUG,
+    colado: `?code=${CODIGO}&state=${state}`,
+  });
+  const depois = await lerRegistro(cofre);
+  assertEquals(depois.acesso, undefined, "receber deixou o guardado velho");
+  assert(!JSON.stringify(depois).includes(ACESSO_C), "receber guardou o token");
+});
+
+Deno.test("tokenVigente: limpeza do guardado que falha = nada renovado, erro sem segredo", async () => {
+  const base = await cofreComGuardado(ACESSO_A, AGORA + HORA);
+  const antes = await base.ler(SLUG);
+  const cofre = cofreQueAnota(base, [], { falharGravacao: () => true });
+  const f = fetchFalso(tokenCom(ACESSO_B));
+  const acesso = criarAcessoOAuth({ cofre, fetch: f, agora: () => AGORA });
+  for (const tentar of [
+    () => acesso.tokenVigente({ slug: SLUG, minimoMs: 2 * HORA }),
+    () => acesso.renovar({ slug: SLUG }),
+  ]) {
+    const e = await pegarErro(tentar);
+    assert(e instanceof ErroDeAcesso);
+    assertEquals(e.codigo, "GUARDADO_NAO_SAIU");
+    assertSemCanario(e);
+  }
+  assertEquals(f.chamadas.length, 0, "renovou sem limpar o guardado");
+  assertEquals(await base.ler(SLUG), antes);
+  assertEquals(await travaLivre(base), true);
+});
+
+Deno.test("tokenVigente: gravação do token novo que falha", async () => {
+  // refresh NÃO girou: o token sai (vale), e o cofre fica SEM guardado
+  {
+    const base = await cofreConectado();
+    const cofre = cofreQueAnota(base, [], {
+      falharGravacao: (reg) => reg.acesso !== undefined,
+    });
+    const acesso = criarAcessoOAuth({
+      cofre,
+      fetch: fetchFalso(tokenCom(ACESSO_A)),
+      agora: () => AGORA,
+    });
+    const r = await acesso.tokenVigente({ slug: SLUG, minimoMs: 2 * HORA });
+    assertEquals(r.accessToken, ACESSO_A);
+    assertEquals(r.reaproveitado, false);
+    const reg = await lerRegistro(base);
+    assertEquals(reg.acesso, undefined);
+    assertEquals(reg.refresh, REFRESH_1);
+  }
+  // refresh GIROU: igual ao renovar, o token NÃO sai (o refresh novo se perdeu)
+  {
+    const base = await cofreConectado();
+    const cofre = cofreQueAnota(base, [], { falharGravacao: () => true });
+    const acesso = criarAcessoOAuth({
+      cofre,
+      fetch: fetchFalso(tokenCom(ACESSO_A, REFRESH_2)),
+      agora: () => AGORA,
+    });
+    const e = await pegarErro(() =>
+      acesso.tokenVigente({ slug: SLUG, minimoMs: 2 * HORA }),
+    );
+    assert(e instanceof ErroDeAcesso);
+    assertEquals(e.codigo, "COFRE_NAO_GRAVOU");
+    assertSemCanario(e);
+    assertEquals(await travaLivre(base), true);
+  }
+});
+
+Deno.test("tokenVigente: renovação sem prazo (expires_in ausente) não guarda nada", async () => {
+  const cofre = await cofreConectado();
+  const f = fetchFalso(
+    tokenCom(ACESSO_A, SEM_REFRESH, null),
+    tokenCom(ACESSO_B, SEM_REFRESH, null),
+  );
+  const acesso = criarAcessoOAuth({ cofre, fetch: f, agora: () => AGORA });
+  const r = await acesso.tokenVigente({ slug: SLUG, minimoMs: HORA });
+  assertEquals(r, {
+    accessToken: ACESSO_A,
+    expiraEm: null,
+    reaproveitado: false,
+  });
+  assertEquals((await lerRegistro(cofre)).acesso, undefined);
+  const r2 = await acesso.tokenVigente({ slug: SLUG, minimoMs: HORA });
+  assertEquals(r2.accessToken, ACESSO_B, "reaproveitou token sem prazo");
+});
+
+Deno.test("tokenVigente: guardado malformado é ignorado (renova), não tranca a loja", async () => {
+  for (const ruim of [
+    { token: "", expiraEm: AGORA + DIA },
+    { token: "tem espaço", expiraEm: AGORA + DIA },
+    { token: ACESSO_A, expiraEm: "amanhã" },
+    { token: ACESSO_A },
+    "texto",
+    null,
+  ]) {
+    const cofre = await cofreConectado();
+    const atual = await lerRegistro(cofre);
+    await cofre.gravar(SLUG, JSON.stringify({ ...atual, acesso: ruim }));
+    const f = fetchFalso(tokenCom(ACESSO_B));
+    const acesso = criarAcessoOAuth({ cofre, fetch: f, agora: () => AGORA });
+    const r = await acesso.tokenVigente({ slug: SLUG, minimoMs: HORA });
+    assertEquals(r.accessToken, ACESSO_B, JSON.stringify(ruim));
+    assertEquals(f.chamadas.length, 1);
+  }
+});
+
+Deno.test("tokenVigente: mínimo inválido recusa sem tocar cofre nem rede", async () => {
+  for (const minimoMs of [
+    undefined,
+    -1,
+    0,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    "7200000",
+  ]) {
+    const cofre = await cofreComGuardado(ACESSO_A, AGORA + DIA);
+    let travou = 0;
+    const contado = {
+      ...cofre,
+      async travar(s) {
+        travou++;
+        return cofre.travar(s);
+      },
+    };
+    const f = fetchFalso();
+    const e = await pegarErro(() =>
+      criarAcessoOAuth({ cofre: contado, fetch: f }).tokenVigente({
+        slug: SLUG,
+        minimoMs,
+      }),
+    );
+    assert(e instanceof ErroDeAcesso, String(minimoMs));
+    assertEquals(e.codigo, "PEDIDO_INVALIDO");
+    assertEquals(travou, 0);
+    assertEquals(f.chamadas.length, 0);
+  }
+});
+
+Deno.test("tokenVigente: trava de outro processo = CofreTravado, mesmo com guardado bom", async () => {
+  const cofre = await cofreComGuardado(ACESSO_A, AGORA + DIA);
+  const liberarOutro = await cofre.travar(SLUG);
+  const f = fetchFalso();
+  const acesso = criarAcessoOAuth({ cofre, fetch: f, agora: () => AGORA });
+  await assertRejects(
+    () => acesso.tokenVigente({ slug: SLUG, minimoMs: HORA }),
+    CofreTravado,
+  );
+  assertEquals(f.chamadas.length, 0);
+  await liberarOutro();
+});
+
+Deno.test("tokenVigente: pedidos simultâneos no mesmo processo = UMA renovação", async () => {
+  const cofre = await cofreConectado();
+  let soltar;
+  const f = fetchFalso(
+    () =>
+      new Promise((r) => {
+        soltar = () => r(tokenCom(ACESSO_A, REFRESH_2));
+      }),
+  );
+  const acesso = criarAcessoOAuth({ cofre, fetch: f, agora: () => AGORA });
+  const a = acesso.tokenVigente({ slug: SLUG, minimoMs: HORA });
+  const b = acesso.tokenVigente({ slug: SLUG, minimoMs: HORA });
+  await new Promise((r) => setTimeout(r, 10));
+  soltar();
+  const [ra, rb] = await Promise.all([a, b]);
+  assertEquals(f.chamadas.length, 1);
+  assertEquals(ra.accessToken, ACESSO_A);
+  assertEquals(rb.accessToken, ACESSO_A);
+});
+
+Deno.test("tokenVigente: SemAcesso sobe sem segredo, o refresh fica e o guardado velho não", async () => {
+  const cofre = await cofreComGuardado(ACESSO_A, AGORA + HORA);
+  const acesso = criarAcessoOAuth({
+    cofre,
+    fetch: fetchFalso(resposta(401, corpoQueEcoa)),
+    agora: () => AGORA,
+  });
+  const e = await pegarErro(() =>
+    acesso.tokenVigente({ slug: SLUG, minimoMs: 2 * HORA }),
+  );
+  assert(e instanceof SemAcesso);
+  assertSemCanario(e);
+  const reg = await lerRegistro(cofre);
+  assertEquals(reg.refresh, REFRESH_1);
+  assertEquals(reg.acesso, undefined, "o guardado com pouco tempo ficou");
 });
