@@ -1,5 +1,5 @@
 // @ts-nocheck
-/* eslint-disable security/detect-non-literal-require -- teste: os require são de arquivos fixos deste repositório (RAIZ + caminho constante). */
+/* eslint-disable security/detect-non-literal-require, security/detect-object-injection -- teste: os require são de arquivos fixos deste repositório (RAIZ + caminho constante) e as chaves de loja são constantes do próprio teste. */
 /**
  * A ORGANIZAÇÃO CENTRAL DO SUPABASE como dado (scripts/frota/org-central.json,
  * lido por scripts/frota/org-central.cjs) — o modelo de 01/12/2026, em que a
@@ -21,6 +21,7 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { segredoDaLoja } from "../scripts/frota/cadastro-da-loja.mjs";
 
 const require = createRequire(import.meta.url);
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
@@ -195,21 +196,81 @@ Deno.test("segredoDoGitHub: nunca o segredo PRÓPRIO de uma loja de hoje (IKCOUS
   );
 });
 
-Deno.test("cruzado com o lojas.json: todo segredo próprio de loja (o que não é o da org) está na lista fechada, e o da org não é de nenhuma loja com segredo próprio", () => {
+/**
+ * O que reprova no cruzamento org × cadastro de lojas (lista vazia = ok):
+ *  - segredo PRÓPRIO de loja (o que não é o da org) fora de SEGREDOS_PROPRIOS;
+ *  - o segredo da org dentro de SEGREDOS_PROPRIOS;
+ *  - loja cujo segredo derivado do nome é o nome da org (ver abaixo).
+ */
+function problemasDoCruzamento(org, cadastro): string[] {
+  const problemas: string[] = [];
+  for (const l of Object.values(cadastro.lojas)) {
+    if (l.classe !== "assinante" || l.segredoDoToken === org.segredoDoGitHub)
+      continue;
+    if (!orgMod.SEGREDOS_PROPRIOS.includes(l.segredoDoToken))
+      problemas.push(
+        `${l.segredoDoToken} é segredo próprio de ${l.projeto} e falta em SEGREDOS_PROPRIOS de org-central.cjs`,
+      );
+  }
+  // O PONTO CEGO (revisão Opus de aac075e73): uma loja cujo segredo DERIVADO do
+  // nome (o que o cadastro daria a ela) é o nome da org — a loja `lojas` — some
+  // da conta acima porque "usa o segredo da org". Ela nunca pode existir, com
+  // segredo nenhum: o dono gravaria o token dela por cima do da org.
+  for (const l of Object.values(cadastro.lojas)) {
+    if (segredoDaLoja(l.projeto) === org.segredoDoGitHub)
+      problemas.push(
+        `a loja ${l.projeto} tem o segredo derivado ${org.segredoDoGitHub}, que é o nome da org central`,
+      );
+  }
+  if (orgMod.SEGREDOS_PROPRIOS.includes(org.segredoDoGitHub))
+    problemas.push("o segredo da org está em SEGREDOS_PROPRIOS");
+  return problemas;
+}
+
+Deno.test("cruzado com o lojas.json: todo segredo próprio de loja está na lista fechada, o da org não é próprio de ninguém, e nenhuma loja tem o segredo DERIVADO igual ao nome da org", () => {
   const org = orgMod.carregarOrgCentral();
   const cadastro = lojasMod.carregarLojas();
-  const proprios = Object.values(cadastro.lojas)
-    .filter(
-      (l) =>
-        l.classe === "assinante" && l.segredoDoToken !== org.segredoDoGitHub,
-    )
-    .map((l) => l.segredoDoToken);
+  const proprios = Object.values(cadastro.lojas).filter(
+    (l) => l.classe === "assinante" && l.segredoDoToken !== org.segredoDoGitHub,
+  );
   assert(proprios.length >= 2, "IKCOUS e Savy sumiram do cadastro?");
-  for (const s of proprios)
-    assert(
-      orgMod.SEGREDOS_PROPRIOS.includes(s),
-      `${s} é segredo próprio de loja e falta em SEGREDOS_PROPRIOS de org-central.cjs`,
-    );
-  assert(!orgMod.SEGREDOS_PROPRIOS.includes(org.segredoDoGitHub));
+  assertEquals(problemasDoCruzamento(org, cadastro), []);
   assert(Object.isFrozen(orgMod.SEGREDOS_PROPRIOS));
+
+  // CONTROLES: o cruzamento acha cada caso (senão a lista vazia não prova nada)
+  const comLoja = (projeto, segredoDoToken) => {
+    const j = JSON.parse(
+      Deno.readTextFileSync(join(RAIZ, "scripts/frota/lojas.json")),
+    );
+    j.lojas[projeto] = {
+      ref: "yzaaaaaaaaaaaaaaaaab",
+      classe: "assinante",
+      apelido: "Teste",
+      segredoDoToken,
+      functionsNomeadas: true,
+    };
+    return lojasMod.validarCadastro(j);
+  };
+  // a loja `lojas` no segredo da org: passa no validador, e o cruzamento pega
+  assertEquals(
+    problemasDoCruzamento(org, comLoja("lojas", org.segredoDoGitHub)),
+    [
+      `a loja lojas tem o segredo derivado ${org.segredoDoGitHub}, que é o nome da org central`,
+    ],
+  );
+  // loja com segredo próprio fora da lista fechada
+  assertEquals(
+    problemasDoCruzamento(
+      org,
+      comLoja("loja-x", "SUPABASE_ACCESS_TOKEN_LOJA_X"),
+    ),
+    [
+      "SUPABASE_ACCESS_TOKEN_LOJA_X é segredo próprio de loja-x e falta em SEGREDOS_PROPRIOS de org-central.cjs",
+    ],
+  );
+  // loja normal na org: nada a apontar
+  assertEquals(
+    problemasDoCruzamento(org, comLoja("loja-da-ana", org.segredoDoGitHub)),
+    [],
+  );
 });
