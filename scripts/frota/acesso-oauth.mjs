@@ -403,7 +403,17 @@ export function criarAcessoOAuth({
       });
     },
 
-    async receber({ slug, colado }) {
+    /**
+     * Opcionais (o trocar-dono do nova-loja.mjs, T3 de 26/11), ambos dentro
+     * da trava do cofre e sem nada gravado antes deles:
+     *  - conferirPendente(pendente): ANTES de o código ser trocado (recebe
+     *    { state, verificador, criadoEm }; não pode imprimir nada disso);
+     *  - conferirAcesso(accessToken): depois da troca e ANTES de o refresh
+     *    novo ir para o cofre; se lançar, o cofre fica como estava (o refresh
+     *    antigo segue lá). Não pode usar o renovar (a trava é a mesma).
+     * O que eles lançam sobe como veio.
+     */
+    async receber({ slug, colado, conferirPendente, conferirAcesso }) {
       return comTrava(slug, async () => {
         const reg = await lerRegistro(cofre, slug);
         if (!reg?.pendente) {
@@ -412,6 +422,7 @@ export function criarAcessoOAuth({
             { codigo: "SEM_PENDENTE" },
           );
         }
+        if (conferirPendente) await conferirPendente({ ...reg.pendente });
         const codigo = lerCodigoColado(colado, reg.pendente.state);
         const r = await pedirToken(reg, {
           grant_type: "authorization_code",
@@ -425,6 +436,7 @@ export function criarAcessoOAuth({
             { codigo: "SEM_REFRESH" },
           );
         }
+        if (conferirAcesso) await conferirAcesso(r.accessToken);
         const { pendente: _usada, ...resto } = reg;
         await gravarRegistro(
           slug,
