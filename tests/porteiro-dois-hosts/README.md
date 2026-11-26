@@ -42,6 +42,19 @@ ensaio não manda esses cabeçalhos sozinho. Roda com arquivos explícitos:
 npx vitest run --config vitest.porteiro.config.ts tests/porteiro-dois-hosts/cartaz-pre-impresso.test.ts tests/porteiro-dois-hosts/porteiro-dois-hosts.test.ts
 ```
 
+## O `/index.html` guardado em memória (lote C, 26/11/2026)
+
+`porteiro-guarda-o-index.test.ts` usa o mesmo servidor e o `middleware()`
+real. Fica num arquivo próprio porque cada arquivo do Vitest tem um registro de
+módulos novo: o cache do porteiro começa vazio, e dá para contar as buscas ao
+`/index.html` com exatidão. O que ele prova:
+
+- A, A, B, A, B na mesma instância geram uma busca por endereço.
+- Cada loja recebe só a ficha dela, sem nenhum byte do nome nem do banco da
+  outra.
+- Pedidos simultâneos do mesmo host se juntam numa busca só.
+- O manifesto sai com `private, max-age=300`.
+
 ## As seis fichas
 
 | Host | Caminho do porteiro | O que prova |
