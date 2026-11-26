@@ -94,3 +94,27 @@ ALTER TABLE public.pausa_de_vendas ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.pausa_de_vendas FROM PUBLIC, anon, authenticated, service_role;
 
 COMMENT ON TABLE public.pausa_de_vendas IS 'Linha unica (id = 1) da pausa de vendas por assinatura. vale_pela_assinatura = true LIGA a pausa nesta loja (so o dono do banco grava; nasce vazia = nunca pausa; Savy e IKCOUS nunca recebem true). suspensa_desde = dia (Sao Paulo) em que assinatura_da_loja.status virou suspensa, gravado pelo gatilho tr_assinatura_marca_suspensa_desde. RLS sem politica: nenhum papel de aplicacao le nem grava.';
+
+-- ===== (2) a regra das datas: o primeiro dia em que a loja PODE pausar por assinatura (pura: sem relogio, sem tabela) =====
+
+CREATE OR REPLACE FUNCTION public.data_da_pausa_de_vendas(p_teste_ate date, p_proxima date, p_suspensa_desde date, p_pausa_em date)
+ RETURNS date
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path = public, pg_temp
+AS $function$
+  -- d0 = p_proxima (a mensalidade mais antiga em aberto). Tolerancia: 3 dias com o sinal de teste nao convertido (teste_ate = proxima), 10 nos outros casos
+  -- (sinal torto cai nos 10, o lado leniente). minimo = d0 + tolerancia + 1. inicio = o MAIOR entre o minimo, o dia em que virou suspensa e o dia que a
+  -- gestao prometeu (pausa_em; nunca pausa antes dele). Sexta, sabado ou domingo passam para a segunda. Sem d0 ou sem suspensa_desde: NULL (nao pausa).
+  -- Sinal de teste SEM pausa_em: NULL (a conta daqui nao conhece feriado; sem o dia prometido no WhatsApp a loja nao pausa).
+  SELECT CASE
+           WHEN p_proxima IS NULL OR p_suspensa_desde IS NULL THEN NULL
+           WHEN p_teste_ate IS NOT NULL AND p_teste_ate = p_proxima AND p_pausa_em IS NULL THEN NULL
+           ELSE d.inicio + CASE WHEN extract(isodow FROM d.inicio) IN (5, 6, 7) THEN 8 - extract(isodow FROM d.inicio)::integer ELSE 0 END
+         END
+    FROM (SELECT greatest(p_proxima + CASE WHEN p_teste_ate IS NOT NULL AND p_teste_ate = p_proxima THEN 3 ELSE 10 END + 1,
+                          p_suspensa_desde, p_pausa_em) AS inicio) AS d;
+$function$;
+
+REVOKE ALL ON FUNCTION public.data_da_pausa_de_vendas(date, date, date, date) FROM PUBLIC, anon, authenticated, service_role;
+COMMENT ON FUNCTION public.data_da_pausa_de_vendas(date, date, date, date) IS 'Primeiro dia (Sao Paulo) em que a loja pode ter as vendas pausadas por assinatura: greatest(proxima + 3 ou 10 + 1, suspensa_desde, pausa_em), com sexta a domingo passando para a segunda. NULL = nao pausa (sem proxima, sem suspensa_desde, ou sinal de teste sem pausa_em). Pura; EXECUTE de ninguem de aplicacao.';

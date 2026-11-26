@@ -110,3 +110,44 @@ Deno.test("20261600: o pre-voo vem ANTES de criar qualquer coisa e exige canal, 
   ])
     assertStringIncludes(bloco, exigido);
 });
+
+/** O texto do CREATE OR REPLACE FUNCTION public.<nome>(...) ate o $function$; final. */
+function funcaoDe(sql: string, nome: string): string {
+  const marca = `CREATE OR REPLACE FUNCTION public.${nome}(`;
+  assertEquals(sql.split(marca).length - 1, 1, `uma definicao de ${nome}`);
+  const i = sql.indexOf(marca);
+  const a = sql.indexOf("AS $function$", i);
+  return sql.slice(i, sql.indexOf("$function$;", a) + "$function$;".length);
+}
+
+Deno.test("20261600: data_da_pausa_de_vendas recebe p_pausa_em, e' SQL IMMUTABLE sem relogio, com search_path fixo e EXECUTE de ninguem", () => {
+  const f = funcaoDe(migration, "data_da_pausa_de_vendas");
+  assertStringIncludes(
+    f,
+    "data_da_pausa_de_vendas(p_teste_ate date, p_proxima date, p_suspensa_desde date, p_pausa_em date)\n RETURNS date\n LANGUAGE sql\n IMMUTABLE\n SET search_path = public, pg_temp\n",
+  );
+  assert(!/SECURITY DEFINER/.test(f));
+  assert(
+    !/\b(now|current_date|clock_timestamp|localtimestamp|current_timestamp)\b/i.test(
+      semComentario(f.slice(f.indexOf("AS $function$"))),
+    ),
+    "relogio na regra pura",
+  );
+  // a regra: tolerancia 3 (sinal de teste) ou 10, +1; o piso pausa_em; sexta a domingo para a segunda; sinal de teste sem pausa_em = NULL
+  for (const trecho of [
+    "WHEN p_proxima IS NULL OR p_suspensa_desde IS NULL THEN NULL",
+    "WHEN p_teste_ate IS NOT NULL AND p_teste_ate = p_proxima AND p_pausa_em IS NULL THEN NULL",
+    "THEN 3 ELSE 10 END + 1,",
+    "p_suspensa_desde, p_pausa_em) AS inicio",
+    "IN (5, 6, 7) THEN 8 - extract(isodow FROM d.inicio)::integer ELSE 0 END",
+  ])
+    assertStringIncludes(f, trecho);
+  assertStringIncludes(
+    codigo,
+    "REVOKE ALL ON FUNCTION public.data_da_pausa_de_vendas(date, date, date, date) FROM PUBLIC, anon, authenticated, service_role;",
+  );
+  assert(
+    !/GRANT[^;]*data_da_pausa_de_vendas/.test(codigo),
+    "GRANT na regra pura",
+  );
+});
