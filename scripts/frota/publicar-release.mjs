@@ -1165,6 +1165,126 @@ export function classificarFuncao(baixados, esperadosSha, esperadosBase) {
   };
 }
 
+// ------------------------------------------------------------------ etapa 3: paralelo e nova tentativa
+
+/**
+ * Quantas lojas a etapa 3 lê ao mesmo tempo. Cada loja custa ~16 comandos
+ * (link, migration list, functions list e um download por function), e em
+ * série 60 lojas levavam 1 a 2 horas de ensaio (auditoria de escala, 25/11/2026,
+ * item B6). 4 é o teto: cada leitura já vai à API do Supabase e do GitHub, e
+ * subir sem medir só troca lentidão por erro 429. `deps.lojasEmParalelo` só
+ * pode DIMINUIR este número (os testes usam 1 para comparar com o serial).
+ */
+export const PRONTIDAO_LOJAS_EM_PARALELO = 4;
+
+/** Espera antes da única nova tentativa: o tempo de a rede/API respirar. */
+const ESPERA_DA_NOVA_TENTATIVA_MS = 2000;
+
+/**
+ * Roda `fn(item, indice)` sobre a lista com no máximo `limite` ao mesmo tempo e
+ * devolve os resultados NA ORDEM DA ENTRADA (nunca na ordem em que terminam).
+ * Falha FECHADA: se algum item lançar, espera os que já começaram terminarem
+ * (nada fica lendo no escuro), não começa os que faltam e relança a PRIMEIRA
+ * falha na ordem da entrada — o mesmo erro que o laço em série teria dado.
+ */
+export async function mapearEmParalelo(itens, limite, fn) {
+  const total = itens.length;
+  const resultados = new Array(total);
+  const falhou = new Array(total).fill(false);
+  const erros = new Array(total);
+  let proximo = 0;
+  let parar = false;
+  const trabalhador = async () => {
+    while (!parar && proximo < total) {
+      const i = proximo++;
+      try {
+        resultados[i] = await fn(itens[i], i);
+      } catch (e) {
+        falhou[i] = true;
+        erros[i] = e;
+        parar = true;
+      }
+    }
+  };
+  const quantos = Math.min(Math.max(1, Math.floor(limite) || 1), total);
+  await Promise.all(Array.from({ length: quantos }, trabalhador));
+  const primeira = falhou.indexOf(true);
+  if (primeira >= 0) throw erros[primeira];
+  return resultados;
+}
+
+// Falha de rede/API que passa sozinha. Conservador de propósito: só entra o que
+// é inequivocamente transitório; 401/403/404, "token inválido", projeto sem
+// acesso e qualquer erro que não reconheço ficam FORA (repetir não resolve e
+// só atrasa o bloqueio).
+const RE_FALHA_DE_REDE = new RegExp(
+  [
+    String.raw`\b(?:ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|EPIPE)\b`,
+    String.raw`\b(?:socket hang up|connection reset|unexpected EOF|no such host|temporary failure in name resolution|TLS handshake timeout|deadline exceeded)\b`,
+    String.raw`\b(?:timed out|timeout)\b`,
+    String.raw`\b(?:HTTP|status)(?: code)?:?\s+(?:429|50[234])\b`,
+  ].join("|"),
+  "i",
+);
+
+/**
+ * O comando que falhou foi por TEMPO ESGOTADO ou por rede/API passageira?
+ * `erro` é o do `execFile`: estourar o limite mata o processo com SIGTERM
+ * (`killed` e sem `code`); estourar o buffer também mata, mas traz `code`
+ * ("ERR_CHILD_PROCESS_STDIO_MAXBUFFER") e NÃO é transitório. `stderr` é o texto
+ * que o CLI imprimiu.
+ */
+export function falhaDeComandoEhTransitoria(erro, stderr) {
+  if (!erro) return false;
+  if (erro.killed === true && (erro.code === null || erro.code === undefined))
+    return true;
+  return RE_FALHA_DE_REDE.test(String(stderr ?? ""));
+}
+
+/**
+ * Roda `fn` e, SÓ se ela falhar com a marca `transitorio === true` (posta por
+ * `rodar` quando a falha foi de rede/tempo), repete UMA vez. A segunda falha
+ * sobe com o aviso de que já houve nova tentativa (e sem a marca: ninguém acima
+ * repete de novo). Erro sem a marca sobe na hora, sem repetir.
+ * Só envolve LEITURAS: repetir uma delas não muda nada em lugar nenhum.
+ */
+export async function comUmaRetentativa(
+  fn,
+  { esperaMs = ESPERA_DA_NOVA_TENTATIVA_MS } = {},
+) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e?.transitorio !== true) throw e;
+    if (esperaMs > 0) await new Promise((r) => setTimeout(r, esperaMs));
+    try {
+      return await fn();
+    } catch (e2) {
+      throw new Error(
+        `${e2?.message ?? String(e2)} (falhou também na nova tentativa)`,
+        { cause: e2 },
+      );
+    }
+  }
+}
+
+/** As leituras por loja (CLI do Supabase e do GitHub) ganham a nova tentativa. */
+function comRetentativaNasLeituras(deps) {
+  const esperaMs = deps.esperaDeRetentativaMs;
+  const envolver = (f) =>
+    typeof f === "function"
+      ? (...args) => comUmaRetentativa(() => f.apply(deps, args), { esperaMs })
+      : f;
+  return {
+    ...deps,
+    migrationList: envolver(deps.migrationList),
+    listarFuncoes: envolver(deps.listarFuncoes),
+    baixarFuncao: envolver(deps.baixarFuncao),
+    listarRuns: envolver(deps.listarRuns),
+    logDoRun: envolver(deps.logDoRun),
+  };
+}
+
 // ------------------------------------------------------------------ etapa 3: por loja
 
 async function prontidaoDaLoja(loja, canal, ctx) {
@@ -1650,7 +1770,40 @@ export async function publicarRelease(opcoes, deps) {
     "",
   );
   const consertos = [];
-  for (const loja of lojas) {
+  // Duas fases, para o resultado ser IGUAL ao do laço em série de antes:
+  //  (1) as leituras de cada loja (rede, CLI) rodam em paralelo, até
+  //      PRONTIDAO_LOJAS_EM_PARALELO por vez, e não mexem em nada compartilhado
+  //      (`prontidaoDaLoja` só devolve o seu registro);
+  //  (2) o relatório, os bloqueios e os comandos de conserto são montados
+  //      depois, UMA loja por vez, na ordem do inventário.
+  // Uma exceção em qualquer loja derruba o portão (fail-closed), como antes.
+  const depsDaProntidao = comRetentativaNasLeituras(deps);
+  const limiteDeLojas = Math.min(
+    PRONTIDAO_LOJAS_EM_PARALELO,
+    Number.isInteger(Number(deps.lojasEmParalelo)) &&
+      Number(deps.lojasEmParalelo) >= 1
+      ? Number(deps.lojasEmParalelo)
+      : PRONTIDAO_LOJAS_EM_PARALELO,
+  );
+  const prontidoes = await mapearEmParalelo(
+    lojas,
+    limiteDeLojas,
+    async (loja) => {
+      const canal = semBackend.has(loja.ref) ? null : canais.canais[loja.ref];
+      if (!canal) return null;
+      return prontidaoDaLoja(loja, canal, {
+        sha,
+        deps: depsDaProntidao,
+        requeridas,
+        funcoesDoSha,
+        verifyJwt,
+        canais,
+        agora,
+        topo,
+      });
+    },
+  );
+  for (const [indice, loja] of lojas.entries()) {
     if (semBackend.has(loja.ref)) continue;
     const canal = canais.canais[loja.ref];
     if (!canal) {
@@ -1661,16 +1814,7 @@ export async function publicarRelease(opcoes, deps) {
       });
       continue;
     }
-    const pront = await prontidaoDaLoja(loja, canal, {
-      sha,
-      deps,
-      requeridas,
-      funcoesDoSha,
-      verifyJwt,
-      canais,
-      agora,
-      topo,
-    });
+    const pront = prontidoes[indice];
     const naoProntas = pront.funcoes.filter((f) => f.estado === "NAO_PRONTA");
     const derivas = pront.funcoes.filter((f) => f.estado === "DERIVA_ANTIGA");
     linhas.push(
@@ -1832,11 +1976,13 @@ function rodar(comando, args, opcoes = {}) {
             .map((l) => l.trim())
             .filter((l) => l && !/new version|recommend/i.test(l))
             .pop();
-          reject(
-            new Error(
-              `${path.basename(comando)} ${args[0]} falhou${linha ? `: ${linha.slice(0, 200)}` : ""}`,
-            ),
+          const falha = new Error(
+            `${path.basename(comando)} ${args[0]} falhou${linha ? `: ${linha.slice(0, 200)}` : ""}`,
           );
+          // rede/tempo esgotado: `comUmaRetentativa` repete UMA vez as leituras
+          if (falhaDeComandoEhTransitoria(erro, stderr))
+            falha.transitorio = true;
+          reject(falha);
           return;
         }
         resolve(String(stdout));
@@ -1986,18 +2132,26 @@ export function dependenciasReais({ rodarGh } = {}) {
       }
     },
     listarRuns: async (workflow) => {
+      // O cache guarda a PROMESSA (não o resultado): com várias lojas lendo ao
+      // mesmo tempo, quem chega depois espera a mesma leitura em vez de abrir
+      // outra `gh run list`. Falha não fica guardada: a nova tentativa lê de novo.
       if (!cacheRuns.has(workflow)) {
-        const saida = await executarGh([
-          "run",
-          "list",
-          "--workflow",
-          workflow,
-          "--limit",
-          String(RUNS_LIDOS_POR_WORKFLOW),
-          "--json",
-          "databaseId,displayTitle,headSha,createdAt,updatedAt,conclusion,status",
-        ]);
-        cacheRuns.set(workflow, JSON.parse(saida));
+        const lida = Promise.resolve(
+          executarGh([
+            "run",
+            "list",
+            "--workflow",
+            workflow,
+            "--limit",
+            String(RUNS_LIDOS_POR_WORKFLOW),
+            "--json",
+            "databaseId,displayTitle,headSha,createdAt,updatedAt,conclusion,status",
+          ]),
+        ).then((saida) => JSON.parse(saida));
+        cacheRuns.set(workflow, lida);
+        lida.catch(() => {
+          if (cacheRuns.get(workflow) === lida) cacheRuns.delete(workflow);
+        });
       }
       return cacheRuns.get(workflow);
     },
