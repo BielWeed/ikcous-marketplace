@@ -1,4 +1,5 @@
 // @ts-nocheck
+/* eslint-disable security/detect-object-injection -- os indices vem de listas fechadas deste arquivo (nomes das consultas), nunca de entrada de rede. */
 /* eslint-disable security/detect-unsafe-regex, security/detect-non-literal-regexp -- as regexes leem o texto fixo e versionado de uma migration (sem entrada de fora), então não há ReDoS possível; mesma razão dos outros testes migration_*. */
 // A LOJA GUARDA O DIA DA PAUSA DO TESTE — leitura do TEXTO da 20261590000000 (sucessora da porta da 20261399998000).
 // O COMPORTAMENTO (gestao velha de 10 chaves, gestao nova de 11, ausente apaga, a data torta recusada, a simulacao, o erro exato da porta velha,
@@ -484,4 +485,73 @@ Deno.test("20261590: o db-apply confere a porta nova pelos marcadores da 2026139
     `${RAIZ}/scripts/publicacao/consultas/150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado.sql`,
   ).replace(/\r/g, "");
   assertStringIncludes(c150, `h IN ('${H_ANTERIOR}', '${H_NOVO}')`);
+});
+
+Deno.test("195a/195b (rol fechado de 6 e 4), canais-de-backend, menu do conferir-banco, rpc-ci (2 caminhos + a prova) e CONSULTAS_DE_ROL_FECHADO registram a migration", async () => {
+  const {
+    contarStatements,
+    ROL_FECHADO_POR_CONSULTA,
+  } = require("../scripts/publicacao/conferir-banco.cjs");
+  const { CONSULTAS_DE_ROL_FECHADO, lerCanais } = await import(
+    new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
+  );
+  const A = "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado";
+  const B = "195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente";
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A]?.length, 6);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B]?.length, 4);
+  const menu = Deno.readTextFileSync(
+    `${RAIZ}/.github/workflows/conferir-banco-da-loja.yml`,
+  ).replace(/\r/g, "");
+  const rpc = Deno.readTextFileSync(
+    `${RAIZ}/.github/workflows/rpc-ci.yml`,
+  ).replace(/\r/g, "");
+  for (const nome of [A, B]) {
+    const sql = Deno.readTextFileSync(
+      `${RAIZ}/scripts/publicacao/consultas/${nome}.sql`,
+    );
+    assertEquals(contarStatements(sql), 1, `${nome}: UM statement`);
+    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    const rotulos = [...sql.matchAll(/SELECT '([^']+)', '(?:sim|nao)'/g)].map(
+      (m) => m[1],
+    );
+    assertEquals(rotulos.sort(), [...rol].sort(), `${nome}: rotulos != rol`);
+    const codigo = sql.replace(/--.*$/gm, "").replace(/'[^']*'/g, "''");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|GRANT|REVOKE|TRUNCATE)\b/.test(
+        codigo,
+      ),
+      `${nome}: so leitura`,
+    );
+    assert(
+      !/\bFROM\s+(public\.)?assinatura_da_loja(_chave)?\b/i.test(codigo),
+      `${nome}: nao le linha do cartao nem da chave`,
+    );
+    assert(
+      CONSULTAS_DE_ROL_FECHADO.has(nome),
+      `${nome} fora de CONSULTAS_DE_ROL_FECHADO`,
+    );
+    assertStringIncludes(menu, `          - ${nome}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${nome}.sql"`).length - 1,
+      2,
+      `${nome}: nas duas listas de caminhos do rpc-ci`,
+    );
+  }
+  assertEquals(
+    contar(
+      rpc,
+      "node tests/banco/rodar-isolado.cjs tests/banco/a-loja-guarda-o-dia-da-pausa-do-teste-viva.cjs",
+    ),
+    1,
+  );
+  const lote = lerCanais().provasDeObjetos.find(
+    (p: { consulta: string }) => p.consulta === A,
+  );
+  assert(lote, "lote ausente em canais-de-backend.json");
+  assertEquals(lote.versoes, ["20261590000000"]);
+  assertEquals(lote.ausenciaConfirmadaPor, B);
+  assertEquals(lote.backfillLedger, undefined);
+  assertEquals(lote.nuncaAplicar, undefined);
+  assertStringIncludes(lote._comentario, "aditiva");
+  assertStringIncludes(lote._comentario, "exige a 20261399998000");
 });
