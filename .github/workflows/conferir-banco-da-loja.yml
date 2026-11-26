@@ -401,6 +401,9 @@ on:
           - 184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado
           - 184b-antes-a-caderneta-fecha-para-o-service-role-ausente
           - 185-privilegios-padrao-em-public
+          - 188a-conferir-o-livro-de-registro-aplicado
+          - 188b-antes-o-livro-de-registro-ausente
+          - 188m-medir-o-volume-para-o-livro-de-registro
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"
