@@ -1,7 +1,8 @@
 # A caderneta muda de banco — do projeto antigo para o banco da IKCOUS (sem nenhuma loja fora do ar)
 
-A caderneta da frota (`public.frota_lojas`, `public.frota_segredo`, `public.frota_estado_historico`) é o cadastro que
-diz ao porteiro de cada loja "este endereço é a loja X, banco Y". Ela mora no banco para onde `IKCOUS_FROTA_URL`
+A caderneta da frota (`public.frota_lojas`, `public.frota_segredo`, `public.frota_estado_historico` e, desde a
+20261570000000, `public.frota_enderecos_que_encaminham`) é o cadastro que diz ao porteiro de cada loja "este endereço
+é a loja X, banco Y" (e "este endereço antigo agora é o endereço Z"). Ela mora no banco para onde `IKCOUS_FROTA_URL`
 aponta. Até a virada, esse banco é o projeto antigo `dekxabvqdsuukijblazl`, que não recebe migrations pelos canais e
 pode pausar; se ele pausar, **todas as lojas mostram "em manutenção" em até 1 hora**. Depois da virada, a caderneta
 mora no banco da IKCOUS (`cafkrminfnokvgjqtkle`), que já tem as tabelas (as migrations da caderneta vão a todo banco
@@ -28,13 +29,15 @@ falsa no histórico). Prova viva dos três: `tests/banco/a-caderneta-muda-de-ban
 
 1. `execute_sql` no `dekxabvqdsuukijblazl` com o conteúdo de `caderneta-impressao-digital.sql`. Guardar a saída.
 2. O mesmo no `cafkrminfnokvgjqtkle`. Esperado no banco da IKCOUS: `frota_lojas.linhas`, `frota_segredo.linhas` e
-   `frota_estado_historico.linhas` = `0`, e as cinco linhas `ledger.*` = `registrada`.
+   `frota_estado_historico.linhas` e `frota_enderecos_que_encaminham.linhas` = `0`, e as seis linhas `ledger.*` =
+   `registrada`. **A 20261570 tem de estar nos DOIS bancos** (no antigo também): sem a tabela dos endereços, a digital e
+   o gerador falham com `relation "public.frota_enderecos_que_encaminham" does not exist` — aplicar a 20261570 lá antes.
 3. Nos dois: os blocos `funcao.*.corpo` iguais, e `tabela.*.forma` iguais.
 4. O JS de produção ainda carrega o banco antigo? (sem credencial)
    `curl.exe -s https://<loja>/ | Select-String "dekxab"` e o mesmo nos arquivos `assets/*.js` que a página carrega.
 5. `vercel env ls production` (só os NOMES): as três `IKCOUS_FROTA_*` existem.
 
-**Para aqui (não segue) se:** o banco da IKCOUS já tem linha na caderneta; falta alguma das cinco versões no ledger
+**Para aqui (não segue) se:** o banco da IKCOUS já tem linha na caderneta; falta alguma das seis versões no ledger
 dele (aplicar pelo canal antes, fora da semana da BF); ou algum `funcao.*.corpo` do banco antigo difere do da IKCOUS.
 
 ## 2. A virada (01/12 ou depois)
@@ -73,10 +76,10 @@ dele (aplicar pelo canal antes, fora da semana da BF); ou algum `funcao.*.corpo`
 |---|---|---|
 | `COPIA_ORIGEM_VAZIA` | o gerador rodou num banco sem a caderneta semeada | gerar de novo no banco antigo |
 | `COPIA_ORIGEM_DIVERGENTE` | as portas do banco antigo não têm os corpos da 20261490 | medir o antigo (passo 1) antes |
-| `COPIA_DESTINO_SEM_CADERNETA` | falta tabela da caderneta no destino | aplicar as migrations pelo canal |
+| `COPIA_DESTINO_SEM_CADERNETA` | falta tabela da caderneta no destino (inclusive a dos endereços, da 20261570) | aplicar as migrations pelo canal |
 | `COPIA_FORMA_DIVERGENTE` | uma tabela do destino tem outra forma (colunas) | aplicar as migrations pelo canal |
-| `COPIA_PORTAS_DIVERGENTES` | as portas do destino não são as da 20261490/20261470 | aplicar as migrations pelo canal |
-| `COPIA_GATILHO_AUSENTE` | o gatilho do estado não está ligado no destino | aplicar a 20261470 pelo canal |
+| `COPIA_PORTAS_DIVERGENTES` | as portas do destino não são as da 20261490/20261470/20261570 | aplicar as migrations pelo canal |
+| `COPIA_GATILHO_AUSENTE` | o gatilho do estado (ou o dos endereços) não está ligado no destino | aplicar a 20261470 (ou a 20261570) pelo canal |
 | `COPIA_DESTINO_NAO_VAZIO` | o destino já tem linha (ou a cópia já rodou) | não repetir; medir com a impressão digital |
 | `POSVOO_COPIAR_CADERNETA` | o resultado não bateu com a origem | nada ficou (a transação inteira cai); investigar |
 
