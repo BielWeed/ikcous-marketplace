@@ -403,6 +403,8 @@ on:
           - 185-privilegios-padrao-em-public
           - 186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado
           - 186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente
+          - 187a-conferir-a-saude-da-reconciliacao-aplicado
+          - 187b-antes-a-saude-da-reconciliacao-ausente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

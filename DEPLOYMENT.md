@@ -289,6 +289,24 @@ Os dois segredos do Vault (`reconciliacao_url` e `reconciliacao_secret`) foram c
 `RECONCILIACAO_SECRET` do ambiente das functions não bater com o do Vault, a
 `reconciliar-pagamentos` devolve `401` a cada 10 minutos, em silêncio.
 
+**Desde a migration `20261500000000` esse silêncio tem medidor.** No fim de toda rodada que passou
+da autenticação (inclusive a que responde `500` ou `200` com `degradado: true`), a
+`reconciliar-pagamentos` grava o batimento em `public.saude_da_reconciliacao` pela porta
+`saude_da_reconciliacao_registrar` (só a chave de serviço executa). Quem confere lê pela
+`saude_da_loja()`, com a chave PÚBLICA da loja (`POST /rest/v1/rpc/saude_da_loja`, corpo `{}`) ou
+`SELECT public.saude_da_loja();` no SQL Editor:
+
+| campo | o que diz |
+| --- | --- |
+| `idade_rodada_s` | segundos desde a última rodada, contados pelo relógio do banco da loja. **Nulo** = nunca registrou (Vault vazio, segredo divergente — o `401` não grava —, function fora do ar). **Acima de 900** (15 min, com o cron de 10 min) = a reconciliação parou |
+| `degradado` | a última rodada terminou com alguma etapa falhando. **Quais** etapas a leitura pública não diz, de propósito (contaria a qualquer um que a loja tem estorno ou contestação com problema): veja os logs da function ou a coluna `etapas_com_falha` da tabela, como dono do banco no SQL Editor |
+| `rodadas_degradadas_seguidas` | há quantas rodadas seguidas está degradada (volta a 0 na primeira rodada boa) |
+| `ultima_saudavel_em` / `idade_saudavel_s` | a última rodada sem falha nenhuma |
+
+Depois de criar ou trocar os segredos acima, confira em até 15 minutos que `idade_rodada_s` ficou
+abaixo de 900. A gravação do batimento nunca muda a resposta da function: se a porta falhar (por
+exemplo, a migration ainda não aplicada), a function só registra o nome do erro no log.
+
 ### 5.2.1 De quem é a chave que cobra — e o interruptor do PIX
 
 Antes de 15/09/2026, a tela *Ajustes > Pagamentos > Mercado Pago* guardava a chave do lojista

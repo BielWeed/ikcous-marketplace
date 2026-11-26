@@ -786,6 +786,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-caderneta-fecha-para-o-service-role-viva.cjs",
     // 20261490: a caderneta confere a chave sem bcrypt por chamada (atalho sha256 do hash atual, zero bcrypt com chave errada, troca de chave, so leitura, duas conexoes, rollback byte a byte, mutantes, consultas 186a/186b).
     "tests/banco/a-caderneta-confere-a-chave-sem-bcrypt-viva.cjs",
+    // 20261500: a loja registra a saude da reconciliacao (porta so do service_role, leitura publica sem contagem de pagamento, contador, concorrencia, mutantes, rollback, consultas 187a/187b).
+    "tests/banco/a-loja-registra-a-saude-da-reconciliacao-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
     "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

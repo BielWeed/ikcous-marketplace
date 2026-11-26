@@ -380,6 +380,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado",
       "184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado",
       "186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado",
+      "187a-conferir-a-saude-da-reconciliacao-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
   );

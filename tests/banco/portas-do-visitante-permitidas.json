@@ -993,6 +993,14 @@
       "secdef": true,
       "situacao": "necessaria",
       "porque": "Valida o cupom digitado no checkout, inclusive do convidado (useCoupons)."
+    },
+    {
+      "funcao": "public.saude_da_loja()",
+      "executa": ["anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "O app de gestao le a saude da reconciliacao com a chave PUBLICA da loja (20261500000000): so horarios, idade e se degradou; nunca quais etapas falharam nem pagamento."
     }
   ]
 }

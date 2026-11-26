@@ -2033,6 +2033,17 @@ O cadastro de UMA vez, na entrada do cliente:
    `fila_vazia: true` indica uma rodada saudavel, sem trabalho nas filas. Se vier
    `degradado: true` (mesmo com HTTP 200), confira em `etapas` qual falhou, o `erro` (se houver)
    e as contagens de `processados` e `falhas` (`DEPLOYMENT.md`, §5.2; `401` = segredos diferentes).
+   **A prova de que ficou rodando (com a migration `20261500000000` e a `reconciliar-pagamentos` que
+   grava o batimento ja no ar):** em ate 15 minutos depois de criar os segredos, a leitura publica
+   `saude_da_loja()` tem de devolver `idade_rodada_s` MENOR que 900 (15 min). Leia pelo SQL Editor do
+   projeto (`SELECT public.saude_da_loja();`) ou com a chave PUBLICA da loja
+   (`POST <url da loja>/rest/v1/rpc/saude_da_loja`, corpo `{}`). `idade_rodada_s` nulo = a
+   reconciliacao nunca registrou uma rodada (Vault vazio, segredo divergente ou function fora do ar):
+   o passo 4 NAO terminou. Numero alto = parou de rodar. `degradado: true` vem com
+   `rodadas_degradadas_seguidas` (ha quantas rodadas). QUAL etapa falhou a leitura publica nao diz,
+   de proposito: veja nos logs da function ou, como dono do banco no SQL Editor,
+   `SELECT etapas_com_falha FROM public.saude_da_reconciliacao;`. E a mesma leitura que o vigia do
+   app de gestao faz sozinho, de 10 em 10 minutos; nenhuma contagem de pagamento sai por ela.
 5. **Chave de cifra das credenciais:** instale `MP_CHAVES_ENCRYPTION_KEY` (32 bytes em base64) nas
    functions da loja ANTES de cadastrar credenciais de pagamento ou do Gmail. Sem ela o cadastro
    fica `indisponivel` (falha fechada: ninguem cobra). Nunca substitua uma chave que ja cifrou
