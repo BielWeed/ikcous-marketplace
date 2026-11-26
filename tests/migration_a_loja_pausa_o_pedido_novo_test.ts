@@ -275,3 +275,44 @@ Deno.test("20261600: o gatilho do pedido novo - atalho gemeo primeiro, leitura d
     "tr_a_loja_aceita_pedido_novo" < "tr_pedido_com_cupom_exige_a_chave_ligada",
   );
 });
+
+Deno.test("20261600: a leitura do painel exige o admin atual, devolve aceita/motivo/pausada_desde (nunca a chave pausa_em) e so o authenticated executa; a porta esta na lista do visitante", () => {
+  const f = funcaoDe(migration, "situacao_das_vendas_da_loja");
+  assertStringIncludes(
+    f,
+    "situacao_das_vendas_da_loja()\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE\n SECURITY DEFINER\n SET search_path = public, pg_temp\n",
+  );
+  const corpo = semComentario(f.slice(f.indexOf("AS $function$")));
+  assertStringIncludes(
+    corpo,
+    "IF NOT COALESCE(public.is_admin() AND public.is_admin_atual(), false) THEN\n    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';",
+  );
+  assertStringIncludes(
+    corpo,
+    "jsonb_build_object('aceita', v_motivo IS NULL, 'motivo', v_motivo, 'pausada_desde', v_pausada_desde)",
+  );
+  assert(
+    !corpo.includes("'pausa_em'"),
+    "a chave da resposta e' pausada_desde, nao pausa_em",
+  );
+  assertStringIncludes(
+    codigo,
+    "REVOKE ALL ON FUNCTION public.situacao_das_vendas_da_loja() FROM PUBLIC, anon, authenticated, service_role;\nGRANT EXECUTE ON FUNCTION public.situacao_das_vendas_da_loja() TO authenticated;",
+  );
+  // a unica funcao nova com GRANT
+  assertEquals([...codigo.matchAll(/\bGRANT\b/g)].length, 1);
+  const lista = JSON.parse(
+    Deno.readTextFileSync(
+      `${RAIZ}/tests/banco/portas-do-visitante-permitidas.json`,
+    ),
+  );
+  const porta = lista.funcoes.find(
+    (p: { funcao: string }) =>
+      p.funcao === "public.situacao_das_vendas_da_loja()",
+  );
+  assert(porta, "a porta nao esta na lista do visitante");
+  assertEquals(porta.executa, ["authenticated"]);
+  assertEquals(porta.tipo, "leitura");
+  assertEquals(porta.secdef, true);
+  assertEquals(porta.situacao, "logado");
+});

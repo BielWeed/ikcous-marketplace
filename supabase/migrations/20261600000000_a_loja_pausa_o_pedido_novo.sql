@@ -271,3 +271,35 @@ CREATE OR REPLACE TRIGGER tr_a_loja_aceita_pedido_novo
   FOR EACH ROW
   WHEN (NEW.canal IS DISTINCT FROM 'presencial')
   EXECUTE FUNCTION public.a_loja_aceita_pedido_novo();
+
+-- ===== (6) a leitura do painel: a loja aceita pedido novo agora? (so o admin de agora) =====
+
+CREATE OR REPLACE FUNCTION public.situacao_das_vendas_da_loja()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+ SECURITY DEFINER
+ SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_motivo text;
+  v_pausada_desde date;
+BEGIN
+  IF NOT COALESCE(public.is_admin() AND public.is_admin_atual(), false) THEN
+    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
+  END IF;
+  v_motivo := public.motivo_da_loja_nao_aceitar_pedido();
+  -- pausada_desde: o dia em que a pausa passou a valer (o mesmo calculo do motivo; nunca antes do pausa_em prometido pela gestao).
+  IF v_motivo = 'vendas_pausadas' THEN
+    SELECT public.data_da_pausa_de_vendas(a.teste_ate, a.proxima_cobranca_em, p.suspensa_desde, a.pausa_em)
+      INTO v_pausada_desde
+      FROM public.assinatura_da_loja a CROSS JOIN public.pausa_de_vendas p
+     WHERE a.id = 1 AND p.id = 1;
+  END IF;
+  RETURN jsonb_build_object('aceita', v_motivo IS NULL, 'motivo', v_motivo, 'pausada_desde', v_pausada_desde);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.situacao_das_vendas_da_loja() FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.situacao_das_vendas_da_loja() TO authenticated;
+COMMENT ON FUNCTION public.situacao_das_vendas_da_loja() IS 'Painel (Inicio): {aceita, motivo (manutencao | vendas_pausadas | null), pausada_desde (date ou null)}. So o admin atual (is_admin() E is_admin_atual(); senao 42501). EXECUTE so de authenticated.';

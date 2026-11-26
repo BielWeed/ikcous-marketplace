@@ -1404,6 +1404,155 @@ prova(
   },
 );
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// (6) a leitura do painel: situacao_das_vendas_da_loja() -> {aceita, motivo, pausada_desde}, so para o admin atual
+// ---------------------------------------------------------------------------------------------------------------------------
+const situacao = (quem) =>
+  P.tentar(
+    quem === "anon" ? "anon" : "authenticated",
+    "SELECT public.situacao_das_vendas_da_loja() AS j",
+    [],
+    quem === "anon" ? {} : QUEM[quem],
+  );
+
+async function situacoes() {
+  const r = {};
+  const anota = (nome, ok, x) => {
+    r[nome] = ok || JSON.stringify(x);
+  };
+  // quem nao e' o admin de agora: 42501
+  for (const quem of ["cliente", "exAdmin", "anon"]) {
+    const x = await situacao(quem);
+    anota(`recusa_${quem}`, x.codigo === "42501", x);
+  }
+  const normal = await situacao("admin");
+  anota(
+    "normal",
+    JSON.stringify(normal.linhas?.[0]?.j) ===
+      JSON.stringify({ aceita: true, motivo: null, pausada_desde: null }),
+    normal,
+  );
+  await pausar();
+  const d = await datasDaPausa();
+  const pausada = await situacao("admin");
+  anota(
+    "pausada",
+    JSON.stringify(pausada.linhas?.[0]?.j) ===
+      JSON.stringify({
+        aceita: false,
+        motivo: "vendas_pausadas",
+        pausada_desde: d.segunda,
+      }),
+    { pausada, segunda: d.segunda },
+  );
+  // pausada com o dia prometido pela gestao DEPOIS da segunda (mas ja passado): pausada_desde = o dia prometido, nunca antes dele
+  await comoDono();
+  const prometido = (await um("SELECT ($1::date + 2)::text AS d", [d.segunda]))
+    .d;
+  await C().query(
+    "UPDATE public.assinatura_da_loja SET pausa_em = $1::date WHERE id = 1",
+    [prometido],
+  );
+  const comPausaEm = await situacao("admin");
+  anota(
+    "pausadaDesdeOPrometido",
+    comPausaEm.linhas?.[0]?.j?.pausada_desde === prometido,
+    { comPausaEm, prometido },
+  );
+  await manutencao(true);
+  const emManutencao = await situacao("admin");
+  anota(
+    "manutencao",
+    JSON.stringify(emManutencao.linhas?.[0]?.j) ===
+      JSON.stringify({
+        aceita: false,
+        motivo: "manutencao",
+        pausada_desde: null,
+      }),
+    emManutencao,
+  );
+  return r;
+}
+
+prova(
+  "(6) PAINEL: cliente, ex-admin e visitante levam 42501; o admin atual le aceita na loja normal, vendas_pausadas com pausada_desde (nunca antes de pausa_em) e manutencao",
+  async () => {
+    await P.emTransacao(async () => {
+      const r = await situacoes();
+      assert.deepEqual(vermelhas(r), [], JSON.stringify(r, null, 1));
+    }, semearLoja);
+  },
+);
+
+prova(
+  "(6) PAINEL: STABLE, SECURITY DEFINER, search_path fixo; EXECUTE so de authenticated (nada a PUBLIC, anon nem service_role)",
+  async () => {
+    await P.emTransacao(async () => {
+      const f = await um(
+        `SELECT p.provolatile AS vol, p.prosecdef AS secdef, p.proconfig AS cfg,
+                EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE') AS publico,
+                has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
+                has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated,
+                has_function_privilege('service_role', p.oid, 'EXECUTE') AS service_role
+           FROM pg_proc p WHERE p.oid = to_regprocedure('public.situacao_das_vendas_da_loja()')`,
+      );
+      assert.deepEqual(f, {
+        vol: "s",
+        secdef: true,
+        cfg: ["search_path=public, pg_temp"],
+        publico: false,
+        anon: false,
+        authenticated: true,
+        service_role: false,
+      });
+    });
+  },
+);
+
+/** [nome, trocas, expectativa que TEM de ficar vermelha] */
+const MUTANTES_PAINEL = [
+  [
+    "so o JWT (ex-admin le)",
+    [
+      [
+        "COALESCE(public.is_admin() AND public.is_admin_atual(), false)",
+        "COALESCE(public.is_admin(), false)",
+      ],
+    ],
+    "recusa_exAdmin",
+  ],
+  [
+    "pausada_desde de outro dia",
+    [
+      [
+        "a.proxima_cobranca_em, p.suspensa_desde, a.pausa_em)",
+        "a.proxima_cobranca_em, p.suspensa_desde, NULL)",
+      ],
+    ],
+    "pausadaDesdeOPrometido",
+  ],
+];
+prova(
+  "(6) MUTANTES DO PAINEL: cada sabotagem fica vermelha na expectativa certa",
+  async () => {
+    const original = textoDe(MIGRATION, "situacao_das_vendas_da_loja");
+    for (const [nome, trocas, alvo] of MUTANTES_PAINEL) {
+      const texto = trocas.reduce(
+        (t, [de, para]) => trocar(t, de, para),
+        original,
+      );
+      await P.emTransacao(async () => {
+        await C().query(texto);
+        const r = await situacoes();
+        assert.ok(
+          vermelhas(r).includes(alvo),
+          `mutante "${nome}" nao ficou vermelho em ${alvo}: ${vermelhas(r).join(",")}`,
+        );
+      }, semearLoja);
+    }
+  },
+);
+
 (async () => {
   await P.conectar();
   try {
