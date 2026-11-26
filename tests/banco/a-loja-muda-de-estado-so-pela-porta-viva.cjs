@@ -11,13 +11,14 @@
  * gatilho em frota_lojas recusa o resto e cada mudança deixa uma linha em public.frota_estado_historico.
  *
  * O QUE SE PROVA (como o dono do banco, o único que executa a porta; e como anon, authenticated e service_role para a ACL):
- *   (a) cada recusa da porta (vencida, sem validade, validade de mais de 1 h, destino desconhecido, de = para, sha, motivo, ENCERRAR,
- *       loja inexistente ou de outro ref, estado atual diferente, REABRIR, base diferente) sem escrever nada;
+ *   (a) cada recusa da porta (vencida, sem validade, validade de mais de 1 h, destino desconhecido, de = para, sha, motivo, ENCERRAR
+ *       saindo de ativa e de adormecida, loja inexistente ou de outro ref, estado atual diferente, REABRIR, base diferente ao acordar
+ *       e ao reabrir) sem escrever nada;
  *   (b) adormecer, acordar, encerrar e reabrir: UMA linha no histórico cada, com quem = session_user e em = estado_desde = now();
  *       (b2) estado_sha só muda ao sair de ativa ou voltar a ela: adormecida na A, encerrada na B, adormecida de novo na C, e acordar
  *       exige a base A (B e C recusadas); o rastro guarda o sha de cada momento;
  *   (c) IKCOUS e Savy nunca saem de ativa: nem pela porta, nem com a variável ligada à mão, nem nascendo ou trocando de ref;
- *   (d) UPDATE direto de estado, estado_desde ou estado_sha e INSERT fora de ativa recusados; a variável da porta é desligada logo
+ *   (d) UPDATE direto de estado, estado_desde ou estado_sha (trocado ou apagado) e INSERT fora de ativa recusados; a variável da porta é desligada logo
  *       depois do UPDATE dela; rotação da publishable_key, troca de URL, nome e ativa passam;
  *   (e) ACL: anon, authenticated e service_role não executam a porta nem tocam o histórico nem a sequência;
  *   (f) atomicidade: se o rastro falha, a troca de estado volta junto;
@@ -472,6 +473,18 @@ async function comportamento(c) {
     "FROTA_ESTADO_DIVERGENTE: a loja l1470-ativa está adormecida",
     "adormecer quem já dorme",
   );
+  // Encerrar quem DORME também exige a frase (a recusa acima só saía de ativa).
+  for (const confirmacao of [
+    null,
+    `ENCERRAR ${OUTRA.id}`,
+    `REABRIR ${ATIVA.id}`,
+  ])
+    await portaRecusa(
+      c,
+      { de: "adormecida", para: "encerrada", sha: SHA2, confirmacao },
+      "FROTA_ESTADO_ENCERRAR_SEM_CONFIRMACAO",
+      `encerrar quem dorme sem confirmação (${confirmacao})`,
+    );
   await portaAceita(
     c,
     { de: "adormecida", para: "ativa", sha: SHA2, base: SHA1, motivo: "Pagou" },
@@ -514,6 +527,20 @@ async function comportamento(c) {
       `sair de encerrada sem confirmação (${confirmacao})`,
     );
   }
+  // Reabrir com a frase certa ainda exige a base certa (a release em que ela saiu do ar, SHA2), como acordar de adormecida.
+  for (const base of [SHA1, null])
+    await portaRecusa(
+      c,
+      {
+        de: "encerrada",
+        para: "ativa",
+        sha: SHA2,
+        base,
+        confirmacao: `REABRIR ${ATIVA.id}`,
+      },
+      "FROTA_ESTADO_BASE_DIVERGENTE",
+      `reabrir com base errada (${base})`,
+    );
   await portaAceita(
     c,
     {
@@ -687,6 +714,14 @@ async function comportamento(c) {
     [SHA2, OUTRA.id],
     "FROTA_ESTADO_SO_PELA_PORTA",
     "UPDATE direto do estado_sha",
+  );
+  // Apagar o estado_sha (a OUTRA dorme com SHA1) também é troca: NULL contra um sha preenchido.
+  await diretoRecusa(
+    c,
+    "UPDATE public.frota_lojas SET estado_sha = NULL WHERE id = $1",
+    [OUTRA.id],
+    "FROTA_ESTADO_SO_PELA_PORTA",
+    "UPDATE direto que apaga o estado_sha",
   );
   await diretoRecusa(
     c,
@@ -1573,6 +1608,16 @@ const MUTANTES = [
     "UPDATE direto do estado_sha",
   ],
   [
+    "gatilho compara o estado_sha com <> (apagar o estado_sha passa: NULL <> sha não é verdadeiro)",
+    (s) =>
+      trocar(
+        s,
+        "     OR NEW.estado_sha IS DISTINCT FROM OLD.estado_sha THEN",
+        "     OR NEW.estado_sha <> OLD.estado_sha THEN",
+      ),
+    "UPDATE direto que apaga o estado_sha",
+  ],
+  [
     "gatilho deixa a loja nascer fora de ativa",
     (s) =>
       trocar(
@@ -1649,6 +1694,16 @@ const MUTANTES = [
     "acordar com base errada",
   ],
   [
+    "porta só confere a base ao acordar de adormecida (reabrir de encerrada passa com qualquer base)",
+    (s) =>
+      trocar(
+        s,
+        "  IF p_para = 'ativa' AND (p_base IS NULL OR v_sha_atual IS DISTINCT FROM p_base) THEN",
+        "  IF p_para = 'ativa' AND v_atual = 'adormecida' AND (p_base IS NULL OR v_sha_atual IS DISTINCT FROM p_base) THEN",
+      ),
+    "reabrir com base errada",
+  ],
+  [
     "porta não desliga a variável depois do UPDATE",
     (s) =>
       trocar(
@@ -1667,6 +1722,16 @@ const MUTANTES = [
         "  IF false THEN",
       ),
     "encerrar sem confirmação",
+  ],
+  [
+    "porta só pede a confirmação para encerrar quem está ativa (adormecida encerra sem a frase)",
+    (s) =>
+      trocar(
+        s,
+        "  IF p_para = 'encerrada' AND p_confirmacao IS DISTINCT FROM 'ENCERRAR ' || p_id THEN",
+        "  IF p_para = 'encerrada' AND p_de = 'ativa' AND p_confirmacao IS DISTINCT FROM 'ENCERRAR ' || p_id THEN",
+      ),
+    "encerrar quem dorme sem confirmação",
   ],
   [
     "porta reabre sem a confirmação",

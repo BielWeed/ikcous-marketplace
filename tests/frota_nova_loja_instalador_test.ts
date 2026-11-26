@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 // @ts-nocheck
 /* eslint-disable security/detect-object-injection -- teste: chaves vêm de fixtures fechadas deste arquivo. */
 /**
@@ -24,6 +25,15 @@
  *     código; timeout = ESTADO DESCONHECIDO, sem repetir; sem `aplicar: true`
  *     só leituras; a marca só fica concluída depois da conferência, e se a
  *     resposta dessa marca se perder a próxima rodada dá "nada" e marca.
+ *  PRIVILÉGIOS PADRÃO (26/11/2026: projeto Supabase novo nasce sem o ALTER
+ *     DEFAULT PRIVILEGES de public que as migrations pressupõem) — o DDL do
+ *     ledger aplica os 9 comandos de scripts/ci/banco/privilegios-padrao.cjs
+ *     na MESMA transação; a conferência (pg_default_acl) vem ANTES da 1ª
+ *     migration e falha fechada; retomada (ou "nada") que ACHA os privilégios
+ *     faltando também falha fechada, ANTES de gravar qualquer coisa (decisão
+ *     da hub, 26/11: reaplicar em silêncio esconderia tabela já criada sem
+ *     grant) e a mensagem traz o que conferir e o SQL para reaplicar à mão; loja já instalada e completa = JA_INSTALADA (sucesso,
+ *     sem gravar), não RECUSADO.
  */
 import { fromFileUrl, join } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
@@ -37,6 +47,7 @@ import {
   SQL_ESTADO,
   SQL_LEDGER,
   SQL_MARCA,
+  SQL_PRIVILEGIOS,
   arquivosDoRepo,
   ddlDoLedger,
   envelopeDoArquivo,
@@ -45,6 +56,8 @@ import {
 } from "../scripts/frota/instalador-banco.mjs";
 
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
+const { comandosDosPrivilegiosPadrao, SQL_CONFERIR_PRIVILEGIOS_PADRAO } =
+  createRequire(import.meta.url)("../scripts/ci/banco/privilegios-padrao.cjs");
 
 const arq = (nome: string, corpo = "SELECT 1;") => ({ arquivo: nome, corpo });
 const est = (tabelasEmPublic, versoesNoLedger, marca, ledgerExiste = true) => ({
@@ -148,12 +161,36 @@ Deno.test("T6 (bloqueante 2): ledger PREFIXO da fila + tabelas + SEM marca → r
   assertStringIncludes(plano.motivo, "aplicar-migrations.yml");
 });
 
-Deno.test("T6 (bloqueante 2): marca CONCLUÍDA → recusa (prefixo ou ledger completo)", () => {
-  for (const versoes of [VERSOES.slice(0, 2), VERSOES]) {
+Deno.test("T6 (bloqueante 2): marca CONCLUÍDA com ledger ATRASADO (prefixo) → recusa: a migration nova vai pelo portão", () => {
+  for (const versoes of [VERSOES.slice(0, 2), VERSOES.slice(0, 3)]) {
     const plano = planejarInstalacao(est(80, versoes, "concluida"), REPO);
     assertEquals(plano.acao, "recusar", versoes.join(","));
     assertStringIncludes(plano.motivo, "loja já instalada");
     assertStringIncludes(plano.motivo, "aplicar-migrations.yml");
+  }
+});
+
+Deno.test("T6: marca CONCLUÍDA e ledger == fila INTEIRA → ja_instalada (não é recusa), sem nada na fila", () => {
+  const plano = planejarInstalacao(
+    est(80, [...VERSOES].reverse(), "concluida"),
+    REPO,
+  );
+  assertEquals(plano.acao, "ja_instalada", plano.motivo);
+  assertEquals(plano.fila, []);
+  assertEquals(plano.jaNoLedger, 4);
+  assertEquals(plano.total, 4);
+  assertStringIncludes(plano.motivo, "JÁ INSTALADA");
+  assertStringIncludes(plano.motivo, "aplicar-migrations.yml");
+});
+
+Deno.test("T6: o que NÃO é 'já instalada e completa' continua recusa — ledger cheio SEM marca, ledger com versão a mais, public vazio", () => {
+  for (const estado of [
+    est(80, VERSOES, "ausente"),
+    est(80, [...VERSOES, "20991231000000"], "concluida"),
+    est(0, VERSOES, "concluida"),
+  ]) {
+    const plano = planejarInstalacao(estado, REPO);
+    assertEquals(plano.acao, "recusar", JSON.stringify(estado));
   }
 });
 
@@ -366,10 +403,19 @@ Deno.test("T7: nome fora do padrão é recusado (entra literal no SQL)", () => {
   }
 });
 
-Deno.test("T7: ddlDoLedger cria o ledger do CLI E a marca de instalação na MESMA transação, com IF NOT EXISTS", () => {
+Deno.test("T7: ddlDoLedger cria os privilégios padrão de public, o ledger do CLI E a marca de instalação na MESMA transação, com IF NOT EXISTS", () => {
   assertEquals(
     ddlDoLedger(),
     "BEGIN;\n" +
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "anon";\n' +
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "anon";\n' +
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO "anon";\n' +
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "authenticated";\n' +
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "authenticated";\n' +
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO "authenticated";\n' +
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "service_role";\n' +
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "service_role";\n' +
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO "service_role";\n' +
       "CREATE SCHEMA IF NOT EXISTS supabase_migrations;\n" +
       "CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text NOT NULL PRIMARY KEY);\n" +
       "ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS statements text[];\n" +
@@ -382,6 +428,15 @@ Deno.test("T7: ddlDoLedger cria o ledger do CLI E a marca de instalação na MES
     SQL_CONCLUIR,
     "UPDATE supabase_migrations.ikcous_instalacao SET concluida_em = now() WHERE id = 1 AND concluida_em IS NULL;",
   );
+});
+
+Deno.test("T7: os privilégios do DDL e a conferência vêm do MESMO módulo do provisionador do CI (fonte única)", () => {
+  for (const c of comandosDosPrivilegiosPadrao())
+    assertStringIncludes(ddlDoLedger(), `\n${c};\n`);
+  assertEquals(SQL_PRIVILEGIOS, SQL_CONFERIR_PRIVILEGIOS_PADRAO);
+  const ddl = ddlDoLedger();
+  assert(ddl.startsWith("BEGIN;\n") && ddl.endsWith("COMMIT;\n"));
+  assertEquals(ddl.split("BEGIN;").length - 1, 1, "uma transação só");
 });
 
 // ─── T8 ──────────────────────────────────────────────────────────────────────
@@ -399,14 +454,32 @@ function bancoFalso({
   falhas = {},
   ignorarLedgerDe = [],
   ddlSemMarca = false,
+  privilegios = false,
+  ddlSemPrivilegios = false,
+  respostaPrivilegios = null,
 } = {}) {
   const b = {
     tabelas,
     ledger: ledger === null ? null : new Set(ledger),
     marca,
+    // Projeto Supabase novo (desde 30/05/2026): nasce SEM os privilégios padrão.
+    privilegios,
     chamadas: [],
     async consultar(sql) {
       b.chamadas.push(sql);
+      if (sql === SQL_PRIVILEGIOS) {
+        const f = falhas["(privilegios)"];
+        if (f) throw f.erro;
+        if (respostaPrivilegios) return respostaPrivilegios;
+        return [
+          {
+            papel_dono: "postgres",
+            faltando: b.privilegios
+              ? ""
+              : "funcoes:anon, funcoes:authenticated, funcoes:service_role, sequencias:anon, sequencias:authenticated, sequencias:service_role, tabelas:anon, tabelas:authenticated, tabelas:service_role",
+          },
+        ];
+      }
       if (sql === SQL_ESTADO) {
         return [
           {
@@ -431,6 +504,7 @@ function bancoFalso({
         if (falhas["(ledger)"]) throw falhas["(ledger)"].erro;
         if (b.ledger === null) b.ledger = new Set();
         if (b.marca === null && !ddlSemMarca) b.marca = "em_curso";
+        if (!ddlSemPrivilegios) b.privilegios = true;
         return [];
       }
       if (sql === SQL_CONCLUIR) {
@@ -478,7 +552,11 @@ const erroSql = (codigo, msg) =>
 const erroTimeout = () =>
   Object.assign(new Error("tempo esgotado"), { tipo: "timeout" });
 const ehLeitura = (sql) =>
-  sql === SQL_ESTADO || sql === SQL_LEDGER || sql === SQL_MARCA;
+  sql === SQL_ESTADO ||
+  sql === SQL_LEDGER ||
+  sql === SQL_MARCA ||
+  sql === SQL_PRIVILEGIOS;
+const ehEnvelope = (sql) => sql.startsWith("BEGIN;\n") && sql !== ddlDoLedger();
 const escritas = (b) => b.chamadas.filter((s) => !ehLeitura(s));
 const estadoDo = (b) =>
   est(
@@ -507,6 +585,167 @@ Deno.test("T8: aplicar → ledger+marca primeiro, cada envelope NA ORDEM, confer
     "a conferência do ledger vem ANTES de marcar concluída",
   );
   assertEquals(b.marca, "concluida");
+});
+
+Deno.test("T8 (privilégios): no banco novo, os privilégios padrão entram no DDL e são CONFERIDOS antes da 1ª migration", async () => {
+  const b = bancoFalso();
+  assertEquals(b.privilegios, false, "projeto Supabase novo: sem a regra");
+  const r = await instalar(b, planejarInstalacao(VAZIO, REPO), {
+    aplicar: true,
+  });
+  assertEquals(r.estado, "OK", r.mensagem);
+  const iDdl = b.chamadas.indexOf(ddlDoLedger());
+  const iConferencia = b.chamadas.indexOf(SQL_PRIVILEGIOS);
+  const iPrimeira = b.chamadas.findIndex(ehEnvelope);
+  assert(iDdl >= 0 && iConferencia > iDdl, "confere DEPOIS do DDL");
+  assert(iPrimeira > iConferencia, "e ANTES da 1ª migration");
+  assertEquals(
+    b.chamadas.filter((s) => s === SQL_PRIVILEGIOS).length,
+    1,
+    "do zero não há leitura prévia (nada foi criado ainda)",
+  );
+  assertEquals(b.privilegios, true);
+});
+
+Deno.test("T8 (privilégios): DDL comitou mas a conferência NÃO bate → FALHOU (privilégios padrão), NENHUMA migration enviada, marca em curso", async () => {
+  const b = bancoFalso({ ddlSemPrivilegios: true });
+  const r = await instalar(b, planejarInstalacao(VAZIO, REPO), {
+    aplicar: true,
+  });
+  assertEquals(r.estado, "FALHOU", r.mensagem);
+  assertEquals(r.fase, "privilégios padrão");
+  assertEquals(r.aplicados, []);
+  assertStringIncludes(r.mensagem, "tabelas:anon");
+  assertStringIncludes(r.mensagem, "postgres");
+  assertStringIncludes(r.mensagem, "Nenhuma migration foi enviada");
+  assertEquals(b.chamadas.filter(ehEnvelope), []);
+  assert(!b.chamadas.includes(SQL_CONCLUIR));
+  assertEquals(b.marca, "em_curso");
+});
+
+Deno.test("T8 (privilégios): conferência com resposta torta ou que falha → FALHOU, nenhuma migration enviada (nunca vira 'bate')", async () => {
+  const casos = [
+    { respostaPrivilegios: [] },
+    { respostaPrivilegios: [{ papel_dono: "postgres" }] },
+    { respostaPrivilegios: [{ papel_dono: "postgres", faltando: null }] },
+    { respostaPrivilegios: [{ papel_dono: 1, faltando: "" }] },
+    {
+      respostaPrivilegios: [
+        { papel_dono: "postgres", faltando: "" },
+        { papel_dono: "postgres", faltando: "" },
+      ],
+    },
+    { falhas: { "(privilegios)": { erro: erroTimeout() } } },
+  ];
+  for (const caso of casos) {
+    const b = bancoFalso(caso);
+    const r = await instalar(b, planejarInstalacao(VAZIO, REPO), {
+      aplicar: true,
+    });
+    assertEquals(r.estado, "FALHOU", JSON.stringify(caso));
+    assertEquals(r.fase, "privilégios padrão");
+    assertEquals(b.chamadas.filter(ehEnvelope), [], JSON.stringify(caso));
+    assert(!b.chamadas.includes(SQL_CONCLUIR));
+  }
+});
+
+Deno.test("T8 (privilégios): RETOMADA com os privilégios no lugar → confere ANTES, DDL de novo (idempotente), confere DEPOIS, segue", async () => {
+  const b = bancoFalso({
+    tabelas: 9,
+    ledger: VERSOES.slice(0, 2),
+    marca: "em_curso",
+    privilegios: true,
+  });
+  const plano = planejarInstalacao(estadoDo(b), REPO);
+  const r = await instalar(b, plano, { aplicar: true });
+  assertEquals(r.estado, "OK", r.mensagem);
+  assertEquals(r.aplicados, EM_ORDEM.slice(2));
+  assertEquals(escritas(b)[0], ddlDoLedger());
+  const leituras = b.chamadas
+    .map((s, i) => [s, i])
+    .filter(([s]) => s === SQL_PRIVILEGIOS)
+    .map(([, i]) => i);
+  const iDdl = b.chamadas.indexOf(ddlDoLedger());
+  assertEquals(
+    leituras.length,
+    2,
+    "uma ANTES do DDL (a recusa) e uma depois (a trava)",
+  );
+  assert(leituras[0] < iDdl && leituras[1] > iDdl);
+});
+
+Deno.test("T8 (privilégios): RETOMADA que acha os privilégios FALTANDO → FALHOU fechado, NADA gravado (nem o DDL), e a mensagem diz o que conferir e o SQL para reaplicar à mão", async () => {
+  const b = bancoFalso({
+    tabelas: 9,
+    ledger: VERSOES.slice(0, 2),
+    marca: "em_curso",
+    privilegios: false,
+  });
+  const plano = planejarInstalacao(estadoDo(b), REPO);
+  assertEquals(plano.acao, "instalar");
+  const r = await instalar(b, plano, { aplicar: true });
+  assertEquals(r.estado, "FALHOU", r.mensagem);
+  assertEquals(r.fase, "privilégios padrão");
+  assertEquals(r.aplicados, []);
+  assertEquals(
+    escritas(b),
+    [],
+    "nem o DDL: reaplicar em silêncio esconderia o problema",
+  );
+  assertEquals(b.privilegios, false, "continuam faltando");
+  assertEquals(b.ledger.size, 2);
+  assertEquals(b.marca, "em_curso");
+  assertEquals(r.aviso, undefined, "não existe mais 'segue com aviso'");
+  for (const trecho of [
+    "tabelas:anon",
+    "postgres",
+    "podem ter ficado sem acesso",
+    "Nada foi gravado",
+    "à mão",
+  ])
+    assertStringIncludes(r.mensagem, trecho);
+  for (const c of comandosDosPrivilegiosPadrao())
+    assertStringIncludes(r.mensagem, `${c};`);
+  assertStringIncludes(r.mensagem, SQL_PRIVILEGIOS);
+});
+
+Deno.test("T8 (privilégios): 'nada' (só falta a marca) que acha os privilégios FALTANDO → FALHOU, nada gravado, a marca fica em curso", async () => {
+  const b = bancoFalso({
+    tabelas: 9,
+    ledger: VERSOES,
+    marca: "em_curso",
+    privilegios: false,
+  });
+  const plano = planejarInstalacao(estadoDo(b), REPO);
+  assertEquals(plano.acao, "nada");
+  const r = await instalar(b, plano, { aplicar: true });
+  assertEquals(r.estado, "FALHOU", r.mensagem);
+  assertEquals(r.fase, "privilégios padrão");
+  assertEquals(escritas(b), []);
+  assertEquals(b.marca, "em_curso");
+  assertStringIncludes(r.mensagem, "podem ter ficado sem acesso");
+});
+
+Deno.test("T8 (privilégios): RETOMADA com a leitura prévia torta ou sem resposta → FALHOU, nada gravado", async () => {
+  for (const caso of [
+    { respostaPrivilegios: [] },
+    { respostaPrivilegios: [{ papel_dono: "postgres", faltando: null }] },
+    { falhas: { "(privilegios)": { erro: erroTimeout() } } },
+  ]) {
+    const b = bancoFalso({
+      tabelas: 9,
+      ledger: VERSOES.slice(0, 2),
+      marca: "em_curso",
+      privilegios: true,
+      ...caso,
+    });
+    const r = await instalar(b, planejarInstalacao(estadoDo(b), REPO), {
+      aplicar: true,
+    });
+    assertEquals(r.estado, "FALHOU", JSON.stringify(caso));
+    assertEquals(r.fase, "privilégios padrão");
+    assertEquals(escritas(b), [], JSON.stringify(caso));
+  }
 });
 
 Deno.test("T8 (bloqueante 1): outro instalador registra a versão um instante antes → 23505 FALHOU, o corpo deste envio não grava", async () => {
@@ -621,13 +860,42 @@ Deno.test("T8: resposta da MARCA se perde → ESTADO DESCONHECIDO; a próxima ro
     tabelas: b.tabelas,
     ledger: [...b.ledger],
     marca: "em_curso",
+    privilegios: b.privilegios, // a 1ª rodada aplicou (o DDL vem antes de tudo)
   });
+  assertEquals(semFalha.privilegios, true);
   const r2 = await instalar(semFalha, plano2, { aplicar: true });
   assertEquals(r2.estado, "NADA_A_FAZER", r2.mensagem);
-  assertEquals(escritas(semFalha), [SQL_CONCLUIR]);
+  // o DDL (idempotente) reafirma os privilégios padrão antes de marcar
+  assertEquals(escritas(semFalha), [ddlDoLedger(), SQL_CONCLUIR]);
+  const iConf = semFalha.chamadas.lastIndexOf(SQL_PRIVILEGIOS);
+  assert(
+    iConf > semFalha.chamadas.indexOf(ddlDoLedger()) &&
+      iConf < semFalha.chamadas.indexOf(SQL_CONCLUIR),
+    "confere os privilégios entre o DDL e a marca",
+  );
   assertEquals(semFalha.marca, "concluida");
-  // e agora a loja está instalada: a rodada seguinte RECUSA
-  assertEquals(planejarInstalacao(estadoDo(semFalha), REPO).acao, "recusar");
+  // e agora a loja está instalada e completa: a rodada seguinte é JA_INSTALADA
+  assertEquals(
+    planejarInstalacao(estadoDo(semFalha), REPO).acao,
+    "ja_instalada",
+  );
+});
+
+Deno.test("T8 (privilégios): 'nada' (só falta a marca) com a conferência que não bate → FALHOU e NÃO marca concluída", async () => {
+  const b = bancoFalso({
+    tabelas: 9,
+    ledger: VERSOES,
+    marca: "em_curso",
+    ddlSemPrivilegios: true,
+  });
+  const plano = planejarInstalacao(estadoDo(b), REPO);
+  assertEquals(plano.acao, "nada");
+  const r = await instalar(b, plano, { aplicar: true });
+  assertEquals(r.estado, "FALHOU", r.mensagem);
+  assertEquals(r.fase, "privilégios padrão");
+  assert(!b.chamadas.includes(SQL_CONCLUIR));
+  assertEquals(escritas(b), [], "a leitura prévia já recusa");
+  assertEquals(b.marca, "em_curso");
 });
 
 Deno.test("T8: sem aplicar → SÓ leituras (ensaio), e diz o que aplicaria", async () => {
@@ -647,11 +915,12 @@ Deno.test("T8: sem aplicar → SÓ leituras (ensaio), e diz o que aplicaria", as
   }
 });
 
-Deno.test("T8: plano de recusa → RECUSADO sem NENHUMA chamada ao banco (inclusive loja já instalada)", async () => {
+Deno.test("T8: plano de recusa → RECUSADO sem NENHUMA chamada ao banco (inclusive loja já instalada mas atrasada, ou sem marca)", async () => {
   for (const estado of [
     est(4, [], "ausente", false),
     est(80, VERSOES.slice(0, 3), "ausente"),
-    est(80, VERSOES, "concluida"),
+    est(80, VERSOES.slice(0, 3), "concluida"),
+    est(80, VERSOES, "ausente"),
   ]) {
     const b = bancoFalso({ tabelas: estado.tabelasEmPublic });
     const r = await instalar(b, planejarInstalacao(estado, REPO), {
@@ -660,6 +929,64 @@ Deno.test("T8: plano de recusa → RECUSADO sem NENHUMA chamada ao banco (inclus
     assertEquals(r.estado, "RECUSADO");
     assertEquals(b.chamadas, []);
   }
+});
+
+Deno.test("T8: JÁ INSTALADA e completa → estado JA_INSTALADA (sucesso), SÓ leituras, com ou sem aplicar", async () => {
+  for (const opcoes of [{ aplicar: true }, {}]) {
+    const b = bancoFalso({
+      tabelas: 80,
+      ledger: VERSOES,
+      marca: "concluida",
+      privilegios: true,
+    });
+    const plano = planejarInstalacao(estadoDo(b), REPO);
+    assertEquals(plano.acao, "ja_instalada");
+    const r = await instalar(b, plano, opcoes);
+    assertEquals(r.estado, "JA_INSTALADA", r.mensagem);
+    assertEquals(r.aplicados, []);
+    assertStringIncludes(r.mensagem, "JÁ INSTALADA");
+    assertEquals(escritas(b), [], JSON.stringify(opcoes));
+    assert(
+      b.chamadas.includes(SQL_ESTADO),
+      "relê o estado (o plano pode estar velho)",
+    );
+    assert(
+      b.chamadas.includes(SQL_PRIVILEGIOS),
+      "confere os privilégios padrão",
+    );
+  }
+});
+
+Deno.test("T8: JÁ INSTALADA mas os privilégios padrão NÃO batem (ex.: instalada antes desta trava) → FALHOU, sem gravar nada", async () => {
+  const b = bancoFalso({
+    tabelas: 80,
+    ledger: VERSOES,
+    marca: "concluida",
+    privilegios: false,
+  });
+  const r = await instalar(b, planejarInstalacao(estadoDo(b), REPO), {
+    aplicar: true,
+  });
+  assertEquals(r.estado, "FALHOU", r.mensagem);
+  assertEquals(r.fase, "privilégios padrão");
+  assertStringIncludes(r.mensagem, "tabelas:anon");
+  assertStringIncludes(r.mensagem, "não grava em loja instalada");
+  assertEquals(escritas(b), []);
+});
+
+Deno.test("T8: JÁ INSTALADA no plano, mas o banco mudou (ledger perdeu versão) → RECUSADO, sem gravar", async () => {
+  const plano = planejarInstalacao(est(80, VERSOES, "concluida"), REPO);
+  assertEquals(plano.acao, "ja_instalada");
+  const b = bancoFalso({
+    tabelas: 80,
+    ledger: VERSOES.slice(0, 3),
+    marca: "concluida",
+    privilegios: true,
+  });
+  const r = await instalar(b, plano, { aplicar: true });
+  assertEquals(r.estado, "RECUSADO");
+  assertStringIncludes(r.mensagem, "mudou");
+  assertEquals(escritas(b), []);
 });
 
 Deno.test("T8: o banco mudou desde o plano (outro instalador?) → RECUSADO sem gravar", async () => {
@@ -756,6 +1083,8 @@ Deno.test("T9: db-ci.yml roda a prova viva do instalador e dispara quando o inst
   for (const gatilho of [
     '"scripts/frota/instalador-banco.mjs"',
     '"tests/banco/instalador-nova-loja-viva.cjs"',
+    // a prova viva roda a consulta 185 nos bancos a e d
+    '"scripts/publicacao/consultas/185-privilegios-padrao-em-public.sql"',
   ]) {
     assertEquals(
       yml.split(gatilho).length - 1,
