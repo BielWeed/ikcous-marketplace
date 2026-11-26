@@ -330,7 +330,8 @@ async function semear() {
     "as duas fontes do papel nasceram como o teste declara",
   );
   await c.query(
-    "INSERT INTO public.store_config(id,store_name,share_text) VALUES (1,'Loja de prova','texto original')",
+    // A ficha id = 1 ja nasce da fila (20261540000000): o semeio a completa em vez de recriar.
+    "INSERT INTO public.store_config(id,store_name,share_text) VALUES (1,'Loja de prova','texto original') ON CONFLICT (id) DO UPDATE SET store_name = EXCLUDED.store_name, share_text = EXCLUDED.share_text",
   );
   await c.query(
     "INSERT INTO public.assinatura_da_loja(id,plano,status) VALUES (1,'basico','ativa')",

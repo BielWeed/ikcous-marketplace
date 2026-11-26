@@ -2062,12 +2062,18 @@ O cadastro de UMA vez, na entrada do cliente:
 6. **Chave do plano (assinatura da loja):** gere o hash pelo app de gestao e instale-o pelo workflow
    `instalar-chave-da-loja.yml` (script `scripts/publicacao/instalar-chave-da-loja.cjs`). O
    workflow aceita toda loja assinante do `scripts/frota/lojas.json` (passo 2): nao ha lista a editar.
-   **Antes do primeiro acesso — NÃO ENSAIADO em loja nova:** `public.store_config` nasce sem a
-   linha `id = 1`. Crie essa linha com o dominio canonico da loja em `dominio_publico`, pelo SQL
-   Editor do projeto Supabase da loja, com acesso administrativo. Confira que a
-   leitura anonima de `public.v_store_config` para `id = 1` responde HTTP 200 com uma unica ficha e
-   o dominio da loja certa. Isso prova so a ficha: **sem marca valida, a vitrine e o Cadastro
-   continuam em manutencao (HTTP 503)**. Se a ficha falhar, pare: nao abra excecao no porteiro.
+   **Antes do primeiro acesso — o dominio da ficha (NÃO ENSAIADO em loja nova):** a ficha
+   `public.store_config` com `id = 1` ja nasce da migration `20261540000000` (vem na fila do
+   instalador, com os valores padrao e `dominio_publico` vazio). Falta so gravar o dominio canonico
+   da loja, pelo SQL Editor do projeto Supabase da loja (que roda como dono do banco; pelo app ou
+   pela API a gravacao e recusada com `DOMINIO_PUBLICO_SO_MUDA_PELA_FROTA`):
+   `UPDATE public.store_config SET dominio_publico = '<dominio da loja, minusculo, sem https://>' WHERE id = 1;`
+   A resposta tem de ser `UPDATE 1`. `UPDATE 0` = a ficha nao existe, ou seja, a `20261540000000`
+   nao rodou nesse banco: pare e confira o ledger antes de qualquer outra coisa (nao crie a linha a
+   mao). Confira que a leitura anonima de `public.v_store_config` para `id = 1` responde HTTP 200
+   com uma unica ficha e o dominio da loja certa. Isso prova so a ficha: **sem marca valida, a
+   vitrine e o Cadastro continuam em manutencao (HTTP 503)**. Se a ficha falhar, pare: nao abra
+   excecao no porteiro.
 
    `public.dono_da_loja` tambem nasce vazia: sem dono cadastrado, ninguem define cargos.
    Nao promova dono automaticamente. Depois da primeira administradora (passo 8), siga o

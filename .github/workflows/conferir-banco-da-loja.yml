@@ -406,6 +406,8 @@ on:
           - 186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente
           - 187a-conferir-a-saude-da-reconciliacao-aplicado
           - 187b-antes-a-saude-da-reconciliacao-ausente
+          - 191a-conferir-a-loja-nova-nasce-com-a-ficha-aplicado
+          - 191b-antes-a-loja-nova-nasce-com-a-ficha-ausente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"
