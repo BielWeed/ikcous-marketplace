@@ -853,6 +853,9 @@ export function lerVeredicto(log, consulta) {
 }
 
 const FERRAMENTA_DE_CONFERENCIA = "scripts/publicacao/conferir-banco.cjs";
+// conferir-banco.cjs faz require("../frota/lojas.cjs"): o leitor do cadastro é
+// parte da ferramenta que imprime o veredicto e tem de ser o do topo também.
+const LEITOR_DO_CADASTRO = "scripts/frota/lojas.cjs";
 const WORKFLOW_DE_CONFERENCIA = ".github/workflows/conferir-banco-da-loja.yml";
 const CADASTRO_DE_LOJAS = "scripts/frota/lojas.json";
 
@@ -1089,11 +1092,15 @@ export async function evidenciaDaProva({
   if (
     !(await deps.arvoreIgual(run.headSha, topo, [
       FERRAMENTA_DE_CONFERENCIA,
+      LEITOR_DO_CADASTRO,
       WORKFLOW_DE_CONFERENCIA,
     ]))
   ) {
     if (
-      !(await deps.arvoreIgual(run.headSha, topo, [FERRAMENTA_DE_CONFERENCIA]))
+      !(await deps.arvoreIgual(run.headSha, topo, [
+        FERRAMENTA_DE_CONFERENCIA,
+        LEITOR_DO_CADASTRO,
+      ]))
     )
       return ferramentaDifere();
     const wf = await workflowDeConferenciaEquivale(deps, run.headSha, topo);
