@@ -311,7 +311,7 @@ describe("planilha de produtos", () => {
       Categoria: "",
       Fotos: "",
       "Preço original (R$)": "",
-      Status: "Offline",
+      Status: "Oculto da loja",
     });
     expect(registro(produto({ stock: 0 }))).toMatchObject({
       Status: "Esgotado",

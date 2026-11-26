@@ -276,6 +276,25 @@ describe("Formas de pagamento — Cartão pelo app", () => {
     expect(seletorDeParcelas()!.value).toBe("6");
   });
 
+  // Pedido do dono (26/11/2026): com o cartão já ligado e funcionando, o aviso
+  // de "ao ligar…" vira ruído. Ele só vale ANTES de ligar (crédito e débito
+  // desligados); ligar qualquer um dos dois tira o aviso da tela.
+  it("com crédito ligado o aviso de 'ao ligar' sai da tela", async () => {
+    await montar();
+    expect(hospedeiro.textContent).toContain(TESTE_ANTES);
+
+    await clicar(credito());
+    expect(credito().getAttribute("data-state")).toBe("checked");
+    expect(hospedeiro.textContent).not.toContain("Ao ligar, o cartão");
+  });
+
+  it("com só o débito ligado o aviso de 'ao ligar' também sai", async () => {
+    await montar();
+    await clicar(debito());
+    expect(debito().getAttribute("data-state")).toBe("checked");
+    expect(hospedeiro.textContent).not.toContain("Ao ligar, o cartão");
+  });
+
   it("ligar débito sozinho não mostra parcelas (débito é à vista)", async () => {
     await montar();
     await clicar(debito());
@@ -319,6 +338,12 @@ describe("Formas de pagamento — Cartão pelo app", () => {
     expect(
       hospedeiro.querySelector('[aria-label="Cartão de crédito pelo app"]'),
     ).toBeNull();
+  });
+
+  it("leitura que falha não esconde o aviso de 'ao ligar': sem saber, avisa", async () => {
+    banco.erroDeLeitura = { message: "permission denied" };
+    await montar();
+    expect(hospedeiro.textContent).toContain("Ao ligar, o cartão");
   });
 
   it("RPC recusando: toast com a frase curada e a tela continua no que o banco tinha", async () => {

@@ -149,6 +149,12 @@ export interface EntradaDosSubtitulos {
    * "a confirmar"), até a próxima leitura.
    */
   readonly nomesLigados: readonly string[] | null;
+  /**
+   * Cartão pelo app (crédito ou débito) ligado, lido pela MESMA leitura do
+   * bloco "Cartão pelo app". `null`/ausente = a leitura ainda não chegou (ou
+   * falhou): o resumo não chuta e fica sem a palavra "cartão".
+   */
+  readonly cartaoLigado?: boolean | null;
 }
 
 interface EntregaEmAjustes {
@@ -199,13 +205,24 @@ function entregaEmAjustes(
 function textoDoRecebimento(
   formasNaEntrega: readonly FormaDePagamentoNaEntrega[],
   nivelDoPix: NivelDoPixEmAjustes,
+  cartaoLigado: boolean,
 ): string {
   const naEntrega = formasNaEntrega.length > 0 ? "Na entrega" : null;
-  if (nivelDoPix === "ok") return naEntrega ? `${naEntrega} + PIX` : "PIX";
+  // O cartão pelo app usa as MESMAS chaves e só aparece para a cliente com o
+  // pagamento pelo app ligado: com PIX desligado ele não conta; sem a chave,
+  // ele quebra junto com o PIX.
+  if (nivelDoPix === "ok") {
+    return [naEntrega, "PIX", cartaoLigado ? "cartão" : null]
+      .filter((parte) => parte !== null)
+      .join(" + ");
+  }
   // Ligado sem a chave pública: o PIX está QUEBRADO, não "ativo" — a mesma
   // verdade do termômetro. (Sem forma na entrega o passo nem chega aqui:
   // ele é pendente.)
-  if (nivelDoPix === "alerta") return `${naEntrega ?? ""} · PIX sem chave`;
+  if (nivelDoPix === "alerta") {
+    const semChave = cartaoLigado ? "PIX e cartão sem chave" : "PIX sem chave";
+    return `${naEntrega ?? ""} · ${semChave}`;
+  }
   return naEntrega ?? "";
 }
 
@@ -218,6 +235,7 @@ export function subtitulosDosGrupos(
   entrada: EntradaDosSubtitulos,
 ): ReadonlyMap<ChaveDoGrupoDeAjustes, string> {
   const { config, formasNaEntrega, nivelDoPix, nomesLigados } = entrada;
+  const cartaoLigado = entrada.cartaoLigado === true;
   const entrega = entregaEmAjustes(config, nomesLigados);
   const passos = seisPassosDaLojaPronta(
     entradaDosSeisPassos(config, {
@@ -259,7 +277,7 @@ export function subtitulosDosGrupos(
   } else if (recebe?.estado === "feito") {
     subtitulos.set(
       "pagamentos",
-      textoDoRecebimento(formasNaEntrega, nivelDoPix),
+      textoDoRecebimento(formasNaEntrega, nivelDoPix, cartaoLigado),
     );
   }
 

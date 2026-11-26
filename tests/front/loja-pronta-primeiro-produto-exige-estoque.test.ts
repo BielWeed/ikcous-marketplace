@@ -89,10 +89,12 @@ describe("Primeiro produto: produto ativo precisa ter como ser comprado", () => 
     expect(passo.explicacaoPendente).toBeUndefined();
   });
 
-  it("só produto inativo (mesmo com estoque): pendente, sem a explicação de estoque", () => {
+  it("só produto inativo (mesmo com estoque): pendente, e não fala de estoque", () => {
     const passo = passoProduto([{ isActive: false, stock: 9 }]);
     expect(passo.estado).toBe("pendente");
-    expect(passo.explicacaoPendente).toBeUndefined();
+    expect(passo.explicacaoPendente).not.toBe(
+      "Seus produtos ativos estão sem estoque",
+    );
   });
 
   it("produto inativo com estoque não salva o ativo esgotado", () => {
@@ -102,5 +104,57 @@ describe("Primeiro produto: produto ativo precisa ter como ser comprado", () => 
         { isActive: true, stock: 0 },
       ]).estado,
     ).toBe("pendente");
+  });
+});
+
+// A loja de teste grátis nasce com produtos cadastrados por script, alguns
+// OCULTOS (desativados) para a lojista conferir o preço. Com produto
+// cadastrado e nenhum ativo, "Cadastrar um produto ativo" mandava cadastrar o
+// que já existe: o passo diz quantos estão ocultos e manda ativar.
+describe("Primeiro produto: cadastrados, mas todos ocultos", () => {
+  it("um oculto: singular, e manda conferir e ativar", () => {
+    const passo = passoProduto([{ isActive: false, stock: 9 }]);
+    expect(passo.estado).toBe("pendente");
+    expect(passo.rotuloPendente).toBe("Conferir e ativar o produto oculto");
+    expect(passo.explicacaoPendente).toBe(
+      "Você tem 1 produto oculto. Confira o preço e toque em Ativar.",
+    );
+  });
+
+  it("três ocultos: plural, com a contagem", () => {
+    const passo = passoProduto([
+      { isActive: false, stock: 9 },
+      { isActive: false, stock: 0 },
+      { isActive: false, stock: 2 },
+    ]);
+    expect(passo.estado).toBe("pendente");
+    expect(passo.rotuloPendente).toBe("Conferir e ativar os produtos ocultos");
+    expect(passo.explicacaoPendente).toBe(
+      "Você tem 3 produtos ocultos. Confira o preço e toque em Ativar.",
+    );
+  });
+
+  it("nenhum produto: segue pedindo para cadastrar", () => {
+    expect(passoProduto([]).rotuloPendente).toBe("Cadastrar um produto ativo");
+  });
+
+  it("oculto + ativo esgotado: a pendência é o estoque, não os ocultos", () => {
+    const passo = passoProduto([
+      { isActive: false, stock: 9 },
+      { isActive: true, stock: 0 },
+    ]);
+    expect(passo.rotuloPendente).toBe("Repor o estoque de um produto");
+    expect(passo.explicacaoPendente).toBe(
+      "Seus produtos ativos estão sem estoque",
+    );
+  });
+
+  it("oculto + ativo à venda: feito", () => {
+    expect(
+      passoProduto([
+        { isActive: false, stock: 9 },
+        { isActive: true, stock: 3 },
+      ]).estado,
+    ).toBe("feito");
   });
 });
