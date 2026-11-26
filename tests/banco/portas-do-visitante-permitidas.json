@@ -851,6 +851,14 @@
       "porque": "Porteiro da frota: descobre qual loja atende o endereco antes de qualquer login (hospedagem/porteiro.ts); so o anon tem EXECUTE."
     },
     {
+      "funcao": "public.resolver_loja_com_estado(p_host text, p_chave text)",
+      "executa": ["anon"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "Porteiro da frota (migration 20261460000000): a mesma porta da resolver_loja, com o estado da loja (ativa, adormecida, encerrada); loja fora do ar vem sem URL e sem chave do banco; so o anon tem EXECUTE e a chave da frota e conferida antes de ler a caderneta."
+    },
+    {
       "funcao": "public.rls_admin_atual()",
       "executa": ["authenticated"],
       "tipo": "leitura",
