@@ -63,6 +63,7 @@ const ROLLBACK_1490 = lerMig(`rollback-manual-${NOME_1490}`);
 const DESTRUTIVO_1490 = lerMig(`rollback-manual-destrutivo-${NOME_1490}`);
 const MIGRATION_1490 = lerMig(NOME_1490);
 const NOME_1570 = "20261570000000_o_endereco_antigo_encaminha_para_o_novo.sql";
+const ROLLBACK_1570 = lerMig(`rollback-manual-${NOME_1570}`);
 const DESTRUTIVO_1570 = lerMig(`rollback-manual-destrutivo-${NOME_1570}`);
 
 const VERSOES = [
@@ -701,9 +702,10 @@ async function mutantes(origem, destino) {
 const QUE_APAGAM = [
   {
     nome: "rollback da 20261141 (apaga frota_lojas e frota_segredo)",
-    // A sucessora 20261570 sai antes (destrutivo confirmado): a chave estrangeira dela depende de frota_lojas e o DROP sem CASCADE
-    // recusaria. As duas confirmações são desligadas logo depois, para o rollback da 20261141 decidir sozinho.
+    // A sucessora 20261570 sai antes (comum + destrutivo confirmado): a chave estrangeira dela depende de frota_lojas e o DROP sem
+    // CASCADE recusaria. As duas confirmações são desligadas logo depois, para o rollback da 20261141 decidir sozinho.
     antes: [
+      ROLLBACK_1570,
       "SET LOCAL app.confirmo_apagar_enderecos_que_encaminham = 'APAGAR'",
       CONFIRMAR_CADERNETA,
       DESTRUTIVO_1570,

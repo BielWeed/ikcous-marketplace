@@ -18,6 +18,12 @@
 --      service_role: só o dono lê e escreve.
 --   b) gatilho frota_enderecos_que_encaminham_nao_e_principal (BEFORE INSERT OR UPDATE OF host, por linha): recusa
 --      (FROTA_ENDERECO_JA_E_PRINCIPAL) um host que já é o endereço principal de alguma loja — um principal nunca encaminha.
+--   c) public.resolver_encaminhamento(p_host, p_chave) RETURNS TABLE(destino text): a PORTA DE LEITURA do porteiro, perguntada só
+--      quando a v2 disse "não achei". SECURITY DEFINER, VOLATILE, search_path vazio, EXECUTE só do anon (como a v2). O bloco que
+--      confere a chave é o da v2 (20261490), LETRA POR LETRA (a prova viva compara os dois corpos vivos): chave errada, NULL ou vazia
+--      dá zero linhas sem erro; a chave certa paga o bcrypt uma vez por hash e grava o atalho só em transação de escrita. Devolve o
+--      dominio_publico ATUAL da loja dona do host, só se a loja tem ativa = true e o destino é diferente do próprio host; senão zero
+--      linhas. A loja adormecida ou encerrada encaminha igual: quem mostra a página certa é o endereço novo, pela v2.
 --
 -- 3. DADOS EXISTENTES
 --
@@ -31,7 +37,8 @@
 -- Recusa se: frota_lojas não existir ou não tiver a chave (id) e o CHECK de formato do dominio_publico da 20261141; a 20261490 não
 -- estiver aplicada (frota_segredo sem hash_rapido/hash_rapido_de, ou resolver_loja e resolver_loja_com_estado sem os corpos dela); a
 -- tabela, a função do gatilho e o gatilho não estiverem TODOS ausentes ou TODOS idênticos aos desta migration (colunas, restrições,
--- índice, RLS, política, privilégio, dono, corpo, atributos, ACL; sobrecarga também recusa).
+-- índice, RLS, política, privilégio, dono, corpo, atributos, ACL; sobrecarga também recusa); a porta de leitura existir com outro
+-- corpo, outros atributos, outra ACL ou sobrecarga (ausente é aceito: é o que o rollback comum deixa).
 --
 -- 5. TRANSAÇÃO E TRAVAS
 --
@@ -44,17 +51,23 @@
 --
 -- Depois da 20261490000000 (o pré-voo recusa sem ela). Aplicar em CADA banco do canal (IKCOUS e Savy) e no banco onde a caderneta de
 -- produção mora (IKCOUS_FROTA_URL).
--- ROLLBACK MANUAL: rollback-manual-destrutivo-20261570000000_o_endereco_antigo_encaminha_para_o_novo.sql apaga a tabela (e TODOS os
--- endereços que encaminham) e a função do gatilho — só com o dono, com a confirmação APAGAR. O rollback da 20261141 (DROP TABLE
--- frota_lojas) recusa com esta tabela no ar (a chave estrangeira depende de frota_lojas): rode antes o destrutivo desta.
+-- ROLLBACK MANUAL: rollback-manual-20261570000000_o_endereco_antigo_encaminha_para_o_novo.sql tira as portas e PRESERVA a tabela com
+-- as linhas (seguro: sem a porta de leitura o porteiro volta a dar "não achei"; reaplicar devolve tudo). Apagar a tabela (e TODOS os
+-- endereços que encaminham) e a função do gatilho é o rollback-manual-destrutivo-20261570000000 — só com o dono, depois do comum, com a
+-- confirmação APAGAR. O rollback da 20261141 (DROP TABLE frota_lojas) recusa com esta tabela no ar (a chave estrangeira depende de
+-- frota_lojas): rode antes o comum e o destrutivo desta.
 --
 -- 7. FICHA DE VERIFICAÇÃO
 --
 --   1. SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.frota_enderecos_que_encaminham_nao_e_principal()');
 --      -- esperado: 874d5af8ef1504daa9e602d6f991353a.
---   2. SELECT has_table_privilege('anon', 'public.frota_enderecos_que_encaminham', 'SELECT'),
---             has_table_privilege('service_role', 'public.frota_enderecos_que_encaminham', 'SELECT');
---      -- esperado: false, false.
+--   2. SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.resolver_encaminhamento(text, text)');
+--      -- esperado: 5ca45d858b56991facb8d2052f0aecfb.
+--   3. SELECT has_table_privilege('anon', 'public.frota_enderecos_que_encaminham', 'SELECT'),
+--             has_table_privilege('service_role', 'public.frota_enderecos_que_encaminham', 'SELECT'),
+--             has_function_privilege('anon', 'public.resolver_encaminhamento(text, text)', 'EXECUTE'),
+--             has_function_privilege('authenticated', 'public.resolver_encaminhamento(text, text)', 'EXECUTE');
+--      -- esperado: false, false, true, false.
 --   PROVA VIVA: tests/banco/o-endereco-antigo-encaminha-viva.cjs (rpc-ci).
 -- ============================================================================
 
@@ -67,6 +80,7 @@ DECLARE
   v_segredo oid := to_regclass('public.frota_segredo');
   v_tabela oid := to_regclass('public.frota_enderecos_que_encaminham');
   v_gatilho_fn oid := to_regprocedure('public.frota_enderecos_que_encaminham_nao_e_principal()');
+  v_leitura oid := to_regprocedure('public.resolver_encaminhamento(text, text)');
   v_dono oid;
   v_gatilhos integer;
 BEGIN
@@ -141,6 +155,26 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.frota_enderecos_que_encaminham, a função do gatilho ou o gatilho já existem e não são os desta migration (colunas, restrições, índice, RLS, política, privilégio, dono, corpo, atributos ou ACL) — meça o banco e revise.';
   END IF;
 
+  -- A porta de leitura: ausente (primeira vez ou depois do rollback comum) ou idêntica (reaplicação). Só existe com a tabela.
+  IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'resolver_encaminhamento')
+     <> (CASE WHEN v_leitura IS NULL THEN 0 ELSE 1 END) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: resolver_encaminhamento existe com outra assinatura ou com sobrecarga — meça o banco e revise.';
+  END IF;
+  IF v_leitura IS NOT NULL AND (
+       v_tabela IS NULL
+       OR NOT EXISTS (
+         SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
+          WHERE p.oid = v_leitura AND md5(replace(p.prosrc, E'\r', '')) = '5ca45d858b56991facb8d2052f0aecfb'
+            AND l.lanname = 'plpgsql' AND p.prosecdef AND p.provolatile = 'v' AND p.proretset AND NOT p.proisstrict
+            AND p.proowner = v_dono AND p.proconfig = ARRAY['search_path=""']::text[]
+            AND pg_get_function_result(p.oid) = 'TABLE(destino text)')
+       OR EXISTS (SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g
+                   WHERE p.oid = v_leitura AND g.privilege_type = 'EXECUTE' AND g.grantee <> p.proowner AND g.grantee <> 'anon'::regrole)
+       OR NOT has_function_privilege('anon', v_leitura, 'EXECUTE')
+     ) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: resolver_encaminhamento já existe e não é a desta migration (corpo, atributos, dono ou ACL) — meça o banco e revise.';
+  END IF;
+
   -- Fotografia do que esta migration não pode mudar: frota_lojas (colunas, restrições, dono, ACL, gatilhos que não são internos) e as
   -- duas portas da caderneta. A chave estrangeira cria gatilhos INTERNOS em frota_lojas (é como o Postgres a aplica): eles ficam fora.
   PERFORM set_config('ikcous.encaminha1570_base', (
@@ -197,15 +231,93 @@ CREATE OR REPLACE TRIGGER frota_enderecos_que_encaminham_nao_e_principal
   BEFORE INSERT OR UPDATE OF host ON public.frota_enderecos_que_encaminham
   FOR EACH ROW EXECUTE FUNCTION public.frota_enderecos_que_encaminham_nao_e_principal();
 
+-- A porta de leitura do porteiro: o endereço que encaminha devolve o endereço ATUAL da loja dona dele.
+CREATE OR REPLACE FUNCTION public.resolver_encaminhamento(p_host text, p_chave text)
+RETURNS TABLE (
+  destino text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+VOLATILE
+SET search_path = ''
+AS $$
+DECLARE
+  v_hash text;
+  v_rapido text;
+  v_rapido_de text;
+BEGIN
+  -- 20261490000000: o bcrypt roda UMA vez por hash (a primeira chamada com a chave certa grava o atalho); dali em diante a conferência
+  -- é um sha256. O atalho só vale para o hash bcrypt ATUAL: trocar a chave reescreve hash e o invalida sozinho.
+  SELECT fs.hash, fs.hash_rapido, fs.hash_rapido_de INTO v_hash, v_rapido, v_rapido_de
+    FROM public.frota_segredo fs
+   WHERE fs.id = 1;
+  IF v_rapido IS NOT NULL AND v_rapido_de = v_hash THEN
+    IF v_rapido IS DISTINCT FROM encode(extensions.digest(p_chave, 'sha256'), 'hex') THEN
+      RETURN; -- zero linhas, sem erro — sem oráculo "chave errada" vs. "host inexistente"
+    END IF;
+  ELSE
+    IF v_hash IS NULL OR v_hash IS DISTINCT FROM extensions.crypt(p_chave, v_hash) THEN
+      RETURN; -- zero linhas, sem erro — sem oráculo "chave errada" vs. "host inexistente"
+    END IF;
+    -- A chave certa abriu pelo bcrypt: grava o atalho deste hash. Nunca espera (SKIP LOCKED) nem falha em transação só de leitura.
+    IF current_setting('transaction_read_only') = 'off' THEN
+      PERFORM 1 FROM public.frota_segredo fs WHERE fs.id = 1 AND fs.hash = v_hash FOR UPDATE SKIP LOCKED;
+      IF FOUND THEN
+        UPDATE public.frota_segredo fs
+           SET hash_rapido = encode(extensions.digest(p_chave, 'sha256'), 'hex'),
+               hash_rapido_de = v_hash
+         WHERE fs.id = 1
+           AND fs.hash = v_hash;
+      END IF;
+    END IF;
+  END IF;
+
+  -- 20261570000000: o bloco acima é o da v2 (resolver_loja_com_estado), letra por letra. O endereço que encaminha guarda a LOJA, não o
+  -- destino: o endereço atual é lido agora, e duas mudanças seguidas nunca viram corrente. A loja com ativa = false é desconhecida
+  -- (zero linhas, como na v2), e um destino igual ao próprio host nunca é devolvido (não há como redirecionar para si mesmo).
+  RETURN QUERY
+  SELECT fl.dominio_publico
+    FROM public.frota_enderecos_que_encaminham fe
+    JOIN public.frota_lojas fl ON fl.id = fe.loja_id
+   WHERE fe.host = lower(p_host)
+     AND fl.ativa
+     AND lower(fl.dominio_publico) <> lower(p_host);
+END;
+$$;
+
+-- Só o anon executa (o porteiro chama pelo PostgREST com a chave publicável, como a v2). O REVOKE fecha o ALTER DEFAULT PRIVILEGES do
+-- schema public; o GRANT decide o acesso também no projeto novo, que nasce sem a regra.
+REVOKE ALL ON FUNCTION public.resolver_encaminhamento(text, text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.resolver_encaminhamento(text, text) TO anon;
+
 DO $posvoo_20261570000000$
 DECLARE
   v_lojas oid := to_regclass('public.frota_lojas');
   v_tabela oid := to_regclass('public.frota_enderecos_que_encaminham');
   v_gatilho_fn oid := to_regprocedure('public.frota_enderecos_que_encaminham_nao_e_principal()');
+  v_leitura oid := to_regprocedure('public.resolver_encaminhamento(text, text)');
   v_dono oid := (SELECT c.relowner FROM pg_class c WHERE c.oid = to_regclass('public.frota_lojas'));
 BEGIN
-  IF v_tabela IS NULL OR v_gatilho_fn IS NULL THEN
-    RAISE EXCEPTION 'POSVOO_20261570000000: a tabela frota_enderecos_que_encaminham ou a função do gatilho está ausente';
+  IF v_tabela IS NULL OR v_gatilho_fn IS NULL OR v_leitura IS NULL THEN
+    RAISE EXCEPTION 'POSVOO_20261570000000: a tabela frota_enderecos_que_encaminham, a função do gatilho ou a porta de leitura está ausente';
+  END IF;
+  IF NOT EXISTS (
+       SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
+        WHERE p.oid = v_leitura AND md5(replace(p.prosrc, E'\r', '')) = '5ca45d858b56991facb8d2052f0aecfb'
+          AND l.lanname = 'plpgsql' AND p.prosecdef AND p.provolatile = 'v' AND p.proretset AND NOT p.proisstrict
+          AND p.proowner = v_dono AND p.proconfig = ARRAY['search_path=""']::text[]
+          AND pg_get_function_arguments(p.oid) = 'p_host text, p_chave text'
+          AND pg_get_function_result(p.oid) = 'TABLE(destino text)')
+     OR (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'resolver_encaminhamento') <> 1 THEN
+    RAISE EXCEPTION 'POSVOO_20261570000000: corpo, atributos ou dono de resolver_encaminhamento não são os desta migration';
+  END IF;
+  -- SECURITY DEFINER lê a caderneta como o dono: só o anon (e o dono) executa; nem PUBLIC, nem authenticated, nem service_role.
+  IF EXISTS (SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g
+              WHERE p.oid = v_leitura AND g.privilege_type = 'EXECUTE' AND g.grantee <> p.proowner AND g.grantee <> 'anon'::regrole)
+     OR NOT has_function_privilege('anon', v_leitura, 'EXECUTE')
+     OR has_function_privilege('authenticated', v_leitura, 'EXECUTE')
+     OR has_function_privilege('service_role', v_leitura, 'EXECUTE') THEN
+    RAISE EXCEPTION 'POSVOO_20261570000000: a ACL de resolver_encaminhamento não é "só o anon executa"';
   END IF;
   IF (SELECT string_agg(a.attname || ':' || format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull::text || ':' || a.attidentity::text || ':' || COALESCE(pg_get_expr(d.adbin, d.adrelid), '-'), ',' ORDER BY a.attnum)
         FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum

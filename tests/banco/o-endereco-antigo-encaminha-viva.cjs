@@ -15,7 +15,11 @@
  *       apagar a loja apaga os endereços dela;
  *   (b) reaplicar (LF, CRLF, LF) não muda catálogo nem linha;
  *   (c) o arquivo não tem BEGIN/COMMIT de nível superior, e aplicar dentro de uma transação desfeita não deixa nada;
- *   (d) o pré-voo recusa sem a 20261490 (e com a tabela de outra forma), sem escrever; o destrutivo exige a confirmação.
+ *   (d) o pré-voo recusa sem a 20261490 (e com a tabela de outra forma), sem escrever; o destrutivo exige a confirmação;
+ *   (e) a porta de leitura resolver_encaminhamento, como anon (o PostgREST): chave errada, NULL ou vazia = zero linhas; a chave certa
+ *       devolve o endereço ATUAL da loja (duas mudanças seguidas não viram corrente); o host principal e a loja com ativa = false dão
+ *       zero linhas; transação só de leitura responde sem gravar; só o anon executa; o bloco da chave é, texto por texto, o da v2;
+ *   (f) o rollback comum (2x) tira as funções e preserva a tabela com as linhas; recusa corpo divergente; o destrutivo exige o comum.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/o-endereco-antigo-encaminha-viva.cjs
  */
@@ -42,9 +46,14 @@ const ler = (n) =>
     .readFileSync(path.join(__dirname, "../../supabase/migrations", n), "utf8")
     .replace(/\r/g, "");
 const MIGRATION = ler(NOME);
+const ROLLBACK = ler(`rollback-manual-${NOME}`);
 const DESTRUTIVO = ler(`rollback-manual-destrutivo-${NOME}`);
 
 const TABELA = "public.frota_enderecos_que_encaminham";
+const LEITURA = "public.resolver_encaminhamento(text, text)";
+const V2 = "public.resolver_loja_com_estado(text, text)";
+const CHAVE = "chave-da-prova-1570";
+const SEM_ATALHO = { hash_rapido: null, hash_rapido_de: null };
 const PAPEIS = ["anon", "authenticated", "service_role"];
 const LOJA_A = {
   id: "l1570-a",
@@ -99,6 +108,58 @@ async function semente(c) {
         `pk_${l.id}`,
       ],
     );
+}
+/** O segredo da frota com a CHAVE (bcrypt custo 4: o custo não muda o que se prova), sem o atalho da 20261490. */
+async function segredo(c) {
+  await c.query(
+    "INSERT INTO public.frota_segredo (id, hash) VALUES (1, extensions.crypt($1, extensions.gen_salt('bf', 4))) ON CONFLICT (id) DO UPDATE SET hash = EXCLUDED.hash",
+    [CHAVE],
+  );
+  await c.query(
+    "UPDATE public.frota_segredo SET hash_rapido = NULL, hash_rapido_de = NULL WHERE id = 1",
+  );
+}
+const atalho = async (c) =>
+  (
+    await c.query(
+      "SELECT hash_rapido, hash_rapido_de FROM public.frota_segredo WHERE id = 1",
+    )
+  ).rows[0];
+/** Chama a porta de leitura como anon (o PostgREST); o que ela grava FICA na transação do chamador. */
+async function comoAnon(c, host, chave) {
+  const sp = `sp_1570_${++contaSavepoint}`;
+  await c.query(`SAVEPOINT ${sp}`);
+  try {
+    await c.query("SET LOCAL ROLE anon");
+    const linhas = (
+      await c.query("SELECT * FROM public.resolver_encaminhamento($1, $2)", [
+        host,
+        chave,
+      ])
+    ).rows;
+    await c.query("RESET ROLE");
+    await c.query(`RELEASE SAVEPOINT ${sp}`);
+    return linhas;
+  } catch (e) {
+    await c.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+    await c.query(`RELEASE SAVEPOINT ${sp}`);
+    throw e;
+  }
+}
+const destinos = (linhas) => linhas.map((l) => l.destino);
+const prosrc = async (c, fn) =>
+  (
+    await c.query(
+      "SELECT replace(prosrc, E'\\r', '') AS s FROM pg_proc WHERE oid = to_regprocedure($1)",
+      [fn],
+    )
+  ).rows[0]?.s ?? null;
+const FIM_DO_BLOCO_DA_CHAVE = "\n  END IF;\n";
+/** O começo do corpo até o END IF de nível 1 que fecha a conferência da chave (os de dentro têm 4 ou 6 espaços). */
+function blocoDaChave(corpo) {
+  const i = corpo.indexOf(FIM_DO_BLOCO_DA_CHAVE);
+  assert(i > 0, "o corpo tem o END IF que fecha a conferência da chave");
+  return corpo.slice(0, i + FIM_DO_BLOCO_DA_CHAVE.length);
 }
 const encaminhar = (c, host, lojaId, motivo = "antigo") =>
   c.query(`INSERT INTO ${TABELA} (host, loja_id, motivo) VALUES ($1, $2, $3)`, [
@@ -446,10 +507,12 @@ async function preVoo(c) {
       "controle: sem sabotagem, a mesma base aplica",
     );
   });
-  // O destrutivo: sem a confirmação recusa; com a tabela com linha recusa sem a segunda confirmação; com as duas apaga, 2x.
+  // O destrutivo (depois do comum): sem a confirmação recusa; com a tabela com linha recusa sem a segunda confirmação; com as duas
+  // apaga, 2x.
   await desfeita(c, async () => {
     await semente(c);
     await encaminhar(c, "antigo-a.l1570.teste", LOJA_A.id);
+    await c.query(ROLLBACK);
     let e = await tentar(c, () => c.query(DESTRUTIVO));
     assert.match(
       e?.message ?? "(apagou)",
@@ -492,6 +555,241 @@ async function preVoo(c) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// (e) a porta de leitura
+// ---------------------------------------------------------------------------
+async function portaDeLeitura(c) {
+  await semente(c);
+  await segredo(c);
+  await encaminhar(c, "antigo-a.l1570.teste", LOJA_A.id, "antigo");
+  await encaminhar(c, "www.loja-a.l1570.teste", LOJA_A.id, "www");
+
+  // Catálogo: só o anon executa (nem PUBLIC, nem authenticated, nem service_role); SECURITY DEFINER, search_path vazio, volátil.
+  const cat = (
+    await c.query(
+      `SELECT p.prosecdef, p.provolatile, p.proconfig::text AS config, pg_get_function_result(p.oid) AS r,
+              (SELECT count(*)::int FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g WHERE g.grantee = 0) AS publico,
+              has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
+              has_function_privilege('authenticated', p.oid, 'EXECUTE') AS autenticado,
+              has_function_privilege('service_role', p.oid, 'EXECUTE') AS servico
+         FROM pg_proc p WHERE p.oid = to_regprocedure($1)`,
+      [LEITURA],
+    )
+  ).rows[0];
+  assert.deepEqual(
+    cat,
+    {
+      prosecdef: true,
+      provolatile: "v",
+      config: '{"search_path=\\"\\""}',
+      r: "TABLE(destino text)",
+      publico: 0,
+      anon: true,
+      autenticado: false,
+      servico: false,
+    },
+    "catálogo da porta de leitura: SECURITY DEFINER, volátil, search_path vazio, só o anon executa",
+  );
+
+  // O bloco da chave é, texto por texto, o da v2 (os dois corpos VIVOS): as duas portas não se afastam.
+  const bloco = blocoDaChave(await prosrc(c, LEITURA));
+  assert.equal(
+    bloco,
+    blocoDaChave(await prosrc(c, V2)),
+    "o bloco da chave é igual, letra por letra, ao de resolver_loja_com_estado",
+  );
+  assert.match(bloco, /extensions\.crypt\(p_chave, v_hash\)/);
+  assert.match(bloco, /FOR UPDATE SKIP LOCKED/);
+
+  // Chave errada, NULL e vazia: zero linhas, sem erro, nada gravado.
+  for (const [rotulo, chave] of [
+    ["errada", "errada"],
+    ["NULL", null],
+    ["vazia", ""],
+  ]) {
+    assert.deepEqual(
+      await comoAnon(c, "antigo-a.l1570.teste", chave),
+      [],
+      `chave ${rotulo}: zero linhas`,
+    );
+    assert.deepEqual(
+      await atalho(c),
+      SEM_ATALHO,
+      `chave ${rotulo}: nada gravado`,
+    );
+  }
+
+  // Transação só de leitura (GET do PostgREST, réplica): a chave certa resolve e NÃO grava o atalho.
+  let lido = null;
+  let gravado = null;
+  const eLeitura = await tentar(c, async () => {
+    await c.query("SET LOCAL transaction_read_only = on");
+    await c.query("SET LOCAL ROLE anon");
+    lido = (
+      await c.query("SELECT * FROM public.resolver_encaminhamento($1, $2)", [
+        "antigo-a.l1570.teste",
+        CHAVE,
+      ])
+    ).rows;
+    await c.query("RESET ROLE");
+    gravado = await atalho(c);
+  });
+  assert.equal(eLeitura?.message ?? "ok", "ok", "só leitura: sem erro");
+  assert.deepEqual(
+    destinos(lido),
+    [LOJA_A.dominio_publico],
+    "só leitura: a chave certa resolve",
+  );
+  assert.deepEqual(gravado, SEM_ATALHO, "só leitura: o atalho não é gravado");
+
+  // A chave certa: o endereço ATUAL da loja; o www também; host em maiúsculas resolve igual (o porteiro manda como chega).
+  assert.deepEqual(
+    destinos(await comoAnon(c, "antigo-a.l1570.teste", CHAVE)),
+    [LOJA_A.dominio_publico],
+    "o endereço antigo devolve o principal atual",
+  );
+  assert.notDeepEqual(
+    await atalho(c),
+    SEM_ATALHO,
+    "a chave certa numa transação de escrita grava o atalho (o bloco da v2)",
+  );
+  assert.deepEqual(
+    destinos(await comoAnon(c, "www.loja-a.l1570.teste", CHAVE)),
+    [LOJA_A.dominio_publico],
+    "o www devolve o principal atual",
+  );
+  assert.deepEqual(
+    destinos(await comoAnon(c, "ANTIGO-A.l1570.teste", CHAVE)),
+    [LOJA_A.dominio_publico],
+    "host em maiúsculas resolve igual",
+  );
+  assert.deepEqual(
+    await comoAnon(c, "antigo-a.l1570.teste", "errada"),
+    [],
+    "com o atalho, chave errada: zero linhas",
+  );
+
+  // O host principal e o desconhecido: zero linhas.
+  for (const host of [
+    LOJA_A.dominio_publico,
+    LOJA_B.dominio_publico,
+    "nao-existe.l1570.teste",
+  ])
+    assert.deepEqual(
+      await comoAnon(c, host, CHAVE),
+      [],
+      `${host}: zero linhas`,
+    );
+
+  // Encaminhamento dos Correios: a loja muda de endereço de novo; o antigo segue para o ATUAL (nunca para o intermediário).
+  await c.query(
+    "UPDATE public.frota_lojas SET dominio_publico = $1 WHERE id = $2",
+    ["terceiro-a.l1570.teste", LOJA_A.id],
+  );
+  assert.deepEqual(
+    destinos(await comoAnon(c, "antigo-a.l1570.teste", CHAVE)),
+    ["terceiro-a.l1570.teste"],
+    "duas mudanças seguidas: o antigo vai direto ao atual",
+  );
+
+  // Loja com ativa = false: zero linhas (a caderneta a trata como desconhecida).
+  await c.query("UPDATE public.frota_lojas SET ativa = false WHERE id = $1", [
+    LOJA_A.id,
+  ]);
+  assert.deepEqual(
+    await comoAnon(c, "antigo-a.l1570.teste", CHAVE),
+    [],
+    "loja com ativa = false: zero linhas",
+  );
+  await c.query("UPDATE public.frota_lojas SET ativa = true WHERE id = $1", [
+    LOJA_A.id,
+  ]);
+
+  // Os outros papéis não executam.
+  for (const papel of ["authenticated", "service_role"]) {
+    const e = await tentar(c, async () => {
+      await c.query(`SET LOCAL ROLE ${papel}`);
+      await c.query("SELECT * FROM public.resolver_encaminhamento($1, $2)", [
+        "antigo-a.l1570.teste",
+        CHAVE,
+      ]);
+    });
+    assert.equal(e?.code, "42501", `${papel} não executa a porta de leitura`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// (f) rollback comum
+// ---------------------------------------------------------------------------
+async function rollbackComum(c) {
+  await desfeita(c, async () => {
+    await semente(c);
+    await encaminhar(c, "antigo-a.l1570.teste", LOJA_A.id);
+    const depois = await foto(c);
+    const linhas = await enderecos(c);
+    for (const vez of [1, 2]) {
+      await c.query(ROLLBACK);
+      assert.equal(
+        await prosrc(c, LEITURA),
+        null,
+        `rollback ${vez}: a porta de leitura sai`,
+      );
+    }
+    const desfeito = await foto(c);
+    assert.deepEqual(
+      desfeito.tb,
+      depois.tb,
+      "o rollback comum não toca a tabela nem frota_lojas",
+    );
+    assert.deepEqual(
+      desfeito.fn.map((f) => f.proname),
+      ["frota_enderecos_que_encaminham_nao_e_principal"],
+      "sobra só a função do gatilho (que guarda a tabela)",
+    );
+    assert.deepEqual(
+      await enderecos(c),
+      linhas,
+      "o rollback comum preserva as linhas",
+    );
+    await c.query(MIGRATION);
+    const semOid = (f) => ({ ...f, fn: f.fn.map(({ oid, ...r }) => r) });
+    assert.deepEqual(
+      semOid(await foto(c)),
+      semOid(depois),
+      "reaplicar depois do comum (a porta volta com OID novo e o resto igual)",
+    );
+    // O destrutivo exige o comum antes.
+    const e = await tentar(c, async () => {
+      await c.query(
+        "SET LOCAL app.confirmo_apagar_enderecos_que_encaminham = 'APAGAR'",
+      );
+      await c.query("SET LOCAL ikcous.apagar_caderneta = 'sim'");
+      await c.query(DESTRUTIVO);
+    });
+    assert.match(
+      e?.message ?? "(apagou)",
+      /ENDERECOS_QUE_ENCAMINHAM_ROLLBACK_COMUM_PRIMEIRO/,
+      "destrutivo com a porta no ar",
+    );
+  });
+  // O rollback comum recusa corpo divergente (sucessora no ar?) sem tirar nada.
+  await desfeita(c, async () => {
+    const base = await foto(c);
+    const r = await tentar(c, async () => {
+      await c.query(
+        "CREATE OR REPLACE FUNCTION public.resolver_encaminhamento(p_host text, p_chave text) RETURNS TABLE (destino text) LANGUAGE plpgsql SECURITY DEFINER VOLATILE SET search_path = '' AS $f$ BEGIN RETURN; END $f$",
+      );
+      await c.query(ROLLBACK);
+    });
+    assert.match(
+      r?.message ?? "(desfez)",
+      /B1_BASELINE_DIVERGENT/,
+      "rollback deveria recusar corpo divergente",
+    );
+    assert.deepEqual(await foto(c), base);
+  });
+}
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   const c = new Client({ connectionString: url });
@@ -516,6 +814,14 @@ async function main() {
     await provar(
       "pré-voo recusa sem a 20261490 e com objeto de outra forma, sem escrever; destrutivo com as confirmações",
       () => preVoo(c),
+    );
+    await provar(
+      "porta de leitura: chave, endereço atual sem corrente, principal, ativa = false, só leitura, só o anon, bloco da chave da v2",
+      () => desfeita(c, () => portaDeLeitura(c)),
+    );
+    await provar(
+      "rollback comum (2x) tira as funções e preserva a tabela; recusa corpo divergente; destrutivo exige o comum",
+      () => rollbackComum(c),
     );
     console.log(`\no-endereco-antigo-encaminha-viva: ${provas} provas ok`);
     anexarAoSummary(

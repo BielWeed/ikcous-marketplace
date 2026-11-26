@@ -4,7 +4,8 @@
 -- em manutencao" (o porteiro deixa de achar o endereco). As lojas (frota_lojas), o endereco principal de cada uma, as chaves e o segredo
 -- da frota ficam. Faca copia antes:
 --   SELECT host, loja_id, motivo, criado_em, quem FROM public.frota_enderecos_que_encaminham ORDER BY loja_id, host;
--- Numa transacao do caller, com confirmacao explicita (SET LOCAL vale so ate o fim da transacao; um SET sem LOCAL ficaria na sessao
+-- So depois do rollback comum (rollback-manual-20261570000000_o_endereco_antigo_encaminha_para_o_novo.sql: as portas ausentes), numa
+-- transacao do caller, com confirmacao explicita (SET LOCAL vale so ate o fim da transacao; um SET sem LOCAL ficaria na sessao
 -- inteira e confirmaria o apagamento de uma chamada futura que ninguem pediu):
 --   SET LOCAL app.confirmo_apagar_enderecos_que_encaminham = 'APAGAR';
 -- Com qualquer linha na tabela, recusa (CADERNETA_SEMEADA) mesmo com o APAGAR: e o banco que guarda a caderneta de producao, e apagar
@@ -21,6 +22,9 @@ DECLARE
 BEGIN
   IF COALESCE(current_setting('app.confirmo_apagar_enderecos_que_encaminham', true), '') <> 'APAGAR' THEN
     RAISE EXCEPTION 'ENDERECOS_QUE_ENCAMINHAM_SO_COM_O_DONO: confirme antes de apagar os enderecos que encaminham (public.frota_enderecos_que_encaminham).';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'resolver_encaminhamento') THEN
+    RAISE EXCEPTION 'ENDERECOS_QUE_ENCAMINHAM_ROLLBACK_COMUM_PRIMEIRO: tire as portas (rollback comum) antes de apagar os enderecos que encaminham.';
   END IF;
   -- A trava de escrita (SHARE) vale ate o fim da transacao: ninguem grava linha entre a conferencia e o DROP.
   IF to_regclass('public.frota_enderecos_que_encaminham') IS NOT NULL
