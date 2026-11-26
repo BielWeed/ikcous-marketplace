@@ -11,11 +11,14 @@
  *    PowerShell não ecoa o valor e não estraga o que já estava gravado;
  *  - recusa pasta dentro do repositório (ou de qualquer árvore git);
  *  - `travar` recusa a segunda trava da mesma loja (arquivo aberto com "wx"),
- *    inclusive vinda de outra instância (outro processo).
+ *    inclusive vinda de outra instância (outro processo); se a marca não
+ *    chega a ser escrita, a trava criada é apagada (só se ainda for a nossa)
+ *    e o erro é ErroDoCofre TRAVA_NAO_GRAVOU, sem caminho.
  *
  * O teste com DPAPI DE VERDADE só roda no Windows (no CI Linux ele é pulado),
  * numa pasta temporária, com um valor FALSO inventado, e apaga tudo no fim.
  */
+import { open } from "node:fs/promises";
 import { fromFileUrl, join } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
   assert,
@@ -417,6 +420,99 @@ Deno.test("[dpapi] trava órfã apagada à mão: o liberador antigo não solta a
     await liberarB();
     const liberarDeNovo = await a.travar("loja-nova");
     await liberarDeNovo();
+  } finally {
+    await Deno.remove(pasta, { recursive: true });
+  }
+});
+
+/**
+ * open() de verdade, mas o handle da TRAVA falha ao escrever (disco cheio,
+ * antivírus). `antes(caminho, h, marca)` roda dentro da escrita, antes da falha: para
+ * escrever metade da marca ou simular outro processo no arquivo. A mensagem do
+ * erro de baixo nível leva o caminho, para provar que ele não vaza.
+ */
+function abrirQueFalhaNaTrava(antes = async () => {}) {
+  return async (caminho, flags, modo) => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- o caminho vem do próprio cofre, numa pasta temporária do teste.
+    const h = await open(caminho, flags, modo);
+    if (!String(caminho).endsWith(".trava")) return h;
+    return {
+      async writeFile(dados) {
+        await antes(caminho, h, String(dados));
+        throw Object.assign(new Error(`EIO: falha ao escrever ${caminho}`), {
+          code: "EIO",
+        });
+      },
+      close: () => h.close(),
+    };
+  };
+}
+
+async function nomesNaPasta(pasta) {
+  const nomes = [];
+  for await (const e of Deno.readDir(pasta)) nomes.push(e.name);
+  return nomes.sort();
+}
+
+Deno.test("[dpapi] trava: escrita da marca falha = ErroDoCofre próprio, sem caminho, e a trava NÃO fica órfã", async () => {
+  const pasta = await pastaTemp();
+  try {
+    for (const antes of [
+      async () => {}, // nada escrito
+      async (_c, h, marca) => {
+        await h.write(marca.slice(0, Math.floor(marca.length / 2))); // metade da marca
+      },
+    ]) {
+      const cofre = criarCofreDpapi({
+        pasta,
+        executar: executorFalso(),
+        abrirArquivo: abrirQueFalhaNaTrava(antes),
+      });
+      const e = await cofre.travar("loja-nova").then(
+        () => null,
+        (x) => x,
+      );
+      assert(e instanceof ErroDoCofre, "o erro subiu cru (não é ErroDoCofre)");
+      assert(!(e instanceof CofreTravado), "não é a loja travada por outro");
+      assertEquals(e.codigo, "TRAVA_NAO_GRAVOU");
+      const tudo = `${e.message}\n${JSON.stringify(e)}`;
+      assert(!tudo.includes(pasta), "a mensagem carrega o caminho do cofre");
+      assert(!tudo.includes("EIO"), "a mensagem carrega o erro de baixo nível");
+      assertEquals(await nomesNaPasta(pasta), [], "a trava ficou órfã");
+      // e a loja continua travável por quem vier depois
+      const liberar = await criarCofreDpapi({
+        pasta,
+        executar: executorFalso(),
+      }).travar("loja-nova");
+      await liberar();
+    }
+  } finally {
+    await Deno.remove(pasta, { recursive: true });
+  }
+});
+
+Deno.test("[dpapi] trava: escrita falha mas o arquivo já não é o nosso = não apaga a trava alheia", async () => {
+  const pasta = await pastaTemp();
+  try {
+    const alheia = "99999 2026-11-26T00:00:00.000Z outro-processo";
+    const cofre = criarCofreDpapi({
+      pasta,
+      executar: executorFalso(),
+      abrirArquivo: abrirQueFalhaNaTrava(async (caminho) => {
+        await Deno.writeTextFile(caminho, alheia);
+      }),
+    });
+    const e = await cofre.travar("loja-nova").then(
+      () => null,
+      (x) => x,
+    );
+    assert(e instanceof ErroDoCofre);
+    assertEquals(e.codigo, "TRAVA_NAO_GRAVOU");
+    assertEquals(
+      await Deno.readTextFile(join(pasta, "loja-nova.trava")),
+      alheia,
+      "apagou ou mexeu na trava de outro",
+    );
   } finally {
     await Deno.remove(pasta, { recursive: true });
   }

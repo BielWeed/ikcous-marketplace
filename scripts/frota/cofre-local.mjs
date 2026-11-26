@@ -28,7 +28,10 @@
 //
 // TRAVA ÓRFÃ: se um processo morrer segurando a trava, o arquivo
 // <slug>.trava fica; a mensagem de CofreTravado diz qual arquivo apagar
-// (depois de conferir que nenhum comando da loja está rodando).
+// (depois de conferir que nenhum comando da loja está rodando). Se a marca não
+// chega a ser escrita (disco cheio, antivírus), a própria travar apaga o
+// arquivo que acabou de criar, só se ele ainda for o dela, e recusa com
+// ErroDoCofre codigo TRAVA_NAO_GRAVOU.
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
@@ -66,9 +69,14 @@ export const SCRIPT_DECIFRAR = [
 ].join("\n");
 
 export class ErroDoCofre extends Error {
-  constructor(mensagem) {
+  /**
+   * @param {string} mensagem  texto SEM o valor e SEM a saída do PowerShell
+   * @param {{ codigo?: string }} [extra]
+   */
+  constructor(mensagem, extra = {}) {
     super(mensagem);
     this.name = "ErroDoCofre";
+    if (extra.codigo !== undefined) this.codigo = extra.codigo;
   }
 }
 
@@ -253,12 +261,14 @@ const codificado = (script) =>
  *   executar?: (comando: string, args: string[], o: { entrada: string, env: Record<string,string> }) =>
  *     Promise<{ codigo: number|null, saida: string, erro: string }>,
  *   env?: Record<string, string|undefined>,
- * }} [opcoes]
+ *   abrirArquivo?: typeof open,
+ * }} [opcoes]  abrirArquivo existe para o teste simular disco que falha.
  */
 export function criarCofreDpapi({
   pasta,
   executar = executarProcesso,
   env = process.env,
+  abrirArquivo = open,
 } = {}) {
   const raiz = exigirPastaSegura(pasta ?? pastaPadraoDoCofre(env));
   const ps = caminhoDoPowerShell(env);
@@ -338,7 +348,7 @@ export function criarCofreDpapi({
       const final = arquivo(slug, "dpapi");
       const temporario = `${final}.${randomBytes(6).toString("hex")}.tmp`;
       try {
-        const h = await open(temporario, "wx", 0o600);
+        const h = await abrirArquivo(temporario, "wx", 0o600);
         try {
           await h.writeFile(`${CABECALHO}\n${cifrado}\n`, "utf8");
           await h.sync();
@@ -374,7 +384,7 @@ export function criarCofreDpapi({
       const marca = `${process.pid} ${new Date().toISOString()} ${randomBytes(8).toString("hex")}`;
       let h;
       try {
-        h = await open(caminho, "wx", 0o600);
+        h = await abrirArquivo(caminho, "wx", 0o600);
       } catch (e) {
         if (e?.code === "EEXIST") {
           throw new CofreTravado(
@@ -386,9 +396,31 @@ export function criarCofreDpapi({
         );
       }
       try {
-        await h.writeFile(marca, "utf8");
-      } finally {
-        await h.close();
+        try {
+          await h.writeFile(marca, "utf8");
+        } finally {
+          await h.close();
+        }
+      } catch {
+        // O arquivo foi criado por NÓS (o "wx" acima), mas a marca não ficou
+        // inteira. Ele só é apagado se ainda for o nosso: vazio ou com um
+        // pedaço do começo da nossa marca. Outro conteúdo = alguém apagou o
+        // nosso e travou depois; esse fica. O erro de baixo nível fica de fora
+        // (a mensagem dele carrega o caminho do cofre).
+        let nossaSaiu = false;
+        try {
+          const atual = await readFile(caminho, "utf8");
+          if (marca.startsWith(atual)) await unlink(caminho);
+          nossaSaiu = true; // apagada agora, ou o que está lá não é a nossa
+        } catch (e) {
+          nossaSaiu = e?.code === "ENOENT";
+        }
+        throw new ErroDoCofre(
+          nossaSaiu
+            ? `Cofre: não consegui gravar a trava da loja ${slug}; nada ficou travado por esta operação. Repita o comando.`
+            : `Cofre: não consegui gravar a trava da loja ${slug} nem apagá-la; o próximo comando da loja vai dizer qual arquivo apagar.`,
+          { codigo: "TRAVA_NAO_GRAVOU" },
+        );
       }
       let solta = false;
       return async () => {

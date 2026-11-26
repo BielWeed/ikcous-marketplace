@@ -14,7 +14,8 @@
 //               gravado no cofre ANTES do access token ser devolvido (se o
 //               Supabase gira o refresh e o cofre não grava, a loja perderia o
 //               acesso em silêncio). Sem refresh na resposta, fica o antigo.
-//   revogar  -> POST /v1/oauth/revoke; só apaga o cofre se o Supabase aceitou.
+//   revogar  -> POST /v1/oauth/revoke; só apaga o cofre se o Supabase aceitou
+//               ou disse que o refresh já não vale (regra em ERROS_JA_REVOGADO).
 //
 // CONCORRÊNCIA: toda operação que lê-e-grava o cofre segura cofre.travar(slug).
 // Duas renovações da mesma loja no MESMO processo esperam a mesma (um pedido
@@ -40,6 +41,20 @@ export const URL_TOKEN = "https://api.supabase.com/v1/oauth/token";
 export const URL_REVOGAR = "https://api.supabase.com/v1/oauth/revoke";
 const PRAZO_PADRAO_MS = 30_000;
 const VERSAO_REGISTRO = 1;
+
+// REVOGAR UM REFRESH QUE JÁ NÃO VALE. O RFC 7009 §2.2 manda o servidor
+// responder 200 para token inválido ("the client cannot handle such an error
+// in a reasonable way"), e 200/204 já apaga o cofre. A doc do Supabase
+// (POST /v1/oauth/revoke, beta, consultada em 26/11/2026) só lista 204, 401,
+// 403 e 429; 400/404 não estão documentados. Se ainda assim vier 400 ou 404
+// com um destes códigos no campo "error", o refresh guardado já está morto:
+// não há o que revogar e guardá-lo só deixa o cofre preso para sempre.
+//   invalid_grant            RFC 6749 §5.2: grant inválido, expirado ou revogado
+//   refresh_token_not_found  código do Supabase Auth: refresh desconhecido
+// Fora disso (401/403: credencial do app; 429/5xx/rede/prazo: falha no
+// caminho; invalid_client/invalid_request/outro 4xx: pedido nosso errado) o
+// cofre FICA, porque a falha pode ser nossa e o refresh ainda valer.
+const ERROS_JA_REVOGADO = new Set(["invalid_grant", "refresh_token_not_found"]);
 
 export class ErroDeAcesso extends ErroDaGestao {
   constructor(mensagem, extra = {}) {
@@ -193,6 +208,22 @@ function exigirApp({ clientId, clientSecret, redirectUri }) {
   }
 }
 
+function jsonOuNull(texto) {
+  try {
+    return JSON.parse(texto);
+  } catch {
+    return null;
+  }
+}
+
+/** O campo "error" do corpo OAuth, só se for um código simples (nunca o
+ * error_description, que pode ecoar o que foi enviado). */
+function erroOAuthDo(corpo) {
+  return typeof corpo?.error === "string" && /^[a-z_]{1,40}$/.test(corpo.error)
+    ? corpo.error
+    : undefined;
+}
+
 /** Lê e valida o registro da loja no cofre; null = nada guardado. */
 async function lerRegistro(cofre, slug) {
   const texto = await cofre.ler(slug);
@@ -269,16 +300,8 @@ export function criarAcessoOAuth({
       prazoMs,
       onde,
     );
-    let corpo = null;
-    try {
-      corpo = JSON.parse(texto);
-    } catch {
-      corpo = null;
-    }
-    const erroOAuth =
-      typeof corpo?.error === "string" && /^[a-z_]{1,40}$/.test(corpo.error)
-        ? corpo.error
-        : undefined;
+    const corpo = jsonOuNull(texto);
+    const erroOAuth = erroOAuthDo(corpo);
     if (
       status === 401 ||
       status === 403 ||
@@ -349,12 +372,18 @@ export function criarAcessoOAuth({
         });
         const { verificador, desafio } = gerarPkce(aleatorio);
         const state = b64url(bytesAleatorios(aleatorio, 16));
+        // O refresh é do app (client_id) que o emitiu: com outro app ou outro
+        // retorno, a loja tem de autorizar de novo e o refresh antigo, usado
+        // com as credenciais novas, só daria SemAcesso (e travaria o revogar).
+        // Mesmo app com só o client_secret trocado: o refresh segue valendo.
+        const mesmoApp =
+          atual?.clientId === clientId && atual?.redirectUri === redirectUri;
         const reg = {
           versao: VERSAO_REGISTRO,
           clientId,
           clientSecret,
           redirectUri,
-          ...(atual?.refresh ? { refresh: atual.refresh } : {}),
+          ...(mesmoApp && atual.refresh ? { refresh: atual.refresh } : {}),
           pendente: { state, verificador, criadoEm: agora() },
         };
         await gravarRegistro(
@@ -445,7 +474,7 @@ export function criarAcessoOAuth({
           return { revogado: false };
         }
         const onde = "POST /v1/oauth/revoke";
-        const { status } = await buscarComPrazo(
+        const { status, texto } = await buscarComPrazo(
           fetchFn,
           URL_REVOGAR,
           {
@@ -469,6 +498,13 @@ export function criarAcessoOAuth({
             `Acesso: ${onde} respondeu HTTP ${status}; o cofre da loja ${slug} ficou como estava.`,
             { status },
           );
+        }
+        if (
+          (status === 400 || status === 404) &&
+          ERROS_JA_REVOGADO.has(erroOAuthDo(jsonOuNull(texto)))
+        ) {
+          await cofre.apagar(slug);
+          return { revogado: true, jaEstavaRevogado: true };
         }
         if (status !== 200 && status !== 204) {
           throw new ErroDeAcesso(

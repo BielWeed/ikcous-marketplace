@@ -14,7 +14,10 @@
  *    mantém o antigo quando a resposta não traz refresh, e a renovação
  *    simultânea da mesma loja ESPERA (mesmo processo) ou é RECUSADA (trava de
  *    outro processo);
- *  - revogar chama /v1/oauth/revoke e só apaga o cofre se o Supabase aceitou;
+ *  - abrir com outro client_id ou redirect_uri descarta o refresh antigo;
+ *  - revogar chama /v1/oauth/revoke e só apaga o cofre se o Supabase aceitou
+ *    ou disse (400/404 invalid_grant/refresh_token_not_found) que o refresh
+ *    já não vale; 401/403/429/5xx/rede/outro erro mantêm o cofre;
  *  - nenhum erro carrega token, refresh, client_secret, código, verificador
  *    nem state.
  *
@@ -232,6 +235,61 @@ Deno.test("abrir de novo numa loja já conectada não perde o refresh", async ()
   const reg = await lerRegistro(cofre);
   assertEquals(reg.refresh, REFRESH_1);
   assert(reg.pendente);
+});
+
+const OUTRO_CLIENT_ID = "c6a08374-1111-4111-8111-111111111111";
+const OUTRO_SECRET = "sba_OUTRO_SEGREDO_FALSO_inventado_456";
+
+for (const [rotulo, troca] of [
+  [
+    "outro client_id",
+    { clientId: OUTRO_CLIENT_ID, clientSecret: OUTRO_SECRET },
+  ],
+  [
+    "outro redirect_uri",
+    { redirectUri: "https://outra.exemplo.test/autorizado" },
+  ],
+]) {
+  Deno.test(`abrir com ${rotulo} numa loja conectada descarta o refresh antigo`, async () => {
+    const cofre = await cofreConectado();
+    const f = fetchFalso();
+    const acesso = criarAcessoOAuth({ cofre, fetch: f });
+    await acesso.abrir({
+      slug: SLUG,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      redirectUri: REDIRECT,
+      ...troca,
+    });
+    const reg = await lerRegistro(cofre);
+    assertEquals(reg.refresh, undefined, "refresh de outro app/retorno ficou");
+    assert(!JSON.stringify(reg).includes(REFRESH_1));
+    assert(reg.pendente);
+    assertEquals(
+      { ...reg, ...troca },
+      reg,
+      "o registro não ficou com o app novo",
+    );
+    // sem refresh, renovar recusa sem chamar o Supabase com o par trocado
+    const e = await pegarErro(() => acesso.renovar({ slug: SLUG }));
+    assert(e instanceof ErroDeAcesso);
+    assertEquals(e.codigo, "NAO_CONECTADA");
+    assertEquals(f.chamadas.length, 0);
+  });
+}
+
+Deno.test("abrir com o MESMO app e só o client_secret trocado mantém o refresh", async () => {
+  const cofre = await cofreConectado();
+  const acesso = criarAcessoOAuth({ cofre, fetch: fetchFalso() });
+  await acesso.abrir({
+    slug: SLUG,
+    clientId: CLIENT_ID,
+    clientSecret: OUTRO_SECRET,
+    redirectUri: REDIRECT,
+  });
+  const reg = await lerRegistro(cofre);
+  assertEquals(reg.refresh, REFRESH_1);
+  assertEquals(reg.clientSecret, OUTRO_SECRET);
 });
 
 Deno.test("abrir recusa client_id, segredo ou redirect estranhos (sem ecoar o segredo)", async () => {
@@ -720,6 +778,91 @@ Deno.test("revogar: Supabase recusou = cofre mantido e erro sem segredo", async 
     const acesso = criarAcessoOAuth({ cofre, fetch: fetchFalso(r) });
     const e = await pegarErro(() => acesso.revogar({ slug: SLUG }));
     assert(e instanceof classe);
+    assertSemVazamento(e);
+    assertEquals(await cofre.ler(SLUG), antes);
+  }
+});
+
+for (const status of [400, 404]) {
+  for (const erro of ["invalid_grant", "refresh_token_not_found"]) {
+    Deno.test(`revogar: ${status} ${erro} = o refresh já não valia; apaga o cofre e diz que já estava revogado`, async () => {
+      const cofre = await cofreConectado();
+      const f = fetchFalso(resposta(status, { ...corpoQueEcoa, error: erro }));
+      const acesso = criarAcessoOAuth({ cofre, fetch: f });
+      const r = await acesso.revogar({ slug: SLUG });
+      assertEquals(r, { revogado: true, jaEstavaRevogado: true });
+      assertEquals(f.chamadas.length, 1);
+      assertEquals(await cofre.ler(SLUG), null);
+      assertSemVazamento(r);
+    });
+  }
+}
+
+Deno.test("revogar: falha que pode ser NOSSA (401/403/5xx/429, outro erro OAuth, corpo estranho) mantém o cofre", async () => {
+  const casos = [
+    [401, { error: "invalid_grant" }],
+    [403, { error: "invalid_grant" }],
+    [500, { error: "invalid_grant" }],
+    [503, { error: "refresh_token_not_found" }],
+    [429, { error: "invalid_grant" }],
+    [400, { error: "invalid_client" }],
+    [400, { error: "invalid_request" }],
+    [400, { error: "unsupported_token_type" }],
+    [400, { error: "INVALID_GRANT" }],
+    [400, { error: "invalid_grant x" }],
+    [400, { error: ["invalid_grant"] }],
+    [400, { error_description: "invalid_grant" }],
+    [400, "invalid_grant"],
+    [400, undefined],
+    [404, undefined],
+    [404, "<html>invalid_grant</html>"],
+    [410, { error: "invalid_grant" }],
+  ];
+  for (const [status, corpo] of casos) {
+    const cofre = await cofreConectado();
+    const antes = await cofre.ler(SLUG);
+    const acesso = criarAcessoOAuth({
+      cofre,
+      fetch: fetchFalso(
+        resposta(
+          status,
+          typeof corpo === "object" && !Array.isArray(corpo)
+            ? { error_description: corpoQueEcoa.error_description, ...corpo }
+            : corpo,
+        ),
+      ),
+    });
+    const e = await pegarErro(() => acesso.revogar({ slug: SLUG }));
+    assert(
+      e instanceof ErroDaGestao,
+      `${status} ${JSON.stringify(corpo)} não virou erro`,
+    );
+    assertSemVazamento(e);
+    assertEquals(
+      await cofre.ler(SLUG),
+      antes,
+      `${status} ${JSON.stringify(corpo)} apagou o cofre`,
+    );
+  }
+});
+
+Deno.test("revogar: rede caída ou prazo estourado mantém o cofre", async () => {
+  for (const f of [
+    fetchFalso(() => Promise.reject(new TypeError("falha de rede"))),
+    fetchFalso(
+      (_u, init) =>
+        new Promise((_ok, falha) => {
+          init.signal.addEventListener("abort", () =>
+            falha(new DOMException("abortado", "AbortError")),
+          );
+        }),
+    ),
+  ]) {
+    const cofre = await cofreConectado();
+    const antes = await cofre.ler(SLUG);
+    const acesso = criarAcessoOAuth({ cofre, fetch: f, prazoMs: 20 });
+    const e = await pegarErro(() => acesso.revogar({ slug: SLUG }));
+    assert(e instanceof ErroDaGestao);
     assertSemVazamento(e);
     assertEquals(await cofre.ler(SLUG), antes);
   }
