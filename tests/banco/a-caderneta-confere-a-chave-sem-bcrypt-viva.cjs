@@ -816,6 +816,9 @@ async function concorrencia(c, url, sql = null) {
   await c.query("COMMIT");
   const outro = new Client({ connectionString: url });
   await outro.connect();
+  // O erro da prova (num mutante, a asserção que o mata) é guardado e relançado DEPOIS da limpeza: uma falha da limpeza nunca o
+  // encobre (foi assim que o B1 do pré-voo, na limpeza antiga, apareceu no lugar da asserção do mutante).
+  let erroDaProva = null;
   try {
     await outro.query("BEGIN");
     await outro.query(
@@ -875,10 +878,14 @@ async function concorrencia(c, url, sql = null) {
       { hash_rapido: sha256(CHAVE_NOVA), hash_rapido_de: s.hash },
       "troca comitada: o atalho é gravado (autocommit) para o hash novo",
     );
-  } finally {
-    await outro.query("ROLLBACK").catch(() => {});
-    await outro.end();
-    await c.query("BEGIN");
+  } catch (e) {
+    erroDaProva = e;
+  }
+  await outro.query("ROLLBACK").catch(() => {});
+  await outro.end();
+  let erroDaLimpeza = null;
+  await c.query("BEGIN");
+  try {
     await c.query("DELETE FROM public.frota_lojas WHERE id = $1", [LOJA.id]);
     await c.query("DELETE FROM public.frota_segredo");
     for (const { j } of original)
@@ -886,9 +893,30 @@ async function concorrencia(c, url, sql = null) {
         "INSERT INTO public.frota_segredo SELECT * FROM jsonb_populate_record(NULL::public.frota_segredo, $1::jsonb)",
         [JSON.stringify(j)],
       );
-    if (sql) await c.query(MIGRATION);
+    if (sql) {
+      // O texto mutado foi COMITADO (a outra conexão precisa ver a semente e a porta roda em autocommit): as portas estão com um
+      // corpo que o pré-voo da migration NÃO conhece, e ele recusa (B1) — certo. A limpeza da prova devolve os corpos da migration
+      // pelo mesmo texto sem as conferências e confere o md5 de cada um; o pré-voo da migration não muda.
+      await c.query(SEM_CONFERENCIA(MIGRATION));
+      for (const fn of PORTAS)
+        assert.equal(
+          await md5Vivo(c, fn),
+          MD5_NOVO[fn],
+          `limpeza do mutante: ${fn} de volta ao corpo da migration`,
+        );
+    }
     await c.query("COMMIT");
+  } catch (e) {
+    await c.query("ROLLBACK");
+    erroDaLimpeza = new Error(
+      `limpeza da prova de duas conexões falhou: ${e.message}`,
+    );
   }
+  if (erroDaProva) {
+    if (erroDaLimpeza) console.log(`    ${erroDaLimpeza.message}`);
+    throw erroDaProva;
+  }
+  if (erroDaLimpeza) throw erroDaLimpeza;
 }
 
 // ---------------------------------------------------------------------------
