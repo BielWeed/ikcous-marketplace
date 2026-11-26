@@ -37,7 +37,8 @@
  *   (5) depois de uma recusa nada fica pendurado no caminho real (conexão por requisição): nenhuma trava, nenhuma sessão
  *       em transação abortada, a troca seguinte roda na hora. Na MESMA conexão (se alguém a reusasse) o Postgres deixa
  *       a transação abortada (25P02, doc 53.2.2.1: a consulta simples para no primeiro erro e o COMMIT do texto não roda)
- *       com as travas da troca presas até um ROLLBACK; depois do ROLLBACK a conexão volta a servir;
+ *       e ela recusa todo comando até um ROLLBACK, mas NÃO segura trava (o aborto já as soltou: uma troca de outra
+ *       conexão roda enquanto ela está abortada); depois do ROLLBACK a conexão volta a servir;
  *   (6) CONTROLES: com o texto do script todas as sondas valem; 11 mutantes textuais do SQL (cada guarda tirada, as
  *       travas, o FOR SHARE, o lower, o SET LOCAL ROLE) reprovam AO MENOS a sonda que cada um declara.
  *
@@ -323,7 +324,8 @@ async function restaurarAChaveDoDono(c) {
   );
 }
 // Um gatilho de prova que tira o admin da nova em auth.users logo depois do INSERT: a conferência pelo critério da 88c,
-// DEPOIS do DELETE e do INSERT, tem de recusar e desfazer os dois (transação interrompida no meio).
+// DEPOIS do DELETE e do INSERT, tem de recusar e desfazer os dois (transação interrompida no meio). O WHEN restringe o
+// gatilho ao INSERT da NOVA (o da troca): o INSERT da dona de hoje que o preparar faz depois dele não dispara nada.
 const sabotarAConferencia = (c) =>
   c.query(`
     CREATE OR REPLACE FUNCTION public.prova_troca_sabota() RETURNS trigger LANGUAGE plpgsql AS $f$
@@ -332,7 +334,7 @@ const sabotarAConferencia = (c) =>
       RETURN NEW;
     END $f$;
     CREATE TRIGGER prova_troca_sabota AFTER INSERT ON public.dono_da_loja
-      FOR EACH ROW EXECUTE FUNCTION public.prova_troca_sabota();`);
+      FOR EACH ROW WHEN (NEW.user_id = '${U_NOVA}'::uuid) EXECUTE FUNCTION public.prova_troca_sabota();`);
 const desfazerASabotagem = (c) =>
   c.query(`
     DROP TRIGGER IF EXISTS prova_troca_sabota ON public.dono_da_loja;
@@ -573,7 +575,7 @@ const SONDAS_DE_RECUSA = {
     email: EMAIL(U_NOVA),
     recusa: "IKT03",
   }),
-  // A leitura vem antes da sabotagem (ela prevê SIM): só a escrita conhece o gatilho.
+  // A leitura não enxerga o gatilho (ela prevê SIM): só a escrita o dispara, no INSERT da nova.
   conferencia_IKT05: sondaDe({
     estado: BASE,
     email: EMAIL(U_NOVA),
@@ -1017,7 +1019,7 @@ PROVAS.push({
 // (5) a conexão depois de uma recusa
 // ---------------------------------------------------------------------------------------------------------------------
 PROVAS.push({
-  nome: "(5) depois de uma recusa nada fica pendurado no caminho real (conexão por requisição): nenhuma trava, nenhuma sessão em transação, a troca seguinte roda na hora; numa conexão REUSADA o Postgres deixa a transação abortada (25P02) com as travas presas até um ROLLBACK, e depois dele a conexão volta a servir",
+  nome: "(5) depois de uma recusa nada fica pendurado no caminho real (conexão por requisição): nenhuma trava, nenhuma sessão em transação, a troca seguinte roda na hora; numa conexão REUSADA o Postgres deixa a transação abortada (25P02) e ela recusa comandos até um ROLLBACK, sem segurar trava nenhuma (outra conexão troca enquanto isso); depois do ROLLBACK ela volta a servir",
   corpo: async (c) => {
     // (a) o caminho real: o pg-meta abre e fecha uma conexão por requisição.
     await preparar(c, { papeis: { [U_NOVA]: ADMIN } });
@@ -1075,14 +1077,21 @@ PROVAS.push({
         ).rows[0];
       const durante = await presas();
       OBSERVACOES.push(
-        `(5b) conexão reusada depois de IKT01: a consulta seguinte deu ${depois}; travas presas ${JSON.stringify(durante)}`,
+        `(5b) conexão reusada depois de IKT01: a consulta seguinte deu ${depois}; travas da conexão abortada ${JSON.stringify(durante)}`,
       );
       assert.equal(
         depois,
         "25P02",
         "a consulta simples parou no erro e deixou a transação abortada (doc 53.2.2.1)",
       );
-      assert.deepEqual(durante, { consultivas: 2, tabela: 1 });
+      // O aborto (AbortTransaction) já soltou as travas da transação, as consultivas inclusive: o 25P02 é o único efeito.
+      assert.deepEqual(durante, { consultivas: 0, tabela: 0 });
+      // A prova de que ela não segura nada: outra conexão troca a dona enquanto esta continua abortada.
+      await preparar(c, BASE);
+      assert.deepEqual(
+        resultadoDe(await pelaApi(sqlTrocarDono(EMAIL(U_NOVA)))),
+        TROCADA,
+      );
       await k.query("ROLLBACK");
       assert.deepEqual((await k.query("SELECT 1 AS um")).rows, [{ um: 1 }]);
       assert.deepEqual(await presas(), { consultivas: 0, tabela: 0 });
