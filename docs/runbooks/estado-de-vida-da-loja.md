@@ -73,6 +73,48 @@ Todo comando que muda o estado exige `--sha` = a release que a produção serve 
 
 O valor é o `codeSha`. Se você passar outro, o comando recusa e diz qual é o certo.
 
+## Quando adormecer uma loja de teste que não pagou
+
+- **Quem avisa e quando.** O app de gestão de assinantes mostra a loja no grupo "Testes vencidos
+  sem pagamento", com a frase "fecha em DD/MM (se não houver pedido em aberto)". O dia de fechar é
+  o fim do teste + 3 dias. Antes dele, não se adormece.
+- **Quem roda.** Nesse dia, quem opera (a sessão, por ordem do dono, ou o dono) roda o
+  `--adormecer` da seção seguinte com `--motivo "por <nome>: teste vencido sem pagamento"`.
+- **Antes, conferir que não há pedido em aberto.** O comando não olha os pedidos (ele só fala com
+  a caderneta). Pelo MCP, no banco **da loja** (o `--ref` dela, não o da caderneta), rode esta
+  consulta, só leitura:
+
+```sql
+select status, payment_status, count(*) as pedidos, min(created_at) as mais_antigo
+  from public.marketplace_orders
+ where status not in ('cancelled', 'delivered')
+ group by status, payment_status
+ order by status, payment_status;
+```
+
+"Em aberto" é o mesmo corte do filtro "Em Aberto" da tela de Pedidos do painel
+(`get_admin_orders_paged` com `p_status = 'open'`, migration `20260911000000`): todo pedido que não
+está `cancelled` nem `delivered`. Isso pega o pedido pago ainda não entregue ou retirado
+(`processing`, `shipping` — a retirada pronta também é `shipping`) e o pedido com pagamento
+pendente (`pending` com `payment_status = 'aguardando'`; a reserva vencida vira `cancelled` sozinha
+pelo `expirar_pedidos_vencidos`).
+
+Rode também esta, no mesmo banco, para a devolução de dinheiro que ainda corre (um pedido
+cancelado com estorno em andamento não aparece na consulta de cima, e a lojista precisa do painel
+para acompanhar o estorno):
+
+```sql
+select status, count(*) as estornos, min(created_at) as mais_antigo
+  from public.order_refunds
+ where status in ('solicitado', 'em_processamento')
+ group by status
+ order by status;
+```
+
+- **Nenhuma linha nas duas:** pode adormecer.
+- **Alguma linha em qualquer uma:** **não adormeça.** Adie até o pedido fechar (entregue, retirado
+  ou cancelado) e o estorno terminar, e rode as consultas de novo antes de tentar outra vez.
+
 ## Pôr uma loja para dormir
 
 ```powershell
