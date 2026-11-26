@@ -27,8 +27,17 @@ Plano de origem: `PLANO-RESERVA-DA-CADERNETA-26-11.md` (T12 e T13). Scripts:
 
 - Os comandos são para o **Windows PowerShell** (a janela azul). Copie **um bloco por vez**, cole, aperte Enter e
   espere terminar antes do próximo.
-- Onde aparece `<sha40>`, `<dpl_...>` ou `<endereço do candidato>`, o agente manda o comando já preenchido. Não
-  invente esses valores.
+- **Valores que mudam a cada vez** (o código da release, o endereço e o `dpl_...` de cada deploy) entram por uma
+  **caixinha** do PowerShell, numa linha própria, antes dos comandos que a usam. Exemplo:
+
+  ```powershell
+  $sha = 'COLE-AQUI-O-SHA'
+  ```
+
+  Troque só o texto `COLE-AQUI-O-SHA` pelo valor que o agente mandou, **mantendo os apóstrofos** (`'`), e aperte
+  Enter. Os comandos seguintes usam `$sha` sozinhos; não mexa neles. A caixinha vale enquanto a janela do
+  PowerShell estiver aberta: se fechar a janela, preencha de novo. Se esquecer de trocar o texto, o comando recusa e
+  nada acontece. Não invente esses valores: o agente manda cada um.
 - **Nunca copie o token nem a "connection string"** da Global Config (o texto que começa com
   `https://global-config.vercel.com/...?token=`). Esse texto é segredo: não cole em conversa, arquivo nem commit. O
   **ID** da store (começa com `ecfg_`) não é segredo.
@@ -88,11 +97,17 @@ também consegue lê-lo sozinho.
 `globalConfigId` **ainda é `null`**, e o relatório do portão mostra, na parte **4b. Reserva da caderneta**, um
 **AVISO** de que a reserva não está configurada. Isso é o esperado.
 
-Depois que a publicação terminar, confira que o porteiro novo enxerga a store. O agente manda o comando com o
-endereço do deploy promovido:
+Depois que a publicação terminar, confira que o porteiro novo enxerga a store. O agente manda o endereço do deploy
+promovido (começa com `https://` e termina em `.vercel.app`). Preencha a caixinha com ele:
 
 ```powershell
-curl.exe -s -D - -o NUL "https://<endereço do deploy promovido>.vercel.app/" | Select-String "x-ikcous"
+$promovido = 'COLE-AQUI-O-ENDERECO-DO-DEPLOY-PROMOVIDO'
+```
+
+E rode:
+
+```powershell
+curl.exe -s -D - -o NUL $promovido | Select-String "x-ikcous"
 ```
 
 **Deu certo se:** aparece a linha `x-ikcous-reserva: ligada`.
@@ -110,26 +125,32 @@ exige `x-ikcous-reserva: ligada` no deploy novo.
 
 ## Passo 5 — Primeira gravação da reserva
 
-1. Ver a diferença, sem gravar nada:
+1. Preencha a caixinha com o código da release que está no ar (40 letras e números, o agente manda):
 
    ```powershell
-   node scripts/frota/reserva-da-caderneta.mjs --conferir --sha <sha40>
+   $sha = 'COLE-AQUI-O-SHA'
+   ```
+
+2. Ver a diferença, sem gravar nada:
+
+   ```powershell
+   node scripts/frota/reserva-da-caderneta.mjs --conferir --sha $sha
    ```
 
    **O que aparece:** `# Reserva da caderneta`, a linha `Montada: N endereços, ... bytes`,
    `Na store: nenhuma reserva gravada ainda.` e `Diferente da atual: --gravar gravaria.`, seguida da lista de lojas
    que entram (`- entra: <endereço>`).
 
-2. Gravar:
+3. Gravar:
 
    ```powershell
-   node scripts/frota/reserva-da-caderneta.mjs --gravar --sha <sha40>
+   node scripts/frota/reserva-da-caderneta.mjs --gravar --sha $sha
    ```
 
    **Deu certo se:** a última linha é `Gravada e conferida na releitura.` Na página da store (passo 1), o item
    `reserva_v1` aparece na lista.
 
-3. Espere **6 minutos** antes do passo 6. A Global Config leva até 10 segundos para chegar a todas as regiões, e cada
+4. Espere **6 minutos** antes do passo 6. A Global Config leva até 10 segundos para chegar a todas as regiões, e cada
    cópia do porteiro guarda a reserva por até 5 minutos.
 
 **Se aparecer diferente:**
@@ -143,29 +164,69 @@ exige `x-ikcous-reserva: ligada` no deploy novo.
 São três deploys **que nunca vão ao ar** (`--skip-domain` não muda o endereço de nenhuma loja). A variável
 `IKCOUS_SONDA_DO_CANDIDATO=1` liga, só neles, a rota que o `sondar-candidato` usa.
 
-Para cada deploy, **guarde duas coisas** que o comando imprime: o endereço `https://...vercel.app` (é o "endereço
-do candidato") e o `dpl_...`. Se o `dpl_...` não aparecer, rode `vercel inspect <endereço do candidato>` e copie a
-linha `id`.
+Antes de tudo, preencha a caixinha com o código da release (o agente manda; é o mesmo do passo 5 se a release não
+mudou):
+
+```powershell
+$sha = 'COLE-AQUI-O-SHA'
+```
+
+Cada deploy imprime, no fim, o **endereço do candidato** (começa com `https://` e termina em `.vercel.app`) e um
+código que começa com `dpl_`. Depois de cada deploy, preencha as duas caixinhas dele, como mostrado abaixo. Se o
+`dpl_...` não aparecer, mande o endereço para o agente: ele descobre o código.
 
 **6a. Controle (caderneta normal):**
 
 ```powershell
-vercel --prod --skip-domain --yes --scope gabriels-projects-5a19f6ee --build-env IKCOUS_CODE_SHA=<sha40> --build-env VERCEL_GIT_COMMIT_SHA=<sha40> --env IKCOUS_SONDA_DO_CANDIDATO=1
+vercel --prod --skip-domain --yes --scope gabriels-projects-5a19f6ee --build-env "IKCOUS_CODE_SHA=$sha" --build-env "VERCEL_GIT_COMMIT_SHA=$sha" --env IKCOUS_SONDA_DO_CANDIDATO=1
+```
+
+```powershell
+$controle = 'COLE-AQUI-O-ENDERECO-QUE-O-6a-IMPRIMIU'
+```
+
+```powershell
+$dplControle = 'COLE-AQUI-O-dpl-QUE-O-6a-IMPRIMIU'
 ```
 
 **6b. Prova 1 (caderneta que não existe):**
 
 ```powershell
-vercel --prod --skip-domain --yes --scope gabriels-projects-5a19f6ee --build-env IKCOUS_CODE_SHA=<sha40> --build-env VERCEL_GIT_COMMIT_SHA=<sha40> --env IKCOUS_SONDA_DO_CANDIDATO=1 --env IKCOUS_FROTA_URL=https://caderneta-errada.invalid
+vercel --prod --skip-domain --yes --scope gabriels-projects-5a19f6ee --build-env "IKCOUS_CODE_SHA=$sha" --build-env "VERCEL_GIT_COMMIT_SHA=$sha" --env IKCOUS_SONDA_DO_CANDIDATO=1 --env IKCOUS_FROTA_URL=https://caderneta-errada.invalid
 ```
 
-**6c. Prova 2 (caderneta vazia):** o agente manda o comando completo. Ele é igual ao 6b, mas aponta
-`IKCOUS_FROTA_URL` para um banco com a caderneta vazia, com a chave **pública** desse banco.
-
-**O ensaio do portão em cada um** (só lê, não promove nada):
+```powershell
+$prova1 = 'COLE-AQUI-O-ENDERECO-QUE-O-6b-IMPRIMIU'
+```
 
 ```powershell
-node scripts/frota/publicar-release.mjs --sha <sha40> --deployment <dpl_... do deploy>
+$dplProva1 = 'COLE-AQUI-O-dpl-QUE-O-6b-IMPRIMIU'
+```
+
+**6c. Prova 2 (caderneta vazia):** o agente manda o comando de deploy pronto, sem nada para trocar. Ele é igual ao
+6b, mas aponta `IKCOUS_FROTA_URL` para um banco com a caderneta vazia, com a chave **pública** desse banco. Depois
+dele:
+
+```powershell
+$prova2 = 'COLE-AQUI-O-ENDERECO-QUE-O-6c-IMPRIMIU'
+```
+
+```powershell
+$dplProva2 = 'COLE-AQUI-O-dpl-QUE-O-6c-IMPRIMIU'
+```
+
+**O ensaio do portão em cada um** (só lê, não promove nada). Um bloco por vez:
+
+```powershell
+node scripts/frota/publicar-release.mjs --sha $sha --deployment $dplControle
+```
+
+```powershell
+node scripts/frota/publicar-release.mjs --sha $sha --deployment $dplProva1
+```
+
+```powershell
+node scripts/frota/publicar-release.mjs --sha $sha --deployment $dplProva2
 ```
 
 **Deu certo se:**
@@ -178,6 +239,8 @@ node scripts/frota/publicar-release.mjs --sha <sha40> --deployment <dpl_... do d
 - Uma prova (6b ou 6c) deu **PRONTO**: **pare tudo**, não promova nada e mande a saída para o agente. O portão
   deixaria passar um deploy com a caderneta caída.
 - O controle (6a) deu BLOQUEADO: leia o motivo. Se for a caderneta ou a reserva, mande a saída para o agente.
+- O comando recusou o `--deployment`: a caixinha do `dpl_...` ficou com o texto `COLE-AQUI`. Preencha de novo e
+  repita.
 
 ## Passo 7 — `sondar-candidato`: cada loja abre com o banco certo?
 
@@ -187,19 +250,19 @@ uns 5 minutos). Enquanto roda, aparece `Sondando N endereços no candidato...` e
 **7a. Controle**, exigindo a caderneta normal (`hit`):
 
 ```powershell
-node scripts/frota/sondar-candidato.mjs --candidato <endereço do candidato do 6a> --caderneta hit
+node scripts/frota/sondar-candidato.mjs --candidato $controle --caderneta hit
 ```
 
 **7b. Prova 1**, exigindo a reserva:
 
 ```powershell
-node scripts/frota/sondar-candidato.mjs --candidato <endereço do candidato do 6b> --caderneta reserva
+node scripts/frota/sondar-candidato.mjs --candidato $prova1 --caderneta reserva
 ```
 
 **7c. Prova 2**, exigindo a reserva:
 
 ```powershell
-node scripts/frota/sondar-candidato.mjs --candidato <endereço do candidato do 6c> --caderneta reserva
+node scripts/frota/sondar-candidato.mjs --candidato $prova2 --caderneta reserva
 ```
 
 **Deu certo se**, nos três, a última linha é `RESULTADO: SIM — toda loja abriu no candidato com o banco certo.` Na
@@ -212,34 +275,57 @@ deploy de prova estava mesmo com a caderneta errada.
 - `RESULTADO: INCERTO`: não deu para provar, e isso **não** conta como SIM. As linhas depois do resultado dizem o
   porquê:
   - `respondeu 404`: o endereço usado não é o endereço único do deploy (talvez seja o apelido), ou o deploy foi
-    feito sem `--env IKCOUS_SONDA_DO_CANDIDATO=1`. Confira o endereço e rode de novo.
+    feito sem `--env IKCOUS_SONDA_DO_CANDIDATO=1`. Confira a caixinha e rode de novo.
+  - `respondeu 401` ou `respondeu 403`: a proteção de deploy da Vercel barrou o pedido antes do porteiro. Mande a
+    saída para o agente; não mude a proteção por conta própria.
   - `respondeu 429`: outra prova estava rodando ao mesmo tempo. Espere 2 minutos e rode de novo, uma por vez.
   - `erro de rede` ou `sem resposta`: confira a internet e rode de novo.
   - `inventário PARCIAL` ou `resultado indeterminado no inventário`: alguma loja no ar não respondeu firme. Rode o
     `conferir-frota` (passo 8) e mande as duas saídas para o agente.
+- Aparece `o candidato tem de ser o endereço único do deploy`: a caixinha ficou com `COLE-AQUI` ou com o domínio de
+  uma loja. Preencha de novo com o endereço `.vercel.app` que o deploy imprimiu.
 - Na prova 1 aparece `hit` em vez de `reserva`, ou a caderneta apontada não é `caderneta-errada.invalid`: o `--env`
   não trocou a variável neste deploy. Mande a saída para o agente.
 
-**Depois das provas — apagar os três deploys de prova** (recomendado, para ninguém promover um deles por engano):
-
-```powershell
-vercel remove <endereço do candidato do 6a> --yes --scope gabriels-projects-5a19f6ee
-```
-
-```powershell
-vercel remove <endereço do candidato do 6b> --yes --scope gabriels-projects-5a19f6ee
-```
-
-```powershell
-vercel remove <endereço do candidato do 6c> --yes --scope gabriels-projects-5a19f6ee
-```
-
 **Nunca rode `vercel promote` num deploy de prova.** O da prova 1 deixaria todas as lojas dependendo só da reserva.
+
+### Opcional: apagar os três deploys de prova (pelo painel)
+
+**Pular este passo não causa dano nenhum:** os deploys de prova não têm endereço de loja e ficam parados. Apagar só
+evita que alguém promova um deles por engano. **Quem apaga é o DONO, pelo painel, olhando cada um; nunca um agente,
+e nunca pela linha de comando.** Apague só o que passar nas três conferências do item 4.
+
+Para cada um dos três (6a, 6b e 6c):
+
+1. Abra <https://vercel.com/dashboard> no Chrome, com o time **gabriels-projects-5a19f6ee**, e clique no projeto
+   **ickous-marketplace**.
+2. No menu da esquerda, clique em **Deployments**. Aparece a lista de deploys, o mais novo em cima.
+3. Clique num dos deploys que você criou no passo 6 (os mais novos, feitos por você há pouco). Abre a página do
+   deploy.
+4. **Confira as três coisas antes de apagar:**
+   - o endereço que aparece na página é **igual** ao que o passo 6 imprimiu (o mesmo da caixinha `$controle`,
+     `$prova1` ou `$prova2`). Ele tem um trecho de letras e números aleatórios no meio;
+   - a data e a hora são de **hoje, de minutos atrás**;
+   - **não** aparece a etiqueta **Current**, e a lista de domínios do deploy **não** tem
+     `ickous-marketplace.vercel.app` nem o domínio de nenhuma loja.
+
+   Se qualquer uma das três não bater, **não apague**: feche a página e mande um print para o agente.
+5. Clique no botão **...** (três pontinhos) no alto da página do deploy e escolha **Delete**.
+6. Na janela de confirmação, confira de novo que o endereço mostrado é o do deploy de prova e confirme.
+
+**Deu certo se:** o deploy some da lista de Deployments, e as lojas continuam abrindo normalmente.
 
 ## Passo 8 — `conferir-frota`: as lojas no ar seguem bem?
 
+Use a caixinha `$sha` com o código da release **que está no ar** (o agente manda; se for o mesmo do passo 6, não
+precisa preencher de novo):
+
 ```powershell
-node scripts/frota/conferir-frota.mjs --sha <sha40 que está no ar> --vercel
+$sha = 'COLE-AQUI-O-SHA-QUE-ESTA-NO-AR'
+```
+
+```powershell
+node scripts/frota/conferir-frota.mjs --sha $sha --vercel
 ```
 
 **Deu certo se:** aparece `inventário: COMPLETO` e a linha `Resultado: N de N endereços OK` com os dois números

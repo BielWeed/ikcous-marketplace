@@ -24,7 +24,8 @@
 //              completo.
 //   NÃO      — o candidato respondeu, e alguma loja abriu com OUTRO ref, não
 //              abriu, ou abriu por outra caderneta que a esperada.
-//   INCERTO  — não deu para provar: sonda desligada (404), limite (429) que
+//   INCERTO  — não deu para provar: sonda desligada (404), proteção de
+//              deploy da Vercel (401/403), limite (429) que
 //              não passou, rede caída, resposta fora do contrato, inventário
 //              parcial ou com endereço indeterminado, loja obrigatória fora
 //              do inventário, ou nenhuma loja para sondar. Nunca vira SIM.
@@ -236,7 +237,7 @@ async function lerCorpo(res, host) {
  * Sonda UMA loja (com as repetições do 429). Devolve
  *   { tipo: "ok" | "divergente" | "incerto", host, motivo, caderneta?, destino? }
  * ou { tipo: "parar", motivo } quando a resposta vale para o deploy inteiro
- * (404 = sonda desligada; 429 que não passou).
+ * (404 = sonda desligada; 401/403 = proteção de deploy; 429 que não passou).
  */
 async function sondarLoja(
   candidato,
@@ -274,6 +275,14 @@ async function sondarLoja(
         host,
         motivo:
           "a sonda respondeu 404: ela está desligada neste endereço. Usar o endereço ÚNICO do deploy (não o alias), de um deploy de Production feito com --env IKCOUS_SONDA_DO_CANDIDATO=1",
+      };
+    }
+    if (res.status === 401 || res.status === 403) {
+      await res.body?.cancel().catch(() => {});
+      return {
+        tipo: "parar",
+        host,
+        motivo: `a sonda respondeu ${res.status}: a proteção de deploy da Vercel (Deployment Protection) barrou o pedido antes do porteiro. Vale para o deploy inteiro; nenhuma loja foi provada`,
       };
     }
     if (res.status !== 200) {

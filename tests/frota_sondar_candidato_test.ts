@@ -200,6 +200,52 @@ Deno.test("porteiro que não abriu a loja (ref null): NÃO", async () => {
   assertEquals(r.veredito, "NÃO");
 });
 
+Deno.test("porteiro diferente de ok com o ref certo: NÃO, nunca SIM", async () => {
+  const amb = ambiente((host) =>
+    host === "loja-um.exemplo.test"
+      ? json({
+          host,
+          porteiro: "erro",
+          caderneta: "hit",
+          ref: REF_A,
+          destinoDaCaderneta: "caderneta.exemplo.test",
+        })
+      : respostaOk(host, ESPERADO[host]),
+  );
+  const r = await sondarCandidato({
+    candidato: CANDIDATO,
+    ...alvosBase(),
+    fetchImpl: amb.fetchImpl,
+    esperar: amb.esperar,
+  });
+  assertEquals(r.veredito, "NÃO");
+  const errado = r.resultados.find((x) => x.host === "loja-um.exemplo.test");
+  assertEquals(errado.tipo, "divergente");
+  assertStringIncludes(errado.motivo, "porteiro erro");
+});
+
+Deno.test("401 e 403 (proteção de deploy da Vercel): INCERTO e para de sondar", async () => {
+  for (const status of [401, 403]) {
+    const amb = ambiente(
+      () => new Response("<html>login da Vercel</html>", { status }),
+    );
+    const r = await sondarCandidato({
+      candidato: CANDIDATO,
+      ...alvosBase(),
+      fetchImpl: amb.fetchImpl,
+      esperar: amb.esperar,
+    });
+    assertEquals(r.veredito, "INCERTO", `HTTP ${status}`);
+    // A proteção vale para o deploy inteiro: não insiste nas outras lojas.
+    assertEquals(amb.pedidos.length, 1, `HTTP ${status}`);
+    assert(
+      r.motivos.some((m) => m.includes(String(status))),
+      `HTTP ${status}`,
+    );
+    assertEquals(r.naoSondados, 3);
+  }
+});
+
 Deno.test("404 (sonda desligada neste deploy): INCERTO e para de sondar", async () => {
   const amb = ambiente(() => json({ sonda: "desligada" }, 404));
   const r = await sondarCandidato({
