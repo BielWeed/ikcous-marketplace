@@ -138,6 +138,158 @@ function caminhoDoPrecache(url: string): string {
 }
 
 /**
+ * O NÚCLEO do precache (plano "a primeira visita deixa de baixar o app
+ * inteiro", 26/11/2026). Cada arquivo que o `install` baixa é um pedido que a
+ * Vercel conta (no Hobby, 1 milhão no mês estourado pausa o projeto e tira
+ * TODAS as lojas do ar), e o app inteiro são ~140 arquivos no primeiro acesso
+ * de todo visitante — inclusive de quem nunca volta. O build marca com
+ * `nucleo: true` o que abre a vitrine e o produto sem internet
+ * (`scripts/precacheNucleo.ts`); a 1ª instalação guarda só isso, e o resto
+ * entra na volta, em segundo plano (`completarOAppEmSegundoPlano`).
+ *
+ * Manifesto sem NENHUMA marca (build anterior a este plano, plugin desligado)
+ * = lista vazia = o app inteiro, como sempre foi (falha segura).
+ */
+const urlsDoNucleo = Array.from(
+  new Set(
+    precacheManifest
+      .filter((entry: any) => entry?.nucleo === true)
+      .map((entry: any) => entry.url),
+  ),
+) as string[];
+
+/** Caminho do registro (no cache de cada versão) com a revisão dos arquivos
+ * SEM hash no nome — a atualização seguinte só os copia se a revisão for a
+ * mesma. Nome que nenhum arquivo do app usa. */
+const REGISTRO_DE_REVISOES = "/__ikcous/revisoes-do-precache.json";
+
+/** Arquivo cujo nome carrega o hash do conteúdo (o Vite escreve assim tudo em
+ * `/assets/`): mesmo nome = mesmo conteúdo, em qualquer versão. */
+function temHashNoNome(caminho: string): boolean {
+  return caminho.startsWith("/assets/");
+}
+
+function ehPagina(caminho: string): boolean {
+  return /\.html?$/i.test(caminho);
+}
+
+/** A revisão de cada arquivo sem hash e que não é página, como o manifesto
+ * desta versão diz. É o que vai para o `REGISTRO_DE_REVISOES`. */
+const revisoesSemHash = new Map<string, string>();
+for (const entry of precacheManifest as any[]) {
+  if (typeof entry?.url !== "string" || typeof entry.revision !== "string")
+    continue;
+  try {
+    const caminho = caminhoDoPrecache(entry.url);
+    if (temHashNoNome(caminho) || ehPagina(caminho)) continue;
+    revisoesSemHash.set(caminho, entry.revision);
+  } catch {
+    // Endereço que não se resolve: sem registro, a próxima versão o baixa.
+  }
+}
+
+/** Os caches de OUTRA versão do app neste aparelho (numa atualização, o da
+ * versão anterior). `null` quando o Cache Storage não responde. */
+async function cachesDoAppAnterior(): Promise<string[] | null> {
+  try {
+    return (await caches.keys()).filter(
+      (nome) => nome.startsWith("app-cache-") && nome !== CACHE_NAME,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * O que esta versão precisa ter guardado para valer: só o núcleo na PRIMEIRA
+ * instalação (nenhum app de outra versão no aparelho); o app inteiro numa
+ * atualização — quem já tinha o app continua com ele inteiro, como sempre.
+ * O `install` e o `activate` perguntam a mesma coisa e chegam à mesma
+ * resposta sem guardar estado entre os dois (o service worker pode ser
+ * encerrado no meio). Em dúvida (sem marca, Cache Storage mudo), o app inteiro.
+ */
+async function listaDestaVersao(): Promise<string[]> {
+  if (urlsDoNucleo.length === 0) return urlsDoPrecache;
+  const anteriores = await cachesDoAppAnterior();
+  if (anteriores === null || anteriores.length > 0) return urlsDoPrecache;
+  return urlsDoNucleo;
+}
+
+/** O registro de revisões que a versão anterior gravou; `null` se não há
+ * (versão anterior a este plano) ou não dá para ler. */
+async function lerRegistroDeRevisoes(
+  cache: Cache,
+): Promise<Map<string, unknown> | null> {
+  try {
+    const guardado = await cache.match(REGISTRO_DE_REVISOES);
+    if (!guardado) return null;
+    const lido = await guardado.json();
+    return lido && typeof lido === "object" && !Array.isArray(lido)
+      ? new Map(Object.entries(lido))
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Numa atualização, copia do cache da versão anterior o que não mudou, em vez
+ * de baixar de novo: arquivo de `/assets/` com o MESMO nome (o hash no nome
+ * garante o mesmo conteúdo) e, fora de `/assets/`, o que tem a MESMA revisão
+ * no registro da versão anterior. Nunca página (HTML): a ficha e os arquivos
+ * citados mudam de uma versão para outra. Nunca cópia que é HTML no lugar do
+ * arquivo (o catch-all da hospedagem). Devolve o que copiou; qualquer falha
+ * só faz baixar da rede, como antes.
+ */
+async function aproveitarDoAppAnterior(
+  cache: Cache,
+  urls: string[],
+): Promise<Set<string>> {
+  const copiados = new Set<string>();
+  try {
+    for (const nome of (await cachesDoAppAnterior()) ?? []) {
+      const anterior = await caches.open(nome);
+      const revisoesAnteriores = await lerRegistroDeRevisoes(anterior);
+      for (const url of urls) {
+        if (copiados.has(url)) continue;
+        const caminho = caminhoDoPrecache(url);
+        if (ehPagina(caminho)) continue;
+        if (!temHashNoNome(caminho)) {
+          const revisao = revisoesSemHash.get(caminho);
+          if (!revisao || revisoesAnteriores?.get(caminho) !== revisao)
+            continue;
+        }
+        const guardado = await anterior.match(url);
+        if (!guardado?.ok) continue;
+        const tipo = guardado.headers?.get("content-type") ?? "";
+        if (tipo.includes("text/html")) continue;
+        await cache.put(url, guardado);
+        copiados.add(url);
+      }
+    }
+  } catch (e) {
+    console.warn("[SW] Falha ao aproveitar o cache da versão anterior:", e);
+  }
+  return copiados;
+}
+
+/** Grava o registro de revisões desta versão (só se há o que registrar). Não
+ * derruba o install: sem ele, a próxima versão só baixa de novo. */
+async function gravarRegistroDeRevisoes(cache: Cache): Promise<void> {
+  if (revisoesSemHash.size === 0) return;
+  try {
+    await cache.put(
+      REGISTRO_DE_REVISOES,
+      new Response(JSON.stringify(Object.fromEntries(revisoesSemHash)), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  } catch (e) {
+    console.warn("[SW] Falha ao gravar o registro de revisões:", e);
+  }
+}
+
+/**
  * O app novo só vale se chegou INTEIRO (revisão da 1.5.33, 16/10/2026).
  *
  * Antes, a falha do `addAll` era engolida: o `install` terminava "com
@@ -154,6 +306,10 @@ function caminhoDoPrecache(url: string): string {
  * arquivos do precache respondem 200 sem redirecionamento — um erro
  * persistente aqui é build quebrado de verdade, e ficar na versão anterior
  * é o certo.
+ *
+ * "Inteiro" é a lista que recebe (`listaDestaVersao`): o núcleo na 1ª
+ * instalação, o app todo numa atualização. Numa atualização, o que não mudou
+ * é copiado do cache anterior antes de ir à rede (`aproveitarDoAppAnterior`).
  */
 async function precachearOAppInteiro(urls: string[]): Promise<void> {
   console.log(
@@ -162,16 +318,19 @@ async function precachearOAppInteiro(urls: string[]): Promise<void> {
   );
   const jaExistia = (await caches.keys()).includes(CACHE_NAME);
   const cache = await caches.open(CACHE_NAME);
+  // Atualização: o que não mudou vem do cache da versão anterior, sem rede.
+  const copiados = await aproveitarDoAppAnterior(cache, urls);
+  const aBaixar = urls.filter((url) => !copiados.has(url));
   let faltaram: string[] = [];
   try {
-    await cache.addAll(urls);
+    await cache.addAll(aBaixar);
   } catch (err) {
     console.warn(
       "[SW] Precache em lote falhou; tentando arquivo a arquivo:",
       err,
     );
     await Promise.all(
-      urls.map((url) =>
+      aBaixar.map((url) =>
         cache.add(url).catch(() => {
           faltaram.push(url);
         }),
@@ -180,7 +339,10 @@ async function precachearOAppInteiro(urls: string[]): Promise<void> {
   }
   if (faltaram.length === 0)
     faltaram = await arquivosQueVieramComoHtml(cache, urls);
-  if (faltaram.length === 0) return;
+  if (faltaram.length === 0) {
+    await gravarRegistroDeRevisoes(cache);
+    return;
+  }
   // Cache que ESTE install criou e ficou pela metade não pode ficar visível
   // para o `caches.match` do service worker antigo.
   if (!jaExistia) {
@@ -293,9 +455,12 @@ async function guardarPaginaInicialComFicha(urls: string[]): Promise<void> {
 }
 
 sw.addEventListener("install", (event: any) => {
+  // 1ª instalação: só o núcleo; atualização: o app inteiro (`listaDestaVersao`).
   event.waitUntil(
-    precachearOAppInteiro(urlsDoPrecache).then(() =>
-      guardarPaginaInicialComFicha(urlsDoPrecache),
+    listaDestaVersao().then((urls) =>
+      precachearOAppInteiro(urls).then(() =>
+        guardarPaginaInicialComFicha(urls),
+      ),
     ),
   );
   console.log(
@@ -372,9 +537,13 @@ async function repararPrecache(urls: string[]): Promise<void> {
  * do app que funciona offline e fica onde está.
  */
 async function purgarCachesAntigos(): Promise<void> {
-  if ((await arquivosFaltando(urlsDoPrecache)).length > 0) {
-    await repararPrecache(urlsDoPrecache);
-    if ((await arquivosFaltando(urlsDoPrecache)).length > 0) {
+  // Na 1ª instalação só o núcleo precisa estar inteiro: reparar a lista toda
+  // aqui baixaria o app inteiro no primeiro acesso, que é o que o `install`
+  // deixou de fazer. Numa atualização, o app inteiro, como sempre.
+  const lista = await listaDestaVersao();
+  if ((await arquivosFaltando(lista)).length > 0) {
+    await repararPrecache(lista);
+    if ((await arquivosFaltando(lista)).length > 0) {
       console.warn(
         "[SW] Cache desta versão incompleto; caches antigos mantidos.",
       );
@@ -386,7 +555,7 @@ async function purgarCachesAntigos(): Promise<void> {
   // jogar fora as páginas com ficha do cache anterior. Se ainda assim não
   // der, a versão nova vale mesmo assim — o HTML antigo, servido primeiro por
   // `caches.match`, deixaria o app preso na versão velha.
-  await guardarPaginaInicialComFicha(urlsDoPrecache);
+  await guardarPaginaInicialComFicha(lista);
   const cacheNames = await caches.keys();
   const cachesToDelete = cacheNames.filter(
     (name) =>
@@ -563,6 +732,81 @@ function redeOuAppGuardado(
   return Promise.race([rede, appGuardado]);
 }
 
+/** Espera depois da navegação antes de completar o app: a tela que a cliente
+ * abriu pede os arquivos dela primeiro. */
+const ESPERA_PARA_COMPLETAR_MS = 3000;
+/** Quantos arquivos o completar pede de uma vez. */
+const LOTE_DO_COMPLETAR = 6;
+/** O completar em andamento: duas navegações seguidas não baixam duas vezes. */
+let completando: Promise<void> | null = null;
+
+/** Rede lenta, sem sinal ou economia de dados: completar o app espera outra
+ * visita. Olha o aviso da página (`SET_NETWORK_QUALITY`), o cabeçalho
+ * `Save-Data` da navegação e o que o navegador conta ao service worker. */
+function redeNaoComportaCompletar(request: Request): boolean {
+  if (networkQuality === "slow" || networkQuality === "offline") return true;
+  if (request.headers?.get("save-data") === "on") return true;
+  const conexao = sw.navigator?.connection;
+  if (conexao?.saveData) return true;
+  return (
+    conexao?.effectiveType === "slow-2g" || conexao?.effectiveType === "2g"
+  );
+}
+
+/** Baixa um arquivo que falta e o guarda no cache desta versão — só se veio
+ * inteiro: 200, sem ser o HTML do catch-all no lugar do arquivo e, se for
+ * página, sem citar arquivo que esta versão não tem (`aquecimentoPodeGuardar`,
+ * a mesma regra do aquecimento). Nunca rejeita. */
+async function completarUmArquivo(cache: Cache, url: string): Promise<void> {
+  try {
+    const resposta = await fetch(url, {
+      signal: sinalComPrazo(PRAZO_DA_REDE_NO_SW_MS),
+    });
+    if (!resposta?.ok || resposta.redirected) return;
+    const tipo = resposta.headers?.get("content-type") ?? "";
+    if (tipo.includes("text/html") && !ehPagina(caminhoDoPrecache(url))) return;
+    if (!(await aquecimentoPodeGuardar(resposta))) return;
+    await cache.put(url, resposta);
+  } catch {
+    // Fica para a próxima volta.
+  }
+}
+
+/**
+ * A volta completa o app em segundo plano (plano de 26/11/2026). A 1ª
+ * instalação guardou só o núcleo; quando a cliente VOLTA (navegação atendida
+ * por este service worker), o resto entra aos poucos: 3 s depois, em lotes de
+ * 6, parando se uma atualização estiver a caminho (o resto seria de uma versão
+ * que vai sair) ou se a rede não comportar (lenta, sem sinal, economia de
+ * dados) — a próxima volta continua de onde parou. Uma chamada no começo da
+ * navegação, sem mudar como ela é respondida. Nunca rejeita.
+ */
+function completarOAppEmSegundoPlano(event: any): void {
+  if (urlsDoNucleo.length === 0 || completando) return;
+  const request: Request = event.request;
+  completando = (async () => {
+    await new Promise((resolve) =>
+      setTimeout(resolve, ESPERA_PARA_COMPLETAR_MS),
+    );
+    const faltando = await arquivosFaltando(urlsDoPrecache);
+    if (faltando.length === 0) return;
+    const cache = await caches.open(CACHE_NAME);
+    for (let i = 0; i < faltando.length; i += LOTE_DO_COMPLETAR) {
+      if (haAtualizacaoAChegar() || redeNaoComportaCompletar(request)) return;
+      await Promise.all(
+        faltando
+          .slice(i, i + LOTE_DO_COMPLETAR)
+          .map((url) => completarUmArquivo(cache, url)),
+      );
+    }
+  })()
+    .catch((e) => console.warn("[SW] Falha ao completar o app:", e))
+    .finally(() => {
+      completando = null;
+    });
+  event.waitUntil(completando);
+}
+
 sw.addEventListener("fetch", (event: any) => {
   const url = new URL(event.request.url);
 
@@ -631,6 +875,7 @@ sw.addEventListener("fetch", (event: any) => {
   // useUpdateCheck, versão nova de app continua avisando pelo ciclo de
   // update do SW — a revalidação em segundo plano não contorna o aviso.
   if (event.request.mode === "navigate") {
+    completarOAppEmSegundoPlano(event);
     // A busca global pode achar uma versão antiga antes da ativa.
     const paginaExata = caches
       .match(event.request, { cacheName: CACHE_NAME })
