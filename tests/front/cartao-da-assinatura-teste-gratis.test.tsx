@@ -89,8 +89,9 @@ describe("CartaoDaAssinatura em teste", () => {
     raiz = createRoot(tela);
   });
   afterEach(() => {
-    vi.useRealTimers();
     act(() => raiz.unmount());
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     tela.remove();
   });
 
@@ -144,6 +145,48 @@ describe("CartaoDaAssinatura em teste", () => {
     expect(depois?.className).not.toMatch(/text-(xl|2xl)/);
     expect(tela.textContent).not.toContain("/mês");
     expect(tela.querySelector(".text-2xl")).toBeNull();
+  });
+
+  it("o valor é POR CICLO: anual diz 'por ano', trimestral 'por trimestre'", () => {
+    desenhar({ valorMensal: 2400, ciclo: "anual" });
+    expect(paragrafo("Depois,")?.textContent).toMatch(
+      /^Depois, R\$\s2\.400,00 por ano$/,
+    );
+    desenhar({ valorMensal: 700, ciclo: "trimestral" });
+    expect(paragrafo("Depois,")?.textContent).toMatch(
+      /^Depois, R\$\s700,00 por trimestre$/,
+    );
+    desenhar({ valorMensal: 1300, ciclo: "Semestral" });
+    expect(paragrafo("Depois,")?.textContent).toMatch(
+      /^Depois, R\$\s1\.300,00 por semestre$/,
+    );
+  });
+
+  it("ciclo nulo não inventa período; ciclo desconhecido aparece como veio", () => {
+    desenhar({ valorMensal: 250, ciclo: null });
+    expect(paragrafo("Depois,")?.textContent).toMatch(/^Depois, R\$\s250,00$/);
+    desenhar({ valorMensal: 250, ciclo: "quinzenal" });
+    expect(paragrafo("Depois,")?.textContent).toMatch(
+      /^Depois, R\$\s250,00 · quinzenal$/,
+    );
+  });
+
+  it("a contagem vira à meia-noite de Brasília sem recarregar a tela", () => {
+    vi.useFakeTimers();
+    // 01/12 23:59:30 em Brasília.
+    vi.setSystemTime(new Date("2026-12-02T02:59:30Z"));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    desenhar({});
+    expect(tela.textContent).toContain("Faltam 2 dias");
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(tela.textContent).toContain("Hoje é o último dia grátis");
+    expect(tela.textContent).not.toContain("Faltam");
+  });
+
+  it("plano cortesia (valor 0) em teste não promete 'Depois, R$ 0,00'", () => {
+    desenhar({ valorMensal: 0, ciclo: "mensal" });
+    expect(tela.textContent).not.toContain("Depois,");
+    expect(tela.textContent).toContain("Faltam 7 dias");
   });
 
   it("sem valor no payload a linha 'Depois' não existe", () => {

@@ -1040,6 +1040,28 @@ export function rotuloDoCiclo(ciclo: string | null): string {
   }
 }
 
+/**
+ * O mesmo ciclo por extenso, para frase corrida ("Depois, R$ 250,00 por mês").
+ * Sem ciclo não inventa período; ciclo fora da lista aparece como veio — igual
+ * a `rotuloDoCiclo`.
+ */
+export function fraseDoCiclo(ciclo: string | null): string {
+  switch (ciclo?.toLowerCase()) {
+    case "mensal":
+      return " por mês";
+    case "trimestral":
+      return " por trimestre";
+    case "semestral":
+      return " por semestre";
+    case "anual":
+      return " por ano";
+    case undefined:
+      return "";
+    default:
+      return ` · ${ciclo}`;
+  }
+}
+
 // --- canais e funil do CRM (visual 27/09) ---
 //
 // Funções puras do redesenho das abas Canais e Funil e pedidos
