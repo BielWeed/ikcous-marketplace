@@ -82,13 +82,18 @@ const canaisBase = () => ({
 });
 
 // A release B mudou a function criar-pagamento (x = 1); na A ela era x = 0.
+// conferir-frete é IGUAL nas duas (a release não a mudou); frete-novo só existe na B. Nenhuma das duas aparece na lista de functions do
+// SHA a menos que o cenário peça (funcoesNoSha).
 const ARVORE = {
   [SHA_A]: {
     "supabase/functions/criar-pagamento/index.ts": "export const x = 0;",
+    "supabase/functions/conferir-frete/index.ts": "export const y = 2;",
     "supabase/config.toml": "",
   },
   [SHA_B]: {
     "supabase/functions/criar-pagamento/index.ts": "export const x = 1;",
+    "supabase/functions/conferir-frete/index.ts": "export const y = 2;",
+    "supabase/functions/frete-novo/index.ts": "export const z = 3;",
     "supabase/config.toml": "",
   },
 };
@@ -122,6 +127,9 @@ function depsDaRelease(ajuste = {}) {
     evidencia: true,
     falhaNoLedger: null,
     falhaNasMigrations: null,
+    funcoesNoSha: ["_shared", "criar-pagamento"],
+    topo: TOPO,
+    arvoreIgual: true,
     ...ajuste,
   };
   const chamadas = { migrationList: [], listarMigrationsNoSha: [] };
@@ -131,12 +139,18 @@ function depsDaRelease(ajuste = {}) {
       listarMigrationsNoSha: async (sha) => {
         chamadas.listarMigrationsNoSha.push(sha);
         if (estado.falhaNasMigrations) throw estado.falhaNasMigrations;
-        return MIGRATIONS[sha] ?? [];
+        return (estado.migracoes ?? MIGRATIONS)[sha] ?? [];
       },
-      listarFuncoesNoSha: async () => ["_shared", "criar-pagamento"],
+      listarFuncoesNoSha: async () => estado.funcoesNoSha,
       lerArquivoNoSha: (sha, caminho) => ARVORE[sha]?.[caminho] ?? null,
-      topoDoRamo: async () => TOPO,
-      arvoreIgual: async () => true,
+      topoDoRamo: async () => {
+        if (estado.topo instanceof Error) throw estado.topo;
+        return estado.topo;
+      },
+      arvoreIgual: async (x, y, caminhos) =>
+        typeof estado.arvoreIgual === "function"
+          ? estado.arvoreIgual(x, y, caminhos)
+          : estado.arvoreIgual,
       migrationList: async (ref) => {
         chamadas.migrationList.push(ref);
         if (estado.falhaNoLedger) throw estado.falhaNoLedger;
@@ -509,6 +523,127 @@ Deno.test("acordar com function da release velha no ar: não acorda e pede a pub
   assert(!temPorta(r));
   assertStringIncludes(r.erros.join("\n"), "function criar-pagamento");
   assertStringIncludes(r.saida.join("\n"), "publicar-functions.yml");
+});
+
+// Function que FALTA na loja e que a release NÃO mudou (DERIVA_ANTIGA com `ausente`): não impede o acordar, mas o comando de publicá-la
+// sai — antes ela ficava sem comando para sempre, porque o conserto só era impresso para loja NÃO pronta. O comando vai no AVISO (stderr):
+// o stdout continua sendo UMA instrução só, a que se roda pelo MCP.
+const CMD_FRETE = `gh workflow run publicar-functions.yml --ref "claude/app-major-upgrade-wmc8x2" -f "projeto=loja-teste" -f "functions=conferir-frete" -f "expected_sha=${TOPO}"`;
+const SQL_ACORDAR = `select * from public.frota_mudar_estado(p_id => '${LOJA}', p_ref => '${REF}', p_de => 'adormecida', p_para => 'ativa', p_sha => '${SHA_B}', p_base => '${SHA_A}', p_motivo => '${MOTIVO}', p_confirmacao => null, p_valido_ate => '${VALIDO_ATE}'::timestamptz);`;
+const comFreteNoSha = {
+  funcoesNoSha: ["_shared", "criar-pagamento", "conferir-frete"],
+};
+const canaisQuePublicamFrete = () => {
+  const canais = canaisBase();
+  canais.canais[REF].functionsPublicaveis = [
+    "criar-pagamento",
+    "conferir-frete",
+  ];
+  return canais;
+};
+const ghDe = (linhas) => linhas.filter((l) => l.startsWith("gh "));
+
+Deno.test("acordar loja PRONTA sem uma function que a release não mudou (publicável): acorda, e o aviso traz o comando de publicá-la", async () => {
+  const { d } = deps({
+    canais: canaisQuePublicamFrete(),
+    release: comFreteNoSha,
+  });
+  const r = await executar(ACORDAR, d);
+  assertEquals(r.codigo, 0, r.erros.join("\n"));
+  // o stdout é SÓ a instrução da porta: nenhum gh misturado ao SQL que vai ao MCP
+  assertEquals(r.saida, [SQL_ACORDAR]);
+  assertEquals(ghDe(r.erros), [CMD_FRETE]);
+  const erros = r.erros.join("\n");
+  assertStringIncludes(erros, "conferir-frete");
+  assertStringIncludes(erros, "não impedem o acordar");
+  assertStringIncludes(erros, "Para publicá-las");
+  assert(!erros.includes("NÃO PRONTA"), erros);
+});
+
+Deno.test("acordar loja PRONTA sem uma function inalterada que o canal NÃO publica: acorda, sem comando gh, e o aviso diz por quê sem prometer comando", async () => {
+  const { d } = deps({ release: comFreteNoSha });
+  const r = await executar(ACORDAR, d);
+  assertEquals(r.codigo, 0, r.erros.join("\n"));
+  assertEquals(r.saida, [SQL_ACORDAR]);
+  assertEquals(ghDe(r.erros), []);
+  const erros = r.erros.join("\n");
+  assertStringIncludes(erros, "functions conferir-frete faltam nesta loja");
+  assert(!erros.includes("Para publicá-las"), erros);
+  assertStringIncludes(erros, "Nenhuma tem comando de publicar daqui");
+});
+
+Deno.test("acordar loja PRONTA sem function inalterada, mas com o topo ilegível ou com functions diferentes da release: acorda, NENHUM comando gh", async () => {
+  for (const [nome, ajuste, trecho] of [
+    // sem migration nova na release (A = B no banco): nenhuma prova pede o topo, e a loja fica pronta com ele ilegível
+    [
+      "topo ilegível",
+      {
+        topo: new Error("git falhou"),
+        migracoes: { [SHA_A]: MIGRATIONS[SHA_B], [SHA_B]: MIGRATIONS[SHA_B] },
+      },
+      "não foi lido",
+    ],
+    // só as functions do topo diferem (o banco e as provas continuam iguais)
+    [
+      "topo com outras functions",
+      {
+        arvoreIgual: (_x, _y, caminhos) =>
+          !caminhos.includes("supabase/functions"),
+      },
+      "nenhum comando de functions",
+    ],
+  ]) {
+    const { d } = deps({
+      canais: canaisQuePublicamFrete(),
+      release: { ...comFreteNoSha, ...ajuste },
+    });
+    const r = await executar(ACORDAR, d);
+    assertEquals(r.codigo, 0, `${nome}: ${r.erros.join("\n")}`);
+    assertEquals(r.saida, [SQL_ACORDAR], nome);
+    assertEquals(ghDe(r.erros), [], nome);
+    assertStringIncludes(r.erros.join("\n"), trecho, nome);
+    assert(!r.erros.join("\n").includes("Para publicá-las"), nome);
+  }
+});
+
+Deno.test("acordar: function PRESENTE com deriva antiga (conteúdo velho que a release não mudou) continua sem aviso e sem comando", async () => {
+  // conferir-frete no ar, com o pacote de criar-pagamento (diferente, mas nada que a release mudou)
+  const { d: dPresente } = deps({
+    canais: canaisQuePublicamFrete(),
+    release: {
+      ...comFreteNoSha,
+      funcoesNoAr: [
+        { slug: "criar-pagamento", verify_jwt: true },
+        { slug: "conferir-frete", verify_jwt: true },
+      ],
+    },
+  });
+  const r = await executar(ACORDAR, dPresente);
+  assertEquals(r.codigo, 0, r.erros.join("\n"));
+  assertEquals(r.saida, [SQL_ACORDAR]);
+  assertEquals(ghDe(r.erros), []);
+  assert(!r.erros.join("\n").includes("conferir-frete"), r.erros.join("\n"));
+  // controle do mesmo cenário com a function AUSENTE: o aviso existe
+  const { d: dAusente } = deps({
+    canais: canaisQuePublicamFrete(),
+    release: comFreteNoSha,
+  });
+  const ausente = await executar(ACORDAR, dAusente);
+  assertEquals(ghDe(ausente.erros), [CMD_FRETE]);
+});
+
+Deno.test("acordar sem uma function que a release CRIOU (mudou): não acorda, e o comando de publicá-la vai com o conserto", async () => {
+  const canais = canaisBase();
+  canais.canais[REF].functionsPublicaveis = ["criar-pagamento", "frete-novo"];
+  const { d } = deps({
+    canais,
+    release: { funcoesNoSha: ["_shared", "criar-pagamento", "frete-novo"] },
+  });
+  const r = await executar(ACORDAR, d);
+  assertEquals(r.codigo, 1);
+  assert(!temPorta(r), r.saida.join("\n"));
+  assertStringIncludes(r.erros.join("\n"), "function frete-novo");
+  assertStringIncludes(r.saida.join("\n"), '-f "functions=frete-novo"');
 });
 
 Deno.test("acordar com falha de rede na prontidão (ledger ilegível ou árvore da release ilegível): recusa, sem a chamada", async () => {

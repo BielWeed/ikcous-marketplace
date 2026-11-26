@@ -206,7 +206,7 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
           error: null,
         };
       }
-      if (nome === "get_admin_customers_paged") {
+      if (nome === "buscar_clientes_do_balcao") {
         return { data: { data: [] }, error: null };
       }
       if (nome === "get_admin_products_paged") {

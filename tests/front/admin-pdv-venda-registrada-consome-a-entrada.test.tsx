@@ -205,7 +205,7 @@ describe("AdminPdvView — a venda registrada consome a entrada de histórico (V
       if (nome === "buscar_por_codigo_barras") {
         return { data: PRODUTO_SIMPLES, error: null };
       }
-      if (nome === "get_admin_customers_paged") {
+      if (nome === "buscar_clientes_do_balcao") {
         return { data: { data: [] }, error: null };
       }
       if (nome === "get_admin_products_paged") {

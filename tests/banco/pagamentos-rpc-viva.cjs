@@ -110,6 +110,9 @@ const {
 const { CADASTRO_FISCAL } = require("./o-cadastro-fiscal-posterior.cjs");
 const { FORNECEDORES } = require("./os-fornecedores-posterior.cjs");
 const {
+  A_LOJA_GRANDE,
+} = require("./a-loja-grande-nao-trava-o-balcao-posterior.cjs");
+const {
   FOTOS_DA_LOJA,
 } = require("./o-admin-copia-e-apaga-as-fotos-posterior.cjs");
 const {
@@ -1880,6 +1883,10 @@ const POSTERIORES_A_97 = [
   // (B1_BASELINE_DIVERGENT). O rollback-manual (comum) tira o gatilho, a funcao e as politicas e DEIXA a tabela selada com as
   // linhas. Definicao unica em tests/banco/os-fornecedores-posterior.cjs. No FIM da lista de proposito.
   FORNECEDORES,
+  // 20261530000000: a porta leve buscar_clientes_do_balcao chama is_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT). O rollback-manual dela derruba so a porta e os dois indices (nenhum dado). Definicao unica em
+  // tests/banco/a-loja-grande-nao-trava-o-balcao-posterior.cjs. No FIM da lista de proposito.
+  A_LOJA_GRANDE,
   // 20261550000000: as duas politicas SELECT de storage.objects (Admin Select Access products/banners) citam rls_admin_atual(): sem esta
   // entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual dela so tira as duas politicas. Definicao unica em
   // tests/banco/o-admin-copia-e-apaga-as-fotos-posterior.cjs. No FIM da lista de proposito.

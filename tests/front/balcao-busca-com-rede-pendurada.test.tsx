@@ -301,13 +301,13 @@ describe("Balcão — buscas com a rede pendurada", () => {
       });
       await digitar("busca-de-cliente-do-balcao", "maria");
       await avancar(PRAZO_MS);
-      expect(chamadas("get_admin_customers_paged")).toBe(1);
+      expect(chamadas("buscar_clientes_do_balcao")).toBe(1);
 
       await act(async () => {
         campo.blur();
       });
       await avancar();
-      expect(chamadas("get_admin_customers_paged")).toBe(2);
+      expect(chamadas("buscar_clientes_do_balcao")).toBe(2);
     });
 
     it("a resposta que chega DEPOIS do prazo é descartada", async () => {

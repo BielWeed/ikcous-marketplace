@@ -256,15 +256,16 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
         }
         return registrarImplRef.atual(params);
       }
-      if (nome === "get_admin_customers_paged") {
+      if (nome === "buscar_clientes_do_balcao") {
         return {
           data: {
             data: [
               {
                 id: "cliente-1",
                 full_name: "Maria Cliente",
-                // Forma REAL de `get_admin_customers_paged` (migration
-                // 20261392000000: `COALESCE(p.whatsapp, u.phone) as phone`) —
+                // Forma REAL de `buscar_clientes_do_balcao` (migration
+                // 20261530000000, a mesma chave da 20261392000000:
+                // `COALESCE(p.whatsapp, u.phone) AS phone`) —
                 // a chave NUNCA é `whatsapp`.
                 phone: "034 99999-1234",
                 email: "maria@example.com",
@@ -1430,7 +1431,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
       if (nome === "buscar_por_codigo_barras") {
         return { data: PRODUTO_SIMPLES, error: null };
       }
-      if (nome === "get_admin_customers_paged") {
+      if (nome === "buscar_clientes_do_balcao") {
         return {
           data: {
             data: [
