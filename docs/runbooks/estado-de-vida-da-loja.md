@@ -73,6 +73,28 @@ Todo comando que muda o estado exige `--sha` = a release que a produção serve 
 
 O valor é o `codeSha`. Se você passar outro, o comando recusa e diz qual é o certo.
 
+## Regra decidida para mensalidade atrasada (26/11/2026) — AINDA NÃO IMPLEMENTADA
+
+A regra fecha a **entrada** e deixa a **saída** aberta. A loja para de aceitar pedido novo, e
+quem recusa é o servidor. O painel da lojista continua aberto, para ela entregar, estornar e
+pagar. "Dia 0" é o vencimento da mensalidade ou o fim do teste.
+
+| Quando | Cliente final | Lojista |
+|---|---|---|
+| Teste: dia 0 a 3. Pagante: dia 0 a 10 | Loja normal | Tudo normal e uma faixa "suas vendas pausam em DD/MM" |
+| Vendas pausadas | A loja abre, mas recusa pedido novo e mostra o contato da loja | Painel inteiro: entrega, estorno, devolução, o que deve e como pagar |
+| A partir do dia 30, com as quatro consultas zeradas | Página "fechada" (`--adormecer`) | Nada pendente |
+| Encerrar | "Não está mais no ar" | Só com ordem escrita do dono, depois do dia 60, com a cópia dos dados oferecida |
+| Pagou | Volta a vender no próximo pedido | A faixa some |
+
+- Nunca pausar na sexta, no sábado ou no domingo: a pausa passa para a segunda seguinte.
+- Pausar é manual, com um clique numa lista que o sistema monta.
+- Reabrir é automático, quando o pagamento é registrado.
+- A Savy fica fora da pausa até o dono dizer o contrário.
+- **Enquanto a "pausa de vendas" não existir no servidor**, a loja adormecida continua aceitando
+  pedido de quem já estava com ela aberta ou com o app guardado no aparelho, e perde o painel.
+  Por isso, hoje, adormecer exige as quatro consultas zeradas, e isso vale também para encerrar.
+
 ## Quando adormecer uma loja de teste que não pagou
 
 - **Quem avisa e quando.** O app de gestão de assinantes mostra a loja no grupo "Testes vencidos
@@ -194,6 +216,12 @@ pós-acordar continua obrigatório.
 
 Sem a ordem escrita do dono (mensagem dele dizendo qual loja encerrar), **não rode**. Cite a ordem no
 motivo.
+
+**Antes, as mesmas quatro consultas de "Quando adormecer" (pedido em aberto, dinheiro a devolver,
+estorno pendente, devolução aberta), no banco da loja.** Nenhuma linha nas quatro: pode encerrar.
+Alguma linha: **não encerre**, nem com a ordem do dono — avise o dono do que falta, com os números.
+Encerrar tira o painel da lojista de vez; vale ainda mais quando a loja está `ativa` (`--de ativa`),
+porque aí ela pode ter vendido até agora. O comando não olha os pedidos.
 
 ```powershell
 node scripts/frota/estado-da-loja.mjs --encerrar --loja "<id>" --ref "<ref>" --sha "<codeSha>" --motivo "por <seu nome>: ordem escrita do dono em 26/11, encerrar" --confirmar "ENCERRAR <id>"
