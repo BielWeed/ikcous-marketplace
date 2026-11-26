@@ -41,9 +41,10 @@
 # e NUNCA roda para `ikcous-publicada` nem para `savy`, EXCETO a faixa 92-202 (backfill
 # do registro das migrations 92..202 sem a 201, só com a pré-checagem da 8e).
 #
-# CONCORRÊNCIA: o job `ledger` compartilha o grupo `banco-da-loja` com
+# CONCORRÊNCIA: o job `ledger` compartilha o grupo `banco-da-loja-<ref>` (um
+# grupo POR BANCO, gerado de scripts/frota/lojas.json) com
 # `aplicar-migrations.yml` — o ledger não roda enquanto uma migration está
-# sendo aplicada, e vice-versa.
+# sendo aplicada no mesmo banco, e vice-versa; bancos diferentes não se esperam.
 #
 # USO: Actions → Run workflow →
 #   consulta      = um arquivo de scripts/publicacao/consultas/ (sem `.sql`),
@@ -403,6 +404,8 @@ on:
           - 185-privilegios-padrao-em-public
           - 186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado
           - 186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente
+          - 187a-conferir-a-saude-da-reconciliacao-aplicado
+          - 187b-antes-a-saude-da-reconciliacao-ausente
           - 190a-conferir-a-loja-grande-nao-trava-o-balcao-aplicado
           - 190b-antes-a-loja-grande-nao-trava-o-balcao-ausente
           - backups
@@ -540,9 +543,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Mesmo grupo de aplicar-migrations.yml: nunca gravar o ledger enquanto
-    # uma migration está sendo aplicada (nem o contrário).
+    # uma migration está sendo aplicada no MESMO BANCO (nem o contrário). O
+    # grupo é por banco (banco-da-loja-<ref>, gerado do cadastro).
     concurrency:
-      group: banco-da-loja
+      # LOJAS-GRUPO-DO-BANCO-INICIO (gerado de scripts/frota/lojas.json por scripts/frota/lojas-nos-workflows.cjs --escrever; nao editar a mao)
+      group: banco-da-loja-${{ fromJSON('{"loja":"cafkrminfnokvgjqtkle","sandbox":"lofznuxcvezrhxsgjqyg","ikcous-publicada":"cafkrminfnokvgjqtkle","savy":"gnjsrucsmjkajijrakzr"}')[inputs.projeto] || 'sem-cadastro' }}
+      # LOJAS-GRUPO-DO-BANCO-FIM
       cancel-in-progress: false
       # queue: max (não o default "single"): sem isto, um segundo LEDGER
       # disparado enquanto o primeiro roda CANCELA o primeiro em vez de

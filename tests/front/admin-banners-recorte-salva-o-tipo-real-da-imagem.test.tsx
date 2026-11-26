@@ -27,6 +27,7 @@
 //    original enviada é apagada do Storage, o formulário passa a apontar
 //    para a URL do recorte (thumbnail atualizada) e o toast de sucesso
 //    dispara.
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -230,7 +231,9 @@ describe("AdminBannersView — recorte confirmado chega ao upload com o tipo REA
       await esperarMicrotarefas();
       await esperarMicrotarefas();
     });
-    expect(uploadBannerImage).toHaveBeenCalledWith(arquivoOriginal);
+    expect(uploadBannerImage).toHaveBeenCalledWith(arquivoOriginal, {
+      piramide: gerarPiramide,
+    });
 
     const botaoAjustar = localizarBotaoPorTexto(hospedeiro, "Ajustar")!;
     expect(
@@ -305,6 +308,10 @@ describe("AdminBannersView — recorte confirmado chega ao upload com o tipo REA
       ).toHaveBeenCalledTimes(1 + confirmsFeitos);
 
       const enviado = uploadBannerImage.mock.lastCall?.[0];
+      // O recorte também sobe com as 3 cópias reduzidas (plano das miniaturas).
+      expect(uploadBannerImage.mock.lastCall?.[1]).toEqual({
+        piramide: gerarPiramide,
+      });
       expect(enviado instanceof File, `${caso.rotulo}: vira File`).toBe(true);
       expect(enviado.type, `${caso.rotulo}: Content-Type diz a verdade`).toBe(
         caso.mime,

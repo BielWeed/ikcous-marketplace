@@ -587,4 +587,77 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
       expect(mocks.storageRemove).not.toHaveBeenCalled();
     });
   });
+
+  // Plano das miniaturas (26/11/2026): a tela entrega o gerador das 3 cópias ao
+  // envio (os dois pontos: lote e recorte), e o descarte do envio atrasado leva
+  // a original marcada E as 3 cópias.
+  describe("pirâmide de cópias", () => {
+    it("o lote de fotos novas pede a pirâmide ao envio", async () => {
+      const { gerarPiramide } = await import("@/lib/gerar-piramide");
+      await montarPreenchido();
+      mocks.uploadProductImages.mockResolvedValueOnce([urlDe("a.jpg")]);
+      await act(async () => {
+        escolherFotos([foto("a.jpg")]);
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      expect(mocks.uploadProductImages).toHaveBeenCalledWith(
+        [expect.any(File)],
+        { piramide: gerarPiramide },
+      );
+    });
+
+    it("o recorte também pede a pirâmide ao envio", async () => {
+      const { gerarPiramide } = await import("@/lib/gerar-piramide");
+      await montarPreenchido();
+      mocks.uploadProductImages.mockResolvedValueOnce([urlDe("original.jpg")]);
+      await act(async () => {
+        escolherFotos([foto("a.jpg")]);
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      await act(async () => {
+        (
+          document.querySelector(
+            'button[title="Ajustar e Cortar"]',
+          ) as HTMLButtonElement
+        ).click();
+      });
+      mocks.uploadProductImages.mockResolvedValueOnce([
+        urlDe("77777777-7777-4777-8777-111111111111-vw.webp"),
+      ]);
+      await act(async () => {
+        (
+          document.querySelector(
+            '[data-testid="confirmar-recorte"]',
+          ) as HTMLButtonElement
+        ).click();
+      });
+      await drenar();
+      expect(mocks.uploadProductImages).toHaveBeenCalledTimes(2);
+      expect(mocks.uploadProductImages.mock.calls[1][1]).toEqual({
+        piramide: gerarPiramide,
+      });
+    });
+
+    it("envio atrasado de foto MARCADA: o descarte apaga a original e as 3 cópias", async () => {
+      await montarPreenchido();
+      const envio = envioAdiado();
+      mocks.uploadProductImages.mockReturnValueOnce(envio.promessa);
+      relogioFalso();
+
+      await act(async () => {
+        escolherFotos([foto("a.jpg")]);
+      });
+      await avancar(PRAZO_DA_FOTO_MS + 1);
+      envio.resolver([urlDe("11111111-1111-4111-8111-aaaaaaaaaaaa-vw.jpg")]);
+      await drenar();
+
+      expect(mocks.storageRemove).toHaveBeenCalledTimes(1);
+      expect(mocks.storageRemove).toHaveBeenCalledWith([
+        "11111111-1111-4111-8111-aaaaaaaaaaaa-vw.jpg",
+        "11111111-1111-4111-8111-aaaaaaaaaaaa-240.webp",
+        "11111111-1111-4111-8111-aaaaaaaaaaaa-480.webp",
+        "11111111-1111-4111-8111-aaaaaaaaaaaa-960.webp",
+      ]);
+    });
+  });
 });

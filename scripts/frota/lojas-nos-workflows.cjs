@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /* eslint-disable security/detect-object-injection, security/detect-non-literal-fs-filename -- as chaves de BLOCOS vêm do texto do marcador e passam por `Object.hasOwn` antes do acesso; os caminhos são os workflows de .github/workflows (diretório fixo deste repositório), nunca entrada externa. */
 /**
- * Regrava, nos workflows por loja, SÓ os blocos marcados com LOJAS-SEGREDO* e
- * LOJAS-OPCOES*, a partir de scripts/frota/lojas.json. Loja assinante nova = uma entrada no JSON +
+ * Regrava, nos workflows por loja, SÓ os blocos marcados com LOJAS-SEGREDO*,
+ * LOJAS-OPCOES* e LOJAS-GRUPO-DO-BANCO, a partir de scripts/frota/lojas.json. Loja assinante nova = uma entrada no JSON +
  * `node scripts/frota/lojas-nos-workflows.cjs --escrever`; nenhuma edição à mão.
  *
  * POR QUE GERAR, e não ler o nome do segredo em tempo de execução
@@ -31,6 +31,21 @@
  *                                   todas as lojas, na ordem do cadastro
  *   LOJAS-OPCOES-ASSINANTES-INICIO/FIM          só as assinantes
  *   LOJAS-OPCOES-ASSINANTES-PRIMEIRO-INICIO/FIM assinantes, depois as legado
+ *   LOJAS-GRUPO-DO-BANCO-INICIO/FIM uma linha `group:` do `concurrency` dos jobs
+ *                                   que gravam no banco (apply e ledger):
+ *                                   `banco-da-loja-<ref>` da loja pedida
+ *
+ * POR QUE O GRUPO É POR BANCO (26/11/2026): o apply e o ledger só não podem
+ * rodar ao mesmo tempo NO MESMO BANCO. Um grupo único para a frota punha todas
+ * as lojas numa fila só, e a fila com `queue: max` tem teto: "Up to 100 jobs or
+ * workflow runs can be `pending`" e, cheia, os seguintes são CANCELADOS
+ * (documentação do GitHub, workflow-syntax, chave `queue`) — com lojas × lotes
+ * > 101 um lote some no meio da fila de uma loja e o seguinte entra fora de
+ * ordem. O grupo vem do `ref` do cadastro, não do nome: `loja` e
+ * `ikcous-publicada` são o MESMO banco (a CAF) e caem no MESMO grupo. A
+ * expressão é um mapa `fromJSON('{"<loja>":"<ref>",…}')[inputs.projeto]`
+ * (uma entrada curta por loja, numa expressão só); nome fora do mapa cai em
+ * `sem-cadastro` (o menu e o 1º passo já o recusam).
  *
  * POR QUE O MENU CONTINUA `choice` (e não texto livre): o GitHub recusa no
  * disparo um valor fora de `options` ("Provided value ... not in the list of
@@ -88,9 +103,23 @@ const BLOCOS = Object.freeze({
   // publicar-functions: as lojas no ar primeiro (o padrão é a mais travada).
   "LOJAS-OPCOES-ASSINANTES-PRIMEIRO": (cad) =>
     [...assinantes(cad), ...legados(cad)].map((l) => `- ${l.projeto}`),
+  // O grupo de concorrência POR BANCO (ver o cabeçalho). Nomes e refs já
+  // passaram pelos regex do cadastro (sem aspas, sem `}`), então o JSON entra
+  // literal na string da expressão; a checagem abaixo falha fechada se não.
+  "LOJAS-GRUPO-DO-BANCO": (cad) => {
+    const mapa = {};
+    for (const l of Object.values(cad.lojas)) mapa[l.projeto] = l.ref;
+    const json = JSON.stringify(mapa);
+    if (!/^[{}a-z0-9":,-]+$/.test(json))
+      throw new Error("mapa do grupo do banco com caractere fora do cadastro");
+    return [
+      `group: banco-da-loja-\${{ fromJSON('${json}')[inputs.projeto] || 'sem-cadastro' }}`,
+    ];
+  },
 });
 
-const RE_MARCADOR_INICIO = /^(\s*)# (LOJAS-(?:SEGREDO|OPCOES)[A-Z-]*)-INICIO\b/;
+const RE_MARCADOR_INICIO =
+  /^(\s*)# (LOJAS-(?:SEGREDO|OPCOES|GRUPO)[A-Z-]*)-INICIO\b/;
 
 /** Reescreve todos os blocos marcados de UM texto de workflow. */
 function sincronizar(texto, cadastro) {
@@ -121,7 +150,7 @@ function workflowsComBlocos(dir = DIR_WORKFLOWS) {
     .filter((n) => n.endsWith(".yml"))
     .map((n) => path.join(dir, n))
     .filter((p) =>
-      /# LOJAS-(?:SEGREDO|OPCOES)/.test(fs.readFileSync(p, "utf8")),
+      /# LOJAS-(?:SEGREDO|OPCOES|GRUPO)/.test(fs.readFileSync(p, "utf8")),
     );
 }
 

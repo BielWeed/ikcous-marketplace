@@ -324,7 +324,7 @@ Deno.test("190a/190b: rol fechado (6 e 5 linhas) igual aos rotulos do SQL, UM st
   }
 });
 
-Deno.test("lote de UMA migration em provasDeObjetos (190a depois, 190b antes) logo depois do lote da 20261490, menu, os dois caminhos do rpc-ci, portao de rol fechado e a prova viva no job do dinheiro", async () => {
+Deno.test("lote de UMA migration em provasDeObjetos (190a depois, 190b antes) logo depois do lote da 20261500, menu, os dois caminhos do rpc-ci, portao de rol fechado e a prova viva no job do dinheiro", async () => {
   const canais = JSON.parse(
     await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
   );
@@ -343,8 +343,8 @@ Deno.test("lote de UMA migration em provasDeObjetos (190a depois, 190b antes) lo
   const i190 = canais.provasDeObjetos.findIndex((l) => l.consulta === A190);
   assertEquals(
     canais.provasDeObjetos[i190 - 1]?.consulta,
-    "186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado",
-    "anexado logo depois do lote da 20261490",
+    "187a-conferir-a-saude-da-reconciliacao-aplicado",
+    "anexado logo depois do lote da 20261500",
   );
   const { CONSULTAS_DE_ROL_FECHADO } = await import(
     new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href

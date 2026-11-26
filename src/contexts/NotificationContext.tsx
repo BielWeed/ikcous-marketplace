@@ -566,6 +566,13 @@ export function NotificationProvider({
         console.log(
           "[Notifications] Leader tab subscribing to realtime notifications...",
         );
+        // Escuta só o que o sino mostra: os avisos da conta e os de campanha
+        // (`usuario_id` nulo). Sem filtro, a RLS deixa o admin receber o aviso
+        // de QUALQUER cliente, e numa loja grande cada pedido andando acordava
+        // todos os aparelhos da lojista numa releitura inútil. O filtro do
+        // realtime não tem OU, então são duas escutas de UMA condição cada. A
+        // tabela tem REPLICA IDENTITY FULL: o filtro vale também para DELETE.
+        const aoMudar = () => releituraAposRajada(true);
         channel = supabase
           .channel(`notificacoes:${user.id}`)
           .on(
@@ -574,8 +581,19 @@ export function NotificationProvider({
               event: "*",
               schema: "public",
               table: "notificacoes",
+              filter: `usuario_id=eq.${user.id}`,
             },
-            () => releituraAposRajada(true),
+            aoMudar,
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "notificacoes",
+              filter: "usuario_id=is.null",
+            },
+            aoMudar,
           )
           .subscribe((status: string) => {
             // A primeira conexão não relê (o efeito já buscou); só o

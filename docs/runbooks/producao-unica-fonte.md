@@ -79,6 +79,17 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    loja.** O portao pode imprimir o apply sem exigir essa prova. Veja o
    [roteiro do PIX anulado](publicar-pix-anulado-devolve-cupom.md).
 
+   **A fila do banco e POR BANCO (26/11/2026).** O apply (`aplicar-migrations.yml`) e a
+   gravacao do ledger (`conferir-banco-da-loja.yml`, job `ledger`) dividem o grupo de
+   concorrencia `banco-da-loja-<ref>`, gerado de `scripts/frota/lojas.json`: no mesmo banco um
+   espera o outro, na ordem em que foram disparados (`queue: max`); bancos diferentes andam em
+   paralelo. `loja` e `ikcous-publicada` sao o MESMO banco (a CAF) e dividem a fila. O GitHub
+   guarda ate 100 runs pendentes por grupo e CANCELA o que passar disso: o teto agora vale por
+   loja, nao para a frota inteira. Antes, com um grupo so (`banco-da-loja`), lojas x lotes
+   acima de ~100 cancelava lotes no meio da fila. Na troca (o primeiro release com o grupo
+   novo), nao deixe run de apply/ledger pendente do commit antigo: ele esta no grupo velho e nao
+   espera os do grupo novo.
+
    A regra que o comando aplica a cada lote de migrations
    (`provasDeObjetos` em `scripts/frota/canais-de-backend.json`):
    1. **Ledger com lacuna nunca vira apply direto.** Primeiro a prova de objetos/corpos (ex.:
@@ -90,7 +101,7 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       corpo da `20261199000000` OU o das sucessoras dela (`20261212000000` em `painel_inicio`,
       `20261214000000` em `get_admin_analytics_v2`, do lote 17, item 15): a loja que ja recebeu o
       lote 17 segue com a `8e` POSITIVA e o backfill nao trava. Limite conhecido: a pre-checagem e
-      o INSERT sao duas requisicoes; o job divide o grupo `banco-da-loja` com o apply, mas escrita
+      o INSERT sao duas requisicoes; o job divide o grupo `banco-da-loja-<ref>` (por banco) com o apply, mas escrita
       FORA dos workflows nessa janela nao e vista.
    3. **Prova com `ok=false`** = diagnostico antes de qualquer apply: `8a`, `8b`, `8k` (so
       leitura). Apply SO quando a `8a` prova o lote inteiro AUSENTE, `8b`/`8k` estao `ok=true` e o
@@ -216,7 +227,7 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
          se divergir, a 9a falha FECHADA (vira NEGATIVA, nunca uma POSITIVA falsa). A guarda do
          INSERT reduz o risco de gravar sobre uma forma inesperada, mas nao serializa (cada
          comando ve o proprio snapshot sob READ COMMITTED): a evidencia e a leitura posterior, e a
-         exclusao contra um apply e o grupo de concorrencia `banco-da-loja` do workflow. O DONO das
+         exclusao contra um apply e o grupo de concorrencia `banco-da-loja-<ref>` do workflow. O DONO das
          funcoes (`postgres`) foi medido so no banco local: se na CAF for outro, a 9a sai NEGATIVA e
          o backfill para (nao ha excecao por ambiente). `indnullsnotdistinct` exige PG 15 ou mais.
          Risco residual do privilegio de `produtos.codigo_barras`: a 9a prova o GRANT explicito da
@@ -2033,6 +2044,17 @@ O cadastro de UMA vez, na entrada do cliente:
    `fila_vazia: true` indica uma rodada saudavel, sem trabalho nas filas. Se vier
    `degradado: true` (mesmo com HTTP 200), confira em `etapas` qual falhou, o `erro` (se houver)
    e as contagens de `processados` e `falhas` (`DEPLOYMENT.md`, §5.2; `401` = segredos diferentes).
+   **A prova de que ficou rodando (com a migration `20261500000000` e a `reconciliar-pagamentos` que
+   grava o batimento ja no ar):** em ate 15 minutos depois de criar os segredos, a leitura publica
+   `saude_da_loja()` tem de devolver `idade_rodada_s` MENOR que 900 (15 min). Leia pelo SQL Editor do
+   projeto (`SELECT public.saude_da_loja();`) ou com a chave PUBLICA da loja
+   (`POST <url da loja>/rest/v1/rpc/saude_da_loja`, corpo `{}`). `idade_rodada_s` nulo = a
+   reconciliacao nunca registrou uma rodada (Vault vazio, segredo divergente ou function fora do ar):
+   o passo 4 NAO terminou. Numero alto = parou de rodar. `degradado: true` vem com
+   `rodadas_degradadas_seguidas` (ha quantas rodadas). QUAL etapa falhou a leitura publica nao diz,
+   de proposito: veja nos logs da function ou, como dono do banco no SQL Editor,
+   `SELECT etapas_com_falha FROM public.saude_da_reconciliacao;`. E a mesma leitura que o vigia do
+   app de gestao faz sozinho, de 10 em 10 minutos; nenhuma contagem de pagamento sai por ela.
 5. **Chave de cifra das credenciais:** instale `MP_CHAVES_ENCRYPTION_KEY` (32 bytes em base64) nas
    functions da loja ANTES de cadastrar credenciais de pagamento ou do Gmail. Sem ela o cadastro
    fica `indisponivel` (falha fechada: ninguem cobra). Nunca substitua uma chave que ja cifrou

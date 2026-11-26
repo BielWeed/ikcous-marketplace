@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // O upload descartado deve apagar somente o arquivo que ele criou.
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -204,7 +205,9 @@ describe("limpeza do arquivo órfão de upload atrasado de banner", () => {
     await act(async () => {
       campo.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    expect(uploadBannerImage).toHaveBeenLastCalledWith(arquivo);
+    expect(uploadBannerImage).toHaveBeenLastCalledWith(arquivo, {
+      piramide: gerarPiramide,
+    });
     expect(campoDeUpload().disabled).toBe(true);
   }
 

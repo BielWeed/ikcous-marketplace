@@ -1,4 +1,5 @@
 import { lerSupabaseUrl } from "@/lib/env-valores";
+import { nomesDasCopias } from "@/lib/piramide-da-foto-nomes";
 
 const PREFIXO_PUBLICO = "/storage/v1/object/public/products/";
 
@@ -9,8 +10,11 @@ const PREFIXO_PUBLICO = "/storage/v1/object/public/products/";
 // letras dos dois tamanhos. De 2 a 5 caracteres cobre todas as reais; uma
 // extensão fora disso (arquivo sem ponto no nome, por exemplo) não casa e o
 // objeto fica órfão como antes -- recusar é o lado seguro.
+// Com a pirâmide de cópias (plano das miniaturas), a original sobe MARCADA:
+// `<uuid>-vw.<ext>` ou `<uuid>-vj.<ext>`, e as 3 cópias moram ao lado
+// (`piramide-da-foto-nomes.ts`): apagar a original leva as cópias junto.
 const NOME_DO_ENVIO =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[A-Za-z0-9]{2,5}$/;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-v[wj])?\.[A-Za-z0-9]{2,5}$/;
 
 /**
  * Nome do objeto (na raiz do bucket `products`) que a URL aponta, ou `null` se
@@ -23,7 +27,8 @@ const NOME_DO_ENVIO =
  *     fragmento. URL de outro host, de outro bucket, `render/` ou `sign/` não
  *     passa.
  *  2. O NOME: o que sobra depois do bucket, tal como está escrito (sem
- *     decodificar nada), tem de ser exatamente `<uuid>.<ext>`. Subpasta,
+ *     decodificar nada), tem de ser exatamente `<uuid>.<ext>` (ou a original
+ *     marcada, `<uuid>-vw.<ext>`/`-vj`). Subpasta,
  *     `backup/`, `..`, curinga, barra invertida, byte nulo e nome que não é
  *     UUID não casam.
  */
@@ -60,7 +65,8 @@ export async function descartarFotosDoProduto(urls: string[]): Promise<void> {
     for (const url of urls) {
       const nome = nomeDaFotoEnviada(url);
       if (nome) {
-        nomes.push(nome);
+        // Foto marcada: as 3 cópias foram gravadas ANTES dela pelo mesmo envio.
+        nomes.push(nome, ...(nomesDasCopias(nome) ?? []));
       } else {
         console.warn(
           "[descartarFotosDoProduto] URL recusada, não apagada:",

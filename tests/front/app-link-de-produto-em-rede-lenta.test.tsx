@@ -456,11 +456,14 @@ describe("link de produto compartilhado em rede lenta", () => {
     expect(catalogo.avisos).toEqual([]);
   });
 
-  it("catálogo que nunca termina de carregar: esqueleto, e passado o prazo a tela de falha (não fica em branco)", async () => {
+  it("catálogo que nunca termina de carregar e consulta do produto pendurada: esqueleto, e passado o prazo a tela de falha (não fica em branco)", async () => {
     catalogo.carregando = true;
+    catalogo.consultaPendurada = true;
     await abrirOProdutoDoLink();
 
-    expect(catalogo.consultasDoProduto).toBe(0);
+    // A consulta do produto não espera mais o catálogo terminar
+    // (app-link-de-produto-abre-antes-do-catalogo).
+    expect(catalogo.consultasDoProduto).toBe(1);
     expect(esqueleto()).not.toBeNull();
     expect(container?.textContent).toContain("Carregando produto");
 

@@ -2429,6 +2429,33 @@ export type Database = {
           },
         ];
       };
+      saude_da_reconciliacao: {
+        Row: {
+          degradado: boolean;
+          etapas_com_falha: string[];
+          id: number;
+          rodadas_degradadas_seguidas: number;
+          ultima_rodada_em: string;
+          ultima_saudavel_em: string | null;
+        };
+        Insert: {
+          degradado: boolean;
+          etapas_com_falha: string[];
+          id: number;
+          rodadas_degradadas_seguidas: number;
+          ultima_rodada_em: string;
+          ultima_saudavel_em?: string | null;
+        };
+        Update: {
+          degradado?: boolean;
+          etapas_com_falha?: string[];
+          id?: number;
+          rodadas_degradadas_seguidas?: number;
+          ultima_rodada_em?: string;
+          ultima_saudavel_em?: string | null;
+        };
+        Relationships: [];
+      };
       shipping_calculation_logs: {
         Row: {
           cart_items: Json;
@@ -4146,6 +4173,11 @@ export type Database = {
           p_apagar: string[];
         };
         Returns: Json;
+      };
+      saude_da_loja: { Args: never; Returns: Json };
+      saude_da_reconciliacao_registrar: {
+        Args: { p_degradado: boolean; p_etapas_com_falha: string[] };
+        Returns: undefined;
       };
       save_store_identity: {
         Args: {

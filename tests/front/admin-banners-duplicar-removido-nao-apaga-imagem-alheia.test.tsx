@@ -31,6 +31,7 @@
 // mesmos obstáculos de montar uma view de admin: IntersectionObserver e
 // ResizeObserver que o jsdom não implementa, usados por LazyImage e por
 // AdminKpiCarousel/embla-carousel-react).
+import { gerarPiramide } from "@/lib/gerar-piramide";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -256,7 +257,9 @@ describe("AdminBannersView — remoção de Duplicar preserva Criar e Editar", (
       await esperarMicrotarefas();
     });
 
-    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo);
+    expect(uploadBannerImage).toHaveBeenCalledWith(arquivo, {
+      piramide: gerarPiramide,
+    });
 
     const botaoCancelar = localizarBotaoPorTexto(hospedeiro, "Cancelar")!;
     expect(botaoCancelar).toBeDefined();
