@@ -51,7 +51,10 @@
  *      produção de uma vez, sem rebuild — e roda a conferência da frota com o
  *      SHA: versão, isolamento e destino canônico de cada endereço, e a
  *      produção oficial = o deployment promovido. Falha aqui imprime o
- *      rollback exato (`vercel rollback <produção anterior>`).
+ *      rollback exato (`vercel rollback <produção anterior>`). Loja que estava
+ *      fora do ar no inventário e responde ativa depois do promote (acordou no
+ *      meio da publicação, sem a prontidão desta release) também reprova, com o
+ *      `estado-da-loja.mjs --depois-de-acordar` pronto.
  *
  * QUEM RODA: o dono, no PowerShell, de uma worktree limpa do ramo da release
  * com os CLIs do Supabase, da Vercel e do GitHub (gh) logados. As permissões
@@ -2061,6 +2064,7 @@ export async function publicarRelease(opcoes, deps) {
   });
   const producaoDepois = pos.vercel?.producaoOficial ?? null;
   const ok = pos.ok === true && producaoDepois === deploymentId;
+  const acordou = lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario);
   linhas.push(
     "",
     "## 6. Conferência da frota depois do promote",
@@ -2082,17 +2086,99 @@ export async function publicarRelease(opcoes, deps) {
       "Depois de um rollback a atribuição automática de domínios fica desligada até o próximo promote.",
     );
   }
+  const bloqueiosDepois = ok
+    ? []
+    : [{ alvo: "frota", motivo: "conferência pós-promote falhou" }];
+  if (acordou.erro || acordou.lojas.length) {
+    linhas.push(
+      "",
+      "## 7. PRIORIDADE ALTA — loja que acordou durante a publicação",
+      "",
+      "Ela estava fora do ar no inventário, então NÃO passou pela prontidão desta release, e agora responde ativa: pode estar servindo este front com o banco atrasado. Não é caso de rollback da frota: rode, para cada uma, o passo pós-acordar (o id da loja sai do `--ver`):",
+      "",
+    );
+    if (acordou.erro) linhas.push(`- ${acordou.erro}`);
+    for (const l of acordou.lojas) {
+      const alvo = `${canais.canais[l.ref]?.nome ?? l.ref} (${l.ref})`;
+      const comando = comandoDepoisDeAcordarNaPublicacao(l);
+      linhas.push(
+        `- ${alvo}: estava ${l.estado} e agora responde ativa em ${l.dominios.join(", ")}`,
+        "```",
+        comando,
+        "```",
+      );
+      bloqueiosDepois.push({
+        alvo,
+        motivo: `acordou durante a publicação: estava ${l.estado} no inventário e agora responde ativa em ${l.dominios.join(", ")}, sem a prontidão da release ${sha}. Rode: ${comando}`,
+      });
+    }
+    if (acordou.erro)
+      bloqueiosDepois.push({ alvo: "frota", motivo: acordou.erro });
+  }
   return {
-    codigo: ok ? 0 : 1,
+    codigo: bloqueiosDepois.length ? 1 : 0,
     relatorio: linhas.join("\n"),
-    bloqueios: ok
-      ? []
-      : [{ alvo: "frota", motivo: "conferência pós-promote falhou" }],
+    bloqueios: bloqueiosDepois,
     notasDaVersao,
     lojas,
     lojasForaDoAr: foraDoAr,
     producaoAnterior,
   };
+}
+
+/**
+ * Lojas que estavam fora do ar no inventário (`foraDoAr`) e, na conferência depois do promote, respondem ATIVAS (ficha da própria
+ * loja, sem o contrato de fora do ar) em algum endereço. É a corrida em que uma instrução de acordar, impressa para a release
+ * anterior, é rodada no meio da publicação: a loja não passou pela prontidão desta release.
+ * REDE DE SEGURANÇA SECUNDÁRIA: o porteiro guarda a decisão "fora do ar" por até 60 s, então um acordar recente pode não aparecer
+ * aqui. A guarda principal é o `--depois-de-acordar` do estado-da-loja.mjs, obrigatório depois de rodar a instrução de acordar.
+ * Devolve { lojas: [{ref, estado, dominios, shaAntes}], erro } — `erro` quando havia loja fora do ar e a conferência não trouxe
+ * resultados legíveis (nunca "nenhuma acordou" no escuro).
+ */
+export function lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario) {
+  if (!foraDoAr.length) return { lojas: [], erro: null };
+  if (!Array.isArray(pos?.resultados))
+    return {
+      lojas: [],
+      erro: `a conferência depois do promote não trouxe os resultados por endereço: não há como saber se ${foraDoAr.map((l) => l.ref).join(", ")} (fora do ar no inventário) acordou durante a publicação`,
+    };
+  const lojas = [];
+  for (const l of foraDoAr) {
+    const dominios = pos.resultados
+      .filter(
+        (r) =>
+          !r.esperado && !r.foraDoAr && refDaLojaSondada(r.ficha) === l.ref,
+      )
+      .map((r) => r.dominio)
+      .sort();
+    if (!dominios.length) continue;
+    // A release que o front servia nos endereços dela antes do promote: é a do --sha de uma instrução de acordar impressa antes.
+    const shas = new Set(
+      (inventario.sondas ?? [])
+        .filter((sonda) => l.dominios.includes(sonda.dominio))
+        .map((sonda) => sonda.versao?.codeSha),
+    );
+    const [shaAntes] = shas;
+    lojas.push({
+      ref: l.ref,
+      estado: l.estado,
+      dominios,
+      shaAntes:
+        shas.size === 1 && RE_SHA.test(String(shaAntes)) ? shaAntes : null,
+    });
+  }
+  return { lojas, erro: null };
+}
+
+/**
+ * O --depois-de-acordar de uma loja que acordou na publicação. --sha e --base = a release servida antes do promote: o estado-da-loja.mjs
+ * só imprime instrução para a release em produção, então a da corrida foi impressa para ela, com a prontidão provada até ali. Mesmo que
+ * a instrução fosse mais velha, a prontidão para a release atual confere o ledger INTEIRO e todas as functions; só a prova fresca de
+ * objetos fica restrita às migrations novas desde a base. O id da loja não está na sondagem (só o ref): fica para preencher pelo --ver.
+ */
+function comandoDepoisDeAcordarNaPublicacao(l) {
+  const sha = l.shaAntes ?? "<--sha da instrução de acordar>";
+  return `node scripts/frota/estado-da-loja.mjs --depois-de-acordar --loja "<id da loja, do --ver>" --ref ${l.ref} --sha ${sha} --base ${l.shaAntes ?? "<--base da instrução de acordar>"}`;
 }
 
 // ------------------------------------------------------------------ dependências reais

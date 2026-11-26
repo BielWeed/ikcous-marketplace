@@ -166,6 +166,30 @@ migration nova desde a release em que ela dormiu (`--base`) e functions iguais �
 - Sem canal de backend em `scripts/frota/canais-de-backend.json`, a loja não acorda: cadastre o
   canal antes.
 
+**Três cuidados, porque a porta do banco não sabe qual release está no ar:**
+
+1. **Não acorde loja com publicação em andamento** (`publicar-release.mjs` rodando). Espere ela
+   terminar.
+2. **Se a release em produção mudou depois de gerar a instrução, jogue a instrução fora** e gere
+   outra com o `--acordar` (ele confere o banco para a release nova).
+3. **Depois de rodar a instrução, o passo pós-acordar é obrigatório.** A própria mensagem do
+   `--acordar` traz o comando pronto:
+
+```powershell
+node scripts/frota/estado-da-loja.mjs --depois-de-acordar --loja "<id>" --ref "<ref>" --sha "<o mesmo --sha da instrução>" --base "<a mesma --base da instrução>"
+```
+
+- **Saída `0`:** a produção ainda serve a release da instrução, ou mudou e o banco da loja está
+  pronto para a nova. Tudo certo.
+- **Saída `1` com `CRÍTICO`:** a loja está no ar com o banco atrasado para a release que está no
+  ar. Faça o conserto que ele imprime (um passo por vez) e rode o passo de novo até sair `0`. Se o
+  conserto for demorar, ponha a loja para dormir de novo com o `--adormecer` que ele mostra.
+
+Se a publicação pegar uma loja que acordou no meio dela, o relatório do `publicar-release.mjs`
+mostra "PRIORIDADE ALTA — loja que acordou durante a publicação" com este mesmo comando. Isso é
+só uma rede de segurança (o porteiro pode levar até 60 s para mostrar a loja acordada): o passo
+pós-acordar continua obrigatório.
+
 ## Encerrar uma loja (só com ordem ESCRITA do dono)
 
 Sem a ordem escrita do dono (mensagem dele dizendo qual loja encerrar), **não rode**. Cite a ordem no
