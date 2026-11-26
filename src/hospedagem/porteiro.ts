@@ -2234,6 +2234,13 @@ async function cartazDaLoja(
 /** O `/index.html` guardado por até 5 min (ver acima). */
 export const CACHE_INDEX_HTML_MS = 300_000;
 
+/** Prazo da busca do `/index.html` (caça 26/11/2026): é um arquivo estático
+ * servido pela própria CDN da Vercel, que responde em milissegundos; 5 s é o
+ * MESMO prazo da caderneta (`PRAZO_CADERNETA_MS`, `middleware.ts`). Sem ele,
+ * uma CDN lenta prendia a 1ª visita (e todos os pedidos juntos em
+ * `indexHtmlEmVoo`) sem limite. Estourou = o caminho da rede caindo. */
+export const PRAZO_INDEX_HTML_MS = 5_000;
+
 /** O `/index.html` CRU de um endereço, guardado por `origin` + caminho. */
 export interface EntradaCacheIndexHtml {
   readonly html: string;
@@ -2266,11 +2273,36 @@ async function baixarIndexHtml(
   if (emVoo) return emVoo;
 
   const busca = (async (): Promise<IndexHtmlBaixado> => {
-    const resposta = await deps.fetchImpl(endereco, {
-      headers: { cookie: request.headers.get("cookie") ?? "" },
+    // Mesma corrida contra o temporizador de `lerConfiguracaoPublica`: um
+    // transporte que ignora o sinal e nunca resolve não prende o pedido. O
+    // cache só é gravado DEPOIS da corrida, então resposta atrasada não entra.
+    const controller = new AbortController();
+    let temporizador: ReturnType<typeof setTimeout> | undefined;
+    const prazoEsgotado = new Promise<never>((_resolve, reject) => {
+      temporizador = setTimeout(() => {
+        controller.abort();
+        reject(new Error("PORTEIRO_INDEX_HTML: prazo esgotado"));
+      }, PRAZO_INDEX_HTML_MS);
     });
-    if (resposta.status !== 200) return { status: resposta.status, html: null };
-    const html = await resposta.text();
+    let baixado: IndexHtmlBaixado;
+    try {
+      baixado = await Promise.race([
+        (async (): Promise<IndexHtmlBaixado> => {
+          const resposta = await deps.fetchImpl(endereco, {
+            headers: { cookie: request.headers.get("cookie") ?? "" },
+            signal: controller.signal,
+          });
+          if (resposta.status !== 200)
+            return { status: resposta.status, html: null };
+          return { status: 200, html: await resposta.text() };
+        })(),
+        prazoEsgotado,
+      ]);
+    } finally {
+      clearTimeout(temporizador);
+    }
+    if (baixado.html === null) return baixado;
+    const html = baixado.html;
     const deste = idDoDeploy(deployDoRuntime);
     if (deste !== null && deployDoHtml(html) === deste)
       guardarComTeto(deps.cacheIndexHtml, chave, { html, quando: agora });
