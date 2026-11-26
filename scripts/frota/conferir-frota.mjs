@@ -1857,15 +1857,19 @@ export function montarRelatorio({
   }
   for (const aviso of vercel?.avisos ?? []) linhas.push(`- AVISO: ${aviso}`);
 
+  // O conserto de CADA classe do endereço, não só da mais grave: com a
+  // caderneta na reserva E o banco fora, os dois consertos aparecem.
+  const temClasse = (r, c) =>
+    r.classe === c || (r.achados ?? []).some((a) => a.classe === c);
   const presentes = GRAVIDADE.filter(
-    (c) => c !== "OK" && resultados.some((r) => r.classe === c),
+    (c) => c !== "OK" && resultados.some((r) => temClasse(r, c)),
   );
   if (presentes.length) {
     linhas.push("", "## Como recuperar", "");
     for (const c of presentes) {
       linhas.push(
         `- **${c}** (${resultados
-          .filter((r) => r.classe === c)
+          .filter((r) => temClasse(r, c))
           .map((r) => r.dominio)
           .join(", ")}): ${COMO_RECUPERAR[c]}`,
       );

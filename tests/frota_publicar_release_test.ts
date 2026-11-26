@@ -33,6 +33,7 @@ import {
   CONSULTAS_DE_ROL_FECHADO,
   argumentosDoPromote,
   arquivosEsperados,
+  cadernetaForaDepoisDoPromote,
   classificarFuncao,
   comandoDeConferirLogin,
   comandosDeConserto,
@@ -2280,6 +2281,9 @@ function releaseComSondasReais({
   producaoDepois = DPL,
   // a ficha traz `conexao` (supabaseUrl + chave publicável), como a do porteiro
   comChave = false,
+  // ({ hostname, depois }) => valor de x-ikcous-caderneta da página da loja
+  // (ex.: "reserva"); undefined = "hit", como sempre.
+  cadernetaDe = null,
 }) {
   const { d, chamadas } = deps();
   const conferencias = [];
@@ -2372,7 +2376,11 @@ function releaseComSondasReais({
         `<title>${loja.titulo}</title><script type="application/json" id="ikcous-loja">${ficha}</script><script src="https://${loja.ref}.supabase.co/x.js"></script>`,
         {
           headers: {
-            "x-ikcous-caderneta": "hit",
+            "x-ikcous-caderneta":
+              cadernetaDe?.({
+                hostname,
+                depois: chamadas.promover.length > 0,
+              }) ?? "hit",
             "x-ikcous-porteiro": "ok",
           },
         },
@@ -14875,4 +14883,210 @@ Deno.test("incertezaDepoisDoPromote: banco fora só é INCERTO quando cada ender
   );
   // O INCERTO de antes (version.json que tropeçou) não muda e não leva banco junto.
   assertEquals(soEnderecosSemResposta(pos([banco(DOM_SAVY)]), DPL), null);
+});
+
+// ---- reserva da caderneta DEPOIS do promote
+// O candidato só é promovido se a caderneta respondeu a ele (miss/hit), então
+// a reserva que aparece depois do promote é a caderneta central caindo, não o
+// front novo. Voltar a frota não conserta a caderneta nem o banco da loja:
+// FALHOU (código 1), mas sem o bloco de `vercel rollback`, com o conserto
+// certo. Qualquer outra classe em qualquer endereço = o FALHOU de sempre.
+
+const naReservaDepois =
+  (...dominios) =>
+  ({ hostname, depois }) =>
+    depois && dominios.includes(hostname) ? "reserva" : undefined;
+
+/** A página de banco fora, servida com a loja aberta pela reserva. */
+const respostaBancoForaNaReserva = () => {
+  const r = respostaBancoFora();
+  const headers = new Headers(r.headers);
+  headers.set("x-ikcous-caderneta", "reserva");
+  return new Response(r.body, { status: 503, headers });
+};
+
+Deno.test("reserva DEPOIS do promote: FALHOU (código 1) sem vercel rollback, com o conserto da caderneta", async () => {
+  const { d, chamadas, conferencias } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    cadernetaDe: naReservaDepois(DOM_SAVY, DOM_SAVY_EXTRA),
+  });
+  const r = await executar(d, true);
+  assertEquals(conferencias[0].ok, true, conferencias[0].relatorio);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
+  assert(!r.relatorio.includes("vercel rollback"), r.relatorio);
+  assert(!r.relatorio.includes("**INCERTO.**"), r.relatorio);
+  assertStringIncludes(r.relatorio, "reserva da caderneta");
+  assertStringIncludes(r.relatorio, "Consertar a caderneta");
+  assertStringIncludes(
+    r.relatorio,
+    `node scripts/frota/conferir-frota.mjs --sha ${SHA} --vercel`,
+  );
+  assert(!r.relatorio.includes('Restore project" no painel'), r.relatorio);
+});
+
+Deno.test("reserva + banco fora DEPOIS do promote (banco confirmado fora pela sonda direta): FALHOU sem vercel rollback, com caderneta E banco", async () => {
+  const { d, chamadas } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    comChave: true,
+    responder: bancoForaEm(
+      [DOM_SAVY, DOM_SAVY_EXTRA],
+      "depois",
+      respostaBancoForaNaReserva,
+    ),
+  });
+  bancoDireto(d, 540);
+  const r = await executar(d, true);
+  assertEquals(chamadas.promover, [DPL]);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
+  assert(!r.relatorio.includes("vercel rollback"), r.relatorio);
+  assertStringIncludes(r.relatorio, "Consertar a caderneta");
+  assertStringIncludes(r.relatorio, "Restore project");
+  assertStringIncludes(r.relatorio, "acordar-projeto.mjs");
+  assertStringIncludes(r.relatorio, "HTTP 540");
+});
+
+Deno.test("reserva + banco-indisponivel DEPOIS do promote com o banco RESPONDENDO na sonda direta: o 503 é do front novo, FALHOU com o rollback", async () => {
+  const { d } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    comChave: true,
+    responder: bancoForaEm(
+      [DOM_SAVY, DOM_SAVY_EXTRA],
+      "depois",
+      respostaBancoForaNaReserva,
+    ),
+  });
+  bancoDireto(d, 200);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
+  assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+});
+
+Deno.test("CONTROLE: reserva num endereço + LOJA_TROCADA em outro DEPOIS do promote: FALHOU com o rollback de sempre", async () => {
+  const { d } = releaseComSondasReais({
+    aliasesAntes: TODOS,
+    aliasesDepois: TODOS,
+    cadernetaDe: naReservaDepois(DOM_SAVY_EXTRA),
+    responder: ({ hostname, pathname, depois }) =>
+      depois && hostname === DOM_IKCOUS && pathname === "/"
+        ? new Response("<title>IKCOUS</title>", {
+            headers: {
+              "x-ikcous-caderneta": "hit",
+              "x-ikcous-porteiro": "ok",
+            },
+          })
+        : undefined,
+  });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertStringIncludes(r.relatorio, "LOJA_TROCADA");
+  assertStringIncludes(r.relatorio, "**FALHOU.**");
+  assertStringIncludes(r.relatorio, `vercel rollback ${DPL_ANTERIOR} --yes`);
+});
+
+Deno.test("cadernetaForaDepoisDoPromote: só reserva e/ou banco, no deployment promovido, com cobertura explicada; senão null", () => {
+  const res = (dominio, classes, extra = {}) => ({
+    dominio,
+    classe: classes[0],
+    achados: classes.map((classe) => ({ classe, motivo: "x" })),
+    deploymentId: DPL,
+    ...extra,
+  });
+  const pos = (resultados, lojasNaoSondadas = []) => ({
+    ok: false,
+    resultados,
+    vercel: { ok: true },
+    inventario: { completo: true },
+    cobertura: { lojasNaoSondadas, dominiosNaoSondados: [] },
+  });
+  const lojasAntes = [
+    { ref: SAVY, titulo: "Savy", dominios: [DOM_SAVY, DOM_SAVY_EXTRA] },
+    { ref: CAF, titulo: "IKCOUS", dominios: [DOM_IKCOUS] },
+  ];
+  const duplo = ["CADERNETA_NA_RESERVA", "BANCO_INDISPONIVEL"];
+  assertEquals(
+    cadernetaForaDepoisDoPromote(
+      pos(
+        [res(DOM_SAVY, duplo), res(DOM_SAVY_EXTRA, ["CADERNETA_NA_RESERVA"])],
+        [{ ref: SAVY, nome: "Savy" }],
+      ),
+      DPL,
+      lojasAntes,
+    ),
+    { naReserva: [DOM_SAVY, DOM_SAVY_EXTRA].sort(), bancoFora: [DOM_SAVY] },
+  );
+  // Só banco (sem reserva): não é este caminho (é o INCERTO de antes).
+  assertEquals(
+    cadernetaForaDepoisDoPromote(
+      pos([res(DOM_SAVY, ["BANCO_INDISPONIVEL"])]),
+      DPL,
+      lojasAntes,
+    ),
+    null,
+  );
+  for (const outra of [
+    "LOJA_TROCADA",
+    "SUSPEITA_ISOLAMENTO",
+    "INALCANCAVEL",
+    "ENDERECO_ANTIGO",
+    "CANONICO_INVALIDO",
+    "BUILD_DIVERGENTE",
+    "ESTADO_INESPERADO",
+  ]) {
+    // No MESMO endereço ou em OUTRO: null.
+    assertEquals(
+      cadernetaForaDepoisDoPromote(
+        pos([res(DOM_SAVY, ["CADERNETA_NA_RESERVA", outra])]),
+        DPL,
+        lojasAntes,
+      ),
+      null,
+      outra,
+    );
+    assertEquals(
+      cadernetaForaDepoisDoPromote(
+        pos([
+          res(DOM_SAVY, ["CADERNETA_NA_RESERVA"]),
+          res(DOM_IKCOUS, [outra]),
+        ]),
+        DPL,
+        lojasAntes,
+      ),
+      null,
+      outra,
+    );
+  }
+  // Outro deployment, achado vazio, loja sumida sem endereço na reserva,
+  // endereço que sumiu, Vercel não lida, inventário parcial: null.
+  for (const ruim of [
+    pos([res(DOM_SAVY, ["CADERNETA_NA_RESERVA"], { deploymentId: "dpl_X" })]),
+    pos([res(DOM_SAVY, ["CADERNETA_NA_RESERVA"], { achados: [] })]),
+    pos(
+      [res(DOM_SAVY, ["CADERNETA_NA_RESERVA"])],
+      [{ ref: CAF, nome: "IKCOUS" }],
+    ),
+    {
+      ...pos([res(DOM_SAVY, ["CADERNETA_NA_RESERVA"])]),
+      cobertura: { lojasNaoSondadas: [], dominiosNaoSondados: [DOM_IKCOUS] },
+    },
+    {
+      ...pos([res(DOM_SAVY, ["CADERNETA_NA_RESERVA"])]),
+      vercel: { ok: false },
+    },
+    {
+      ...pos([res(DOM_SAVY, ["CADERNETA_NA_RESERVA"])]),
+      inventario: { completo: false },
+    },
+  ])
+    assertEquals(cadernetaForaDepoisDoPromote(ruim, DPL, lojasAntes), null);
+  assertEquals(
+    cadernetaForaDepoisDoPromote({ ...pos([]), ok: true }, DPL, lojasAntes),
+    null,
+  );
 });

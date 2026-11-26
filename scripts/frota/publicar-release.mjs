@@ -83,6 +83,10 @@
  * (projeto pausado). Banco que responde à sonda = o defeito é do front novo
  * (FALHOU, rollback); sonda que não roda = FALHOU. Antes do promote, o banco fora
  * BLOQUEIA: a loja não é pulada (voltaria com o front novo sobre o banco velho).
+ * Depois do promote, CADERNETA NA RESERVA (com ou sem o banco da loja fora,
+ * provado pela mesma sonda direta) e nada mais = 1, mas SEM o rollback: o
+ * candidato só sobe com a caderneta respondendo a ele, e voltar o front não
+ * conserta caderneta nem banco (ver cadernetaForaDepoisDoPromote).
  */
 
 import { execFile, execFileSync } from "node:child_process";
@@ -773,6 +777,69 @@ export function incertezaDepoisDoPromote(pos, deploymentId, lojasAntes = []) {
   if (!semResposta.size && !bancoFora.size) return null;
   return {
     semResposta: [...semResposta].sort(),
+    bancoFora: [...bancoFora].sort(),
+  };
+}
+
+/** Achados que, sozinhos, dizem "a caderneta e/ou o banco caiu", nunca "front errado". */
+const CLASSES_SEM_ROLLBACK = new Set([
+  "CADERNETA_NA_RESERVA",
+  "BANCO_INDISPONIVEL",
+]);
+
+/**
+ * DEPOIS do promote: o que reprova a conferência é SÓ a caderneta central na
+ * reserva (CADERNETA_NA_RESERVA), com ou sem o banco da loja fora
+ * (BANCO_INDISPONIVEL)? Devolve { naReserva, bancoFora } (domínios, em ordem)
+ * ou null. É FALHOU (código 1) mas sem o rollback: o candidato só foi
+ * promovido porque a caderneta respondeu a ele (`conferirCandidato`: miss ou
+ * hit), e voltar a frota não conserta a caderneta nem o banco. Mesmas provas
+ * de `incertezaDepoisDoPromote`: Vercel lida, inventário completo, cada
+ * endereço que reprova aponta para `deploymentId` e só tem estes achados,
+ * nenhum endereço sumiu, e loja cadastrada que não apareceu tinha, antes do
+ * promote, um endereço agora na reserva ou com o banco fora. Sem NENHUM
+ * endereço na reserva é null: só banco é o INCERTO de antes. O banco fora
+ * daqui ainda tem de ser provado pela sonda direta (quem chama).
+ */
+export function cadernetaForaDepoisDoPromote(
+  pos,
+  deploymentId,
+  lojasAntes = [],
+) {
+  if (pos?.ok === true || !Array.isArray(pos?.resultados)) return null;
+  if (typeof deploymentId !== "string" || !deploymentId) return null;
+  if (pos.vercel?.ok !== true || pos.inventario?.completo !== true) return null;
+  const cobertura = pos.cobertura;
+  if (
+    !Array.isArray(cobertura?.lojasNaoSondadas) ||
+    !Array.isArray(cobertura?.dominiosNaoSondados) ||
+    cobertura.dominiosNaoSondados.length
+  )
+    return null;
+  const naReserva = new Set();
+  const bancoFora = new Set();
+  for (const r of pos.resultados) {
+    if (CLASSES_SEM_FALHA.has(r?.classe)) continue;
+    const achados = Array.isArray(r?.achados) ? r.achados : [];
+    if (!achados.length || r.deploymentId !== deploymentId) return null;
+    if (!achados.every((a) => CLASSES_SEM_ROLLBACK.has(a?.classe))) return null;
+    if (achados.some((a) => a.classe === "CADERNETA_NA_RESERVA"))
+      naReserva.add(r.dominio);
+    if (achados.some((a) => a.classe === "BANCO_INDISPONIVEL"))
+      bancoFora.add(r.dominio);
+  }
+  if (!naReserva.size) return null;
+  const antes = Array.isArray(lojasAntes) ? lojasAntes : [];
+  for (const loja of cobertura.lojasNaoSondadas) {
+    const dela = antes.find((l) => l?.ref === loja?.ref);
+    if (
+      !Array.isArray(dela?.dominios) ||
+      !dela.dominios.some((d) => naReserva.has(d) || bancoFora.has(d))
+    )
+      return null;
+  }
+  return {
+    naReserva: [...naReserva].sort(),
     bancoFora: [...bancoFora].sort(),
   };
 }
@@ -2778,6 +2845,28 @@ export async function publicarRelease(opcoes, deps) {
   const bancoNaoProvado = provasDoBanco.filter((p) => p.estado !== "fora");
   if (bancoNaoProvado.length) incerteza = null;
   const incerto = incerteza !== null;
+  // Caderneta central na reserva (com ou sem o banco da loja fora) depois do
+  // promote: FALHOU, mas SEM o rollback. O candidato só subiu porque a
+  // caderneta respondeu a ele, e voltar o front não conserta a caderneta nem o
+  // banco. O banco fora daqui passa pela MESMA sonda direta: banco que responde
+  // (ou sonda que não roda) = o 503 pode ser do front novo, FALHOU com rollback.
+  let cadernetaFora =
+    ok || incerto || producaoDepois !== deploymentId
+      ? null
+      : cadernetaForaDepoisDoPromote(pos, deploymentId, lojas);
+  const provasDoBancoNaReserva = cadernetaFora?.bancoFora.length
+    ? await provarBancosFora(
+        cadernetaFora.bancoFora,
+        lojas,
+        chavesPorRef,
+        deps.sondarBanco,
+      )
+    : [];
+  const bancoSemProva = [
+    ...bancoNaoProvado,
+    ...provasDoBancoNaReserva.filter((p) => p.estado !== "fora"),
+  ];
+  if (bancoSemProva.length) cadernetaFora = null;
   const acordou = lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario, sha);
   linhas.push(
     "",
@@ -2815,15 +2904,31 @@ export async function publicarRelease(opcoes, deps) {
       linhas.push(
         `A sonda direta ao banco (sem o porteiro) confirmou o banco fora: ${resumoDasProvas(provasDoBanco)}. Se depois de restaurado o banco a loja continuar com o 503 banco-indisponivel, rode este portão de novo: com o banco respondendo, ele diz FALHOU e o rollback.`,
       );
-  } else if (!ok) {
-    if (bancoNaoProvado.length)
+  } else if (cadernetaFora) {
+    const { naReserva, bancoFora: bancoForaNaReserva } = cadernetaFora;
+    linhas.push(
+      "",
+      `**FALHOU.** A caderneta central está fora: o porteiro abriu a loja pela reserva da caderneta (x-ikcous-caderneta: reserva) em ${naReserva.join(", ")}. O front novo foi promovido com a caderneta respondendo a ele, e voltar a frota não conserta a caderneta: NÃO é caso de rollback. Consertar a caderneta (IKCOUS_FROTA_URL/chave da caderneta, banco da caderneta no ar) e conferir de novo até os endereços voltarem a responder hit.`,
+    );
+    if (bancoForaNaReserva.length)
       linhas.push(
         "",
-        `O porteiro respondeu 503 banco-indisponivel, mas a sonda direta ao banco (sem o porteiro) não confirmou banco fora: ${resumoDasProvas(bancoNaoProvado)}. ${bancoNaoProvado.some((p) => p.estado === "no-ar") ? "Onde o banco respondeu, ele está no ar e a causa é o front novo (o porteiro deste deployment não consegue montar a loja)." : ""}${bancoNaoProvado.some((p) => p.estado === "nao-rodou") ? " Onde a sonda direta ao banco não rodou, não há prova de que o banco caiu." : ""}`,
+        `Além disso, ${lojasComBancoFora(bancoForaNaReserva, lojas).join("; ")} (o porteiro respondeu 503 banco-indisponivel e a sonda direta ao banco confirmou: ${resumoDasProvas(provasDoBancoNaReserva)}). Voltar a frota também não traz o banco de volta: restaure o banco ("Restore project" no painel do Supabase; para loja OAuth, \`node scripts/frota/acordar-projeto.mjs\`).`,
+      );
+    linhas.push(
+      "```",
+      `node scripts/frota/conferir-frota.mjs --sha ${sha} --vercel`,
+      "```",
+    );
+  } else if (!ok) {
+    if (bancoSemProva.length)
+      linhas.push(
+        "",
+        `O porteiro respondeu 503 banco-indisponivel, mas a sonda direta ao banco (sem o porteiro) não confirmou banco fora: ${resumoDasProvas(bancoSemProva)}. ${bancoSemProva.some((p) => p.estado === "no-ar") ? "Onde o banco respondeu, ele está no ar e a causa é o front novo (o porteiro deste deployment não consegue montar a loja)." : ""}${bancoSemProva.some((p) => p.estado === "nao-rodou") ? " Onde a sonda direta ao banco não rodou, não há prova de que o banco caiu." : ""}`,
       );
     linhas.push(
       "",
-      bancoNaoProvado.some((p) => p.estado === "no-ar")
+      bancoSemProva.some((p) => p.estado === "no-ar")
         ? "**FALHOU.** O front novo não monta a loja com o banco no ar: voltar AGORA a frota inteira:"
         : "**FALHOU.** Se houver LOJA_TROCADA (isolamento), voltar AGORA a frota inteira:",
       "```",

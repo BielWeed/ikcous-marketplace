@@ -3312,4 +3312,15 @@ Deno.test("banco fora na reserva: conferirFrota reprova com as duas classes e o 
     r.relatorio,
     "o banco está fora do ar em savycollection",
   );
+  // "Como recuperar" traz o conserto de CADA classe do endereço.
+  const comoRecuperar = r.relatorio.split("## Como recuperar")[1] ?? "";
+  assertStringIncludes(
+    comoRecuperar,
+    "**CADERNETA_NA_RESERVA** (savycollection.vercel.app)",
+  );
+  assertStringIncludes(
+    comoRecuperar,
+    "**BANCO_INDISPONIVEL** (savycollection.vercel.app)",
+  );
+  assertStringIncludes(comoRecuperar, "Restore project");
 });
