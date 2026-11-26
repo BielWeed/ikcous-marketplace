@@ -325,6 +325,8 @@ on:
       - "scripts/publicacao/consultas/183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente.sql"
       - "scripts/publicacao/consultas/184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado.sql"
       - "scripts/publicacao/consultas/184b-antes-a-caderneta-fecha-para-o-service-role-ausente.sql"
+      - "scripts/publicacao/consultas/186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado.sql"
+      - "scripts/publicacao/consultas/186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -623,6 +625,8 @@ on:
       - "scripts/publicacao/consultas/183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente.sql"
       - "scripts/publicacao/consultas/184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado.sql"
       - "scripts/publicacao/consultas/184b-antes-a-caderneta-fecha-para-o-service-role-ausente.sql"
+      - "scripts/publicacao/consultas/186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado.sql"
+      - "scripts/publicacao/consultas/186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1578,6 +1582,15 @@ jobs:
       - name: Prova viva da caderneta fechada para o service_role (migration 20261480000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-caderneta-fecha-para-o-service-role-viva.cjs
+      # Migration 20261490000000 (a caderneta confere a chave sem bcrypt por chamada): frota_segredo ganha hash_rapido/hash_rapido_de e as
+      # duas portas do porteiro pagam o bcrypt UMA vez por hash (a primeira chamada certa grava o atalho sha256; dali em diante chave errada
+      # nao roda bcrypt, contado por pg_stat_get_xact_function_calls). Chave errada, NULL e vazia: zero linhas e nada gravado; troca de chave
+      # invalida o atalho (a velha para, a nova abre); leitura so de leitura e linha presa por outra conexao nao gravam nem esperam;
+      # reaplicar 2x (LF e CRLF); rollback comum devolve as portas byte a byte e preserva o atalho, destrutivo exige confirmacao e o comum
+      # antes; pre-voo recusa estado divergente sem escrever; consultas 186a/186b (e 182a/184a com a sucessora) EXECUTADAS; mutantes. CLONE proprio.
+      - name: Prova viva da caderneta que confere a chave sem bcrypt por chamada (migration 20261490000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-caderneta-confere-a-chave-sem-bcrypt-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam

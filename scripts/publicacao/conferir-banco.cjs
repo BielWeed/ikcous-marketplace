@@ -3391,7 +3391,28 @@ const ROL_DA_184B = [
   "frota_lojas e frota_segredo existem com o mesmo dono da resolver_loja e da resolver_loja_com_estado",
   "a 20261460000000 esta aplicada: resolver_loja e resolver_loja_com_estado com os corpos dela (md5)",
 ];
+// Lote 186 (20261490000000, a caderneta confere a chave sem bcrypt por chamada: frota_segredo ganha hash_rapido/hash_rapido_de e as duas
+// portas trocam so a conferencia da chave). A 186a prova o estado novo (6 itens, so catalogo, nenhuma linha da caderneta e lida: as duas colunas,
+// as duas portas com os corpos novos e as travas de sempre, a caderneta fechada para todo papel que nao e o dono, o pgcrypto). A 186b prova o
+// estado de antes (as colunas ausentes) e a base que o pre-voo exige (5 itens: os corpos da 20261460000000, a 20261470/20261480 aplicadas, o pgcrypto).
+const ROL_DA_186A = [
+  "controle: catalogo publico visivel",
+  "frota_segredo: as colunas hash_rapido e hash_rapido_de (text, aceitam nulo, sem padrao, sem privilegio de coluna) existem",
+  "resolver_loja: uma so, com o corpo da 20261490000000 (md5), os atributos de sempre (plpgsql, SECURITY DEFINER, VOLATILE, search_path vazio, as 6 colunas) e EXECUTE so do anon",
+  "resolver_loja_com_estado: uma so, com o corpo da 20261490000000 (md5), as travas da v1 (7 colunas terminando em estado, o mesmo dono) e EXECUTE so do anon",
+  "frota_lojas e frota_segredo continuam fechadas (tabela comum, RLS ligada, nenhuma politica, nada para PUBLIC, anon, authenticated e service_role) e com o dono das duas portas",
+  "extensions.crypt(text, text) e extensions.digest(text, text) existem (pgcrypto, a porta da chave da frota e o atalho)",
+];
+const ROL_DA_186B = [
+  "controle: catalogo publico visivel",
+  "frota_segredo: as colunas hash_rapido e hash_rapido_de ainda NAO existem",
+  "a 20261460000000 esta aplicada: resolver_loja e resolver_loja_com_estado, uma so cada, com os corpos dela (md5), SECURITY DEFINER e o mesmo dono de frota_lojas e frota_segredo",
+  "a 20261470000000 e a 20261480000000 estao aplicadas: a porta frota_mudar_estado existe e o service_role nao alcanca frota_lojas nem frota_segredo",
+  "extensions.crypt(text, text) e extensions.digest(text, text) existem (pgcrypto no schema extensions)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "186a-conferir-a-caderneta-confere-a-chave-sem-bcrypt-aplicado": ROL_DA_186A,
+  "186b-antes-a-caderneta-confere-a-chave-sem-bcrypt-ausente": ROL_DA_186B,
   "184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado": ROL_DA_184A,
   "184b-antes-a-caderneta-fecha-para-o-service-role-ausente": ROL_DA_184B,
   "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado": ROL_DA_183A,
