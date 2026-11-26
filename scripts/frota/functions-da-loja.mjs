@@ -16,8 +16,17 @@
  * (_shared incluído), pelo MESMO `arquivosEsperados` com que o portão compara o
  * que está no ar; o nome de cada arquivo é o caminho relativo ao projeto
  * ("supabase/functions/_shared/x.ts"), como o `supabase functions deploy
- * --use-api` monta. Tudo é lido do commit HEAD (impresso), nunca da árvore de
- * trabalho.
+ * --use-api` monta.
+ *
+ * DE ONDE VEM O CÓDIGO: só do commit APROVADO, o topo de
+ * origin/<canais.ramoDaRelease> (o mesmo expected_sha que o portão da release
+ * imprime para os workflows), e só se o HEAD local for esse commit. Branch de
+ * trabalho, commit não aprovado ou topo ilegível = NÃO antes de qualquer pedido
+ * ao Supabase. Tudo é lido do commit (impresso), nunca da árvore de trabalho.
+ *
+ * SÓ LOJA NOVA: as lojas que já existiam (canais-de-backend.json
+ * `functionsSoPeloWorkflow`, nomes do lojas.json) publicam só pelo
+ * publicar-functions.yml; este script recusa qualquer uma delas.
  *
  * RECUSA ANTES DE QUALQUER ESCRITA (veredito NÃO) quando as fontes divergem:
  *  - o canal (`--canal`, a chave da loja em lojas.json) não é assinante, não
@@ -37,7 +46,9 @@
  * O QUE JÁ EXISTE: function já no ar, ACTIVE e com o mesmo verify_jwt, é
  * PULADA (rodar duas vezes não republica). Já no ar com verify_jwt diferente
  * ou fora de ACTIVE = conflito, recusa sem escrever nada. `--substituir`
- * (só com `--aplicar`) republica as que já existem.
+ * (só com `--aplicar`) republica as que já existem, e a republicação só conta
+ * quando a `version` no ar passou da de antes (prova de que o código novo
+ * entrou). Erro de deploy 5xx ou de rede = a publicação PODE ter acontecido.
  *
  * VEREDITO: SIM (todas no ar, ACTIVE, verify_jwt certo, nada incerto), NÃO
  * (alguma falta ou está errada, com certeza) ou INCERTO (o estado não foi lido,
@@ -48,7 +59,8 @@
  *
  * TOKEN: o access token OAuth da conta da lojista, renovado pelo
  * acesso-oauth.mjs a partir do cofre DPAPI (a chave do cofre é o nome da loja
- * = `--canal`), a mesma fonte do resto do nova-loja. Ele só vive dentro do
+ * = `--canal`), a mesma fonte do resto do nova-loja, UMA renovação por
+ * execução (tokenComCache: guardado até expiraEm menos a margem). Ele só vive dentro do
  * cliente da gestão e nunca é impresso: as mensagens de erro do cliente não o
  * carregam, e erro de outro tipo sai só pelo nome.
  */
@@ -215,6 +227,24 @@ export function montarPlano({ projeto, canal }, ler) {
     );
 
   const canais = exigirJson(ler, CAMINHO_CANAIS);
+  // Loja que já existia publica só pelo workflow (expected_sha do run): a
+  // lista explícita mora nos canais, e cada nome dela tem de ser uma loja do
+  // cadastro — lista ausente ou torta recusa (falha fechada).
+  const existentes = canais?.functionsSoPeloWorkflow;
+  if (
+    !Array.isArray(existentes) ||
+    existentes.length === 0 ||
+    !existentes.every(
+      (n) => typeof n === "string" && Object.hasOwn(cadastro.lojas, n),
+    )
+  )
+    throw new Recusa(
+      `${CAMINHO_CANAIS}: functionsSoPeloWorkflow ausente, vazia ou com loja fora de ${CAMINHO_LOJAS}`,
+    );
+  if (existentes.includes(canal))
+    throw new Recusa(
+      `a loja ${canal} já existe: as functions dela sobem só pelo ${CAMINHO_WORKFLOW} (expected_sha do run aprovado), nunca por este script de loja nova`,
+    );
   const entrada =
     canais?.canais && Object.hasOwn(canais.canais, projeto)
       ? canais.canais[projeto]
@@ -309,7 +339,7 @@ function mensagemSegura(e) {
     : "erro";
 }
 
-/** GET /functions como Map slug → { status, verify_jwt }. */
+/** GET /functions como Map slug → { status, verify_jwt, version }. */
 async function listarNoAr(cliente, ref) {
   const lista = await cliente.pedir("funcoes", { ref });
   if (!Array.isArray(lista))
@@ -320,9 +350,24 @@ async function listarNoAr(cliente, ref) {
   const mapa = new Map();
   for (const f of lista) {
     if (f && typeof f.slug === "string")
-      mapa.set(f.slug, { status: f.status, verify_jwt: f.verify_jwt });
+      mapa.set(f.slug, {
+        status: f.status,
+        verify_jwt: f.verify_jwt,
+        version: Number.isSafeInteger(f.version) ? f.version : null,
+      });
   }
   return mapa;
+}
+
+/**
+ * Erro de deploy que NÃO prova que nada foi gravado: prazo/rede (o cliente já
+ * devolve ESTADO_DESCONHECIDO) ou 5xx (502/504 do gateway podem chegar depois
+ * de o Supabase ter aceitado; 500 pode ter gravado pela metade). 4xx, 401/403
+ * e pedido inválido são recusa certa: nada entrou.
+ */
+function deployIncerto(e) {
+  if (e?.codigo === ESTADO_DESCONHECIDO) return true;
+  return Number.isInteger(e?.status) && e.status >= 500;
 }
 
 function estaCerta(noAr, item) {
@@ -333,8 +378,13 @@ function estaCerta(noAr, item) {
   );
 }
 
-/** Confere UMA function recém-publicada: OK, ERRADA (com certeza) ou INCERTA. */
-async function conferirUma(cliente, ref, item, esperar) {
+/**
+ * Confere UMA function recém-publicada: OK, ERRADA (com certeza) ou INCERTA.
+ * `versaoAntes` (só na substituição): o código novo só conta como entrado se
+ * a versão no ar passou dela — sem isso, um 201 que não trocou nada passaria
+ * por "conferida" porque a antiga já estava ACTIVE com o mesmo verify_jwt.
+ */
+async function conferirUma(cliente, ref, item, esperar, versaoAntes) {
   for (let t = 1; t <= TENTATIVAS_DE_CONFERIR; t++) {
     let mapa;
     try {
@@ -348,13 +398,66 @@ async function conferirUma(cliente, ref, item, esperar) {
         estado: "ERRADA",
         motivo: `no ar com verify_jwt=${noAr.verify_jwt}, o certo é ${item.verifyJwt}`,
       };
-    if (estaCerta(noAr, item)) return { estado: "OK" };
+    const versaoNova =
+      versaoAntes === undefined ||
+      (noAr?.version !== null &&
+        noAr?.version !== undefined &&
+        noAr.version > versaoAntes);
+    if (estaCerta(noAr, item) && versaoNova) return { estado: "OK" };
     if (t < TENTATIVAS_DE_CONFERIR) await esperar(ESPERA_ENTRE_CONFERENCIAS_MS);
   }
   return {
     estado: "INCERTA",
-    motivo: `não apareceu ACTIVE no GET /functions depois de ${TENTATIVAS_DE_CONFERIR} leituras`,
+    motivo:
+      versaoAntes === undefined
+        ? `não apareceu ACTIVE no GET /functions depois de ${TENTATIVAS_DE_CONFERIR} leituras`
+        : `a versão no ar não passou de ${versaoAntes} depois de ${TENTATIVAS_DE_CONFERIR} leituras: o código novo não está provado`,
   };
+}
+
+// ------------------------------------------------------------------ commit
+
+const RE_SHA = /^[0-9a-f]{40}$/;
+const RE_RAMO = /^[A-Za-z0-9._/-]{1,200}$/;
+
+/**
+ * O commit de onde o código sai: o topo de origin/<ramoDaRelease> — o mesmo
+ * que o portão da release (publicar-release.mjs, contextoDaRelease/topoDoRamo)
+ * usa como expected_sha dos workflows — e SÓ se o HEAD local for esse commit.
+ * Branch de trabalho, commit não aprovado ou topo ilegível = Recusa, antes de
+ * qualquer pedido ao Supabase. O ramo vem do canais-de-backend.json do HEAD;
+ * com HEAD == topo, é o mesmo arquivo do commit aprovado.
+ *
+ * git: { head(): Promise<sha>, topoDoRamo(ramo): Promise<sha>, ler(sha, caminho) }
+ */
+async function commitAprovado(git) {
+  let head;
+  try {
+    head = String(await git.head()).trim();
+  } catch (e) {
+    throw new Recusa(`HEAD local não lido (${mensagemSegura(e)})`);
+  }
+  if (!RE_SHA.test(head)) throw new Recusa("HEAD local não lido");
+  const ramo = exigirJson(
+    (c) => git.ler(head, c),
+    CAMINHO_CANAIS,
+  )?.ramoDaRelease;
+  if (typeof ramo !== "string" || !RE_RAMO.test(ramo))
+    throw new Recusa(`${CAMINHO_CANAIS}: ramoDaRelease ausente ou inválido`);
+  let topo;
+  try {
+    topo = String(await git.topoDoRamo(ramo)).trim();
+  } catch (e) {
+    throw new Recusa(
+      `topo de origin/${ramo} não lido (${mensagemSegura(e)}): sem commit aprovado, nada se publica`,
+    );
+  }
+  if (!RE_SHA.test(topo)) throw new Recusa(`topo de origin/${ramo} não lido`);
+  if (head !== topo)
+    throw new Recusa(
+      `o HEAD local (${head}) não é o topo de origin/${ramo} (${topo}): só o commit aprovado da release publica. Faça checkout de ${topo} e rode de novo.`,
+    );
+  return topo;
 }
 
 // ------------------------------------------------------------------ execução
@@ -393,13 +496,13 @@ export async function executar(argv, deps) {
   }
   const { projeto: ref, canal, aplicar, substituir } = args;
   const modo = aplicar ? "APLICAR" : "ENSAIO (nada é gravado)";
-  saida.push(
-    `functions da loja ${canal} (${ref}) — ${modo}${deps.sha ? `, fonte: commit ${deps.sha}` : ""}`,
-  );
+  saida.push(`functions da loja ${canal} (${ref}) — ${modo}`);
 
   let plano;
   try {
-    plano = montarPlano({ projeto: ref, canal }, deps.ler);
+    const topo = await commitAprovado(deps.git);
+    saida.push(`fonte: commit ${topo} (o topo do ramo da release)`);
+    plano = montarPlano({ projeto: ref, canal }, (c) => deps.git.ler(topo, c));
   } catch (e) {
     if (!(e instanceof Recusa)) throw e;
     erros.push(`RECUSADO: ${e.message}`);
@@ -454,7 +557,13 @@ export async function executar(argv, deps) {
         `${it.nome}: já no ar (status ${viva.status}, verify_jwt=${viva.verify_jwt}), o certo é ACTIVE com verify_jwt=${it.verifyJwt}; para republicar use --substituir`,
       );
     }
-    acoes.push({ item: it, acao });
+    // SUBSTITUIR: a versão de antes é a régua de que o código novo entrou;
+    // sem versão legível no ar, nada prova a troca (Infinity = nunca prova).
+    const versaoAntes =
+      acao === "SUBSTITUIR"
+        ? (viva.version ?? Number.POSITIVE_INFINITY)
+        : undefined;
+    acoes.push({ item: it, acao, versaoAntes });
     saida.push(
       `  - ${it.nome} verify_jwt=${it.verifyJwt} arquivos=${it.arquivos.length} → ${acao}`,
     );
@@ -503,7 +612,7 @@ export async function executar(argv, deps) {
   let incerto = false;
   let parouEm = -1;
   for (let i = 0; i < aFazer.length; i++) {
-    const { item } = aFazer[i];
+    const { item, versaoAntes } = aFazer[i];
     if (PROIBIDAS.includes(item.nome)) {
       // defesa em profundidade: montarPlano já recusou antes
       erros.push(`RECUSADO: ${item.nome} é proibida`);
@@ -522,11 +631,11 @@ export async function executar(argv, deps) {
       });
     } catch (e) {
       erros.push(`FALHOU ${item.nome}: ${mensagemSegura(e)}`);
-      if (e?.codigo === ESTADO_DESCONHECIDO) incerto = true;
+      if (deployIncerto(e)) incerto = true;
       parouEm = i;
       break;
     }
-    const c = await conferirUma(cliente, ref, item, esperar);
+    const c = await conferirUma(cliente, ref, item, esperar, versaoAntes);
     if (c.estado !== "OK") {
       erros.push(`${item.nome} publicada mas não conferida: ${c.motivo}`);
       if (c.estado === "ERRADA")
@@ -600,22 +709,113 @@ function leitorNoCommit(sha) {
   };
 }
 
-/** As dependências reais: commit HEAD, cofre DPAPI e OAuth da lojista. */
-export async function dependenciasDoComando() {
-  const sha = execFileSync("git", ["-C", RAIZ, "rev-parse", "HEAD"], {
+function gitTexto(args) {
+  return execFileSync("git", ["-C", RAIZ, ...args], {
     encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
   }).trim();
+}
+
+/**
+ * O git real. `topoDoRamo` faz o que o topoDoRamo do portão
+ * (publicar-release.mjs, dependenciasReais) faz: o SHA de refs/heads/<ramo>
+ * no origin (ls-remote, sempre fresco) e, se o commit não estiver aqui, o
+ * fetch dele.
+ */
+/**
+ * O SHA de `git ls-remote origin refs/heads/<ramo>` ("<sha>\trefs/heads/<ramo>"),
+ * só se a saída tiver UMA linha e ela for exatamente desse ramo; senão null.
+ */
+export function shaDoLsRemote(texto, ramo) {
+  const linhas = String(texto ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (linhas.length !== 1) return null;
+  const [sha, nome, ...resto] = linhas[0].split(/\s+/);
+  if (resto.length || nome !== `refs/heads/${ramo}` || !RE_SHA.test(sha))
+    return null;
+  return sha;
+}
+
+export function gitReal() {
+  const leitores = new Map();
+  return {
+    head: async () => gitTexto(["rev-parse", "HEAD"]),
+    topoDoRamo: async (ramo) => {
+      if (!RE_RAMO.test(ramo)) throw new Error("ramo inválido");
+      const linha = shaDoLsRemote(
+        gitTexto(["ls-remote", "origin", `refs/heads/${ramo}`]),
+        ramo,
+      );
+      if (!linha) throw new Error("ls-remote sem o ramo");
+      try {
+        gitTexto(["cat-file", "-e", `${linha}^{commit}`]);
+      } catch {
+        gitTexto(["fetch", "--quiet", "--no-tags", "origin", linha]);
+      }
+      return linha;
+    },
+    ler: (sha, caminho) => {
+      if (!RE_SHA.test(sha)) return null;
+      if (!leitores.has(sha)) leitores.set(sha, leitorNoCommit(sha));
+      return leitores.get(sha)(caminho);
+    },
+  };
+}
+
+/** Margem antes do fim do access token: renova antes de ele vencer no meio. */
+export const MARGEM_DO_TOKEN_MS = 2 * 60_000;
+/** Sem `expiraEm` na renovação, o token vale só isto aqui (palpite curto). */
+export const VALIDADE_SEM_PRAZO_MS = 10 * 60_000;
+
+/**
+ * Um token por execução: `renovar` (troca o refresh do cofre) só roda de
+ * novo quando o access token está a MARGEM_DO_TOKEN_MS do fim. Se o Supabase
+ * girar o refresh a cada troca, renovar a cada pedido multiplicaria o risco
+ * de perder a autorização; aqui são ~30 pedidos por loja. Pedidos ao mesmo
+ * tempo dividem a mesma renovação; renovação que falha não fica guardada.
+ */
+export function tokenComCache(renovar, { agora = Date.now } = {}) {
+  let guardado = null; // { token, valeAte }
+  let emVoo = null;
+  return async () => {
+    if (guardado && agora() < guardado.valeAte) return guardado.token;
+    if (!emVoo) {
+      emVoo = (async () => {
+        const r = await renovar();
+        const expira = Number.isFinite(r?.expiraEm)
+          ? r.expiraEm - MARGEM_DO_TOKEN_MS
+          : agora() + VALIDADE_SEM_PRAZO_MS;
+        guardado = { token: r?.accessToken, valeAte: expira };
+        return r?.accessToken;
+      })().finally(() => {
+        emVoo = null;
+      });
+    }
+    return emVoo;
+  };
+}
+
+/** O cliente da gestão de UMA loja, com o token OAuth dela em cache. */
+export function criarClienteDaLoja({ canal, acesso, fetch, agora }) {
+  return criarClienteGestao({
+    token: tokenComCache(() => acesso.renovar({ slug: canal }), { agora }),
+    ...(fetch ? { fetch } : {}),
+  });
+}
+
+/** As dependências reais: git do commit aprovado, cofre DPAPI e OAuth da lojista. */
+export async function dependenciasDoComando() {
   const { criarCofreDpapi } = await import("./cofre-local.mjs");
   const { criarAcessoOAuth } = await import("./acesso-oauth.mjs");
   return {
-    sha,
-    ler: leitorNoCommit(sha),
-    criarCliente: (canal) => {
-      const acesso = criarAcessoOAuth({ cofre: criarCofreDpapi() });
-      return criarClienteGestao({
-        token: async () => (await acesso.renovar({ slug: canal })).accessToken,
-      });
-    },
+    git: gitReal(),
+    criarCliente: (canal) =>
+      criarClienteDaLoja({
+        canal,
+        acesso: criarAcessoOAuth({ cofre: criarCofreDpapi() }),
+      }),
   };
 }
 
