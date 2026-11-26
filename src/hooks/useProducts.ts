@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   caminhoDaCopia,
+  caminhoDaCopiaSemMarca,
   caminhoDaImagemDoProduto,
 } from "@/lib/copiar-imagem-para-duplicacao";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
@@ -20,6 +21,7 @@ import {
 import { arquivoJpegSemExif } from "@/lib/jpeg-sem-exif";
 import { mapProductFromDB } from "@/lib/mappers";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import { marcaDe, nomesDasCopias } from "@/lib/piramide-da-foto-nomes";
 import {
   MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA,
@@ -80,18 +82,58 @@ export async function copiarImagemParaDuplicacao(url: string): Promise<string> {
 
   const desmarcar = marcarOperacaoSensivel("copia-de-imagem-do-produto");
   try {
-    const novoCaminho = caminhoDaCopia(caminho);
     // Com prazo: rede "pendurada" prendia o diálogo de duplicar em "Duplicando…".
     // Estourou: o erro é o de "sem resposta" (a tela solta o diálogo e manda
     // conferir a lista); a cópia do arquivo pode ter terminado no servidor.
-    const { error } = await aguardarComPrazo(
-      Promise.resolve(
-        supabase.storage.from("products").copy(caminho, novoCaminho),
-      ),
-      PRAZO_DE_COPIAR_A_FOTO_PARA_DUPLICAR_MS,
-      () => erroDeConsultaSemResposta(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA),
-    );
+    const copiarComPrazo = (de: string, para: string) =>
+      aguardarComPrazo(
+        Promise.resolve(supabase.storage.from("products").copy(de, para)),
+        PRAZO_DE_COPIAR_A_FOTO_PARA_DUPLICAR_MS,
+        () => erroDeConsultaSemResposta(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA),
+      );
+
+    // Foto MARCADA (pirâmide de cópias): as 3 cópias reduzidas são copiadas
+    // ANTES, e a original marcada por último -- nunca nasce endereço marcado
+    // sem as cópias. Na dúvida (URL que não é, sem sombra de dúvida, uma foto
+    // marcada desta loja), a cópia de sempre, sem marca.
+    let novoCaminho = caminhoDaCopiaSemMarca(caminho);
+    let copiasNovas: string[] = [];
+    const copiasDaOrigem = marcaDe(url) ? nomesDasCopias(caminho) : null;
+    if (copiasDaOrigem) {
+      const marcado = caminhoDaCopia(caminho);
+      const destinos = nomesDasCopias(marcado);
+      if (destinos) {
+        const resultados = await Promise.allSettled(
+          copiasDaOrigem.map((de, i) =>
+            copiarComPrazo(de, destinos.at(i) ?? ""),
+          ),
+        );
+        const semResposta = resultados.find(
+          (r) => r.status === "rejected" && ehConsultaSemResposta(r.reason),
+        );
+        if (
+          resultados.every((r) => r.status === "fulfilled" && !r.value.error)
+        ) {
+          novoCaminho = marcado;
+          copiasNovas = destinos;
+        } else {
+          // Cópia que falhou: as já copiadas saem (sem esperar -- a rede pode
+          // estar pendurada) e a original segue SEM marca, como sempre.
+          apagarCopiasDaDuplicacao(destinos);
+          if (semResposta?.status === "rejected") throw semResposta.reason;
+        }
+      }
+    }
+
+    let error: { message: string } | null;
+    try {
+      ({ error } = await copiarComPrazo(caminho, novoCaminho));
+    } catch (erro) {
+      if (copiasNovas.length > 0) apagarCopiasDaDuplicacao(copiasNovas);
+      throw erro;
+    }
     if (error) {
+      if (copiasNovas.length > 0) apagarCopiasDaDuplicacao(copiasNovas);
       throw new Error(
         `Não foi possível copiar a imagem do produto no storage: ${error.message}`,
       );
@@ -103,6 +145,16 @@ export async function copiarImagemParaDuplicacao(url: string): Promise<string> {
   } finally {
     desmarcar();
   }
+}
+
+/** Melhor esforço, sem esperar: apaga as cópias reduzidas de uma duplicação
+ * que não chegou à original marcada. */
+function apagarCopiasDaDuplicacao(caminhos: string[]): void {
+  Promise.resolve()
+    .then(() => supabase.storage.from("products").remove(caminhos))
+    .catch((erro) =>
+      console.warn("[useProducts] cópias da duplicação não apagadas:", erro),
+    );
 }
 
 async function callRpcWithRetry<T>(
