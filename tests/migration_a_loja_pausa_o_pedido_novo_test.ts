@@ -576,3 +576,22 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(lotes[lotes.length - 1].consulta, A196);
 });
+
+Deno.test("20261600: os tipos do app conhecem SO a leitura do painel (Args never, Returns Json); a regra, a marca, o motivo e o gatilho ficam fora", () => {
+  const tipos = Deno.readTextFileSync(
+    `${RAIZ}/src/types/database.types.ts`,
+  ).replace(/\r/g, "");
+  assertStringIncludes(
+    tipos,
+    "      situacao_das_vendas_da_loja: {\n        Args: never;\n        Returns: Json;\n      };\n",
+  );
+  assertEquals(contar(tipos, "situacao_das_vendas_da_loja"), 1);
+  for (const fora of [
+    "data_da_pausa_de_vendas",
+    "marcar_suspensa_desde",
+    "motivo_da_loja_nao_aceitar_pedido",
+    "a_loja_aceita_pedido_novo",
+    "pausa_de_vendas:",
+  ])
+    assert(!tipos.includes(fora), `${fora} nao e' do app`);
+});
