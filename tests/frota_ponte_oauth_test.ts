@@ -119,11 +119,14 @@ function cadastroSemOAuth() {
   };
 }
 
-const REFRESH = {
-  "loja-a": "refresh-FALSO-loja-a-0123",
-  "loja-b": "refresh-FALSO-loja-b-0123",
-};
-const TOKEN_DA_LOJA = { "loja-a": CANARIO_A, "loja-b": CANARIO_B };
+const REFRESH = new Map([
+  ["loja-a", "refresh-FALSO-loja-a-0123"],
+  ["loja-b", "refresh-FALSO-loja-b-0123"],
+]);
+const TOKEN_DA_LOJA = new Map([
+  ["loja-a", CANARIO_A],
+  ["loja-b", CANARIO_B],
+]);
 
 function respostaToken(access, expiresIn = 86400) {
   return new Response(
@@ -137,32 +140,39 @@ function respostaToken(access, expiresIn = 86400) {
 }
 
 /**
- * O lado Supabase da renovação. `porLoja[slug]` troca a resposta: função que
+ * O lado Supabase da renovação. `porLoja` (slug -> função) troca a resposta: função que
  * recebe o número da chamada daquela loja (1, 2, ...) e devolve Response ou
  * Promise. Sem entrada, devolve o token da loja com 24 h.
  */
 function supabaseFalso(log, porLoja = {}) {
-  const chamadas = { "loja-a": 0, "loja-b": 0 };
+  const chamadas = new Map([
+    ["loja-a", 0],
+    ["loja-b", 0],
+  ]);
+  const respostas = new Map(Object.entries(porLoja));
   const f = (url, init = {}) => {
     assertEquals(String(url), URL_TOKEN);
     const refresh = new URLSearchParams(String(init.body)).get("refresh_token");
-    const slug = Object.keys(REFRESH).find((s) => REFRESH[s] === refresh);
+    const slug = [...REFRESH].find(([, r]) => r === refresh)?.[0];
     if (!slug) throw new Error("fetch falso: refresh desconhecido");
-    chamadas[slug] += 1;
+    const n = chamadas.get(slug) + 1;
+    chamadas.set(slug, n);
     log.push(`renovou:${slug}`);
-    const r = porLoja[slug];
-    if (r) return Promise.resolve(r(chamadas[slug]));
+    const r = respostas.get(slug);
+    if (r) return Promise.resolve(r(n));
     return Promise.resolve(
-      respostaToken(chamadas[slug] === 1 ? TOKEN_DA_LOJA[slug] : CANARIO_MORTO),
+      respostaToken(n === 1 ? TOKEN_DA_LOJA.get(slug) : CANARIO_MORTO),
     );
   };
-  f.chamadas = chamadas;
+  Object.defineProperty(f, "chamadas", {
+    get: () => Object.fromEntries(chamadas),
+  });
   return f;
 }
 
 async function cofreConectado() {
   const cofre = criarCofreMemoria();
-  for (const slug of Object.keys(REFRESH)) {
+  for (const [slug, refresh] of REFRESH) {
     await cofre.gravar(
       slug,
       JSON.stringify({
@@ -170,7 +180,7 @@ async function cofreConectado() {
         clientId: "b5f97263-0000-4000-8000-000000000000",
         clientSecret: "segredo-do-app-FALSO-inventado",
         redirectUri: "https://gestao.exemplo.test/autorizado",
-        refresh: REFRESH[slug],
+        refresh,
       }),
     );
   }
@@ -194,6 +204,8 @@ function ghFalso(
   { existentes = [], escrita = ["dono-falso"], falhas = {} } = {},
 ) {
   const segredos = new Map(existentes.map((n) => [n, "valor-velho"]));
+  const falhaDoDefinir = new Map(Object.entries(falhas.definir ?? {}));
+  const falhaDoApagar = new Map(Object.entries(falhas.apagar ?? {}));
   const gravacoes = [];
   return {
     repo: REPO,
@@ -216,13 +228,13 @@ function ghFalso(
     async definir(nome, valor, opcoes = {}) {
       log.push(`definir:${nome}`);
       gravacoes.push({ nome, valor });
-      const f = falhas.definir?.[nome];
+      const f = falhaDoDefinir.get(nome);
       if (f) return f({ nome, valor, opcoes, segredos });
       segredos.set(nome, valor);
     },
     async apagar(nome) {
       log.push(`apagar:${nome}`);
-      const f = falhas.apagar?.[nome];
+      const f = falhaDoApagar.get(nome);
       if (f) return f({ nome, segredos });
       segredos.delete(nome);
     },
