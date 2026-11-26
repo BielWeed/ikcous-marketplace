@@ -26,6 +26,15 @@ pela porta.
 - No banco (migration `20261470000000`), a porta `frota_mudar_estado` confere de novo: estado atual,
   release, confirmação, validade. Um gatilho recusa qualquer `UPDATE` direto do estado. Cada mudança
   grava uma linha em `public.frota_estado_historico` (quem, quando, de, para, release, motivo).
+- **Quem fez vai no motivo.** A coluna `quem` do histórico é o usuário do banco que rodou a instrução,
+  e pelo MCP ele é sempre `postgres`: ela não diz quem decidiu. Por isso o comando só aceita motivo
+  que começa com o autor, no formato `por <nome>: <motivo>` (ex.: `por Gabriel: assinatura vencida em
+  20/11`). Sem isso ele sai com `2` e não imprime nada.
+- **Só sai do ar a loja que consegue voltar.** O `--acordar` precisa do canal de backend da loja em
+  `scripts/frota/canais-de-backend.json` (é por ele que confere e conserta o banco dela). Sem canal, o
+  comando recusa as três ações com a mesma mensagem, para nunca deixar fora do ar uma loja que
+  pagou e não consegue acordar. Loja só de front (`politica.json` → `lojasSemBackendGerenciado`)
+  não precisa de canal.
 - A instrução impressa vale **30 minutos**. Passou disso, gere outra.
 - Saída do comando: `0` = instrução impressa; `1` = recusado ou loja não pronta; `2` = uso errado.
 
@@ -49,7 +58,10 @@ node scripts/frota/estado-da-loja.mjs --ver --loja "<id da loja>"
 ```
 
 Rode o `select` impresso pelo MCP. Ele devolve as lojas (sem URL nem chave do banco delas) e as 20
-últimas mudanças. Anote o `estado_sha` da loja: é a `--base` para acordá-la.
+últimas mudanças. Anote o `estado_sha` da loja: é a `--base` para acordá-la. Ele é a release em
+que a loja **saiu do ar** e não muda entre `adormecida` e `encerrada` (adormecida na release A e
+encerrada depois na B continua com `estado_sha` = A). Só muda quando a loja sai de `ativa` ou volta
+a ela. A linha do histórico guarda sempre a release do momento de cada mudança.
 
 ## A release que está no ar
 
@@ -64,16 +76,17 @@ O valor é o `codeSha`. Se você passar outro, o comando recusa e diz qual é o 
 ## Pôr uma loja para dormir
 
 ```powershell
-node scripts/frota/estado-da-loja.mjs --adormecer --loja "<id>" --ref "<ref de 20 letras>" --sha "<codeSha>" --motivo "Assinatura vencida em 20/11 sem pagamento"
+node scripts/frota/estado-da-loja.mjs --adormecer --loja "<id>" --ref "<ref de 20 letras>" --sha "<codeSha>" --motivo "por <seu nome>: assinatura vencida em 20/11 sem pagamento"
 ```
 
-O motivo aceita letras, números, espaço e `. , : ; ( ) / -`, de 3 a 200 caracteres. Rode a instrução
+O motivo começa com `por <seu nome>: ` e aceita letras, números, espaço e `. , : ; ( ) / -`, de 3 a
+200 caracteres no total. Rode a instrução
 impressa pelo MCP. Ela devolve a loja com `estado = adormecida`.
 
 ## Acordar uma loja
 
 ```powershell
-node scripts/frota/estado-da-loja.mjs --acordar --loja "<id>" --ref "<ref>" --base "<estado_sha do --ver>" --sha "<codeSha>" --motivo "Pagamento confirmado em 26/11"
+node scripts/frota/estado-da-loja.mjs --acordar --loja "<id>" --ref "<ref>" --base "<estado_sha do --ver>" --sha "<codeSha>" --motivo "por <seu nome>: pagamento confirmado em 26/11"
 ```
 
 Antes de imprimir, o comando confere se o banco **daquela loja** está pronto para a release atual,
@@ -93,7 +106,7 @@ Sem a ordem escrita do dono (mensagem dele dizendo qual loja encerrar), **não r
 motivo.
 
 ```powershell
-node scripts/frota/estado-da-loja.mjs --encerrar --loja "<id>" --ref "<ref>" --sha "<codeSha>" --motivo "Ordem escrita do dono em 26/11: encerrar" --confirmar "ENCERRAR <id>"
+node scripts/frota/estado-da-loja.mjs --encerrar --loja "<id>" --ref "<ref>" --sha "<codeSha>" --motivo "por <seu nome>: ordem escrita do dono em 26/11, encerrar" --confirmar "ENCERRAR <id>"
 ```
 
 Por padrão encerra uma loja `adormecida`. Para encerrar uma `ativa`, acrescente `--de ativa`.
@@ -102,7 +115,7 @@ A frase de `--confirmar` tem de ser exatamente `ENCERRAR ` seguido do id.
 ## Reabrir uma loja encerrada
 
 ```powershell
-node scripts/frota/estado-da-loja.mjs --acordar --loja "<id>" --ref "<ref>" --base "<estado_sha do --ver>" --sha "<codeSha>" --motivo "Voltou a assinar" --confirmar "REABRIR <id>"
+node scripts/frota/estado-da-loja.mjs --acordar --loja "<id>" --ref "<ref>" --base "<estado_sha do --ver>" --sha "<codeSha>" --motivo "por <seu nome>: voltou a assinar" --confirmar "REABRIR <id>"
 ```
 
 Mesma conferência de prontidão do "Acordar".

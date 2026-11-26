@@ -171,9 +171,15 @@ Deno.test("a porta: SECURITY INVOKER, VOLATILE, search_path vazio, FOR UPDATE, l
     liga > 0 && liga < update && update < desliga && desliga < rastro,
     "liga -> UPDATE -> desliga -> rastro",
   );
+  // estado_sha = a release em que a loja SAIU do ar: entre dois estados fora do ar (adormecida <-> encerrada) ele fica; so muda ao
+  // sair de ativa ou voltar a ela. O historico guarda sempre o sha do momento (p_sha).
   assertStringIncludes(
     norm(c),
-    "SET estado = p_para, estado_desde = now(), estado_sha = p_sha",
+    "SET estado = p_para, estado_desde = now(), estado_sha = CASE WHEN v_atual <> 'ativa' AND p_para <> 'ativa' THEN fl.estado_sha ELSE p_sha END",
+  );
+  assertStringIncludes(
+    norm(c),
+    "VALUES (p_id, p_ref, p_de, p_para, p_sha, p_motivo);",
   );
   assertEquals(c.split("UPDATE public.").length - 1, 1, "um UPDATE so");
   // As conferencias vem ANTES da trava da linha, e as que dependem do estado atual, depois dela e antes do UPDATE.

@@ -35,7 +35,7 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: frota_mudar_estado ou frota_lojas_estado_so_pela_porta existe com outra assinatura ou com sobrecarga (sucessora no ar?); nada foi desfeito.';
   END IF;
   IF v_porta IS NOT NULL
-     AND (SELECT md5(replace(p.prosrc, E'\r', '')) FROM pg_proc p WHERE p.oid = v_porta) IS DISTINCT FROM '887317817697251468a3ffb12b710e61' THEN
+     AND (SELECT md5(replace(p.prosrc, E'\r', '')) FROM pg_proc p WHERE p.oid = v_porta) IS DISTINCT FROM 'd1dd1ae579be7a6f5c8687ea039cb3b8' THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: frota_mudar_estado não tem o corpo da 20261470000000 (sucessora no ar?); nada foi desfeito.';
   END IF;
   IF v_gatilho_fn IS NOT NULL

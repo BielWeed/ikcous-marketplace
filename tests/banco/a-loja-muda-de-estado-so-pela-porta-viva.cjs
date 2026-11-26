@@ -14,6 +14,8 @@
  *   (a) cada recusa da porta (vencida, sem validade, validade de mais de 1 h, destino desconhecido, de = para, sha, motivo, ENCERRAR,
  *       loja inexistente ou de outro ref, estado atual diferente, REABRIR, base diferente) sem escrever nada;
  *   (b) adormecer, acordar, encerrar e reabrir: UMA linha no histórico cada, com quem = session_user e em = estado_desde = now();
+ *       (b2) estado_sha só muda ao sair de ativa ou voltar a ela: adormecida na A, encerrada na B, adormecida de novo na C, e acordar
+ *       exige a base A (B e C recusadas); o rastro guarda o sha de cada momento;
  *   (c) IKCOUS e Savy nunca saem de ativa: nem pela porta, nem com a variável ligada à mão, nem nascendo ou trocando de ref;
  *   (d) UPDATE direto de estado, estado_desde ou estado_sha e INSERT fora de ativa recusados; a variável da porta é desligada logo
  *       depois do UPDATE dela; rotação da publishable_key, troca de URL, nome e ativa passam;
@@ -58,7 +60,7 @@ const CONSULTAS = path.join(__dirname, "../../scripts/publicacao/consultas");
 const A183 = "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado";
 const B183 = "183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente";
 
-const MD5_PORTA = "887317817697251468a3ffb12b710e61";
+const MD5_PORTA = "d1dd1ae579be7a6f5c8687ea039cb3b8";
 const MD5_GATILHO = "58d85afbab0acb79eef70d03c304fb80";
 const PORTA =
   "public.frota_mudar_estado(text, text, text, text, text, text, text, text, timestamptz)";
@@ -68,6 +70,7 @@ const CAF = "cafkrminfnokvgjqtkle";
 const SAVY = "gnjsrucsmjkajijrakzr";
 const SHA1 = "1".repeat(40);
 const SHA2 = "2".repeat(40);
+const SHA3 = "3".repeat(40);
 const COLUNAS_DA_PORTA = [
   "id",
   "nome",
@@ -399,6 +402,7 @@ async function comportamento(c) {
       r.rows[0].estado_sha,
     ],
     [ATIVA.id, ATIVA.nome, ATIVA.dominio_publico, "adormecida", SHA1],
+    "adormecer grava a release em que a loja saiu do ar",
   );
   assert.deepEqual(await estadoDe(c, ATIVA), {
     estado: "adormecida",
@@ -531,6 +535,82 @@ async function comportamento(c) {
     ],
     "rastro: um por mudança, na ordem",
   );
+
+  // (b2) estado_sha é a release em que a loja SAIU do ar: adormecida na A, encerrada na B, de volta a adormecida na C — a base para
+  // acordar continua A (com B ou C a prontidão pularia as migrations entre A e elas). O rastro guarda o sha de CADA momento.
+  // Num SAVEPOINT desfeito: a OUTRA volta ativa e sem rastro para as provas seguintes.
+  const erroB2 = await tentar(c, async () => {
+    await portaAceita(
+      c,
+      { l: OUTRA, ...ADORMECER, sha: SHA1 },
+      "b2: adormecer na A",
+    );
+    await portaAceita(
+      c,
+      {
+        l: OUTRA,
+        de: "adormecida",
+        para: "encerrada",
+        sha: SHA2,
+        confirmacao: `ENCERRAR ${OUTRA.id}`,
+      },
+      "b2: encerrar na B",
+    );
+    assert.equal(
+      (await estadoDe(c, OUTRA)).estado_sha,
+      SHA1,
+      "b2: adormecida -> encerrada preserva o estado_sha (a release em que saiu do ar)",
+    );
+    await portaAceita(
+      c,
+      {
+        l: OUTRA,
+        de: "encerrada",
+        para: "adormecida",
+        sha: SHA3,
+        confirmacao: `REABRIR ${OUTRA.id}`,
+      },
+      "b2: de encerrada para adormecida na C",
+    );
+    assert.equal(
+      (await estadoDe(c, OUTRA)).estado_sha,
+      SHA1,
+      "b2: encerrada -> adormecida preserva o estado_sha",
+    );
+    for (const base of [SHA2, SHA3])
+      await portaRecusa(
+        c,
+        { l: OUTRA, de: "adormecida", para: "ativa", sha: SHA3, base },
+        "FROTA_ESTADO_BASE_DIVERGENTE",
+        `b2: acordar com a base ${base.slice(0, 1)} (não a A em que saiu do ar)`,
+      );
+    await portaAceita(
+      c,
+      { l: OUTRA, de: "adormecida", para: "ativa", sha: SHA3, base: SHA1 },
+      "b2: acordar com a base A",
+    );
+    assert.deepEqual(
+      await estadoDe(c, OUTRA),
+      { estado: "ativa", estado_sha: SHA3, desde_agora: true },
+      "b2: voltar a ativa grava a release do momento",
+    );
+    assert.deepEqual(
+      (
+        await c.query(
+          "SELECT de || '>' || para || ':' || left(sha, 1) AS passo FROM public.frota_estado_historico WHERE loja_id = $1 ORDER BY id",
+          [OUTRA.id],
+        )
+      ).rows.map((x) => x.passo),
+      [
+        "ativa>adormecida:1",
+        "adormecida>encerrada:2",
+        "encerrada>adormecida:3",
+        "adormecida>ativa:3",
+      ],
+      "b2: o rastro guarda o sha de cada momento",
+    );
+  });
+  if (erroB2) throw erroB2;
 
   // (c) IKCOUS e Savy nunca saem de ativa.
   for (const l of [IKCOUS, SAVY_LOJA]) {
@@ -1622,6 +1702,26 @@ const MUTANTES = [
         "",
       ),
     "adormecer: UM rastro",
+  ],
+  [
+    "porta regrava o estado_sha em toda troca (adormecida -> encerrada perde a release em que a loja saiu do ar)",
+    (s) =>
+      trocar(
+        s,
+        "estado_sha = CASE WHEN v_atual <> 'ativa' AND p_para <> 'ativa' THEN fl.estado_sha ELSE p_sha END",
+        "estado_sha = p_sha",
+      ),
+    "b2: adormecida -> encerrada preserva o estado_sha",
+  ],
+  [
+    "porta preserva o estado_sha também ao sair de ativa (adormecer não grava a release)",
+    (s) =>
+      trocar(
+        s,
+        "CASE WHEN v_atual <> 'ativa' AND p_para <> 'ativa' THEN fl.estado_sha ELSE p_sha END",
+        "CASE WHEN p_para <> 'ativa' THEN fl.estado_sha ELSE p_sha END",
+      ),
+    "adormecer grava a release em que a loja saiu do ar",
   ],
   [
     "porta aceita sha fora do formato",

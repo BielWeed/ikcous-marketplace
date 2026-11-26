@@ -20,7 +20,7 @@ WITH fn AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'frota_mudar_estado: uma so, com o corpo da 20261470000000 (md5)', 'sim', CASE WHEN
     (SELECT count(*) FROM fn WHERE proname = 'frota_mudar_estado') = 1
-    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'frota_mudar_estado' AND h = '887317817697251468a3ffb12b710e61') THEN 'sim' ELSE 'nao' END
+    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'frota_mudar_estado' AND h = 'd1dd1ae579be7a6f5c8687ea039cb3b8') THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'frota_mudar_estado: atributos (plpgsql, SECURITY INVOKER, VOLATILE, search_path vazio, os 9 argumentos e as 6 colunas, o dono de frota_lojas) e EXECUTE so do dono', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(f.lanname = 'plpgsql' AND NOT f.prosecdef AND f.provolatile = 'v' AND f.proretset AND NOT f.proisstrict
         AND f.proconfig = ARRAY['search_path=""']::text[]

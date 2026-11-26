@@ -48,7 +48,8 @@ const M1 = "20261460000000";
 const M2 = "20261470000000"; // a migration nova da release B
 const LOTE_A = "99a-conferir-a-migration-nova-aplicado";
 const LOTE_B = "99b-antes-a-migration-nova-ausente";
-const MOTIVO = "Assinatura vencida ha 7 dias (aviso enviado)";
+// O autor de verdade vai no motivo: o rastro do banco grava quem = session_user (postgres, pelo MCP).
+const MOTIVO = "por Gabriel: assinatura vencida ha 7 dias (aviso enviado)";
 
 const politicaBase = () => ({
   lojasSemBackendGerenciado: [],
@@ -262,6 +263,24 @@ for (const [nome, argv] of [
   ],
   ["motivo curto", ADORMECER.map((x) => (x === MOTIVO ? "ok" : x))],
   ["motivo de 201", ADORMECER.map((x) => (x === MOTIVO ? "a".repeat(201) : x))],
+  [
+    "motivo sem o autor",
+    ADORMECER.map((x) =>
+      x === MOTIVO ? "Assinatura vencida ha 7 dias (aviso enviado)" : x,
+    ),
+  ],
+  [
+    "motivo com autor vazio",
+    ADORMECER.map((x) => (x === MOTIVO ? "por : assinatura vencida" : x)),
+  ],
+  [
+    "motivo só com o autor",
+    ADORMECER.map((x) => (x === MOTIVO ? "por Gabriel: " : x)),
+  ],
+  [
+    "motivo com o autor sem os dois-pontos",
+    ADORMECER.map((x) => (x === MOTIVO ? "por Gabriel assinatura vencida" : x)),
+  ],
   ["--de inválido", [...ENCERRAR, "--de", "encerrada"]],
 ]) {
   Deno.test(`uso errado (${nome}): sai 2, não imprime SQL e não lê a rede`, async () => {
@@ -274,7 +293,7 @@ for (const [nome, argv] of [
 }
 
 Deno.test("motivo de exatamente 200 caracteres com acento, número e pontuação permitida passa", async () => {
-  const motivo = `Loja não pagou (2 avisos): ${"á".repeat(173)}`;
+  const motivo = `por Gabriel: loja não pagou (2 avisos): ${"á".repeat(160)}`;
   assertEquals(motivo.length, 200);
   const { d } = deps();
   const r = await executar(
@@ -513,6 +532,52 @@ Deno.test("acordar loja SEM canal de backend: recusa (não há como conferir nem
   assert(!temPorta(r));
   assertStringIncludes(r.erros.join("\n"), "canal de backend");
   assertEquals(lidas.release, 0);
+});
+
+Deno.test("NUNCA PÔR PARA DORMIR O QUE NÃO SE ACORDA: adormecer e encerrar loja SEM canal de backend são recusados com a MESMA razão do acordar, antes de qualquer leitura", async () => {
+  const semCanal = () => {
+    const canais = canaisBase();
+    delete canais.canais[REF];
+    return canais;
+  };
+  const doAcordar = await executar(ACORDAR, deps({ canais: semCanal() }).d);
+  const razao = doAcordar.erros.find((l) => l.includes("canal de backend"));
+  assert(razao, doAcordar.erros.join("\n"));
+  for (const argv of [ADORMECER, ENCERRAR, [...ENCERRAR, "--de", "ativa"]]) {
+    const { d, lidas } = deps({ canais: semCanal() });
+    const r = await executar(argv, d);
+    assertEquals(r.codigo, 1, `${argv[0]}: ${r.erros.join("\n")}`);
+    assert(!temPorta(r), r.saida.join("\n"));
+    assertEquals(r.saida, []);
+    assertEquals(r.erros, [razao], argv[0]);
+    assertEquals(lidas, { producao: 0, release: 0 }, argv[0]);
+  }
+});
+
+Deno.test("loja em lojasSemBackendGerenciado (só front) dorme e acorda sem canal, como no publicar-release", async () => {
+  const canais = canaisBase();
+  delete canais.canais[REF];
+  const politica = politicaBase();
+  politica.lojasSemBackendGerenciado = [{ ref: REF, nome: "só front" }];
+  for (const argv of [ADORMECER, ENCERRAR, ACORDAR]) {
+    const { d, lidas } = deps({ canais, politica });
+    const r = await executar(argv, d);
+    assertEquals(r.codigo, 0, `${argv[0]}: ${r.erros.join("\n")}`);
+    assert(temPorta(r));
+    assertEquals(lidas.release, 0, argv[0]);
+  }
+});
+
+Deno.test("motivo sem o autor: o erro diz o formato (por <nome>: ...) e por quê (o banco grava quem = postgres)", async () => {
+  const { d } = deps();
+  const r = await executar(
+    ADORMECER.map((x) => (x === MOTIVO ? "Assinatura vencida" : x)),
+    d,
+  );
+  assertEquals(r.codigo, 2);
+  const erro = r.erros.join("\n");
+  assertStringIncludes(erro, '"por <nome>: <motivo>"');
+  assertStringIncludes(erro, "postgres");
 });
 
 Deno.test("reabrir encerrada: só com REABRIR <id> exato; sem ele o comando acorda de adormecida (a porta recusa se estiver encerrada)", async () => {

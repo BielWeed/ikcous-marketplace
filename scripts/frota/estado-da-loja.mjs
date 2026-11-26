@@ -10,14 +10,16 @@
  *
  * Uso:
  *   node scripts/frota/estado-da-loja.mjs --ver [--loja <id>]
- *   node scripts/frota/estado-da-loja.mjs --adormecer --loja <id> --ref <ref> --sha <40hex> --motivo "<texto>"
- *   node scripts/frota/estado-da-loja.mjs --acordar --loja <id> --ref <ref> --base <40hex> --sha <40hex> --motivo "<texto>" [--confirmar "REABRIR <id>"]
- *   node scripts/frota/estado-da-loja.mjs --encerrar --loja <id> --ref <ref> --sha <40hex> --motivo "<texto>" --confirmar "ENCERRAR <id>" [--de ativa|adormecida]
+ *   node scripts/frota/estado-da-loja.mjs --adormecer --loja <id> --ref <ref> --sha <40hex> --motivo "por <nome>: <texto>"
+ *   node scripts/frota/estado-da-loja.mjs --acordar --loja <id> --ref <ref> --base <40hex> --sha <40hex> --motivo "por <nome>: <texto>" [--confirmar "REABRIR <id>"]
+ *   node scripts/frota/estado-da-loja.mjs --encerrar --loja <id> --ref <ref> --sha <40hex> --motivo "por <nome>: <texto>" --confirmar "ENCERRAR <id>" [--de ativa|adormecida]
  *
  * O que cada um confere ANTES de imprimir:
  *   - todos: politica.json lojasQueNuncaDormem existe, não é vazia e só tem refs de 20 letras (sem ela nada sai, nem o --ver);
  *   - --ver: só um SELECT (nunca supabase_url nem publishable_key) das lojas e das 20 últimas mudanças do histórico;
- *   - os três que mudam: id, ref, sha, base e motivo no formato; o ref não é de uma loja que nunca dorme (IKCOUS, Savy); a confirmação é
+ *   - os três que mudam: id, ref, sha, base e motivo no formato (o motivo começa com "por <nome>: ", porque o rastro do banco grava
+ *     quem = postgres pelo MCP); o ref não é de uma loja que nunca dorme (IKCOUS, Savy); a loja tem canal de backend (ou é só front):
+ *     sem canal o --acordar recusaria, então nenhuma das três imprime nada (nunca pôr para dormir o que não se acorda); a confirmação é
  *     a frase exata; --sha é a release que a produção serve AGORA (version.json dos endereços de politica.json enderecosDeReserva, no
  *     contrato de conferir-frota.mjs, todos iguais);
  *   - --acordar: a prontidão DAQUELA loja contra a release atual (a mesma régua do publicar-release.mjs), com a base = a release em que
@@ -46,6 +48,12 @@ const RE_REF = /^[a-z]{20}$/;
 const RE_LOJA = /^[a-z0-9-]{1,64}$/;
 const RE_SHA = /^[0-9a-f]{40}$/;
 const RE_MOTIVO = /^[\p{L}\p{N} .,:;()/-]{3,200}$/u;
+/**
+ * O motivo COMEÇA com quem fez: "por <nome>: <motivo>". O rastro do banco grava quem = session_user, que pelo MCP é sempre postgres;
+ * sem o nome no motivo, o histórico não diz quem pôs a loja para dormir. Nome de 2 a 41 caracteres (letra no começo e no fim), e
+ * pelo menos 3 caracteres de motivo depois dos dois-pontos.
+ */
+const RE_AUTOR = /^[Pp]or \p{L}[\p{L}\p{N} .-]{0,39}\p{L}: \S.{2,}$/u;
 /** Quanto tempo a instrução impressa vale (a porta recusa acima de 60). */
 export const VALIDADE_MINUTOS = 30;
 const ACOES = new Set(["--ver", "--adormecer", "--acordar", "--encerrar"]);
@@ -119,6 +127,10 @@ export function lerArgumentos(argv) {
   if (v.motivo !== undefined && !RE_MOTIVO.test(v.motivo))
     throw new UsoErrado(
       "--motivo: de 3 a 200 caracteres, só letras, números, espaço e . , : ; ( ) / -",
+    );
+  if (v.motivo !== undefined && !RE_AUTOR.test(v.motivo))
+    throw new UsoErrado(
+      '--motivo tem de começar com quem fez, no formato "por <nome>: <motivo>" (ex.: "por Gabriel: assinatura vencida em 20/11"): o rastro do banco grava quem = postgres pelo MCP, e o autor de verdade só fica registrado no motivo',
     );
   if (v.de !== undefined && v.de !== "ativa" && v.de !== "adormecida")
     throw new UsoErrado("--de: ativa ou adormecida");
@@ -275,6 +287,12 @@ export async function executar(argv, deps) {
     return recusa(
       `o ref ${a.ref} é de uma loja que nunca dorme (politica.json lojasQueNuncaDormem): IKCOUS e Savy ficam sempre ativas`,
     );
+  // Nunca pôr para dormir (nem encerrar) uma loja que o --acordar recusaria por falta de canal: ela ficaria fora do ar mesmo pagando.
+  const semVolta = semCaminhoDeVolta(a, deps);
+  if (semVolta) {
+    erros.push(semVolta);
+    return { codigo: 1, saida, erros };
+  }
   let de;
   let para;
   let confirmacao = null;
@@ -337,23 +355,36 @@ export async function executar(argv, deps) {
   return { codigo: 0, saida, erros };
 }
 
+/** A loja só tem front (politica.json lojasSemBackendGerenciado): sem prontidão de banco, como no publicar-release. */
+function soFront(a, deps) {
+  return (deps.politica.lojasSemBackendGerenciado ?? []).some(
+    (l) => l?.ref === a.ref,
+  );
+}
+
+/**
+ * A razão (linha de erro) pela qual o --acordar recusaria esta loja ANTES de olhar o banco dela — hoje, só a falta de canal de backend —
+ * ou null. As três ações que mudam usam ESTA função: o que não se acorda também não se põe para dormir nem se encerra.
+ */
+export function semCaminhoDeVolta(a, deps) {
+  if (soFront(a, deps)) return null;
+  if (deps.canais?.canais?.[a.ref]) return null;
+  return `RECUSADO: a loja ${a.loja} (${a.ref}) não tem canal de backend em scripts/frota/canais-de-backend.json: sem canal não há como conferir nem consertar o banco dela, e uma loja que não se acorda não se põe para dormir nem se encerra (cadastre o canal antes)`;
+}
+
 /** --acordar: a loja só volta se estiver pronta para a release atual, com base = a release em que dormiu. */
 async function conferirProntidao(a, deps, erros, saida) {
   const canais = deps.canais;
-  const semBackend = new Set(
-    (deps.politica.lojasSemBackendGerenciado ?? []).map((l) => l?.ref),
-  );
-  if (semBackend.has(a.ref)) {
+  if (soFront(a, deps)) {
     erros.push(
       `${a.ref} está em politica.json lojasSemBackendGerenciado: só front, sem prontidão de banco (como no publicar-release).`,
     );
     return true;
   }
   const canal = canais?.canais?.[a.ref];
-  if (!canal) {
-    erros.push(
-      `RECUSADO: a loja ${a.loja} (${a.ref}) não tem canal de backend em scripts/frota/canais-de-backend.json: sem canal não há como conferir nem consertar o banco dela`,
-    );
+  const semVolta = semCaminhoDeVolta(a, deps);
+  if (semVolta) {
+    erros.push(semVolta);
     return false;
   }
   try {
@@ -401,9 +432,9 @@ async function conferirProntidao(a, deps, erros, saida) {
 const USO = [
   "Uso:",
   "  node scripts/frota/estado-da-loja.mjs --ver [--loja <id>]",
-  '  node scripts/frota/estado-da-loja.mjs --adormecer --loja <id> --ref <ref> --sha <40hex> --motivo "<texto>"',
-  '  node scripts/frota/estado-da-loja.mjs --acordar --loja <id> --ref <ref> --base <40hex> --sha <40hex> --motivo "<texto>" [--confirmar "REABRIR <id>"]',
-  '  node scripts/frota/estado-da-loja.mjs --encerrar --loja <id> --ref <ref> --sha <40hex> --motivo "<texto>" --confirmar "ENCERRAR <id>" [--de ativa|adormecida]',
+  '  node scripts/frota/estado-da-loja.mjs --adormecer --loja <id> --ref <ref> --sha <40hex> --motivo "por <nome>: <texto>"',
+  '  node scripts/frota/estado-da-loja.mjs --acordar --loja <id> --ref <ref> --base <40hex> --sha <40hex> --motivo "por <nome>: <texto>" [--confirmar "REABRIR <id>"]',
+  '  node scripts/frota/estado-da-loja.mjs --encerrar --loja <id> --ref <ref> --sha <40hex> --motivo "por <nome>: <texto>" --confirmar "ENCERRAR <id>" [--de ativa|adormecida]',
 ].join("\n");
 
 /** As dependências reais: política e canais do disco, version.json pela rede, prontidão pelos CLIs (só se --acordar pedir). */

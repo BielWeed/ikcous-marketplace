@@ -22,6 +22,8 @@
 --      atual); sair de encerrada sem p_confirmacao = 'REABRIR <id>'; voltar a ativa com estado_sha diferente de p_base (a release em que a
 --      loja dormiu, que o comando usou para conferir a prontidão). Passando tudo: tranca a linha (FOR UPDATE), troca SÓ estado,
 --      estado_desde e estado_sha, grava UMA linha no histórico e devolve id, nome, dominio_publico, estado, estado_desde e estado_sha.
+--      estado_sha só muda quando a loja sai de ativa ou volta a ela: entre adormecida e encerrada ele fica (é a release em que a loja
+--      SAIU do ar, a base para acordá-la); a linha do histórico guarda sempre o sha da release do momento.
 --      Quem gera a chamada é scripts/frota/estado-da-loja.mjs (validade de 30 minutos); roteiro: docs/runbooks/estado-de-vida-da-loja.md.
 --   c) gatilho frota_lojas_estado_so_pela_porta (BEFORE INSERT OR UPDATE OF estado, estado_desde, estado_sha, project_ref, por linha):
 --      recusa estado diferente de ativa para os refs cafkrminfnokvgjqtkle (IKCOUS) e gnjsrucsmjkajijrakzr (Savy) — os mesmos de
@@ -69,7 +71,7 @@
 --
 --   1. SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc
 --       WHERE oid = to_regprocedure('public.frota_mudar_estado(text, text, text, text, text, text, text, text, timestamptz)');
---      -- esperado: 887317817697251468a3ffb12b710e61.
+--      -- esperado: d1dd1ae579be7a6f5c8687ea039cb3b8.
 --   2. SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.frota_lojas_estado_so_pela_porta()');
 --      -- esperado: 58d85afbab0acb79eef70d03c304fb80.
 --   3. SELECT has_function_privilege('anon', 'public.frota_mudar_estado(text, text, text, text, text, text, text, text, timestamptz)', 'EXECUTE'),
@@ -135,7 +137,7 @@ BEGIN
   IF v_presentes = 3 AND (
        NOT EXISTS (
          SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
-          WHERE p.oid = v_porta AND md5(replace(p.prosrc, E'\r', '')) = '887317817697251468a3ffb12b710e61'
+          WHERE p.oid = v_porta AND md5(replace(p.prosrc, E'\r', '')) = 'd1dd1ae579be7a6f5c8687ea039cb3b8'
             AND l.lanname = 'plpgsql' AND NOT p.prosecdef AND p.provolatile = 'v' AND p.proretset AND NOT p.proisstrict
             AND p.proowner = v_dono AND p.proconfig = ARRAY['search_path=""']::text[]
             AND pg_get_function_result(p.oid) = 'TABLE(id text, nome text, dominio_publico text, estado text, estado_desde timestamp with time zone, estado_sha text)')
@@ -308,11 +310,14 @@ BEGIN
   END IF;
 
   -- A variável vale só durante o UPDATE (o gatilho a lê) e é desligada logo depois, na mesma transação.
+  -- estado_sha é a base para acordar: a release em que a loja SAIU do ar. Entre dois estados fora do ar (adormecida <-> encerrada) ele
+  -- fica como está; senão, adormecida na A, encerrada na B e reaberta exigiria a base B e a prontidão pularia as migrations entre A e B.
   PERFORM set_config('ikcous.frota_estado_pela_porta', 'sim', true);
   RETURN QUERY
     WITH mudou AS (
       UPDATE public.frota_lojas fl
-         SET estado = p_para, estado_desde = now(), estado_sha = p_sha
+         SET estado = p_para, estado_desde = now(),
+             estado_sha = CASE WHEN v_atual <> 'ativa' AND p_para <> 'ativa' THEN fl.estado_sha ELSE p_sha END
        WHERE fl.id = p_id AND fl.project_ref = p_ref
       RETURNING fl.id, fl.nome, fl.dominio_publico, fl.estado, fl.estado_desde, fl.estado_sha
     )
@@ -346,7 +351,7 @@ BEGIN
   END IF;
   IF NOT EXISTS (
        SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
-        WHERE p.oid = v_porta AND md5(replace(p.prosrc, E'\r', '')) = '887317817697251468a3ffb12b710e61'
+        WHERE p.oid = v_porta AND md5(replace(p.prosrc, E'\r', '')) = 'd1dd1ae579be7a6f5c8687ea039cb3b8'
           AND l.lanname = 'plpgsql' AND NOT p.prosecdef AND p.provolatile = 'v' AND p.proretset AND NOT p.proisstrict
           AND p.proowner = v_dono AND p.proconfig = ARRAY['search_path=""']::text[]
           AND pg_get_function_arguments(p.oid) = 'p_id text, p_ref text, p_de text, p_para text, p_sha text, p_base text, p_motivo text, p_confirmacao text, p_valido_ate timestamp with time zone'
