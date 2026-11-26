@@ -3170,7 +3170,7 @@ const ROL_DA_150C = [
   "controle: catalogo publico visivel",
   "assinatura_da_loja_definir_chave: uma so, com o corpo da 20261399998000 (md5)",
   "assinatura_da_loja_definir_chave: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna void) e EXECUTE so para service_role (anon, authenticated e PUBLIC nada)",
-  "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 (md5)",
+  "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 ou da sucessora 20261590000000 (md5)",
   "assinatura_da_loja_gravar: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna jsonb) e EXECUTE so para anon e authenticated (service_role e PUBLIC nada)",
   "assinatura_da_loja_chave: tabela comum com RLS ligada sem FORCE e nenhuma politica",
   "assinatura_da_loja_chave: nenhum privilegio para anon, authenticated, service_role e PUBLIC (tabela e coluna)",
@@ -3547,10 +3547,30 @@ const ROL_DA_193M = [
   "product_variants.price_override: linhas com Infinity ou -Infinity ja guardado (NULL nao conta)",
   "coupons.value: linhas com Infinity ou -Infinity ja guardado",
 ];
+// Lote 195 (20261590000000, a loja guarda o dia da pausa do teste: a coluna assinatura_da_loja.pausa_em e a porta assinatura_da_loja_gravar com a 11a
+// chave opcional; aditiva, exige a 20261399998000). Somente catalogo: nenhuma linha do cartao nem da chave e' lida e nenhuma funcao e' chamada. A 195a
+// prova a coluna (date, anulavel, sem padrao), o corpo novo da porta (md5), os atributos e o EXECUTE, e definir_chave e o leitor intactos (6); antes do
+// apply responde "nao", nunca erro. A 195b prova a ausencia da coluna e as premissas do pre-voo (a porta da 20261399998000, definir_chave) (4).
+const ROL_DA_195A = [
+  "controle: catalogo publico visivel",
+  "assinatura_da_loja.pausa_em: date, anulavel e sem padrao",
+  "assinatura_da_loja_gravar: uma so, com o corpo da 20261590000000 (md5)",
+  "assinatura_da_loja_gravar: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna jsonb) e EXECUTE so para anon e authenticated (service_role e PUBLIC nada)",
+  "assinatura_da_loja_definir_chave: intacta, com o corpo da 20261399998000 (md5)",
+  "assinatura_da_loja_ler: intacto, com o corpo da 20261381000000 (md5)",
+];
+const ROL_DA_195B = [
+  "controle: catalogo publico visivel",
+  "assinatura_da_loja.pausa_em: ainda NAO existe (o cartao tem as 13 colunas da 20261177000000)",
+  "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 (md5; a premissa do pre-voo)",
+  "assinatura_da_loja_definir_chave: intacta, com o corpo da 20261399998000 (md5)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "193a-conferir-o-infinito-nao-entra-no-banco-aplicado": ROL_DA_193A,
   "193b-antes-o-infinito-nao-entra-no-banco-ausente": ROL_DA_193B,
   "193m-medir-infinitos-guardados": ROL_DA_193M,
+  "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado": ROL_DA_195A,
+  "195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente": ROL_DA_195B,
   "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado": ROL_DA_192A,
   "192b-antes-o-admin-copia-e-apaga-as-fotos-ausente": ROL_DA_192B,
   "188a-conferir-o-livro-de-registro-aplicado": ROL_DA_188A,

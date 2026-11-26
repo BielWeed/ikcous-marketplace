@@ -1096,6 +1096,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "193a-conferir-o-infinito-nao-entra-no-banco-aplicado",
   "193b-antes-o-infinito-nao-entra-no-banco-ausente",
   "193m-medir-infinitos-guardados",
+  "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado",
+  "195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

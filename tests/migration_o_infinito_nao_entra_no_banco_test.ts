@@ -89,13 +89,21 @@ Deno.test("1560: avaliarFase0 nao recusa o par; sem BEGIN/COMMIT; LF; lock_timeo
     assert.ok(!lerBruto(n).includes("\r"), n);
 });
 
-Deno.test("1560: o numero e' o maior da raiz (nenhuma migration viva depois dela)", () => {
+// 20261590000000: a loja guarda o dia da pausa do teste (PR do aviso de teste encerrado).
+const SUCESSORAS = ["20261590000000"];
+
+Deno.test("1560: depois dela so migrations sucessoras conhecidas", () => {
   const versoes = [];
   for (const e of Deno.readDirSync(new URL("supabase/migrations/", DIR)))
     if (e.isFile && /^\d{14}_.+\.sql$/.test(e.name))
       versoes.push(e.name.slice(0, 14));
   versoes.sort();
-  assert.equal(versoes.at(-1), VERSAO);
+  // Sucessoras conhecidas (cada uma com o proprio teste): so elas podem vir depois.
+  const depois = versoes.slice(versoes.indexOf(VERSAO) + 1);
+  assert.deepEqual(
+    depois.filter((v) => !SUCESSORAS.includes(v)),
+    [],
+  );
   assert.equal(versoes.filter((v) => v === VERSAO).length, 1);
 });
 
@@ -271,8 +279,15 @@ Deno.test("1560: publicacao — lote unico (193a/193b), rol fechado, consultas s
   assert.equal(lote[0].ausenciaConfirmadaPor, B);
   for (const campo of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
     assert.ok(!(campo in lote[0]), campo);
-  // o ultimo lote do arquivo (lotes novos vao no fim, sem reordenar)
-  assert.equal(canais.provasDeObjetos.at(-1).consulta, A);
+  // lotes novos vao no fim, sem reordenar: depois deste so os das sucessoras conhecidas
+  const idx = canais.provasDeObjetos.findIndex((p) => p.consulta === A);
+  const seguintes = canais.provasDeObjetos
+    .slice(idx + 1)
+    .flatMap((p) => p.versoes);
+  assert.deepEqual(
+    seguintes.filter((v) => !SUCESSORAS.includes(v)),
+    [],
+  );
   const politica = JSON.parse(lerRepo("scripts/frota/politica.json"));
   assert.ok(
     !politica.migrationsForaDaRelease.some((m) => m.versao === VERSAO),

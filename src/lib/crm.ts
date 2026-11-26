@@ -226,6 +226,7 @@ export function lerAssinaturaDaLoja(json: unknown): AssinaturaDaLoja | null {
     inicioEm: comoTexto(raiz.inicio_em),
     proximaCobrancaEm: comoTexto(raiz.proxima_cobranca_em),
     testeAte: comoTexto(raiz.teste_ate),
+    pausaEm: comoTexto(raiz.pausa_em),
     recursos: comoLista(raiz.recursos)
       .map((recurso) => comoTexto(recurso))
       .filter((recurso): recurso is string => recurso !== null),
@@ -844,6 +845,12 @@ export function formatarData(valor: string | null | undefined): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+/** `YYYY-MM-DD` → "03/12", sem passar por fuso (o dia já é o do calendário). */
+export function formatarDiaEMes(dia: string): string {
+  const [, mes, data] = dia.split("-");
+  return `${data}/${mes}`;
+}
+
 /**
  * As datas do cartão "Sua assinatura", na ordem em que aparecem.
  * - `atrasada`: a data enviada é a da mensalidade mais antiga em aberto, então
@@ -932,6 +939,56 @@ export function contagemDoTeste(
     (Date.UTC(a2, m2 - 1, d2) - Date.UTC(a1, m1 - 1, d1)) / 86_400_000 + 1;
   if (faltam === 1) return "Hoje é o último dia grátis";
   return faltam >= 2 ? `Faltam ${faltam} dias` : null;
+}
+
+/**
+ * Só `YYYY-MM-DD` de um dia que existe no calendário: as três colunas são
+ * `date`, então instante, `infinity` ou `2026-02-31` já é sinal torto.
+ */
+function diaRealDoAviso(valor: string | null): string | null {
+  if (!valor || !PADRAO_DIA.test(valor)) return null;
+  return somarDias(valor, 0) === valor ? valor : null;
+}
+
+/**
+ * O teste grátis acabou sem pagamento: a gestão manda `atrasada` com
+ * `teste_ate` = `proxima_cobranca_em` (e, desde 26/11/2026, o `pausa_em`).
+ * Quem só testou não deve nada, então o cartão troca "Atrasada" por "Teste
+ * encerrado" — mas SÓ com o sinal completo e coerente: valor > 0, vencimento
+ * já chegado (dia de São Paulo) e `pausa_em` nulo ou depois do vencimento.
+ * Qualquer sinal torto devolve `null` e o cartão continua o de hoje: na dúvida,
+ * uma dívida de verdade nunca é amaciada. `pagueAte` (véspera da pausa) e
+ * `pausaEm` só vêm enquanto hoje é anterior à pausa.
+ */
+export function avisoDoTesteEncerrado(
+  assinatura: Pick<
+    AssinaturaDaLoja,
+    "status" | "valorMensal" | "proximaCobrancaEm" | "testeAte" | "pausaEm"
+  >,
+  agora: Date = new Date(),
+): {
+  venceuEm: string;
+  valorMensal: number;
+  pagueAte: string | null;
+  pausaEm: string | null;
+} | null {
+  const { status, valorMensal } = assinatura;
+  if (status !== "atrasada") return null;
+  if (valorMensal == null || !Number.isFinite(valorMensal) || valorMensal <= 0)
+    return null;
+  const venceuEm = diaRealDoAviso(assinatura.proximaCobrancaEm);
+  if (!venceuEm || diaRealDoAviso(assinatura.testeAte) !== venceuEm)
+    return null;
+  const hoje = diaEmSaoPaulo(agora);
+  if (venceuEm > hoje) return null;
+  if (assinatura.pausaEm === null) {
+    return { venceuEm, valorMensal, pagueAte: null, pausaEm: null };
+  }
+  const pausaEm = diaRealDoAviso(assinatura.pausaEm);
+  if (!pausaEm || pausaEm <= venceuEm) return null;
+  return hoje < pausaEm
+    ? { venceuEm, valorMensal, pagueAte: somarDias(pausaEm, -1), pausaEm }
+    : { venceuEm, valorMensal, pagueAte: null, pausaEm: null };
 }
 
 // ─── Erro ────────────────────────────────────────────────────────────────

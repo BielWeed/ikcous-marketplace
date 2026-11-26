@@ -2,6 +2,7 @@
 -- Somente catalogo: NAO le nenhuma linha de assinatura_da_loja_chave (e' o hash da chave da loja) nem de assinatura_da_loja (o cartao) e NAO chama as funcoes. Prova que as duas
 -- funcoes tem o corpo desta migration, que o visitante (anon) e o logado (authenticated) alcancam SO a porta (assinatura_da_loja_gravar) e nunca o definir_chave, que o
 -- definir_chave e' so do service_role e que a tabela da chave esta selada a todo papel de aplicacao. Antes do apply esta consulta responde "nao" (a 150c negativa e' esperada), nunca erro.
+-- SUCESSORA: a 20261590000000 (a loja guarda o dia da pausa do teste) troca o corpo da porta (md5 1ea3a3dd...: a 11a chave opcional pausa_em). O item do corpo da porta aceita os dois; o resto do rol nao muda.
 WITH fn AS (
   SELECT p.oid, p.proname, md5(replace(p.prosrc, chr(13), '')) AS h, l.lanname, p.prosecdef, p.provolatile, p.proisstrict, p.proretset, p.proconfig,
          pg_get_function_result(p.oid) AS resultado, pg_get_function_arguments(p.oid) AS argumentos
@@ -23,9 +24,9 @@ WITH fn AS (
         AND NOT EXISTS (SELECT 1 FROM pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
                          WHERE p.oid = f.oid AND a.grantee = 0 AND a.privilege_type = 'EXECUTE'))
        FROM fn f WHERE f.oid = to_regprocedure('public.assinatura_da_loja_definir_chave(text, boolean)')), false) THEN 'sim' ELSE 'nao' END
-  UNION ALL SELECT 'assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 (md5)', 'sim', CASE WHEN
+  UNION ALL SELECT 'assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 ou da sucessora 20261590000000 (md5)', 'sim', CASE WHEN
     (SELECT count(*) FROM fn WHERE proname = 'assinatura_da_loja_gravar') = 1
-    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'assinatura_da_loja_gravar' AND h = '565f82cb9a65ed96e4702db9d97bf0d6') THEN 'sim' ELSE 'nao' END
+    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'assinatura_da_loja_gravar' AND h IN ('565f82cb9a65ed96e4702db9d97bf0d6', '1ea3a3dddecfeb7a0305b0e4e02263b5')) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'assinatura_da_loja_gravar: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna jsonb) e EXECUTE so para anon e authenticated (service_role e PUBLIC nada)', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(f.lanname = 'plpgsql' AND f.prosecdef AND f.provolatile = 'v' AND NOT f.proisstrict AND NOT f.proretset AND f.resultado = 'jsonb'
         AND f.proconfig = ARRAY['search_path=public, pg_temp']::text[]
