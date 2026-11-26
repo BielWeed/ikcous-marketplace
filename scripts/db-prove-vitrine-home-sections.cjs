@@ -143,13 +143,20 @@ function lerDatabaseUrl() {
   throw new Error("DATABASE_URL não encontrada.");
 }
 
+/** Bloco `$tag$...$tag$` inteiro. A tag segue a regra do Postgres: abre com
+ * letra/`_` (ou code point ≥ U+0080) e continua com dígito também
+ * (`$preflight_2026$`); sem tag, `\1` vazio fecha no `$$`. */
+const PADRAO_BLOCO_DOLLAR_QUOTE =
+  // eslint-disable-next-line security/detect-unsafe-regex -- um quantificador por grupo, sem aninhamento; entrada é .sql local, nunca rede.
+  /\$((?:[A-Za-z_]|\P{ASCII})(?:[A-Za-z0-9_]|\P{ASCII})*)?\$[\s\S]*?\$\1\$/gu;
+
 /** Apaga (com espaços, preservando as quebras de linha) o conteúdo de todo
  * bloco delimitado por `$tag$...$tag$` (dollar-quoting do plpgsql). Existe
  * porque o corpo de `upsert_store_config` tem um `BEGIN` legítimo e
  * obrigatório na coluna 0 — sem isto, a guarda abaixo reprovaria a própria
  * migration correta. */
 function mascararCorpoDolarQuotado(sql) {
-  return sql.replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, (bloco) =>
+  return sql.replace(PADRAO_BLOCO_DOLLAR_QUOTE, (bloco) =>
     bloco.replace(/[^\n]/g, " "),
   );
 }

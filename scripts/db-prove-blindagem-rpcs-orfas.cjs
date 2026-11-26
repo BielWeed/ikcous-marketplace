@@ -185,6 +185,14 @@ function acharUsosNoCodigo() {
   return { chamadas, citacoes };
 }
 
+/** Tag de dollar-quote do Postgres: abre com letra/`_` (ou code point
+ * ≥ U+0080) e continua com dígito também (`$preflight_2026$`); vazia é
+ * `$$`; `$1` é parâmetro, nunca tag. Mesmo padrão de PADRAO_TAG_DOLLAR_QUOTE
+ * em scripts/ci/banco/util.cjs. */
+const PADRAO_TAG_DOLLAR_QUOTE =
+  // eslint-disable-next-line security/detect-unsafe-regex -- um quantificador só, sem aninhamento; entrada é .sql local, nunca rede.
+  /^\$((?:[A-Za-z_]|\P{ASCII})(?:[A-Za-z0-9_]|\P{ASCII})*)?\$/u;
+
 async function main() {
   const client = new Client({
     connectionString: lerDatabaseUrl(),
@@ -464,7 +472,7 @@ async function main() {
       }
       // dollar-quoting no nível zero: $$ ou $tag$
       if (ch === "$") {
-        const m = /^\$[a-zA-Z_]*\$/.exec(sql.slice(i));
+        const m = PADRAO_TAG_DOLLAR_QUOTE.exec(sql.slice(i));
         if (m) {
           emDollar = m[0];
           atual += m[0];

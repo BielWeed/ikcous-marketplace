@@ -21,6 +21,12 @@
  *    caractere 0 do arquivo e em chamadas repetidas);
  *  - `codigoSemLiteral` e `instrucoesDeNivelDeTopo`: comentário, string e
  *    dollar-quote opacos, abertos sem fechamento, `$1` que não é dollar-quote;
+ *  - a tag de dollar-quote com DÍGITO (`$preflight_20261460000000$`): metade
+ *    das migrations usa uma, e o regex antigo (`[A-Za-z_]*`) não a reconhecia
+ *    — o corpo da função vazava como código e cada BEGIN/END de PL/pgSQL
+ *    virava uma instrução de nível de topo. O corpus inteiro de
+ *    supabase/migrations é conferido contra `dividirEmStatements`
+ *    (scripts/publicacao/conferir-banco.cjs) como oráculo;
  *  - o resumo do job só vai para o arquivo quando GITHUB_STEP_SUMMARY existe.
  *
  * Nenhum teste abre conexão: o cliente de banco é um dublê.
@@ -364,6 +370,135 @@ Deno.test("instrucoesDeNivelDeTopo: parte no ';' de fora de literal, tira o espa
   assertEquals(instrucoesDeNivelDeTopo("x; y"), ["x", "y"]);
   assertEquals(instrucoesDeNivelDeTopo(";;;"), []);
   assertEquals(instrucoesDeNivelDeTopo("-- nada\n"), []);
+});
+
+Deno.test("codigoSemLiteral: tag de dollar-quote com dígito no meio ou no fim é tag (o corpo some inteiro)", () => {
+  const casos = [
+    [
+      "DO $preflight_20261460000000$ BEGIN x; END $preflight_20261460000000$;",
+      "DO  ;",
+    ],
+    ["$a1b$ BEGIN; $a1b$ y", "  y"],
+    ["$t9$ END; $t9$", " "],
+    // Letra fora do ASCII também abre tag no Postgres (identificador).
+    ["$função$ BEGIN; $função$ z", "  z"],
+  ];
+  for (const [entrada, esperado] of casos) {
+    assertEquals(codigoSemLiteral(entrada), esperado, JSON.stringify(entrada));
+  }
+  assertEquals(
+    instrucoesDeNivelDeTopo(
+      "CREATE FUNCTION f() RETURNS void AS $fn_2026$\nBEGIN\n  PERFORM 1;\nEND;\n$fn_2026$ LANGUAGE plpgsql;\nSELECT 1;",
+    ),
+    ["CREATE FUNCTION f() RETURNS void AS   LANGUAGE plpgsql", "SELECT 1"],
+  );
+});
+
+Deno.test("codigoSemLiteral: `$` seguido de DÍGITO é parâmetro, nunca tag (nem `$1$`); `$$` continua sendo dollar-quote", () => {
+  // A tag segue a regra do identificador sem aspas: não começa com dígito.
+  assertEquals(codigoSemLiteral("SELECT $1, $10 ; $2"), "SELECT $1, $10 ; $2");
+  assertEquals(codigoSemLiteral("$1$ a; $1$"), "$1$ a; $1$");
+  assertEquals(instrucoesDeNivelDeTopo("$1$ a; $1$"), ["$1$ a", "$1$"]);
+  assertEquals(codigoSemLiteral("DO $$ BEGIN; END $$;"), "DO  ;");
+  assertEquals(codigoSemLiteral("a $$ x $$ b $_$ y $_$ c"), "a   b   c");
+});
+
+/** Primeira palavra de cada instrução, em caixa alta. */
+function primeiraPalavra(instrucao) {
+  return (/^[A-Za-z]+/.exec(instrucao)?.[0] ?? "").toUpperCase();
+}
+
+/** O mesmo filtro de "statement vazio" de scripts/publicacao/conferir-banco.cjs
+ * (lá não é exportado). */
+function semComentarios(sql) {
+  return sql
+    .replace(/--[^\n\r]*/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .trim();
+}
+
+const CONTROLE_DE_TRANSACAO = new Set([
+  "BEGIN",
+  "END",
+  "COMMIT",
+  "ROLLBACK",
+  "START",
+]);
+
+Deno.test("instrucoesDeNivelDeTopo: em TODAS as migrations, BEGIN/END/COMMIT de nível de topo são os mesmos que o lexer de conferir-banco vê (nenhum vazado de corpo de função)", () => {
+  const {
+    dividirEmStatements,
+  } = require("../scripts/publicacao/conferir-banco.cjs");
+  const pasta = new URL("../supabase/migrations/", import.meta.url);
+  const arquivos = [...Deno.readDirSync(pasta)]
+    .filter((e) => e.isFile && e.name.endsWith(".sql"))
+    .map((e) => e.name)
+    .sort();
+  // Guarda contra passar no vazio: o corpus existe e exercita a tag com dígito.
+  assert(arquivos.length > 200, `só ${arquivos.length} migrations lidas`);
+  const textos = arquivos.map((nome) => [
+    nome,
+    Deno.readTextFileSync(new URL(nome, pasta)),
+  ]);
+  assert(
+    textos.some(([, t]) =>
+      /\$[A-Za-z_][A-Za-z_0-9]*[0-9][A-Za-z_0-9]*\$/.test(t),
+    ),
+    "nenhuma migration com tag de dollar-quote com dígito: o teste não prova nada",
+  );
+
+  const divergentes = [];
+  const sequenciaDiferente = [];
+  for (const [nome, texto] of textos) {
+    const palavrasDoUtil = instrucoesDeNivelDeTopo(texto).map(primeiraPalavra);
+    const palavrasDoOraculo = dividirEmStatements(texto)
+      .map(semComentarios)
+      .filter((s) => s !== "")
+      .map(primeiraPalavra);
+    const doUtil = palavrasDoUtil.filter((p) => CONTROLE_DE_TRANSACAO.has(p));
+    const doOraculo = palavrasDoOraculo.filter((p) =>
+      CONTROLE_DE_TRANSACAO.has(p),
+    );
+    if (doUtil.join(",") !== doOraculo.join(",")) {
+      divergentes.push(
+        `${nome}: util=${doUtil.length} [${doUtil.slice(0, 4)}…] oráculo=[${doOraculo}]`,
+      );
+    }
+    // Mais forte: a mesma lista de instruções, uma a uma, pela 1ª palavra.
+    if (palavrasDoUtil.join(",") !== palavrasDoOraculo.join(",")) {
+      sequenciaDiferente.push(
+        `${nome}: util=${palavrasDoUtil.length} oráculo=${palavrasDoOraculo.length}`,
+      );
+    }
+  }
+  assertEquals(divergentes, []);
+  assertEquals(sequenciaDiferente, []);
+});
+
+Deno.test("nenhum script de scripts/ reconhece tag de dollar-quote com o regex sem dígito (`$[A-Za-z_]*$`)", () => {
+  // O mesmo regex tinha sido copiado para outras provas de banco. Esta trava
+  // impede a cópia de voltar: a forma certa é a de PADRAO_TAG_DOLLAR_QUOTE.
+  const defeituoso = /\\\$\(?\[(?:A-Za-z_|a-zA-Z_)\]\*\)?\\\$/;
+  const raiz = new URL("../scripts/", import.meta.url);
+  const achados = [];
+  const varrer = (pasta) => {
+    for (const e of Deno.readDirSync(pasta)) {
+      if (e.isDirectory) {
+        varrer(new URL(`${e.name}/`, pasta));
+      } else if (/\.(c|m)?js$/.test(e.name)) {
+        const url = new URL(e.name, pasta);
+        Deno.readTextFileSync(url)
+          .split("\n")
+          .forEach((linha, n) => {
+            if (defeituoso.test(linha)) {
+              achados.push(`${url.pathname.split("/scripts/")[1]}:${n + 1}`);
+            }
+          });
+      }
+    }
+  };
+  varrer(raiz);
+  assertEquals(achados, []);
 });
 
 Deno.test("anexarAoSummaryDoJob: com GITHUB_STEP_SUMMARY grava o bloco no arquivo; sem a variável só imprime", () => {
