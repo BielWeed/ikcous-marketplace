@@ -443,3 +443,136 @@ Deno.test("20261600: o rollback DESTRUTIVO so apaga a tabela, so com confirmacao
   assertEquals([...sem.matchAll(/\bDROP\b/g)].length, 1, "um DROP so");
   assert(!/\bCASCADE\b/i.test(sem));
 });
+
+const contar = (texto: string, trecho: string) =>
+  texto.split(trecho).length - 1;
+const A196 = "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado";
+const B196 = "196b-antes-a-loja-pausa-o-pedido-novo-ausente";
+
+Deno.test("20261600: o db-apply confere as 4 funcoes com decisao pelos marcadores, cada um UMA vez no arquivo", () => {
+  const dbApply = Deno.readTextFileSync(`${RAIZ}/scripts/db-apply.cjs`).replace(
+    /\r/g,
+    "",
+  );
+  const i = dbApply.indexOf(`"${NOME}": [`);
+  assert(i >= 0, "a entrada da 20261600000000 nao esta no db-apply");
+  const entrada = dbApply.slice(i, dbApply.indexOf("\n  ],\n", i));
+  for (const funcao of [
+    "data_da_pausa_de_vendas",
+    "motivo_da_loja_nao_aceitar_pedido",
+    "a_loja_aceita_pedido_novo",
+    "situacao_das_vendas_da_loja",
+  ])
+    assertStringIncludes(entrada, `funcao: "${funcao}"`);
+  for (const marcador of [
+    "WHEN p_teste_ate IS NOT NULL AND p_teste_ate = p_proxima AND p_pausa_em IS NULL THEN NULL",
+    "p_suspensa_desde, p_pausa_em) AS inicio",
+    "IF v_inicio IS NULL OR v_hoje < v_inicio THEN",
+    "RAISE EXCEPTION 'Esta loja não está aceitando pedidos agora.' USING ERRCODE = 'P0001';",
+    "RAISE EXCEPTION 'A loja está em manutenção. Tente de novo mais tarde.' USING ERRCODE = 'P0001';",
+  ]) {
+    assertStringIncludes(entrada, marcador);
+    assertEquals(contar(migration, marcador), 1, marcador);
+  }
+});
+
+Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferir-banco, rpc-ci (2 caminhos + a prova) e CONSULTAS_DE_ROL_FECHADO registram a migration", async () => {
+  const {
+    contarStatements,
+    ROL_FECHADO_POR_CONSULTA,
+  } = require("../scripts/publicacao/conferir-banco.cjs");
+  const { CONSULTAS_DE_ROL_FECHADO, lerCanais } = await import(
+    new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
+  );
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A196]?.length, 10);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B196]?.length, 8);
+  const menu = Deno.readTextFileSync(
+    `${RAIZ}/.github/workflows/conferir-banco-da-loja.yml`,
+  ).replace(/\r/g, "");
+  const rpc = Deno.readTextFileSync(
+    `${RAIZ}/.github/workflows/rpc-ci.yml`,
+  ).replace(/\r/g, "");
+  for (const nome of [A196, B196]) {
+    const sql = Deno.readTextFileSync(
+      `${RAIZ}/scripts/publicacao/consultas/${nome}.sql`,
+    ).replace(/\r/g, "");
+    assertEquals(contarStatements(sql), 1, `${nome}: UM statement`);
+    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    const rotulos = [...sql.matchAll(/SELECT '([^']+)', '(?:sim|nao)'/g)].map(
+      (m) => m[1],
+    );
+    assertEquals(rotulos.sort(), [...rol].sort(), `${nome}: rotulos != rol`);
+    const cod = sql.replace(/--.*$/gm, "").replace(/'[^']*'/g, "''");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|GRANT|REVOKE|TRUNCATE|EXECUTE|COPY|SET)\b/.test(
+        cod,
+      ),
+      `${nome}: so leitura`,
+    );
+    // nenhuma linha de pedido, do cartao, da chave nem da pausa; nenhuma funcao da migration chamada
+    assert(
+      !/\bFROM\s+(public\.)?(marketplace_orders|assinatura_da_loja(_chave)?|pausa_de_vendas)\b/i.test(
+        cod,
+      ),
+      `${nome}: nao le linha de pedido, cartao, chave nem pausa`,
+    );
+    for (const f of [
+      "data_da_pausa_de_vendas(",
+      "motivo_da_loja_nao_aceitar_pedido(",
+      "situacao_das_vendas_da_loja(",
+    ])
+      assert(!cod.includes(f), `${nome}: chama ${f}`);
+    assertStringIncludes(sql, "ORDER BY ok, item;");
+    assert(
+      CONSULTAS_DE_ROL_FECHADO.has(nome),
+      `${nome} fora de CONSULTAS_DE_ROL_FECHADO`,
+    );
+    assertStringIncludes(menu, `          - ${nome}\n`);
+    assertEquals(
+      contar(rpc, `"scripts/publicacao/consultas/${nome}.sql"`),
+      2,
+      `${nome}: nas duas listas de caminhos do rpc-ci`,
+    );
+  }
+  // a 196a confere os md5 que o arquivo carrega (o mesmo corpo que o pos-voo exige)
+  const a196 = Deno.readTextFileSync(
+    `${RAIZ}/scripts/publicacao/consultas/${A196}.sql`,
+  );
+  for (const [nome] of FUNCOES)
+    assertStringIncludes(a196, `('${nome}', '${hashDe(nome)}',`);
+  // a 196b le de dado SO a contagem de manutencao de store_config, por to_jsonb
+  const b196 = semComentario(
+    Deno.readTextFileSync(`${RAIZ}/scripts/publicacao/consultas/${B196}.sql`),
+  );
+  assertEquals(
+    [...b196.matchAll(/\bFROM\s+public\.(\w+)/g)].map((m) => m[1]),
+    ["store_config"],
+  );
+  assertStringIncludes(b196, "(to_jsonb(s) ->> 'manutencao') = 'true'");
+  assertEquals(
+    contar(
+      rpc,
+      "node tests/banco/rodar-isolado.cjs tests/banco/a-loja-pausa-o-pedido-novo-viva.cjs",
+    ),
+    1,
+  );
+  const lote = lerCanais().provasDeObjetos.find(
+    (p: { consulta: string }) => p.consulta === A196,
+  );
+  assert(lote, "lote ausente em canais-de-backend.json");
+  assertEquals(lote.versoes, ["20261600000000"]);
+  assertEquals(lote.ausenciaConfirmadaPor, B196);
+  assertEquals(lote.backfillLedger, undefined);
+  assertEquals(lote.nuncaAplicar, undefined);
+  for (const trecho of [
+    "aditiva",
+    "exige a 20261197000000",
+    "20261399998000",
+    "20261590000000",
+    "manutencao",
+  ])
+    assertStringIncludes(lote._comentario, trecho);
+  // o lote desta e' o ULTIMO de provasDeObjetos (os anteriores nao se reordenam)
+  const lotes = lerCanais().provasDeObjetos;
+  assertEquals(lotes[lotes.length - 1].consulta, A196);
+});

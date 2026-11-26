@@ -1062,6 +1062,64 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261600000000: a loja pausa o pedido novo. Funcoes NOVAS (nenhuma sucessora): sem esta entrada a migration saia PULADA (saida 2). Os marcadores sao as
+  // decisoes que, tiradas, voltam a vender com a loja pausada ou pausam antes da hora: o sinal do teste sem pausa_em nao pausa, o inicio nunca antes de
+  // pausa_em, o motivo so a partir do inicio, as duas recusas do gatilho e o admin de AGORA na manutencao e no painel. A tabela, o corpo exato (md5), a ACL
+  // e os 2 gatilhos sao da consulta 196a e da prova viva.
+  "20261600000000_a_loja_pausa_o_pedido_novo.sql": [
+    {
+      funcao: "data_da_pausa_de_vendas",
+      esperado: [
+        {
+          texto:
+            "WHEN p_teste_ate IS NOT NULL AND p_teste_ate = p_proxima AND p_pausa_em IS NULL THEN NULL",
+          vezes: 1,
+        },
+        { texto: "p_suspensa_desde, p_pausa_em) AS inicio", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "motivo_da_loja_nao_aceitar_pedido",
+      esperado: [
+        {
+          texto:
+            "v_inicio := public.data_da_pausa_de_vendas(v_teste_ate, v_proxima, v_suspensa_desde, v_pausa_em);",
+          vezes: 1,
+        },
+        { texto: "IF v_inicio IS NULL OR v_hoje < v_inicio THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "a_loja_aceita_pedido_novo",
+      esperado: [
+        {
+          texto:
+            "v_admin_atual := COALESCE(public.is_admin() AND public.is_admin_atual(), false);",
+          vezes: 1,
+        },
+        {
+          texto:
+            "RAISE EXCEPTION 'A loja está em manutenção. Tente de novo mais tarde.' USING ERRCODE = 'P0001';",
+          vezes: 1,
+        },
+        {
+          texto:
+            "RAISE EXCEPTION 'Esta loja não está aceitando pedidos agora.' USING ERRCODE = 'P0001';",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "situacao_das_vendas_da_loja",
+      esperado: [
+        {
+          texto:
+            "IF NOT COALESCE(public.is_admin() AND public.is_admin_atual(), false) THEN",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261399997000: o pedido guarda quem vai receber. create_marketplace_order_v23 e v24 ganham UMA chave na copia do endereco salvo para dentro do pedido (bloco 6-bis): o nome que a cliente
   // digitou em "Quem vai receber" (user_addresses.recipient_name, aparado; vazio vira NULL e some). Cada marcador aparece UMA vez em cada corpo. A consulta 150a confere o corpo exato (md5), os
   // atributos e a ACL; a prova viva faz o comportamento (com nome, sem nome, sem conta, retirada, endereco digitado, pedido antigo).

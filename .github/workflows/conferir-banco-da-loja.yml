@@ -420,6 +420,8 @@ on:
           - 193m-medir-infinitos-guardados
           - 195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado
           - 195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente
+          - 196a-conferir-a-loja-pausa-o-pedido-novo-aplicado
+          - 196b-antes-a-loja-pausa-o-pedido-novo-ausente
           - 196m-medir-quem-cria-pedido
           - backups
       projeto:

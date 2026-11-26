@@ -10,6 +10,26 @@
 --   (1) public.pausa_de_vendas (id smallint = 1, vale_pela_assinatura boolean NOT NULL DEFAULT false, ligada_em timestamptz, suspensa_desde date): RLS ligada SEM
 --       politica e nada para PUBLIC, anon, authenticated nem service_role. So o dono (postgres) grava. Nasce VAZIA: sem a linha com vale_pela_assinatura = true a loja
 --       NUNCA pausa por assinatura (Savy, IKCOUS e as lojas de teste nunca recebem true).
+--   (2) public.data_da_pausa_de_vendas(teste_ate, proxima, suspensa_desde, pausa_em) date, SQL IMMUTABLE, a regra pura: o inicio e' o MAIOR entre proxima + 3 + 1
+--       (sinal do teste: teste_ate = proxima) ou proxima + 10 + 1 (pagante), suspensa_desde e pausa_em; sexta, sabado ou domingo vao para a segunda. NUNCA pausa antes
+--       de pausa_em. Sinal do teste com pausa_em NULL = NULL (nao pausa: a gestao velha nao guardou o dia). Falta proxima ou suspensa_desde = NULL.
+--   (3) public.marcar_suspensa_desde() + gatilho tr_assinatura_marca_suspensa_desde (AFTER INSERT OR UPDATE OF status em assinatura_da_loja): entrar em
+--       'suspensa' grava o dia de Sao Paulo em pausa_de_vendas.suspensa_desde; sair apaga. Nunca liga vale_pela_assinatura. Qualquer erro vira WARNING: a porta
+--       do app de gestao NUNCA cai por causa da marca.
+--   (4) public.motivo_da_loja_nao_aceitar_pedido() text: 'manutencao' (store_config id 1) vence; 'vendas_pausadas' so com as 5 chaves (ligada, chave da porta,
+--       cartao suspensa, data da regra calculada, hoje >= inicio); senao NULL. Sem as tabelas da porta = NULL, sem erro.
+--   (5) public.a_loja_aceita_pedido_novo() + gatilho tr_a_loja_aceita_pedido_novo (BEFORE INSERT em marketplace_orders WHEN canal <> 'presencial', o balcao
+--       SEGUE vendendo): o gemeo (idempotency_key ja gravada) passa para o indice unico agir; manutencao recusa com P0001 'A loja está em manutenção. Tente de
+--       novo mais tarde.' (so o admin de AGORA passa); vendas_pausadas recusa com P0001 'Esta loja não está aceitando pedidos agora.' (sem isencao). Defeito na
+--       leitura do motivo = VENDE (WARNING): a pausa nunca derruba a loja por erro proprio.
+--   (6) public.situacao_das_vendas_da_loja() jsonb {aceita, motivo, pausada_desde}, so para o admin de AGORA (42501 aos outros); EXECUTE so de authenticated.
+--   Todas SECURITY DEFINER (menos a regra pura) com search_path fixo; EXECUTE de ninguem de aplicacao, salvo (6).
+--
+-- POS-VOO (B2_POSTFLIGHT_FAILED) confere a tabela fechada, cada corpo (md5), atributos, EXECUTE por papel e os 2 gatilhos ligados pela definicao exata.
+-- ROLLBACK EM DOIS DEGRAUS: rollback-manual-20261600000000_a_loja_pausa_o_pedido_novo.sql tira os 2 gatilhos e as 5 funcoes e MANTEM a tabela;
+-- rollback-manual-destrutivo-20261600000000_a_loja_pausa_o_pedido_novo.sql apaga a tabela, SO COM O DONO, depois do comum.
+-- CONFERENCIA NA LOJA: 196b ANTES (ausencia, premissas e nenhuma loja em manutencao: a que estiver passa a recusar pedido online no apply) e 196a DEPOIS.
+-- TIPOS: src/types/database.types.ts ganha so a RPC situacao_das_vendas_da_loja.
 --
 -- DADOS EXISTENTES: nenhuma linha de nenhuma tabela e' lida, reescrita ou apagada pelo apply.
 --

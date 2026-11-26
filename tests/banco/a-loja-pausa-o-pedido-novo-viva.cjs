@@ -1857,6 +1857,236 @@ prova(
   },
 );
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// (8) AS CONFERENCIAS: 196a (depois) e 196b (antes), nos dois sentidos, com o rol fechado do conferir-banco; cada estrago reprova o item certo
+// ---------------------------------------------------------------------------------------------------------------------------
+const A196A = "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado";
+const B196B = "196b-antes-a-loja-pausa-o-pedido-novo-ausente";
+const ITEM_MANUTENCAO =
+  "store_config: nenhuma linha com manutencao = true hoje (se houver, a loja passa a recusar pedido online no apply: avisar o dono antes)";
+const FALTA_TUDO_196A = [
+  "a_loja_aceita_pedido_novo: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "data_da_pausa_de_vendas: uma so, corpo da 20261600000000 (md5), SQL IMMUTABLE com search_path fixo, EXECUTE de ninguem",
+  "marcar_suspensa_desde: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "motivo_da_loja_nao_aceitar_pedido: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "situacao_das_vendas_da_loja: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE so de authenticated",
+  "tr_a_loja_aceita_pedido_novo: BEFORE INSERT por linha em marketplace_orders, com o WHEN do balcao, ligado",
+  "tr_assinatura_marca_suspensa_desde: AFTER INSERT OR UPDATE OF status por linha em assinatura_da_loja, ligado",
+].sort();
+const FALTA_TABELA_196A = [
+  "pausa_de_vendas: nenhum privilegio (tabela ou coluna) para anon, authenticated nem service_role",
+  "pausa_de_vendas: tabela de linha unica com as 4 colunas, RLS ligada e nenhuma politica",
+];
+prova(
+  "(8) CONSULTAS 196a/196b: com a migration a 196a fecha 10 de 10 e a 196b reprova so o que ela cria; o comum deixa so a tabela; os dois degraus = o estado antes (196a 'nao', nunca erro); a loja em manutencao reprova SO o item dela na 196b",
+  async () => {
+    await P.emTransacao(async () => {
+      await comoDono();
+      assert.deepEqual(await P.consulta(A196A), []);
+      assert.deepEqual(await P.consulta(B196B), [
+        "as 5 funcoes da 20261600000000: nenhuma existe ainda (com qualquer assinatura)",
+        "os 2 gatilhos da 20261600000000: nenhum existe ainda",
+        "pausa_de_vendas: ainda NAO existe",
+      ]);
+      // so o comum: funcoes e gatilhos sairam, a tabela ficou
+      await C().query(ROLLBACK_SQL);
+      assert.deepEqual(await P.consulta(A196A), FALTA_TUDO_196A);
+      assert.deepEqual(await P.consulta(B196B), [
+        "pausa_de_vendas: ainda NAO existe",
+      ]);
+      // os dois degraus: o estado "antes"
+      await C().query(DESTRUTIVO_CONFIRMADO);
+      assert.deepEqual(
+        await P.consulta(A196A),
+        [...FALTA_TUDO_196A, ...FALTA_TABELA_196A].sort(),
+      );
+      assert.deepEqual(await P.consulta(B196B), []);
+      // a loja em manutencao: so o item dela reprova (e a 196b continua so leitura do catalogo + essa contagem)
+      await C().query(
+        `INSERT INTO public.store_config (id, manutencao) VALUES (1, true)
+         ON CONFLICT (id) DO UPDATE SET manutencao = true`,
+      );
+      assert.deepEqual(await P.consulta(B196B), [ITEM_MANUTENCAO]);
+      await C().query("UPDATE public.store_config SET manutencao = false");
+      assert.deepEqual(await P.consulta(B196B), []);
+    });
+  },
+);
+
+const ESTRAGOS_196A = [
+  [
+    "motivo ao anon",
+    "GRANT EXECUTE ON FUNCTION public.motivo_da_loja_nao_aceitar_pedido() TO anon",
+    /^motivo_da_loja_nao_aceitar_pedido:/,
+  ],
+  [
+    "regra ao PUBLIC",
+    "GRANT EXECUTE ON FUNCTION public.data_da_pausa_de_vendas(date, date, date, date) TO PUBLIC",
+    /^data_da_pausa_de_vendas:/,
+  ],
+  [
+    "painel ao service_role",
+    "GRANT EXECUTE ON FUNCTION public.situacao_das_vendas_da_loja() TO service_role",
+    /^situacao_das_vendas_da_loja:/,
+  ],
+  [
+    "painel sem o authenticated",
+    "REVOKE EXECUTE ON FUNCTION public.situacao_das_vendas_da_loja() FROM authenticated",
+    /^situacao_das_vendas_da_loja:/,
+  ],
+  [
+    "regra VOLATILE",
+    "ALTER FUNCTION public.data_da_pausa_de_vendas(date, date, date, date) VOLATILE",
+    /^data_da_pausa_de_vendas:/,
+  ],
+  [
+    "gatilho SECURITY INVOKER",
+    "ALTER FUNCTION public.a_loja_aceita_pedido_novo() SECURITY INVOKER",
+    /^a_loja_aceita_pedido_novo:/,
+  ],
+  [
+    "marca sem search_path",
+    "ALTER FUNCTION public.marcar_suspensa_desde() RESET search_path",
+    /^marcar_suspensa_desde:/,
+  ],
+  [
+    "corpo do motivo trocado",
+    trocar(
+      textoDe(MIGRATION, "motivo_da_loja_nao_aceitar_pedido"),
+      "IF v_inicio IS NULL OR v_hoje < v_inicio THEN",
+      "IF v_inicio IS NULL OR v_hoje <= v_inicio THEN",
+    ),
+    /^motivo_da_loja_nao_aceitar_pedido:/,
+  ],
+  [
+    "sobrecarga do painel",
+    "CREATE FUNCTION public.situacao_das_vendas_da_loja(p_x integer) RETURNS jsonb LANGUAGE sql AS $f$ SELECT NULL::jsonb $f$",
+    /^situacao_das_vendas_da_loja:/,
+  ],
+  [
+    "gatilho do pedido desligado",
+    "ALTER TABLE public.marketplace_orders DISABLE TRIGGER tr_a_loja_aceita_pedido_novo",
+    /^tr_a_loja_aceita_pedido_novo:/,
+  ],
+  [
+    "gatilho do pedido sem o WHEN do balcao",
+    "CREATE OR REPLACE TRIGGER tr_a_loja_aceita_pedido_novo BEFORE INSERT ON public.marketplace_orders FOR EACH ROW EXECUTE FUNCTION public.a_loja_aceita_pedido_novo()",
+    /^tr_a_loja_aceita_pedido_novo:/,
+  ],
+  [
+    "gatilho do pedido AFTER",
+    "CREATE OR REPLACE TRIGGER tr_a_loja_aceita_pedido_novo AFTER INSERT ON public.marketplace_orders FOR EACH ROW WHEN (NEW.canal IS DISTINCT FROM 'presencial') EXECUTE FUNCTION public.a_loja_aceita_pedido_novo()",
+    /^tr_a_loja_aceita_pedido_novo:/,
+  ],
+  [
+    "marca em qualquer UPDATE (sem OF status)",
+    "CREATE OR REPLACE TRIGGER tr_assinatura_marca_suspensa_desde AFTER INSERT OR UPDATE ON public.assinatura_da_loja FOR EACH ROW EXECUTE FUNCTION public.marcar_suspensa_desde()",
+    /^tr_assinatura_marca_suspensa_desde:/,
+  ],
+  [
+    "marca desligada",
+    "ALTER TABLE public.assinatura_da_loja DISABLE TRIGGER tr_assinatura_marca_suspensa_desde",
+    /^tr_assinatura_marca_suspensa_desde:/,
+  ],
+  [
+    "tabela com SELECT ao authenticated",
+    "GRANT SELECT ON public.pausa_de_vendas TO authenticated",
+    /^pausa_de_vendas: nenhum privilegio/,
+  ],
+  [
+    "coluna com SELECT ao anon",
+    "GRANT SELECT (suspensa_desde) ON public.pausa_de_vendas TO anon",
+    /^pausa_de_vendas: nenhum privilegio/,
+  ],
+  [
+    "tabela com UPDATE ao service_role",
+    "GRANT UPDATE ON public.pausa_de_vendas TO service_role",
+    /^pausa_de_vendas: nenhum privilegio/,
+  ],
+  [
+    "tabela com politica",
+    "CREATE POLICY p1600 ON public.pausa_de_vendas FOR SELECT USING (true)",
+    /^pausa_de_vendas: tabela de linha unica/,
+  ],
+  [
+    "RLS desligada",
+    "ALTER TABLE public.pausa_de_vendas DISABLE ROW LEVEL SECURITY",
+    /^pausa_de_vendas: tabela de linha unica/,
+  ],
+  [
+    "sem a linha unica",
+    "ALTER TABLE public.pausa_de_vendas DROP CONSTRAINT pausa_de_vendas_linha_unica",
+    /^pausa_de_vendas: tabela de linha unica/,
+  ],
+  [
+    "coluna a mais",
+    "ALTER TABLE public.pausa_de_vendas ADD COLUMN x integer",
+    /^pausa_de_vendas: tabela de linha unica/,
+  ],
+];
+const ESTRAGOS_196B = [
+  [
+    "uma funcao homonima com outra assinatura",
+    "CREATE FUNCTION public.data_da_pausa_de_vendas(p_x integer) RETURNS date LANGUAGE sql AS $f$ SELECT NULL::date $f$",
+    /^as 5 funcoes/,
+  ],
+  [
+    "um gatilho homonimo",
+    "CREATE FUNCTION public.f1600x() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RETURN NEW; END $f$; CREATE TRIGGER tr_assinatura_marca_suspensa_desde AFTER UPDATE ON public.store_config FOR EACH ROW EXECUTE FUNCTION public.f1600x()",
+    /^os 2 gatilhos/,
+  ],
+  [
+    "a tabela ja existe",
+    "CREATE TABLE public.pausa_de_vendas (id smallint)",
+    /^pausa_de_vendas: ainda NAO existe/,
+  ],
+  [
+    "canal anulavel",
+    "ALTER TABLE public.marketplace_orders ALTER COLUMN canal DROP NOT NULL",
+    /^premissa: marketplace_orders\.canal/,
+  ],
+  [
+    "is_admin_atual sumida",
+    "ALTER FUNCTION public.is_admin_atual() RENAME TO is_admin_atual_1600x",
+    /^premissa: is_admin\(\) e is_admin_atual\(\)/,
+  ],
+  [
+    "o cartao sem pausa_em (a 20261590000000 desfeita)",
+    "ALTER TABLE public.assinatura_da_loja DROP COLUMN pausa_em",
+    /^premissa: o cartao com as 14 colunas/,
+  ],
+];
+prova(
+  "(8) CONSULTAS 196a/196b: cada estrago reprova SO o item certo (21 na 196a com a migration; 6 na 196b no estado antes)",
+  async () => {
+    for (const [nome, sql, padrao] of ESTRAGOS_196A) {
+      await P.emTransacao(async () => {
+        await C().query(sql);
+        const f = await P.consulta(A196A);
+        assert.equal(
+          f.length >= 1 && f.every((x) => padrao.test(x)),
+          true,
+          `196a ${nome}: reprovou ${JSON.stringify(f)}`,
+        );
+      });
+    }
+    for (const [nome, sql, padrao] of ESTRAGOS_196B) {
+      await P.emTransacao(async () => {
+        await C().query(ROLLBACK_SQL);
+        await C().query(DESTRUTIVO_CONFIRMADO);
+        assert.deepEqual(await P.consulta(B196B), [], `${nome}: base`);
+        await C().query(sql);
+        const f = await P.consulta(B196B);
+        assert.equal(
+          f.length >= 1 && f.every((x) => padrao.test(x)),
+          true,
+          `196b ${nome}: reprovou ${JSON.stringify(f)}`,
+        );
+      });
+    }
+  },
+);
+
 (async () => {
   await P.conectar();
   try {
