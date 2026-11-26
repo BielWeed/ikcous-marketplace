@@ -3,8 +3,9 @@
 /**
  * estado-da-loja.mjs — o ÚNICO jeito de pôr uma loja para dormir, acordá-la ou encerrá-la (plano L8, Lote 4, 26/11/2026).
  *
- * POR QUE IMPRIME SQL EM VEZ DE EXECUTAR: a caderneta de produção (public.frota_lojas) mora no banco antigo, que só o MCP Supabase da
- * sessão alcança; nenhum workflow escreve lá. Então quem DECIDE é este comando (confere tudo o que dá para conferir daqui) e quem EXECUTA
+ * POR QUE IMPRIME SQL EM VEZ DE EXECUTAR: a caderneta de produção (public.frota_lojas) mora no banco de IKCOUS_FROTA_URL (o projeto
+ * antigo até a virada de docs/runbooks/caderneta-muda-de-banco.md; depois, o banco da IKCOUS), que só o MCP Supabase da sessão
+ * alcança para escrever; nenhum workflow escreve lá. Então quem DECIDE é este comando (confere tudo o que dá para conferir daqui) e quem EXECUTA
  * é a sessão, rodando pelo MCP a ÚNICA instrução impressa. As travas que não dependem deste comando moram no banco
  * (migration 20261470000000: a porta public.frota_mudar_estado e o gatilho de frota_lojas).
  *

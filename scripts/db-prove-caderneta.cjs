@@ -450,6 +450,9 @@ async function rodar(rotulo) {
 
     // ---- 5. Rollback da 20261141000000 -------------------------------------
     titulo("5. Rollback-manual da 20261141000000 (lido do disco)");
+    // Desde 26/11/2026 o rollback recusa caderneta com linha (CADERNETA_SEMEADA): esta prova semeou
+    // as duas tabelas acima, então confirma o apagamento só nesta transação (desfeita no fim).
+    await client.query("SET LOCAL ikcous.apagar_caderneta = 'sim'");
     await client.query(lerSql(NOSSO_ROLLBACK));
     const depoisDoRollback = await existemObjetos(client);
     afirmar(

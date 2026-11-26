@@ -282,3 +282,32 @@ Deno.test("o rollback derruba a funcao e as duas tabelas pela assinatura/nome, n
     "ordem esperada: função primeiro, depois frota_segredo, depois frota_lojas",
   );
 });
+
+Deno.test("o rollback RECUSA apagar caderneta com linha (CADERNETA_SEMEADA) antes do primeiro DROP; so apaga com ikcous.apagar_caderneta = 'sim' na transacao", () => {
+  // Plano caderneta-fora-do-dekxab (26/11/2026), T3: depois da virada o banco da IKCOUS guarda a caderneta de PRODUÇÃO da frota.
+  // Este rollback derruba frota_lojas e frota_segredo sem perguntar; rodado lá por engano, tira TODAS as lojas do ar. Nos bancos
+  // das lojas as tabelas ficam vazias e o rollback continua apagando como antes.
+  const ini = rollback.indexOf("DO $caderneta_semeada$");
+  const fim = rollback.indexOf("END $caderneta_semeada$;");
+  assert(ini >= 0 && fim > ini, "bloco da caderneta semeada presente");
+  const iPrimeiroDrop = rollback.search(/^DROP /m);
+  assert(iPrimeiroDrop > fim, "a trava vem antes do primeiro DROP");
+  const bloco = rollback.slice(ini, fim);
+  for (const t of ["frota_lojas", "frota_segredo", "frota_estado_historico"])
+    assertStringIncludes(bloco, `'${t}'`);
+  assertStringIncludes(
+    bloco,
+    "IF COALESCE(current_setting('ikcous.apagar_caderneta', true), '') = 'sim' THEN",
+  );
+  assertStringIncludes(bloco, "RAISE EXCEPTION 'CADERNETA_SEMEADA:");
+  // A tabela pode não existir (rollback repetido): só se olha a que existe, por SQL dinâmico.
+  assertStringIncludes(bloco, "to_regclass('public.' || v_tabela) IS NOT NULL");
+  // Ninguém grava entre a conferência e o DROP: trava de escrita até o fim da transação.
+  assert(
+    bloco.indexOf("LOCK TABLE public.%I IN SHARE MODE") <
+      bloco.indexOf("SELECT EXISTS (SELECT 1 FROM public.%I)"),
+    "trava antes de olhar",
+  );
+  // O comentário ensina SET LOCAL (nunca SET de sessão, que confirmaria uma chamada futura).
+  assertStringIncludes(rollback, "SET LOCAL ikcous.apagar_caderneta = 'sim';");
+});
