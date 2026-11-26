@@ -219,7 +219,7 @@ describe("CheckoutView — o resumo do pedido mostra a foto da cor escolhida", (
 
   it("tenta a capa no resumo quando a miniatura e a original da cor falham", async () => {
     const fotoDaCor =
-      "https://xyz.supabase.co/storage/v1/object/public/produtos/azul.jpg";
+      "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/azul.jpg";
     const produto = {
       ...camiseta,
       variants: [{ ...camiseta.variants![0], imageUrl: fotoDaCor }],

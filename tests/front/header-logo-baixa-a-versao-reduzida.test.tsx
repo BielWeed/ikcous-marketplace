@@ -28,7 +28,7 @@ vi.mock("@/components/ui/custom/SearchBar", () => ({
 // @ts-expect-error flag interna do React, como nos testes vizinhos.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const BASE = "https://abcdefghijklmnopqrst.supabase.co/storage/v1";
+const BASE = "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1";
 const ARQUIVO = "store-branding/v1/hash/image";
 const LOGO_PNG = `${BASE}/object/public/${ARQUIVO}.png`;
 const LOGO_SVG = `${BASE}/object/public/${ARQUIVO}.svg`;

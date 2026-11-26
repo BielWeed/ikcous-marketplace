@@ -10,13 +10,27 @@
  *
  * O endpoint `/render/image/public/` negocia o formato pelo Accept do cliente,
  * então navegador moderno recebe WebP e o antigo recebe JPEG, sem esforço extra.
+ *
+ * MAS a transformação só existe nos planos PAGOS do Supabase; no gratuito ela
+ * responde 403 FeatureNotEnabled, e as lojas novas nascem em projeto gratuito
+ * na conta da lojista. Por isso o padrão é o ORIGINAL (que sempre responde) e
+ * só transforma o projeto MEDIDO com a transformação ligada. Medido em
+ * 26/11/2026, com um arquivo que existe (arquivo inexistente responde 400
+ * NoSuchKey nos dois caminhos e não prova nada):
+ *
+ *   gnjsrucsmjkajijrakzr (Savy)    object 200 112 kB  ->  render 200 webp 12 kB
+ *   cafkrminfnokvgjqtkle (IKCOUS)  object 200 177 kB  ->  render 403 FeatureNotEnabled
+ *
+ * Projeto novo só entra na lista depois de medido assim. Se um projeto da lista
+ * deixar de transformar, `usarImagemOriginal` ainda salva a foto no `onError`.
  */
 
 const CAMINHO_ORIGINAL = "/storage/v1/object/public/";
 const CAMINHO_TRANSFORMADO = "/storage/v1/render/image/public/";
-// O arquivo original da IKCOUS respondeu 200, mas /render/image/public/
-// respondeu 403 FeatureNotEnabled no projeto restaurado (02/10/2026).
-const ORIGEM_SEM_TRANSFORMACAO = "https://cafkrminfnokvgjqtkle.supabase.co";
+/** Projetos medidos respondendo 200 em `/render/image/public/` (ver acima). */
+const ORIGENS_QUE_TRANSFORMAM: readonly string[] = [
+  "https://gnjsrucsmjkajijrakzr.supabase.co",
+];
 
 /** Escada de larguras oferecida ao navegador quando `sizes` é informado. */
 const LARGURAS_DISPONIVEIS = [200, 320, 480, 640, 960, 1280] as const;
@@ -30,12 +44,13 @@ export interface OpcoesImagem {
   readonly quality?: number;
 }
 
-/** true para URLs de arquivo público do Supabase Storage, que é o que dá para transformar. */
+/** true só para arquivo público de um projeto que transforma (lista medida). */
 function ehImagemSupabase(url: string): boolean {
   return (
     typeof url === "string" &&
-    url.includes(CAMINHO_ORIGINAL) &&
-    !url.startsWith(`${ORIGEM_SEM_TRANSFORMACAO}${CAMINHO_ORIGINAL}`)
+    ORIGENS_QUE_TRANSFORMAM.some((origem) =>
+      url.startsWith(`${origem}${CAMINHO_ORIGINAL}`),
+    )
   );
 }
 

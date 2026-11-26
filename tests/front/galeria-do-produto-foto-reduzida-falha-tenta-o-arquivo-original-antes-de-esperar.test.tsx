@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const ORIGINAL =
-  "https://abcdefghijklmnopqrst.supabase.co/storage/v1/object/public/produtos/blusa.jpg";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/blusa.jpg";
 const DE_FORA = "https://cdn.exemplo.test/blusa.jpg";
 
 let raiz: Root;

@@ -62,7 +62,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const FOTO_REDIMENSIONAVEL =
-  "https://loja.supabase.co/storage/v1/object/public/banners/topo.png";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/banners/topo.png";
 // Origem do projeto sem o recurso de redimensionamento (a loja IKCOUS).
 const FOTO_SEM_REDIMENSIONAMENTO =
   "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/banners/topo.png";

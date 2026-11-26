@@ -137,7 +137,10 @@ function criarLinha(nome: string, cor: string, hash: string, origem: string) {
   };
 }
 
-export const ORIGEM_A = `https://${"a".repeat(20)}.supabase.co`;
+// A loja A e a do cartaz: so projeto MEDIDO com o redimensionamento ligado
+// tem foto reduzida (e cartaz) -- ver `src/lib/imageUrl.ts`. O `fetch` aqui
+// e o dublê: nada sai para esse projeto de verdade.
+export const ORIGEM_A = "https://gnjsrucsmjkajijrakzr.supabase.co";
 export const ORIGEM_B = `https://${"b".repeat(20)}.supabase.co`;
 export const ORIGEM_C = `https://${"c".repeat(20)}.supabase.co`;
 export const ORIGEM_D = `https://${"d".repeat(20)}.supabase.co`;
