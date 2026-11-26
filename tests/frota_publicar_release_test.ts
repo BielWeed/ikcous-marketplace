@@ -34,6 +34,7 @@ import {
   argumentosDoPromote,
   arquivosEsperados,
   classificarFuncao,
+  comandoDeConferirLogin,
   comandosDeConserto,
   decidirLote,
   evidenciaDaProva,
@@ -13260,4 +13261,56 @@ Deno.test("L8 --json: o resumo leva lojasForaDoAr (e [] quando não há)", async
     JSON.parse(resumoEmJson({ codigo: 1, lojas: [] }, "x")).lojasForaDoAr,
     [],
   );
+});
+
+// ---------------------------------------------------------------------------
+// Login da loja (26/11/2026): cada loja assinante ganha, na prontidão, o comando
+// SÓ LEITURA de conferir o login — a loja só abre o cadastro com SIM.
+// ---------------------------------------------------------------------------
+Deno.test("login da loja: cada loja assinante ganha o comando conferir do login-da-loja.yml com o ramo e o SHA efetivo", async () => {
+  const { d } = deps();
+  const r = await executar(d);
+  for (const projeto of ["ikcous-publicada", "savy"])
+    assertStringIncludes(
+      r.relatorio,
+      `gh workflow run login-da-loja.yml --ref "claude/app-major-upgrade-wmc8x2" -f "projeto=${projeto}" -f "acao=conferir" -f "expected_sha=${TOPO}"`,
+    );
+  // nunca acertar, e nunca como linha solta de conserto (não é passo do banco)
+  assert(!r.relatorio.includes("acao=acertar"), r.relatorio);
+  assert(
+    !comandosGh(r.relatorio).some((c) => c.includes("login-da-loja.yml")),
+    r.relatorio,
+  );
+  // uma linha por loja, logo depois da linha de functions dela
+  const linhas = r.relatorio.split("\n");
+  for (const projeto of ["ikcous-publicada", "savy"]) {
+    const i = linhas.findIndex(
+      (l) =>
+        l.includes("login-da-loja.yml") && l.includes(`projeto=${projeto}`),
+    );
+    assert(i > 0, projeto);
+    assert(
+      linhas[i - 1].startsWith("- functions:") ||
+        linhas[i - 1].startsWith("- deriva antiga"),
+      linhas[i - 1],
+    );
+  }
+});
+
+Deno.test("login da loja: sem o topo do ramo, a linha diz que não há comando (nunca expected_sha vazio)", async () => {
+  const { d, estado } = deps();
+  estado.topo = new Error("sem rede");
+  const r = await executar(d);
+  assert(!r.relatorio.includes("login-da-loja.yml --ref"), r.relatorio);
+  assertStringIncludes(r.relatorio, "- login: sem comando");
+});
+
+Deno.test("comandoDeConferirLogin: projeto do canal, SHA de 40 hex e ramo entre aspas; sem topo devolve null", () => {
+  const canal = { functions: "savy", migrations: "savy" };
+  assertEquals(
+    comandoDeConferirLogin(canal, { ramo: "r", topo: TOPO }),
+    `gh workflow run login-da-loja.yml --ref "r" -f "projeto=savy" -f "acao=conferir" -f "expected_sha=${TOPO}"`,
+  );
+  assertEquals(comandoDeConferirLogin(canal, { ramo: "r", topo: null }), null);
+  assertEquals(comandoDeConferirLogin(canal, { ramo: "r", topo: "abc" }), null);
 });

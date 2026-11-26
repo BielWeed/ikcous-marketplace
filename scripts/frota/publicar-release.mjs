@@ -1652,6 +1652,25 @@ export function comandosDeConserto(loja, pront, canal, ctx) {
 }
 
 /**
+ * O comando SÓ LEITURA que confere o login de uma loja assinante
+ * (.github/workflows/login-da-loja.yml, acao=conferir): endereços, limite de
+ * e-mails e quem envia o e-mail. A loja só abre o cadastro para clientes com
+ * SIM. Não é passo de conserto do banco (não entra em `comandosDeConserto`, que
+ * imprime um passo por vez): sai na prontidão de cada loja, logo depois das
+ * functions. `null` sem o topo do ramo — nunca expected_sha vazio.
+ */
+export function comandoDeConferirLogin(canal, ctx) {
+  if (!RE_SHA.test(ctx.topo ?? "")) return null;
+  const f = (k, v) => `-f "${k}=${v}"`;
+  return [
+    `gh workflow run login-da-loja.yml --ref "${ctx.ramo}"`,
+    f("projeto", canal.functions),
+    f("acao", "conferir"),
+    f("expected_sha", ctx.topo),
+  ].join(" ");
+}
+
+/**
  * O que a prontidão de QUALQUER loja precisa saber da release `sha`, lido uma
  * vez: as migrations exigidas (fora as de politica.migrationsForaDaRelease), as
  * functions publicáveis do SHA, o verify_jwt do config.toml, o nome completo de
@@ -1967,6 +1986,9 @@ export async function publicarRelease(opcoes, deps) {
             `- deriva antiga (não bloqueia esta release): ${derivas.map((f) => `${f.nome} — ${f.motivo}`).join("; ")}`,
           ]
         : []),
+      comandoDeConferirLogin(canal, ctxConserto)
+        ? `- login (só leitura; a loja só abre o cadastro para clientes com SIM): \`${comandoDeConferirLogin(canal, ctxConserto)}\``
+        : `- login: sem comando — o topo de origin/${ctxConserto.ramo} não foi lido`,
       ...pront.problemas.map((p) => `- problema: ${p}`),
       "",
     );
