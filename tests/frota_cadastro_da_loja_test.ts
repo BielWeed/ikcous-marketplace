@@ -47,6 +47,9 @@ const ARQUIVOS_COPIADOS = [
   SCRIPT_REL,
   "scripts/frota/lojas.cjs",
   "scripts/frota/lojas-nos-workflows.cjs",
+  // o gerador lê o NOME do segredo da org central (desenho (b) da A4, 26/11)
+  "scripts/frota/org-central.cjs",
+  "scripts/frota/org-central.json",
   "scripts/frota/lojas.json",
   "scripts/frota/canais-de-backend.json",
   "scripts/frota/politica.json",
