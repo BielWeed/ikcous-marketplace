@@ -458,6 +458,12 @@ jobs:
     if: ${{ !inputs.ikcous_original && !inputs.ikcous_publicado }}
     name: Conferir ${{ inputs.consulta }}
     runs-on: ubuntu-latest
+    # Gaveta da loja: o token de loja OAuth mora no environment loja-<projeto>
+    # (mesmo nome de segredo); sem gaveta propria vale o segredo do repositorio.
+    # deployment: false = so os segredos, sem registro de deploy.
+    environment:
+      name: loja-${{ inputs.projeto }}
+      deployment: false
     timeout-minutes: 10
     steps:
       # PRIMEIRO passo, antes de checkout e de qualquer requisição: a CAF e a
@@ -548,6 +554,12 @@ jobs:
     # 72..83; qualquer outro nome (loja assinante nova): NENHUMA (o job nem roda).
     if: ${{ !inputs.ikcous_original && !inputs.ikcous_publicado && (((inputs.projeto == 'loja' || inputs.projeto == 'sandbox') && inputs.gravar_ledger != '92-202' && inputs.gravar_ledger != '60-66') || (inputs.projeto == 'ikcous-publicada' && (inputs.gravar_ledger == '92-202' || inputs.gravar_ledger == '60-66')) || (inputs.projeto == 'savy' && inputs.gravar_ledger == '92-202')) && inputs.gravar_ledger != 'nao' && inputs.confirmar == 'GRAVAR' }}
     runs-on: ubuntu-latest
+    # Gaveta da loja: o token de loja OAuth mora no environment loja-<projeto>
+    # (mesmo nome de segredo); sem gaveta propria vale o segredo do repositorio.
+    # deployment: false = so os segredos, sem registro de deploy.
+    environment:
+      name: loja-${{ inputs.projeto }}
+      deployment: false
     timeout-minutes: 10
     # Mesmo grupo de aplicar-migrations.yml: nunca gravar o ledger enquanto
     # uma migration está sendo aplicada no MESMO BANCO (nem o contrário). O
