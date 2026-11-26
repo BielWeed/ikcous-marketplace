@@ -7,7 +7,8 @@
 //  - o host é fixo (API_GESTAO) e o caminho sai de um MODELO fixo (MODELOS),
 //    com a lista de métodos que cada modelo aceita. Quem chama escolhe o nome
 //    do modelo, nunca o caminho; DELETE não existe em modelo nenhum (este
-//    cliente não apaga projeto, segredo nem migration);
+//    cliente não apaga projeto, segredo nem migration), nem /pause (o único
+//    que mexe no ciclo de vida do projeto é `restaurar`: POST sem corpo);
 //  - `ref` (id do projeto) só entra no caminho depois de casar ^[a-z]{20}$, e
 //    isso acontece ANTES de qualquer fetch;
 //  - 401/403 viram SemAcesso (a autorização da lojista caiu ou não cobre);
@@ -60,6 +61,7 @@ export const CHAVES_DO_CONFIG_AUTH = Object.freeze({
 /** Os ÚNICOS caminhos que este cliente sabe chamar. Peça nova do L4b que
  * precisar de outro caminho acrescenta um modelo aqui (revisão Opus).
  * `corpoPermitido`: o corpo só pode ter estas chaves, deste tipo.
+ * `semCorpo`: o pedido não leva corpo nenhum (pedir() recusa qualquer um).
  * `multipart`: o corpo é montado só por `implantarFuncao` (pedir() recusa).
  * `consulta`: os únicos parâmetros de query que o modelo aceita. */
 export const MODELOS = Object.freeze({
@@ -74,6 +76,14 @@ export const MODELOS = Object.freeze({
   projeto: Object.freeze({
     caminho: "/v1/projects/{ref}",
     metodos: Object.freeze(["GET"]),
+  }),
+  // v1-restore-a-project (projects:write): acorda o projeto que o plano grátis
+  // pausou (scripts/frota/acordar-projeto.mjs). Só POST e SEM corpo; o GET do
+  // mesmo caminho (versões para restaurar) e o /pause não entram aqui.
+  restaurar: Object.freeze({
+    caminho: "/v1/projects/{ref}/restore",
+    metodos: Object.freeze(["POST"]),
+    semCorpo: true,
   }),
   consulta: Object.freeze({
     caminho: "/v1/projects/{ref}/database/query",
@@ -356,6 +366,10 @@ export function criarClienteGestao({
       throw new ErroDaGestao("Gestão Supabase: GET não leva corpo.", {
         codigo: "PEDIDO_INVALIDO",
       });
+    }
+    // `semCorpo`: o modelo não leva corpo em método NENHUM (nem {} nem null).
+    if (m.semCorpo === true && corpo !== undefined) {
+      throw pedidoInvalido(`${m.caminho} não leva corpo.`);
     }
     // Lista branca do corpo: vale para todo método que não seja GET (PATCH do
     // config/auth); o que sai na rede é a CÓPIA conferida, nunca o objeto cru.

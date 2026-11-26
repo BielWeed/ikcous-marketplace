@@ -262,6 +262,46 @@ curl.exe -sI "https://<domínio da loja>/"
 
 Se vier diferente depois de 2 minutos, rode o `--ver` e confira o estado gravado.
 
+## Banco pausado pelo Supabase
+
+Isto **não** é o estado `adormecida` de cima (que é decisão nossa, na caderneta). Aqui quem desligou foi
+o próprio Supabase: no plano grátis, o projeto da loja é **pausado** depois de uma semana sem atividade
+no banco, e a loja para de funcionar até alguém restaurá-lo.
+
+- **Como reconhecer.** O app de gestão mostra a loja como `pausada`. No painel do Supabase, o projeto
+  aparece pausado, com o botão "Restore project".
+- **O comando** (só no PC do dono, que é onde fica o cofre com o acesso da loja):
+
+```powershell
+node scripts/frota/acordar-projeto.mjs --loja "<nome da loja no scripts/frota/lojas.json>" --motivo "gestao mostrou pausada em 26/11"
+```
+
+  - `--loja` tem de estar em `scripts/frota/lojas.json`, e a loja tem de ter o acesso OAuth no cofre
+    deste PC (o que o passo de autorizar a loja grava). Sem isso, o comando para antes de pedir qualquer
+    coisa ao Supabase e manda usar o plano B. **Hoje (27/11) isso vale para todas as lojas:** IKCOUS e
+    Savy usam segredo do GitHub (que não se lê do PC) e nenhuma loja entrou por OAuth ainda; até a
+    primeira loja OAuth, o caminho real é o plano B (o dono clica em "Restore project" no painel).
+  - `--motivo` vai para o registro que o comando imprime (3 a 200 caracteres, só letras, números,
+    espaço e `. , : ; ( ) / -`).
+  - `--esperar-min N` (opcional): quanto tempo ele acompanha o projeto voltar. Padrão 10, máximo 30.
+- **O que ele faz.** Lê o status do projeto. Se estiver pausado (`INACTIVE`), pede o restore **uma vez**
+  e confere o status a cada 15 segundos até `ACTIVE_HEALTHY`. Se já estiver voltando (`RESTORING` ou
+  `COMING_UP`), só espera. Ele nunca pede o restore duas vezes na mesma execução, nem quando o pedido
+  fica sem resposta.
+- **Saída do comando:**
+
+| Saída | O que quer dizer | O que fazer |
+|---|---|---|
+| `0` | a loja acordou, ou já estava acordada | nada; em 1 a 2 minutos a gestão deixa de mostrá-la como `pausada` |
+| `1` | parou ou recusou: acesso do cofre ausente ou recusado (401/403), status estranho, Supabase recusou o restore (402 = plano ou fatura da lojista) | ler a mensagem; quase sempre é o plano B |
+| `2` | uso errado (faltou `--loja` ou `--motivo`, ou `--esperar-min` fora de 1 a 30) | corrigir o comando |
+| `3` | o tempo acabou antes de `ACTIVE_HEALTHY` | **não rode de novo na hora**: o restore pode estar em andamento. Confira no painel do Supabase (o link sai na mensagem) |
+
+- **Plano B:** a lojista entra no painel do Supabase dela, abre o projeto da loja e clica em
+  **"Restore project"**. Leva alguns minutos.
+- **Loja `adormecida` continua acordada no Supabase** (decisão do sócio, 26/11/2026): o vigia mantém o
+  banco dela ativo até a loja ser **encerrada**. Só a loja `encerrada` deixa de ser mantida.
+
 ## Se a porta recusar
 
 | Mensagem começa com | O que fazer |
