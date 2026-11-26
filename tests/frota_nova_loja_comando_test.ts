@@ -1756,6 +1756,22 @@ Deno.test("abrir: loja com mais de 24 caracteres (ou terminada em hífen) é rec
   assertEquals(r.veredito, "SIM", r.mensagem);
 });
 
+Deno.test("abrir: a loja `lojas` (segredo derivado = o NOME do segredo da org central) é recusada sem rede nem estado", async () => {
+  for (const aplicar of [true, false]) {
+    const amb = await ambiente();
+    amb.entradas.push(CLIENT_SECRET);
+    const r = await executarPasso(
+      pedido("abrir", { slug: "lojas", aplicar }),
+      amb.deps,
+    );
+    assertEquals(r.veredito, "NÃO", r.mensagem);
+    assertStringIncludes(r.mensagem, "SUPABASE_ACCESS_TOKEN_LOJAS");
+    assertStringIncludes(r.mensagem, "segredo da org central");
+    assertEquals(amb.api.chamadas.length, 0);
+    assertEquals([...Deno.readDirSync(amb.pasta)].length, 0);
+  }
+});
+
 // ─── C3: primeira-admin ─────────────────────────────────────────────────────
 
 Deno.test("primeira-admin: promove pela transação do B3 (SET LOCAL ROLE postgres), e-mail só pela entrada e em lugar nenhum mais", async () => {

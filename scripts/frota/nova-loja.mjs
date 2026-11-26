@@ -187,6 +187,7 @@ const {
   textoSeguro,
   validarCadastro,
 } = require("./lojas.cjs");
+const { carregarOrgCentral } = require("./org-central.cjs");
 
 export const PASSOS = Object.freeze([
   "abrir",
@@ -628,6 +629,13 @@ export const TETO_DO_SLUG = 24;
  * cadastroGerado faz no fim, feito no abrir: falhar depois do projeto criado
  * deixaria uma loja que não se cadastra. */
 function slugQueNaoCabe(slug) {
+  // o segredo derivado não pode ser o NOME do segredo da org central (a loja
+  // `lojas`): o dono gravaria o token dela por cima do da org e derrubaria
+  // todas as lojas da org
+  const segredoDaOrg = carregarOrgCentral().segredoDoGitHub;
+  if (segredoDoToken(slug) === segredoDaOrg) {
+    return `a loja ${slug} teria o segredo ${segredoDaOrg}, que é o NOME do segredo da org central (scripts/frota/org-central.json): gravar o token dela nele derrubaria todas as lojas da org. Escolha outro nome e rode de novo; nada foi feito.`;
+  }
   if (!RE_SEGREDO.test(segredoDoToken(slug))) {
     return `a loja ${slug} tem ${slug.length} caracteres e o limite é ${TETO_DO_SLUG}: o cadastro guarda o acesso dela no segredo ${textoSeguro(segredoDoToken(slug), 80)}, que aceita no máximo ${TETO_DO_SLUG} depois de SUPABASE_ACCESS_TOKEN_. Escolha um nome de até ${TETO_DO_SLUG} caracteres (letras minúsculas, dígitos e hífen) e rode abrir de novo; nada foi feito.`;
   }

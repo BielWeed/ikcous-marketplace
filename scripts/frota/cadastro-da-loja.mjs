@@ -60,6 +60,7 @@ const {
   sincronizar,
   workflowsComBlocos,
 } = require("./lojas-nos-workflows.cjs");
+const { carregarOrgCentral } = require("./org-central.cjs");
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.resolve(AQUI, "..", "..");
@@ -161,6 +162,14 @@ export function lojaPedida({ loja, projeto, nome, dominio, chavePublica }) {
     segredoDoToken: segredoDaLoja(loja),
     functionsNomeadas: true,
   };
+  // A loja cujo segredo DERIVADO é o nome do segredo da org central (a loja
+  // `lojas` → SUPABASE_ACCESS_TOKEN_LOJAS): o passo a passo mandaria o dono
+  // gravar o token dela POR CIMA do da org e derrubaria todas as lojas da org.
+  const segredoDaOrg = carregarOrgCentral().segredoDoGitHub;
+  if (entrada.segredoDoToken === segredoDaOrg)
+    throw new UsoErrado(
+      `--loja ${loja}: o segredo dela seria ${segredoDaOrg}, que é o NOME do segredo da org central (scripts/frota/org-central.json); gravar o token desta loja nele derrubaria todas as lojas da org. Escolha outro nome`,
+    );
   try {
     validarCadastro({ lojas: { [loja]: entrada } });
   } catch (e) {

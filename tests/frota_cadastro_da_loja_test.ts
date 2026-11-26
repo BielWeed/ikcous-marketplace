@@ -609,6 +609,41 @@ Deno.test("recusa slug, ref, nome, domínio e chave fora do formato, e argumento
   });
 });
 
+// A loja chamada `lojas` ganharia o segredo SUPABASE_ACCESS_TOKEN_LOJAS, que é o
+// NOME do segredo da org central (scripts/frota/org-central.json): o passo a
+// passo mandaria o dono gravar o token dela POR CIMA do da org e derrubaria
+// todas as lojas da org (achado da revisão Opus de aac075e73, 26/11/2026).
+Deno.test("recusa a loja cujo segredo derivado é o NOME do segredo da org central (--loja lojas) — uso errado, sem escrever", async () => {
+  await noArvoreOriginal(async (raiz) => {
+    const antes = fotografia(raiz);
+    for (const aplicar of [[], ["--aplicar"]]) {
+      const r = await cadastrar(raiz, [
+        "--loja",
+        "lojas",
+        "--projeto",
+        REF_NOVA,
+        "--nome",
+        NOME_NOVO,
+        ...aplicar,
+      ]);
+      assertEquals(r.codigo, 2, r.saida);
+      assertStringIncludes(r.saida, "SUPABASE_ACCESS_TOKEN_LOJAS");
+      assertStringIncludes(r.saida, "segredo da org central");
+      assertEquals(fotografia(raiz), antes, "escreveu na árvore");
+    }
+    // o vizinho de nome parecido continua aceito (a recusa é pelo nome exato)
+    const ok = await cadastrar(raiz, [
+      "--loja",
+      "lojas-da-ana",
+      "--projeto",
+      REF_NOVA,
+      "--nome",
+      NOME_NOVO,
+    ]);
+    assertEquals(ok.codigo, 0, ok.saida);
+  });
+});
+
 Deno.test("recusa quando os workflows já estão fora de sincronia com lojas.json (o diff não seria só da loja nova)", async () => {
   await noArvoreOriginal(async (raiz) => {
     const rel = ".github/workflows/medir-auth-da-loja.yml";
