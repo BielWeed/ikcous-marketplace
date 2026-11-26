@@ -3393,9 +3393,9 @@ const ROL_DA_184B = [
 ];
 // 185 (privilegios padrao de public, SO LEITURA, sem migration: o que objeto NOVO de public criado pelo postgres recebe pelo ALTER DEFAULT
 // PRIVILEGES — a regra que projeto Supabase novo nao tem desde 30/05/2026 e que o instalador da loja nova reaplica). 8 linhas; a 8a e so
-// registro (quem recebe EXECUTE em funcao nova). AINDA FORA de ROL_FECHADO_POR_CONSULTA: entrar la exige a MESMA linha em
-// CONSULTAS_DE_ROL_FECHADO de scripts/frota/publicar-release.mjs (tests/ci_conferir_banco_test.ts e frota_publicar_release_test.ts
-// conferem que as duas listas sao iguais). Ate la o workflow roda a 185 e o veredito sai sem ` rol=`.
+// registro (quem recebe EXECUTE em funcao nova). Rol fechado desde 26/11/2026 (medida em ikcous-publicada e savy: 8/8 ok_false=0), com a
+// MESMA linha em CONSULTAS_DE_ROL_FECHADO de scripts/frota/publicar-release.mjs (tests/ci_conferir_banco_test.ts e
+// frota_publicar_release_test.ts conferem que as duas listas sao iguais).
 const ROL_DA_185 = [
   "controle: catalogo publico visivel",
   "tabelas novas de public criadas pelo postgres: anon recebe SELECT, INSERT, UPDATE e DELETE",
@@ -3409,6 +3409,7 @@ const ROL_DA_185 = [
 const ROL_FECHADO_POR_CONSULTA = {
   "184a-conferir-a-caderneta-fecha-para-o-service-role-aplicado": ROL_DA_184A,
   "184b-antes-a-caderneta-fecha-para-o-service-role-ausente": ROL_DA_184B,
+  "185-privilegios-padrao-em-public": ROL_DA_185,
   "183a-conferir-a-loja-muda-de-estado-so-pela-porta-aplicado": ROL_DA_183A,
   "183b-antes-a-loja-muda-de-estado-so-pela-porta-ausente": ROL_DA_183B,
   "182a-conferir-o-estado-de-vida-da-loja-aplicado": ROL_DA_182A,
