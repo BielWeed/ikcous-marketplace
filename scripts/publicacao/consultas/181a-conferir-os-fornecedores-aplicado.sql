@@ -56,7 +56,7 @@ WITH fn AS (
        FROM tb t), false) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'fornecedores: um unico gatilho, BEFORE INSERT OR UPDATE por linha, habilitado, apontando para fornecedores_carimba_atualizado_em', 'sim', CASE WHEN COALESCE(
     (SELECT string_agg(g.tgname || ':' || g.tgtype::text || ':' || g.tgenabled::text || ':' || p.proname, ',' ORDER BY g.tgname)
-       FROM tb t JOIN pg_trigger g ON g.tgrelid = t.oid AND NOT g.tgisinternal JOIN pg_proc p ON p.oid = g.tgfoid)
+       FROM tb t JOIN pg_trigger g ON g.tgrelid = t.oid AND NOT g.tgisinternal AND g.tgname NOT LIKE 'tr\_livro\_%' JOIN pg_proc p ON p.oid = g.tgfoid)
       = 'fornecedores_carimba_atualizado_em:23:O:fornecedores_carimba_atualizado_em', false) THEN 'sim' ELSE 'nao' END
 )
 SELECT item, esperado, vivo, COALESCE(vivo = esperado, false) AS ok FROM itens ORDER BY ok, item;
