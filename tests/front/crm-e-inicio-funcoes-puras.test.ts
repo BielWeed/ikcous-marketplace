@@ -850,7 +850,7 @@ describe("linhasDeDatasDaAssinatura", () => {
     ).toEqual([]);
   });
 
-  it("'Teste até' e 'Cliente desde' seguem na ordem, e só quando preenchidos", () => {
+  it("'Grátis até' (teste_ate − 1) e 'Cliente desde' seguem na ordem, e só quando preenchidos", () => {
     expect(
       linhasDeDatasDaAssinatura(
         {
@@ -862,12 +862,30 @@ describe("linhasDeDatasDaAssinatura", () => {
         agora,
       ),
     ).toEqual([
-      { rotulo: "Teste até", data: "2026-11-20" },
+      { rotulo: "Grátis até", data: "2026-11-19" },
       { rotulo: "Cliente desde", data: "2026-11-01" },
     ]);
     expect(
       linhasDeDatasDaAssinatura({ ...base, status: "ativa" }, agora),
     ).toEqual([]);
+  });
+
+  it("fora do teste o rótulo continua 'Teste até' com a própria data", () => {
+    expect(
+      linhasDeDatasDaAssinatura(
+        { ...base, status: "ativa", testeAte: "2026-11-20" },
+        agora,
+      ),
+    ).toEqual([{ rotulo: "Teste até", data: "2026-11-20" }]);
+  });
+
+  it("em teste com data ilegível a linha fica, e o formatador mostra '—'", () => {
+    expect(
+      linhasDeDatasDaAssinatura(
+        { ...base, status: "teste", testeAte: "amanhã" },
+        agora,
+      ),
+    ).toEqual([{ rotulo: "Grátis até", data: "amanhã" }]);
   });
 
   it("data ilegível não derruba nem esconde a linha", () => {
