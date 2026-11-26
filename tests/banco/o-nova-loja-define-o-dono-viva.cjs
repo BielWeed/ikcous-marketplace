@@ -24,10 +24,12 @@
  *   (4) as recusas, cada uma com o seu SQLSTATE e NADA gravado: 0 admins (IKD03), 2 admins (IKD04), admin só em profiles
  *       ou só em auth.users (IKD05), e-mail não confirmado (IKD06), dono cadastrado que não é admin com a loja sem admin
  *       (IKD02) ou com outra admin (IKD01), dono admin só numa fonte (IKD01); dono admin com outras admins = ja_era_dona;
+ *       A admin única banida (banned_until no futuro) ou apagada (deleted_at) no Auth é IKT06, nada gravado (decisão do
+ *       sócio de 26/11 ~15h, a mesma guarda do trocar-dono); banned_until no PASSADO não bloqueia (grava);
  *   (5) duas chamadas SIMULTÂNEAS (presas na mesma linha da admin até as duas esperarem): uma grava, a outra vê a dona e
  *       responde ja_era_dona (nunca 23505, nunca duas linhas);
  *   (6) CONTROLES: as sondas valem com o texto do script; sem `SET LOCAL ROLE postgres` a sessão da API recebe 42501 e
- *       nada é gravado; 8 mutantes textuais do SQL (cada guarda tirada) reprovam AO MENOS a sonda que cada um declara.
+ *       nada é gravado; 9 mutantes textuais do SQL (cada guarda tirada) reprovam AO MENOS a sonda que cada um declara.
  *
  * LIMITE DECLARADO: no postgres:17 do CI o papel postgres É superusuário; no Supabase não é (é dono das tabelas de
  * public). Esta prova mostra que a sessão de fora não escreve nada sem o SET LOCAL ROLE e que, com ele, o texto faz o
@@ -78,12 +80,24 @@ const SO_LOGIN = ["admin", "customer"];
 let URL_EFEMERA = "";
 let SQL = "";
 
+/** O bloqueio no Auth de cada fixture: [banned_until, deleted_at] (expressões SQL fixas deste arquivo). */
+const BLOQUEIOS = {
+  nenhum: ["NULL", "NULL"],
+  banida: ["now() + interval '1 day'", "NULL"],
+  apagada: ["NULL", "now()"],
+  ban_vencido: ["now() - interval '1 day'", "NULL"],
+};
+
 /**
- * Deixa o banco (commitado) no estado pedido: todo mundo customer nas duas fontes e com e-mail confirmado, menos o que
- * `papeis` e `semConfirmar` dizem; dono_da_loja e cargo_log vazios, menos o `dono`. Como o postgres (a automação de
- * confiança): as travas de cargo leem o GUC role, que na sessão de login direto vale none.
+ * Deixa o banco (commitado) no estado pedido: todo mundo customer nas duas fontes, com e-mail confirmado e sem bloqueio
+ * no Auth, menos o que `papeis`, `semConfirmar` e `bloqueio` dizem; dono_da_loja e cargo_log vazios, menos o `dono`.
+ * Como o postgres (a automação de confiança): as travas de cargo leem o GUC role, que na sessão de login direto vale
+ * none.
  */
-async function preparar(c, { papeis = {}, semConfirmar = [], dono = null }) {
+async function preparar(
+  c,
+  { papeis = {}, semConfirmar = [], dono = null, bloqueio = {} },
+) {
   await c.query("BEGIN");
   try {
     await c.query("SET LOCAL ROLE postgres");
@@ -96,10 +110,13 @@ async function preparar(c, { papeis = {}, semConfirmar = [], dono = null }) {
         id,
         p,
       ]);
+      const [ban, apagada] = BLOQUEIOS[bloqueio[id] ?? "nenhum"];
       await c.query(
         `UPDATE auth.users
             SET raw_app_meta_data = raw_app_meta_data || jsonb_build_object('role', $2::text),
-                email_confirmed_at = CASE WHEN $3::boolean THEN NULL ELSE now() END
+                email_confirmed_at = CASE WHEN $3::boolean THEN NULL ELSE now() END,
+                banned_until = ${ban},
+                deleted_at = ${apagada}
           WHERE id = $1`,
         [id, a, semConfirmar.includes(id)],
       );
@@ -117,9 +134,16 @@ async function preparar(c, { papeis = {}, semConfirmar = [], dono = null }) {
   const f = await foto(c);
   for (const l of f.papeis) {
     const [a, p] = papeis[l.id] ?? ["customer", "customer"];
+    const b = bloqueio[l.id] ?? "nenhum";
     assert.deepEqual(
-      [l.a, l.p, l.conf],
-      [a, p, !semConfirmar.includes(l.id)],
+      [l.a, l.p, l.conf, l.ban, l.del],
+      [
+        a,
+        p,
+        !semConfirmar.includes(l.id),
+        b === "banida" || b === "ban_vencido",
+        b === "apagada",
+      ],
       `a fixture ${l.id} não ficou como pedido`,
     );
   }
@@ -133,7 +157,8 @@ async function foto(c) {
   ).rows.map((l) => l.u);
   const papeis = (
     await c.query(
-      `SELECT u.id::text AS id, u.raw_app_meta_data ->> 'role' AS a, p.role AS p, u.email_confirmed_at IS NOT NULL AS conf
+      `SELECT u.id::text AS id, u.raw_app_meta_data ->> 'role' AS a, p.role AS p, u.email_confirmed_at IS NOT NULL AS conf,
+              u.banned_until IS NOT NULL AS ban, u.deleted_at IS NOT NULL AS del
          FROM auth.users u JOIN public.profiles p ON p.id = u.id
         WHERE u.id = ANY ($1::uuid[]) ORDER BY u.id`,
       [TODOS],
@@ -355,6 +380,22 @@ const SONDAS = {
     estado: { papeis: { [U_SO_PERFIL]: SO_PERFIL }, dono: U_SO_PERFIL },
     recusa: "IKD01",
   }),
+  admin_banida_IKT06: sondaDe({
+    estado: { papeis: { [U_DONA]: ADMIN }, bloqueio: { [U_DONA]: "banida" } },
+    recusa: "IKT06",
+  }),
+  admin_apagada_IKT06: sondaDe({
+    estado: { papeis: { [U_DONA]: ADMIN }, bloqueio: { [U_DONA]: "apagada" } },
+    recusa: "IKT06",
+  }),
+  ban_vencido_grava: sondaDe({
+    estado: {
+      papeis: { [U_DONA]: ADMIN },
+      bloqueio: { [U_DONA]: "ban_vencido" },
+    },
+    espera: { acao: "gravada", donos: 1, linhas: 1, admins: 1 },
+    dona: U_DONA,
+  }),
   concorrente: sondaConcorrente,
 };
 
@@ -430,6 +471,16 @@ const MUTANTES = [
       ),
   },
   {
+    nome: "M9 sem a guarda IKT06 (a admin banida ou apagada no Auth viraria dona)",
+    reprova: "admin_banida_IKT06",
+    sql: () =>
+      mutar(
+        SQL,
+        "IF EXISTS (SELECT 1 FROM auth.users u\n              WHERE u.id = v_id AND (u.banned_until > now() OR u.deleted_at IS NOT NULL)) THEN",
+        "IF false THEN",
+      ),
+  },
+  {
     nome: "M8 sem a guarda de 0 admins",
     reprova: "sem_admin_IKD03",
     sql: () =>
@@ -487,9 +538,13 @@ PROVAS.push({
         nullif(current_setting('request.jwt.claim.role', true), ''),
         (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role')
       )::text $$`);
-    // A coluna da plataforma que o SQL lê (o auth.users emulado do provisionar não a tem).
+    // As colunas da plataforma que o SQL lê (o auth.users emulado do provisionar não as tem): a confirmação do e-mail e
+    // o bloqueio no Auth (IKT06: banned_until no futuro ou deleted_at preenchido).
     await c.query(
-      "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz",
+      `ALTER TABLE auth.users
+         ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz,
+         ADD COLUMN IF NOT EXISTS banned_until timestamptz,
+         ADD COLUMN IF NOT EXISTS deleted_at timestamptz`,
     );
     for (const id of TODOS) {
       await c.query(
@@ -621,7 +676,7 @@ PROVAS.push({
 // (4) e (5) as recusas e a concorrência: as sondas no texto do script
 // ---------------------------------------------------------------------------------------------------------------------
 PROVAS.push({
-  nome: "(4)+(5) com o texto do script TODAS as sondas valem: 0/2 admins, fontes discordantes, e-mail sem confirmar, dono que não é admin (IKD01..IKD06, nada gravado), dona com outras admins, duas chamadas simultâneas",
+  nome: "(4)+(5) com o texto do script TODAS as sondas valem: 0/2 admins, fontes discordantes, e-mail sem confirmar, dono que não é admin (IKD01..IKD06, nada gravado), admin banida ou apagada (IKT06, nada gravado), ban vencido grava, dona com outras admins, duas chamadas simultâneas",
   corpo: async (c) => {
     const s = await rodarSondas(c, SQL);
     // a sonda reprovada roda de novo, agora lançando: a mensagem dela vai para o log
@@ -634,7 +689,7 @@ PROVAS.push({
 // (6) os controles: cada guarda tirada reprova a sua sonda
 // ---------------------------------------------------------------------------------------------------------------------
 PROVAS.push({
-  nome: "(6) 8 mutantes textuais do SQL (sem SET LOCAL ROLE, sem cada guarda, sem as travas) reprovam AO MENOS a sonda que declaram",
+  nome: "(6) 9 mutantes textuais do SQL (sem SET LOCAL ROLE, sem cada guarda, sem as travas) reprovam AO MENOS a sonda que declaram",
   corpo: async (c) => {
     for (const m of MUTANTES) {
       const s = await rodarSondas(c, m.sql());

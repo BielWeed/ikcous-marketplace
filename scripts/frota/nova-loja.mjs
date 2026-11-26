@@ -112,6 +112,13 @@
  *    B2/B4 em ensaio sobre a fachada somenteLeitura; reconciliação DEGRADADA
  *    é NÃO); o geral é SIM só se TODOS forem SIM, e o que ainda não está
  *    ligado aparece como pendente NÃO;
+ *  - toda rodada com --aplicar (conferir incluído) começa apagando do cofre
+ *    da troca o e-mail de um pedido de troca VENCIDO ou ilegível (o e-mail
+ *    fica no PC por até 30 min); é a única coisa que o conferir apaga, e só
+ *    no PC (nada na loja);
+ *  - receber recusa (NÃO, sem pedir código) enquanto houver pedido de troca
+ *    de dona aberto e no prazo: o código daquele link é do trocar-dono
+ *    --receber, que confere o projeto antes de guardar o refresh;
  *  - ficha confere store_config id = 1 (semeada pela migration
  *    20261540000000) e GERA, sem executar, o SQL da linha em frota_lojas e a
  *    entrada de lojas.json para o passo de cadastro (B5);
@@ -673,6 +680,15 @@ async function passoReceber(pedido, d) {
     return resultado(
       NAO,
       `a loja ${slug} não tem autorização aberta: rode abrir --aplicar antes.`,
+    );
+  }
+  // o pendente de uma troca de dona aberta é da troca: consumido aqui, o
+  // refresh trocaria sem a conferência do projeto (T3-c) e sem trocar a dona
+  const troca = e?.passos?.["trocar-dono"]?.pedidoEm;
+  if (ehDataIso(troca) && !foraDoPrazo(d.agora(), Date.parse(troca))) {
+    return resultado(
+      NAO,
+      `a loja ${slug} tem um pedido de troca de dona aberto (de ${troca}, vale 30 min): o código desse link é da troca. Use ${proximoDaTroca(slug)}. O código não foi pedido e nada foi feito.`,
     );
   }
   const { acesso } = contexto(pedido, d);
@@ -1516,13 +1532,17 @@ export const SQL_DONO_EXISTE =
  * das duas fontes do cargo (a união do primeira-admin.mjs); `nas_duas` =
  * admin nas DUAS (o que is_admin_atual() e definir_cargo() exigem);
  * `dono_admin` = o critério da consulta 88c: o dono existe em auth.users e é
- * admin em profiles.role e em auth.users (role). */
+ * admin em profiles.role e em auth.users (role); `bloqueada` = alguma admin
+ * nas duas fontes está banida (banned_until no futuro) ou apagada
+ * (deleted_at) no Auth: só o decidirDono a usa (IKT06, antes de gravar); o
+ * conferir não a lê, e a saída dele não muda. */
 export const SQL_DONO = `WITH admins AS MATERIALIZED (
   SELECT p.id FROM public.profiles p WHERE p.role = 'admin'
   UNION
   SELECT u.id FROM auth.users u WHERE u.raw_app_meta_data ->> 'role' = 'admin'
 ), nas_duas AS MATERIALIZED (
-  SELECT u.id, u.email_confirmed_at IS NOT NULL AS confirmada
+  SELECT u.id, u.email_confirmed_at IS NOT NULL AS confirmada,
+         COALESCE(u.banned_until > now(), false) OR u.deleted_at IS NOT NULL AS bloqueada
     FROM auth.users u JOIN public.profiles p ON p.id = u.id
    WHERE p.role = 'admin' AND u.raw_app_meta_data ->> 'role' = 'admin'
 )
@@ -1530,7 +1550,8 @@ SELECT (SELECT count(*) FROM admins)::int AS admins,
        (SELECT count(*) FROM nas_duas)::int AS nas_duas,
        COALESCE((SELECT bool_and(n.confirmada) FROM nas_duas n), false) AS confirmada,
        (SELECT count(*) FROM public.dono_da_loja)::int AS donos,
-       EXISTS (SELECT 1 FROM public.dono_da_loja d JOIN nas_duas n ON n.id = d.user_id) AS dono_admin;`;
+       EXISTS (SELECT 1 FROM public.dono_da_loja d JOIN nas_duas n ON n.id = d.user_id) AS dono_admin,
+       COALESCE((SELECT bool_or(n.bloqueada) FROM nas_duas n), false) AS bloqueada;`;
 
 /**
  * A escrita: UMA requisição, sem `parameters` e SEM dado de entrada (a dona
@@ -1552,7 +1573,7 @@ SELECT (SELECT count(*) FROM admins)::int AS admins,
  * Cada recusa tem SQLSTATE próprio (classe IK, IKD01..IKD07), e a admin
  * única banida ou apagada no Auth do Supabase é IKT06 (a MESMA guarda e o
  * MESMO código do trocar-dono, decisão do sócio 26/11 ~15h; só na
- * transação: a leitura SQL_DONO não muda de forma).
+ * transação e na leitura SQL_DONO, coluna `bloqueada`).
  */
 export const SQL_DEFINIR_DONO = `BEGIN ISOLATION LEVEL READ COMMITTED;
 SET LOCAL ROLE postgres;
@@ -1654,7 +1675,7 @@ const RECUSAS_DO_DONO = Object.freeze({
   IKT06: RECUSA_DA_CONTA_BLOQUEADA,
 });
 
-const COLUNAS_DO_DONO = "admins,confirmada,dono_admin,donos,nas_duas";
+const COLUNAS_DO_DONO = "admins,bloqueada,confirmada,dono_admin,donos,nas_duas";
 
 /** A linha de SQL_DONO, ou null se veio fora do formato. */
 function linhaDoDono(linhas) {
@@ -1668,7 +1689,8 @@ function linhaDoDono(linhas) {
     !inteiro(l.nas_duas) ||
     !inteiro(l.donos) ||
     typeof l.confirmada !== "boolean" ||
-    typeof l.dono_admin !== "boolean"
+    typeof l.dono_admin !== "boolean" ||
+    typeof l.bloqueada !== "boolean"
   ) {
     return null;
   }
@@ -1722,6 +1744,8 @@ export function decidirDono(linhas) {
     };
   }
   if (l.nas_duas !== 1) return nao("IKD05");
+  // a mesma ordem do DO: IKT06 depois de IKD05 e antes de IKD06
+  if (l.bloqueada) return nao("IKT06");
   if (!l.confirmada) return nao("IKD06");
   return {
     veredito: SIM,
@@ -2371,6 +2395,22 @@ async function apagarEntradaDaTroca(d, slug) {
 const foraDoPrazo = (agora, pedidoEm) =>
   agora < pedidoEm || agora - pedidoEm > PRAZO_DA_TROCA_MS;
 
+/** O e-mail de um pedido de troca vencido (ou ilegível) sai do cofre da troca
+ * no começo de TODA rodada com --aplicar da loja, conferir incluído (decisão
+ * do sócio: o e-mail fica no PC por até 30 min). Só apaga; nunca grava. Falha
+ * do cofre não derruba o passo (a próxima rodada tenta de novo). */
+async function limparTrocaVencida(d, slug) {
+  try {
+    const texto = await d.cofreDaTroca.ler(slug);
+    if (texto === null) return;
+    const velha = entradaDaTroca(texto);
+    if (!velha || foraDoPrazo(d.agora(), velha.pedidoEm))
+      await d.cofreDaTroca.apagar(slug);
+  } catch {
+    // limpeza de cortesia: repete na próxima rodada da loja
+  }
+}
+
 /** T3-a: o pendente do cofre é o que a fase 1 deste pedido gravou. */
 function pendenteDoPedido(pendente, entrada, pedidoEm) {
   const c = pendente?.criadoEm;
@@ -2405,15 +2445,6 @@ async function passoTrocarDono(pedido, d) {
   const pre = await preDoDono(d, slug, "", "trocar-dono");
   if (pre.r) return pre.r;
   const { ref } = pre;
-  // o e-mail de um pedido anterior que venceu sem fase 2 sai agora
-  try {
-    const texto = await d.cofreDaTroca.ler(slug);
-    const velha = texto === null ? null : entradaDaTroca(texto);
-    if (texto !== null && (!velha || foraDoPrazo(d.agora(), velha.pedidoEm)))
-      await d.cofreDaTroca.apagar(slug);
-  } catch {
-    // limpeza de cortesia: o pedido aprovado abaixo sobrescreve a entrada
-  }
   // o e-mail só existe nesta variável, no SQL da leitura e, com a troca
   // possível, na entrada própria do cofre da troca
   const email = await lerUmaEntrada(
@@ -2524,6 +2555,12 @@ async function passoTrocarDono(pedido, d) {
 // novo ir para o cofre (T3-c) → sqlTrocarDono pelo pg-meta → releitura. A
 // entrada do e-mail é apagada no fim, em QUALQUER desfecho.
 
+/** Depois de o código virar token, não dá para garantir que a autorização
+ * anterior da loja segue valendo (o Supabase pode invalidá-la ao emitir outra
+ * para o mesmo app: prova P6 pendente). */
+const AVISO_DA_AUTORIZACAO_ANTIGA =
+  "Pode ser que a autorização antiga da loja tenha deixado de valer: se a loja der erro de acesso, peça à dona para autorizar de novo com nova-loja abrir/receber.";
+
 const repetirATroca = (slug) =>
   `Para ver quem é a dona agora, rode conferir (só leitura). Repetir a troca exige um pedido novo: ${pedirATroca(slug)}.`;
 
@@ -2533,7 +2570,7 @@ const repetirATroca = (slug) =>
 async function conferirAcessoAoProjeto(d, accessToken, ref) {
   const naoAlcanca = (porQue) =>
     new ErroDoComando(
-      `a autorização nova não alcança o projeto ${ref} da loja (${porQue}): quem tocou em Authorize não é a dona da organização da loja? O código foi usado, mas o refresh da loja ficou o de antes.`,
+      `a autorização nova não alcança o projeto ${ref} da loja (${porQue}): quem tocou em Authorize não é a dona da organização da loja? O código foi usado e o refresh novo NÃO foi guardado. ${AVISO_DA_AUTORIZACAO_ANTIGA}`,
       { codigo: "SEM_ACESSO_AO_PROJETO" },
     );
   const g = criarClienteGestao({ token: accessToken, fetch: d.fetch });
@@ -2596,6 +2633,9 @@ async function trocarComOCodigo(pedido, d, ref, segredo) {
     );
   }
   const pedidoEm = Date.parse(iso);
+  // o prazo primeiro: a limpeza da rodada já pode ter apagado o e-mail vencido
+  if (foraDoPrazo(d.agora(), pedidoEm))
+    return resultado(NAO, prazoVencido(slug, pedidoEm));
   const entrada = await lerEntradaDaTroca(d, slug);
   if (entrada === null || entrada.pedidoEm !== pedidoEm) {
     return resultado(
@@ -2603,8 +2643,6 @@ async function trocarComOCodigo(pedido, d, ref, segredo) {
       `o e-mail da nova dona não está no cofre da troca com a hora deste pedido (apagado, ou de outro pedido): o código não foi pedido e a dona NÃO foi trocada. Rode ${pedirATroca(slug)} de novo.`,
     );
   }
-  if (foraDoPrazo(d.agora(), pedidoEm))
-    return resultado(NAO, prazoVencido(slug, pedidoEm));
   // o e-mail sai do COFRE, nunca da entrada padrão (decisão do sócio, 26/11)
   const email = entrada.email;
   segredo.email = email;
@@ -2638,13 +2676,13 @@ async function trocarComOCodigo(pedido, d, ref, segredo) {
     });
   } catch (erro) {
     const r = resultadoDoErro(erro);
-    // as conferências de cá já dizem o que fazer; a mensagem do acesso-oauth
-    // manda "abrir/receber", que AQUI é o caminho errado (T3-a)
+    // as conferências de cá já dizem o que fazer; nas outras falhas o código
+    // pode ter sido trocado: diz que a autorização antiga pode ter caído
     return resultado(
       r.veredito,
       erro instanceof ErroDoComando
         ? `${r.mensagem} A dona NÃO foi trocada.`
-        : `o código não virou uma autorização nova: ${r.mensagem} Aqui NÃO rode abrir nem receber: a autorização da loja ficou a de antes. A dona NÃO foi trocada; para tentar de novo, rode ${pedirATroca(slug)} (sai um link novo).`,
+        : `o código não virou uma autorização nova: ${r.mensagem} A dona NÃO foi trocada; para tentar a troca de novo, rode ${pedirATroca(slug)} (sai um link novo). ${AVISO_DA_AUTORIZACAO_ANTIGA}`,
     );
   }
   const quem = mascararEmail(email);
@@ -3378,6 +3416,7 @@ export async function executarPasso(pedido, deps = {}) {
       } else {
         const liberar = await d.estado.travar(pedido.slug);
         try {
+          await limparTrocaVencida(d, pedido.slug);
           r = await EXECUTORES[passo](pedido, d);
         } finally {
           await liberar();

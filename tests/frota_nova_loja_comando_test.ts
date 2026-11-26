@@ -226,6 +226,8 @@ function bancoFalso({
   promocaoCai = false,
   // a admin única está banida ou apagada no Supabase (IKT06)
   bloqueada = false,
+  // só a transação vê o bloqueio (aconteceu depois da leitura)
+  bloqueadaNaEscrita = false,
 } = {}) {
   const b = {
     alvo,
@@ -241,6 +243,7 @@ function bancoFalso({
     fontesDiscordam,
     promocaoCai,
     bloqueada,
+    bloqueadaNaEscrita,
     falharEstadoNa: null,
     leiturasDoEstado: 0,
     tabelas: 0,
@@ -365,6 +368,7 @@ function bancoFalso({
           confirmada: nasDuas > 0 && b.confirmada,
           donos: b.dono === null ? 0 : 1,
           dono_admin: donoAdmin,
+          bloqueada: nasDuas > 0 && b.bloqueada,
         };
       };
       if (sql === SQL_DONO_EXISTE) return [{ tabela: b.donoTabela }];
@@ -400,7 +404,7 @@ function bancoFalso({
         if (l.admins === 0) throw recusa("IKD03");
         if (l.admins > 1) throw recusa("IKD04");
         if (l.nas_duas !== 1) throw recusa("IKD05");
-        if (b.bloqueada) throw recusa("IKT06");
+        if (b.bloqueada || b.bloqueadaNaEscrita) throw recusa("IKT06");
         if (!l.confirmada) throw recusa("IKD06");
         b.dono = "alvo";
         return resultado("gravada", 1);
@@ -1934,17 +1938,39 @@ Deno.test("definir-dono: IKT06 — a admin única banida ou apagada no Supabase 
     assert(i > antes, `fora de ordem ou ausente: ${t}`);
     antes = i;
   }
+  const RECUSA =
+    "conta bloqueada ou apagada no Supabase: desbloqueie ou escolha outra pessoa";
+  // a LEITURA já vê o bloqueio: NÃO sem mandar a transação
   const amb = await ateADona({
     apiOpcoes: { banco: bancoFalso({ bloqueada: true }) },
   });
   const r = await executarPasso(pedido("definir-dono"), amb.deps);
   assertEquals(r.veredito, "NÃO", r.mensagem);
-  assertStringIncludes(
-    r.mensagem,
-    "conta bloqueada ou apagada no Supabase: desbloqueie ou escolha outra pessoa",
-  );
-  assertStringIncludes(r.mensagem, "IKT06");
+  assertStringIncludes(r.mensagem, RECUSA);
+  assertEquals(escritasDoDono(amb), 0, "mandou a transação");
   assertEquals(amb.api.banco.dono, null);
+  assertStringIncludes(SQL_DONO, "AS bloqueada");
+  assertStringIncludes(SQL_DONO, "u.banned_until > now()");
+  assertStringIncludes(SQL_DONO, "u.deleted_at IS NOT NULL");
+  // bloqueada entre a leitura e a escrita: a transação recusa (IKT06)
+  const corrida = await ateADona({
+    apiOpcoes: { banco: bancoFalso({ bloqueadaNaEscrita: true }) },
+  });
+  const r2 = await executarPasso(pedido("definir-dono"), corrida.deps);
+  assertEquals(r2.veredito, "NÃO", r2.mensagem);
+  assertStringIncludes(r2.mensagem, RECUSA);
+  assertStringIncludes(r2.mensagem, "IKT06");
+  assertEquals(escritasDoDono(corrida), 1);
+  assertEquals(corrida.api.banco.dono, null);
+});
+
+Deno.test("conferir: a coluna `bloqueada` da leitura do dono NÃO muda a saída do conferir", async () => {
+  const amb = await ateConferir();
+  const antes = await executarPasso(pedido("conferir"), amb.deps);
+  amb.api.banco.bloqueada = true;
+  const depois = await executarPasso(pedido("conferir"), amb.deps);
+  assertEquals(depois.veredito, antes.veredito);
+  assertEquals(depois.itens, antes.itens);
 });
 
 Deno.test("definir-dono: dono que não é mais admin (loja sem admin) = NÃO, nada gravado", async () => {
@@ -2326,6 +2352,7 @@ Deno.test("conferir: item admin — a dona admin nas duas fontes + outra admin s
           confirmada: true,
           donos: 1,
           dono_admin: true,
+          bloqueada: false,
         },
       ];
     }
@@ -3313,6 +3340,9 @@ Deno.test("trocar-dono fase 2 (T3-c): token novo que NÃO alcança o projeto da 
     assertEquals(r.veredito, "NÃO", `${status}: ${r.mensagem}`);
     assertStringIncludes(r.mensagem, "não alcança o projeto");
     assertStringIncludes(r.mensagem, "NÃO foi trocada");
+    // depois de o código virar token, não dá para prometer a autorização antiga
+    assert(!r.mensagem.includes("o de antes"), r.mensagem);
+    assertStringIncludes(r.mensagem, "Pode ser que a autorização antiga");
     const depois = await registroDoCofre(amb);
     assertEquals(depois.refresh, antes.refresh, "sobrescreveu o refresh");
     assertEquals(amb.api.banco.troca.escritas, 0);
@@ -3327,8 +3357,13 @@ Deno.test("trocar-dono fase 2: código que o Supabase recusa = NÃO, refresh da 
   amb.entradas.push("codigo-ERRADO-0123456789");
   const r = await receberATroca(amb);
   assertEquals(r.veredito, "NÃO", r.mensagem);
-  assertStringIncludes(r.mensagem, "Aqui NÃO rode abrir");
   assertStringIncludes(r.mensagem, "trocar-dono --loja");
+  assertStringIncludes(
+    r.mensagem,
+    "Pode ser que a autorização antiga da loja tenha deixado de valer",
+  );
+  assertStringIncludes(r.mensagem, "nova-loja abrir/receber");
+  assert(!r.mensagem.includes("a de antes"), r.mensagem);
   assertEquals((await registroDoCofre(amb)).refresh, antes.refresh);
   assertEquals(amb.api.banco.troca.escritas, 0);
   assertEquals(await entradaDaTroca(amb), null);
@@ -3436,4 +3471,50 @@ Deno.test("trocar-dono fase 2: sem --aplicar é ENSAIO — nem o código é pedi
   assertEquals(await amb.deps.cofreDaTroca.ler(SLUG), entrada);
   assertEquals(amb.deps.cofreDaTroca.apagamentos, apagou);
   assertEquals(amb.entradas.length, 0);
+});
+
+Deno.test("trocar-dono: o e-mail de um pedido VENCIDO (ou ilegível) sai do cofre da troca no começo de qualquer passo com --aplicar da loja, conferir incluído; dentro do prazo fica", async () => {
+  // dentro do prazo, outro passo da loja não apaga
+  const amb = await pedidoDeTroca();
+  let c = await executarPasso(pedido("conferir"), amb.deps);
+  assert(c.veredito !== undefined);
+  assert((await entradaDaTroca(amb)) !== null, "apagou dentro do prazo");
+  // venceu: o conferir (só leitura no banco) apaga o e-mail do PC
+  amb.relogio.t += PRAZO_DA_TROCA_MS;
+  c = await executarPasso(pedido("conferir"), amb.deps);
+  assertEquals(await entradaDaTroca(amb), null, "o conferir não limpou");
+  // venceu: qualquer outro passo com --aplicar também limpa
+  const outro = await pedidoDeTroca();
+  outro.relogio.t += PRAZO_DA_TROCA_MS;
+  const d = await executarPasso(pedido("definir-dono"), outro.deps);
+  assert(d.veredito !== undefined);
+  assertEquals(await entradaDaTroca(outro), null, "o definir-dono não limpou");
+  // ilegível: sai também, mesmo dentro do prazo
+  const ruim = await pedidoDeTroca();
+  await ruim.deps.cofreDaTroca.gravar(SLUG, "{nao e json");
+  await executarPasso(pedido("conferir"), ruim.deps);
+  assertEquals(await ruim.deps.cofreDaTroca.ler(SLUG), null);
+  // sem --aplicar (ensaio) nada é apagado
+  const ensaio = await pedidoDeTroca();
+  ensaio.relogio.t += PRAZO_DA_TROCA_MS;
+  const n = ensaio.deps.cofreDaTroca.apagamentos;
+  await executarPasso(pedido("conferir", { aplicar: false }), ensaio.deps);
+  assertEquals(ensaio.deps.cofreDaTroca.apagamentos, n);
+});
+
+Deno.test("receber comum com troca de dona aberta e no prazo = NÃO sem pedir o código (manda usar trocar-dono --receber); depois do prazo volta a valer", async () => {
+  const amb = await pedidoDeTroca();
+  const antes = await amb.deps.cofre.ler(SLUG);
+  amb.entradas.push(CODIGO);
+  const n = tokenPosts(amb);
+  const r = await executarPasso(pedido("receber"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, PROXIMO_DA_TROCA);
+  assertEquals(amb.entradas.length, 1, "pediu o código");
+  assertEquals(tokenPosts(amb), n, "trocou o código da troca");
+  assertEquals(await amb.deps.cofre.ler(SLUG), antes, "mexeu no cofre");
+  // vencido o pedido, o receber comum funciona como sempre
+  amb.relogio.t += PRAZO_DA_TROCA_MS;
+  const r2 = await executarPasso(pedido("receber"), amb.deps);
+  assertEquals(r2.veredito, "SIM", r2.mensagem);
 });

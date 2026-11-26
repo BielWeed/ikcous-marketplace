@@ -409,8 +409,10 @@ export function criarAcessoOAuth({
      *  - conferirPendente(pendente): ANTES de o código ser trocado (recebe
      *    { state, verificador, criadoEm }; não pode imprimir nada disso);
      *  - conferirAcesso(accessToken): depois da troca e ANTES de o refresh
-     *    novo ir para o cofre; se lançar, o cofre fica como estava (o refresh
-     *    antigo segue lá). Não pode usar o renovar (a trava é a mesma).
+     *    novo ir para o cofre; se lançar, o cofre fica como estava. O refresh
+     *    antigo segue no cofre, mas PODE ter deixado de valer (o Supabase pode
+     *    invalidar a autorização anterior do app ao emitir outra: prova P6
+     *    pendente). Não pode usar o renovar (a trava é a mesma).
      * O que eles lançam sobe como veio.
      */
     async receber({ slug, colado, conferirPendente, conferirAcesso }) {
