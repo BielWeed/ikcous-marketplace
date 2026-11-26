@@ -16,10 +16,11 @@
 // servido como antes, mas nunca guardado.
 //
 // Tudo com `fetch` dublê — nunca rede de verdade.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CACHE_INDEX_HTML_MS,
+  PRAZO_INDEX_HTML_MS,
   SELECT_CONFIGURACAO_PUBLICA,
   atenderPorteiro,
 } from "@/hospedagem/porteiro";
@@ -465,16 +466,20 @@ describe("T11 — o porteiro guarda o /index.html em memória por 5 min", () => 
     expect(deps.indexHtmlEmVoo.size).toBe(0);
   });
 
-  it("rede caindo na busca: nada é guardado, nada fica preso em voo, e o próximo pedido tenta de novo", async () => {
+  it("rede caindo na busca: o navegador recebe a 503 de manutenção NA HORA (nunca o erro da Vercel), nada é guardado nem fica em voo, e o próximo pedido tenta de novo", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const duble = criarDuble();
     const deps = criarDeps(duble, { t: 0 });
     duble.responderIndex = () => {
       throw new TypeError("fetch failed");
     };
 
-    await expect(
-      atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps),
-    ).rejects.toThrow("fetch failed");
+    const r1 = await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
+    expect(r1.status).toBe(503);
+    expect(r1.headers.get("x-ikcous-porteiro")).toBe("html-indisponivel");
+    const html1 = await r1.text();
+    expect(html1).toContain("manutenção");
+    expect(html1).not.toContain("CRU DE");
     expect(deps.cacheIndexHtml.size).toBe(0);
     expect(deps.indexHtmlEmVoo.size).toBe(0);
 
@@ -607,6 +612,163 @@ describe("T11 — só guarda o HTML que é DESTE deploy (ressalva do PR #1910)",
     for (const r of await Promise.all(emVoo)) expect(r.status).toBe(200);
     expect(duble.buscasDoIndex).toHaveLength(1);
     expect(deps.cacheIndexHtml.size).toBe(0);
+    expect(deps.indexHtmlEmVoo.size).toBe(0);
+  });
+});
+
+describe("T11 — a busca do /index.html tem prazo (caça 26/11/2026)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Aquece a ficha de A (o `/index.html` é o único em jogo) e devolve os
+   * deps; o relógio do porteiro é o injetado, só os temporizadores são falsos. */
+  async function prepararComTimersFalsos(duble: Duble) {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const deps = criarDeps(duble, { t: 0 });
+    await atenderPorteiro(
+      pedido(HOST_A, "/identidade.json"),
+      ambiente(ORIGEM_A),
+      deps,
+    );
+    return deps;
+  }
+
+  /** Acompanha uma promessa sem pendurar o teste: `terminou` vira verdade
+   * quando ela resolve OU rejeita. */
+  function acompanhar<T>(promessa: Promise<T>) {
+    const estado: { terminou: boolean; erro?: unknown; valor?: T } = {
+      terminou: false,
+    };
+    promessa.then(
+      (valor) => {
+        estado.terminou = true;
+        estado.valor = valor;
+      },
+      (erro: unknown) => {
+        estado.terminou = true;
+        estado.erro = erro;
+      },
+    );
+    return estado;
+  }
+
+  it("o prazo é de 5 s (arquivo estático da própria Vercel; mesmo prazo da caderneta)", () => {
+    expect(PRAZO_INDEX_HTML_MS).toBe(5_000);
+  });
+
+  it("`/index.html` que nunca responde: os pedidos juntos recebem a 503 de manutenção NO prazo, e nada fica em voo nem guardado", async () => {
+    const erros = vi.spyOn(console, "error").mockImplementation(() => {});
+    const duble = criarDuble();
+    const deps = await prepararComTimersFalsos(duble);
+    let sinal: AbortSignal | undefined;
+    const fetchOriginal = duble.fetchImpl;
+    const deps2 = {
+      ...deps,
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        if (url.pathname === "/index.html") {
+          duble.buscasDoIndex.push(url.href);
+          sinal = init?.signal ?? undefined;
+          // Transporte que nunca resolve nem observa o sinal: só o
+          // temporizador do porteiro pode desatar isto.
+          return new Promise<Response>(() => undefined);
+        }
+        return fetchOriginal(input, init);
+      }) as typeof fetch,
+    };
+
+    const juntos = Array.from({ length: 3 }, () =>
+      acompanhar(atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps2)),
+    );
+    await vi.advanceTimersByTimeAsync(PRAZO_INDEX_HTML_MS - 1);
+    expect(juntos.some((j) => j.terminou)).toBe(false);
+    expect(deps.indexHtmlEmVoo.size).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    for (const j of juntos) {
+      expect(j.terminou).toBe(true);
+      expect(j.erro).toBeUndefined();
+      const resp = j.valor as Response;
+      expect(resp.status).toBe(503);
+      expect(resp.headers.get("x-ikcous-porteiro")).toBe("html-indisponivel");
+      expect(await resp.text()).not.toContain("CRU DE");
+    }
+    expect(String(erros.mock.calls)).toContain("prazo esgotado");
+    expect(duble.buscasDoIndex).toHaveLength(1);
+    expect(sinal?.aborted).toBe(true);
+    expect(deps.indexHtmlEmVoo.size).toBe(0);
+    expect(deps.cacheIndexHtml.size).toBe(0);
+  });
+
+  it("`/index.html` que responde DEPOIS do prazo: nada é guardado, e o pedido seguinte busca de novo e guarda", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const duble = criarDuble();
+    const deps = await prepararComTimersFalsos(duble);
+    duble.responderIndex = (url) =>
+      new Promise<Response>((resolve) => {
+        setTimeout(
+          () => resolve(index200(url) as Response),
+          PRAZO_INDEX_HTML_MS + 1_000,
+        );
+      });
+
+    const atrasado = acompanhar(
+      atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps),
+    );
+    await vi.advanceTimersByTimeAsync(PRAZO_INDEX_HTML_MS);
+    expect(atrasado.terminou).toBe(true);
+    expect((atrasado.valor as Response).status).toBe(503);
+
+    // A resposta atrasada chega: não pode entrar no cache.
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(deps.cacheIndexHtml.size).toBe(0);
+    expect(deps.indexHtmlEmVoo.size).toBe(0);
+
+    duble.responderIndex = index200;
+    const r2 = await atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps);
+    expect(r2.status).toBe(200);
+    expect(duble.buscasDoIndex).toHaveLength(2);
+    expect(deps.cacheIndexHtml.size).toBe(1);
+  });
+
+  it("busca que deu certo não deixa o temporizador do prazo pendurado (`clearTimeout`)", async () => {
+    const duble = criarDuble();
+    const deps = await prepararComTimersFalsos(duble);
+    expect(vi.getTimerCount()).toBe(0);
+    const resp = await atenderPorteiro(
+      pedido(HOST_A),
+      ambiente(ORIGEM_A),
+      deps,
+    );
+    expect(resp.status).toBe(200);
+    expect(duble.buscasDoIndex).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("`/index.html` que responde 1 ms ANTES do prazo: servido e guardado, como sempre", async () => {
+    const duble = criarDuble();
+    const deps = await prepararComTimersFalsos(duble);
+    duble.responderIndex = (url) =>
+      new Promise<Response>((resolve) => {
+        setTimeout(
+          () => resolve(index200(url) as Response),
+          PRAZO_INDEX_HTML_MS - 1,
+        );
+      });
+
+    const emVoo = acompanhar(
+      atenderPorteiro(pedido(HOST_A), ambiente(ORIGEM_A), deps),
+    );
+    await vi.advanceTimersByTimeAsync(PRAZO_INDEX_HTML_MS + 1_000);
+    expect(emVoo.terminou).toBe(true);
+    expect(emVoo.erro).toBeUndefined();
+    const resp = emVoo.valor as Response;
+    expect(resp.status).toBe(200);
+    expect(fichaDoHtml(await resp.text()).host).toBe(HOST_A);
+    expect(deps.cacheIndexHtml.size).toBe(1);
     expect(deps.indexHtmlEmVoo.size).toBe(0);
   });
 });
