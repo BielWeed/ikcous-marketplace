@@ -1553,6 +1553,310 @@ prova(
   },
 );
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// (7) a migration: reaplicar, rollback comum e destrutivo, quem NAO pode mudar, pre-voo, pos-voo, atomicidade e trava
+// ---------------------------------------------------------------------------------------------------------------------------
+const ROLLBACK_SQL = P.lerMigration(`rollback-manual-${NOME}`);
+const DESTRUTIVO_SQL = P.lerMigration(`rollback-manual-destrutivo-${NOME}`);
+const DESTRUTIVO_CONFIRMADO = `SET LOCAL app.confirmo_apagar_pausa_de_vendas = 'APAGAR';\n${DESTRUTIVO_SQL}`;
+const FUNCOES_NOVAS = [
+  "data_da_pausa_de_vendas",
+  "marcar_suspensa_desde",
+  "motivo_da_loja_nao_aceitar_pedido",
+  "a_loja_aceita_pedido_novo",
+  "situacao_das_vendas_da_loja",
+];
+const GATILHOS_NOVOS = [
+  "tr_a_loja_aceita_pedido_novo",
+  "tr_assinatura_marca_suspensa_desde",
+];
+/** Quem cria pedido, o balcao e a porta do cartao: o md5 sem CR NUNCA muda (antes, depois do apply, depois do rollback). */
+const INTOCAVEIS = [
+  "public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+  "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+  "public.registrar_venda_presencial(jsonb, text, uuid, text, text, numeric, text, uuid, numeric)",
+  "public.assinatura_da_loja_gravar(text, jsonb, boolean)",
+  "public.assinatura_da_loja_ler()",
+];
+const intocaveis = async () =>
+  (
+    await C().query(
+      `SELECT f AS assinatura, (SELECT md5(replace(p.prosrc, chr(13), '')) FROM pg_proc p WHERE p.oid = to_regprocedure(f)) AS h
+         FROM unnest($1::text[]) AS f ORDER BY f COLLATE "C"`,
+      [INTOCAVEIS],
+    )
+  ).rows;
+/** O estado dos objetos desta migration: funcoes (OID, ACL, md5), gatilhos (definicao) e a tabela (ACL, RLS, linhas). */
+const estadoDaMigration = async () => ({
+  funcoes: (
+    await C().query(
+      `SELECT p.proname::text AS nome, p.oid::text AS oid, p.proacl::text AS acl, md5(replace(p.prosrc, chr(13), '')) AS h
+         FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = ANY ($1::text[]) ORDER BY p.proname::text COLLATE "C"`,
+      [FUNCOES_NOVAS],
+    )
+  ).rows,
+  gatilhos: (
+    await C().query(
+      `SELECT t.tgname::text AS nome, t.tgrelid::regclass::text AS tabela, t.tgenabled AS ligado, pg_get_triggerdef(t.oid) AS def
+         FROM pg_trigger t WHERE NOT t.tgisinternal AND t.tgname = ANY ($1::text[]) ORDER BY t.tgname::text COLLATE "C"`,
+      [GATILHOS_NOVOS],
+    )
+  ).rows,
+  tabela: await um(
+    `SELECT c.relacl::text AS acl, c.relrowsecurity AS rls, (SELECT json_agg(p ORDER BY p.id) FROM public.pausa_de_vendas p) AS linhas
+       FROM pg_class c WHERE c.oid = to_regclass('public.pausa_de_vendas')`,
+  ),
+});
+/** Aplica um arquivo e falha com a mensagem dele (dentro de um savepoint). */
+const aplicarOk = async (sql, rotulo) => {
+  const r = await P.aplicar(sql);
+  assert.equal(r, null, `${rotulo}: ${JSON.stringify(r)}`);
+};
+
+prova(
+  "(7) REAPLICAR: 2x (LF e CRLF) deixa o mesmo estado (OID, ACL, corpo, gatilhos, tabela e a linha da pausa); quem cria pedido, o balcao e a porta do cartao nunca mudam",
+  async () => {
+    await P.emTransacao(async () => {
+      await C().query(
+        "INSERT INTO public.pausa_de_vendas (id, vale_pela_assinatura, ligada_em, suspensa_desde) VALUES (1, true, '2026-12-01T12:00:00Z', '2026-12-02')",
+      );
+      const antes = { m: await estadoDaMigration(), i: await intocaveis() };
+      assert.equal(antes.m.funcoes.length, 5);
+      assert.equal(antes.m.gatilhos.length, 2);
+      assert.ok(
+        antes.i.every((x) => x.h),
+        JSON.stringify(antes.i),
+      );
+      await aplicarOk(MIGRATION, "reaplicar LF");
+      await aplicarOk(P.emCRLF(MIGRATION), "reaplicar CRLF");
+      assert.deepEqual(
+        { m: await estadoDaMigration(), i: await intocaveis() },
+        antes,
+      );
+    });
+  },
+);
+
+prova(
+  "(7) ROLLBACK COMUM: 2x idempotente; tira as 5 funcoes e os 2 gatilhos, MANTEM a tabela com a linha; os intocaveis iguais; a loja pausada volta a vender; reaplicar volta ao mesmo estado",
+  async () => {
+    await P.emTransacao(async () => {
+      const i0 = await intocaveis();
+      await pausar();
+      const linha = await um(
+        "SELECT to_jsonb(p) AS l FROM public.pausa_de_vendas p",
+      );
+      assert.ok(
+        recusou(await comprar("cliente"), FRASE_PAUSADA),
+        "controle: pausada recusa",
+      );
+      await aplicarOk(ROLLBACK_SQL, "rollback 1");
+      await aplicarOk(ROLLBACK_SQL, "rollback 2");
+      const depois = await estadoDaMigration();
+      assert.deepEqual(depois.funcoes, []);
+      assert.deepEqual(depois.gatilhos, []);
+      assert.deepEqual(
+        (await um("SELECT to_jsonb(p) AS l FROM public.pausa_de_vendas p")).l,
+        linha.l,
+        "a linha da pausa ficou",
+      );
+      assert.deepEqual(await intocaveis(), i0);
+      const vende = await comprar("cliente");
+      assert.ok(
+        idDe(vende) !== null,
+        `depois do rollback a loja pausada vende: ${JSON.stringify(vende)}`,
+      );
+      // a marca nao roda mais: o cartao muda sem tocar a pausa
+      await comoDono();
+      await C().query(
+        "UPDATE public.assinatura_da_loja SET status = 'ativa' WHERE id = 1",
+      );
+      assert.deepEqual(
+        (await um("SELECT to_jsonb(p) AS l FROM public.pausa_de_vendas p")).l,
+        linha.l,
+      );
+      await aplicarOk(MIGRATION, "reaplicar depois do rollback");
+      assert.equal((await estadoDaMigration()).funcoes.length, 5);
+      assert.deepEqual(await intocaveis(), i0);
+    }, semearLoja);
+  },
+);
+
+prova(
+  "(7) ROLLBACK COMUM recusa corpo desconhecido e gatilho alheio (B1) sem tirar nada",
+  async () => {
+    for (const [rotulo, estrago] of [
+      [
+        "corpo alheio do motivo",
+        "CREATE OR REPLACE FUNCTION public.motivo_da_loja_nao_aceitar_pedido() RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$ SELECT NULL::text $$",
+      ],
+      [
+        "gatilho com o nome apontando para outra funcao",
+        "CREATE OR REPLACE TRIGGER tr_a_loja_aceita_pedido_novo BEFORE INSERT ON public.marketplace_orders FOR EACH ROW EXECUTE FUNCTION public.pedido_com_cupom_so_nasce_para_a_lista()",
+      ],
+    ]) {
+      await P.emTransacao(async () => {
+        await C().query(estrago);
+        const antes = await estadoDaMigration();
+        await P.recusa(ROLLBACK_SQL, /B1_BASELINE_DIVERGENT/);
+        assert.deepEqual(await estadoDaMigration(), antes, rotulo);
+      });
+    }
+  },
+);
+
+prova(
+  "(7) ROLLBACK DESTRUTIVO: sem confirmacao recusa; antes do comum recusa; depois do comum apaga SO a tabela (2x idempotente); a migration volta a aplicar do zero",
+  async () => {
+    await P.emTransacao(async () => {
+      await C().query(
+        "INSERT INTO public.pausa_de_vendas (id, vale_pela_assinatura) VALUES (1, true)",
+      );
+      const i0 = await intocaveis();
+      await P.recusa(DESTRUTIVO_SQL, /PAUSA_DE_VENDAS_SO_COM_O_DONO/);
+      await P.recusa(
+        DESTRUTIVO_CONFIRMADO,
+        /PAUSA_DE_VENDAS_ROLLBACK_COMUM_PRIMEIRO/,
+      );
+      await aplicarOk(ROLLBACK_SQL, "comum");
+      // funcao alheia que le a tabela: recusa
+      await C().query(
+        "CREATE FUNCTION public.le_a_pausa_1600() RETURNS boolean LANGUAGE sql AS $$ SELECT vale_pela_assinatura FROM public.pausa_de_vendas $$",
+      );
+      await P.recusa(DESTRUTIVO_CONFIRMADO, /PAUSA_DE_VENDAS_EM_USO/);
+      await C().query("DROP FUNCTION public.le_a_pausa_1600()");
+      await aplicarOk(DESTRUTIVO_CONFIRMADO, "destrutivo 1");
+      await aplicarOk(DESTRUTIVO_CONFIRMADO, "destrutivo 2");
+      assert.equal(
+        (await um("SELECT to_regclass('public.pausa_de_vendas')::text AS t")).t,
+        null,
+      );
+      assert.deepEqual(await intocaveis(), i0);
+      await aplicarOk(MIGRATION, "aplicar do zero");
+      const e = await estadoDaMigration();
+      assert.equal(e.funcoes.length, 5);
+      assert.equal(e.gatilhos.length, 2);
+      assert.equal(e.tabela.linhas, null, "a tabela nasce vazia");
+    });
+  },
+);
+
+prova(
+  "(7) PRE-VOO recusa corpo desconhecido, sobrecarga e gatilho alheio (B1) sem escrever nada",
+  async () => {
+    for (const [rotulo, estrago] of [
+      [
+        "corpo alheio da regra",
+        "CREATE OR REPLACE FUNCTION public.data_da_pausa_de_vendas(p_teste_ate date, p_proxima date, p_suspensa_desde date, p_pausa_em date) RETURNS date LANGUAGE sql IMMUTABLE SET search_path = public, pg_temp AS $$ SELECT p_proxima $$",
+      ],
+      [
+        "sobrecarga do painel",
+        "CREATE FUNCTION public.situacao_das_vendas_da_loja(p_x integer) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$",
+      ],
+      [
+        "gatilho da marca em outra funcao",
+        "CREATE OR REPLACE TRIGGER tr_assinatura_marca_suspensa_desde AFTER INSERT ON public.assinatura_da_loja FOR EACH ROW EXECUTE FUNCTION public.a_loja_aceita_pedido_novo()",
+      ],
+    ]) {
+      await P.emTransacao(async () => {
+        await C().query(estrago);
+        const antes = await estadoDaMigration();
+        await P.recusa(MIGRATION, /B1_BASELINE_DIVERGENT/);
+        assert.deepEqual(await estadoDaMigration(), antes, rotulo);
+      });
+    }
+  },
+);
+
+prova(
+  "(7) POS-VOO recusa cada estrago (B2): GRANT do motivo a anon, regra aberta ao authenticated, painel ao service_role, corpo trocado, gatilho desligado ou sem o WHEN, tabela com SELECT ou com politica, RLS desligada",
+  async () => {
+    const bloco = P.blocoDe(MIGRATION, "conferencia_20261600000000");
+    await P.emTransacao(async () => {
+      await aplicarOk(bloco, "o pos-voo passa no estado da migration");
+    });
+    const estragos = [
+      "GRANT EXECUTE ON FUNCTION public.motivo_da_loja_nao_aceitar_pedido() TO anon",
+      "GRANT EXECUTE ON FUNCTION public.data_da_pausa_de_vendas(date, date, date, date) TO authenticated",
+      "GRANT EXECUTE ON FUNCTION public.situacao_das_vendas_da_loja() TO service_role",
+      "GRANT EXECUTE ON FUNCTION public.a_loja_aceita_pedido_novo() TO PUBLIC",
+      "REVOKE EXECUTE ON FUNCTION public.situacao_das_vendas_da_loja() FROM authenticated",
+      `${trocar(textoDe(MIGRATION, "motivo_da_loja_nao_aceitar_pedido"), "RETURN 'vendas_pausadas';", "RETURN NULL;")}`,
+      "ALTER FUNCTION public.motivo_da_loja_nao_aceitar_pedido() SECURITY INVOKER",
+      "ALTER FUNCTION public.situacao_das_vendas_da_loja() VOLATILE",
+      "ALTER FUNCTION public.marcar_suspensa_desde() RESET search_path",
+      "ALTER TABLE public.marketplace_orders DISABLE TRIGGER tr_a_loja_aceita_pedido_novo",
+      "CREATE OR REPLACE TRIGGER tr_a_loja_aceita_pedido_novo BEFORE INSERT ON public.marketplace_orders FOR EACH ROW EXECUTE FUNCTION public.a_loja_aceita_pedido_novo()",
+      "DROP TRIGGER tr_assinatura_marca_suspensa_desde ON public.assinatura_da_loja",
+      "GRANT SELECT ON public.pausa_de_vendas TO authenticated",
+      "GRANT UPDATE (vale_pela_assinatura) ON public.pausa_de_vendas TO service_role",
+      "CREATE POLICY p1600 ON public.pausa_de_vendas FOR SELECT TO authenticated USING (true)",
+      "ALTER TABLE public.pausa_de_vendas DISABLE ROW LEVEL SECURITY",
+    ];
+    for (const estrago of estragos) {
+      await P.emTransacao(async () => {
+        await C().query(estrago);
+        await P.recusa(bloco, /B2_POSVOO_DIVERGENTE/);
+      });
+    }
+  },
+);
+
+prova(
+  "(7) ATOMICIDADE E TRAVA: com o pos-voo falhando numa conexao SEM BEGIN nada fica; um pedido em voo segura o CREATE TRIGGER e a migration FALHA LIMPA no lock_timeout de 5 s (55P03), e depois aplica",
+  async () => {
+    const c = C();
+    const existe = async (cl) =>
+      (
+        await cl.query(
+          "SELECT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'a_loja_aceita_pedido_novo') OR to_regclass('public.pausa_de_vendas') IS NOT NULL AS sim",
+        )
+      ).rows[0].sim;
+    // o clone volta a "antes" (COMMIT no clone, que some no fim); a ultima prova devolve o estado
+    await c.query("BEGIN");
+    await c.query(ROLLBACK_SQL);
+    await c.query(DESTRUTIVO_CONFIRMADO);
+    await c.query("COMMIT");
+    try {
+      assert.equal(await existe(c), false);
+      // pos-voo sabotado (exige um md5 que nao existe): o arquivo inteiro, numa query so sem BEGIN, nao deixa nada
+      const sabotada = trocar(
+        MIGRATION,
+        "('situacao_das_vendas_da_loja', 'public.situacao_das_vendas_da_loja()', '3757e68d6bf74e5f4428eae612e60749', 'plpgsql', true, 's', 'jsonb', true)",
+        "('situacao_das_vendas_da_loja', 'public.situacao_das_vendas_da_loja()', '00000000000000000000000000000000', 'plpgsql', true, 's', 'jsonb', true)",
+      );
+      let erro = null;
+      try {
+        await c.query(sabotada);
+      } catch (e) {
+        erro = e;
+      }
+      assert.ok(
+        erro && /B2_POSVOO_DIVERGENTE/.test(erro.message),
+        `esperava B2: ${erro?.message}`,
+      );
+      assert.equal(
+        await existe(c),
+        false,
+        "a falha no fim deixou objeto para tras",
+      );
+      await P.travaAberta({
+        sqlMigracao: MIGRATION,
+        gravar: (c2) =>
+          c2.query(
+            "LOCK TABLE public.marketplace_orders IN ROW EXCLUSIVE MODE",
+          ),
+        aplicado: existe,
+      });
+    } finally {
+      await c.query("BEGIN");
+      await c.query(MIGRATION);
+      await c.query("COMMIT");
+    }
+    assert.equal(await existe(c), true);
+  },
+);
+
 (async () => {
   await P.conectar();
   try {

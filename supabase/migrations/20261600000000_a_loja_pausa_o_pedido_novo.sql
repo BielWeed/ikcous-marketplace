@@ -30,6 +30,8 @@ SET LOCAL statement_timeout = '30s';
 DO $preflight_20261600000000$
 DECLARE
   v_forma text;
+  v_hash text;
+  r record;
 BEGIN
   IF (SELECT count(*) FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role')) <> 3 THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: faltam os papeis anon, authenticated ou service_role.';
@@ -76,6 +78,30 @@ BEGIN
        OR v_forma IS DISTINCT FROM 'id:smallint:true,ligada_em:timestamp with time zone:false,suspensa_desde:date:false,vale_pela_assinatura:boolean:true' THEN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.pausa_de_vendas ja existe com outra forma (%) - nao e a desta migration; revise antes de aplicar.', COALESCE(v_forma, 'nao e tabela');
     END IF;
+  END IF;
+
+  -- Os objetos desta migration: ausentes, ou EXATAMENTE os desta (reaplicar). Nenhuma sobrecarga com o mesmo nome; nenhum corpo alheio.
+  FOR r IN SELECT * FROM (VALUES
+    ('data_da_pausa_de_vendas', 'public.data_da_pausa_de_vendas(date, date, date, date)', 'ce4f41a99d7cdce593f07cfd42ee18ec'),
+    ('marcar_suspensa_desde', 'public.marcar_suspensa_desde()', '162120d86a79c72a8b3622d2777dfa8d'),
+    ('motivo_da_loja_nao_aceitar_pedido', 'public.motivo_da_loja_nao_aceitar_pedido()', 'bfe365fb64ad8d2bb9c06efca304375c'),
+    ('a_loja_aceita_pedido_novo', 'public.a_loja_aceita_pedido_novo()', 'b53378b9838954977af9bad3af6ccbc0'),
+    ('situacao_das_vendas_da_loja', 'public.situacao_das_vendas_da_loja()', '3757e68d6bf74e5f4428eae612e60749')
+  ) AS f(nome, assinatura, hash) LOOP
+    IF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = r.nome
+                  AND p.oid IS DISTINCT FROM to_regprocedure(r.assinatura)) THEN
+      RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.% ja existe com outra assinatura (sobrecarga) - revise antes de aplicar.', r.nome;
+    END IF;
+    SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_hash FROM pg_proc p WHERE p.oid = to_regprocedure(r.assinatura);
+    IF v_hash IS NOT NULL AND v_hash <> r.hash THEN
+      RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: % ja existe com corpo desconhecido (hash %) - nao e o desta migration; capture o corpo vivo e revise antes de aplicar.', r.assinatura, v_hash;
+    END IF;
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM pg_trigger t WHERE NOT t.tgisinternal AND t.tgname = 'tr_a_loja_aceita_pedido_novo'
+                AND (t.tgrelid IS DISTINCT FROM to_regclass('public.marketplace_orders') OR t.tgfoid IS DISTINCT FROM to_regprocedure('public.a_loja_aceita_pedido_novo()')))
+     OR EXISTS (SELECT 1 FROM pg_trigger t WHERE NOT t.tgisinternal AND t.tgname = 'tr_assinatura_marca_suspensa_desde'
+                AND (t.tgrelid IS DISTINCT FROM to_regclass('public.assinatura_da_loja') OR t.tgfoid IS DISTINCT FROM to_regprocedure('public.marcar_suspensa_desde()'))) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: ja existe gatilho com o nome de um desta migration apontando para outra funcao ou tabela - revise antes de aplicar.';
   END IF;
 END $preflight_20261600000000$;
 
@@ -303,3 +329,89 @@ $function$;
 REVOKE ALL ON FUNCTION public.situacao_das_vendas_da_loja() FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.situacao_das_vendas_da_loja() TO authenticated;
 COMMENT ON FUNCTION public.situacao_das_vendas_da_loja() IS 'Painel (Inicio): {aceita, motivo (manutencao | vendas_pausadas | null), pausada_desde (date ou null)}. So o admin atual (is_admin() E is_admin_atual(); senao 42501). EXECUTE so de authenticated.';
+
+-- ===== pos-voo (so catalogo: nunca cria pedido nem chama a porta) =====
+
+DO $conferencia_20261600000000$
+DECLARE
+  v_tab oid := to_regclass('public.pausa_de_vendas');
+  v_oid oid;
+  v_papel text;
+  v_caminho text;
+  v_def text;
+  r record;
+BEGIN
+  -- a tabela: forma, linha unica, RLS sem politica e fechada para todo papel de aplicacao (inclusive coluna a coluna)
+  IF v_tab IS NULL
+     OR NOT EXISTS (SELECT 1 FROM pg_class WHERE oid = v_tab AND relkind = 'r' AND relrowsecurity)
+     OR (SELECT string_agg(a.attname || ':' || format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull::text, ',' ORDER BY a.attname)
+           FROM pg_attribute a WHERE a.attrelid = v_tab AND a.attnum > 0 AND NOT a.attisdropped)
+        IS DISTINCT FROM 'id:smallint:true,ligada_em:timestamp with time zone:false,suspensa_desde:date:false,vale_pela_assinatura:boolean:true'
+     OR NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = v_tab AND c.conname = 'pausa_de_vendas_linha_unica' AND c.contype = 'c')
+     OR NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = v_tab AND c.conname = 'pausa_de_vendas_pkey' AND c.contype = 'p')
+     OR EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = v_tab) THEN
+    RAISE EXCEPTION 'B2_POSVOO_DIVERGENTE: public.pausa_de_vendas nao ficou com a forma desta migration (colunas, linha unica, RLS ligada sem politica).';
+  END IF;
+  FOREACH v_papel IN ARRAY ARRAY['anon', 'authenticated', 'service_role'] LOOP
+    IF has_table_privilege(v_papel, v_tab, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+       OR has_any_column_privilege(v_papel, v_tab, 'SELECT,INSERT,UPDATE,REFERENCES') THEN
+      RAISE EXCEPTION 'B2_POSVOO_DIVERGENTE: % tem privilegio em public.pausa_de_vendas (tem de ser nenhum).', v_papel;
+    END IF;
+  END LOOP;
+
+  -- as 5 funcoes: corpo (md5 sem CR), atributos e EXECUTE por papel. So situacao_das_vendas_da_loja e' do authenticated.
+  FOR r IN SELECT * FROM (VALUES
+    ('data_da_pausa_de_vendas', 'public.data_da_pausa_de_vendas(date, date, date, date)', 'ce4f41a99d7cdce593f07cfd42ee18ec', 'sql', false, 'i', 'date', false),
+    ('marcar_suspensa_desde', 'public.marcar_suspensa_desde()', '162120d86a79c72a8b3622d2777dfa8d', 'plpgsql', true, 'v', 'trigger', false),
+    ('motivo_da_loja_nao_aceitar_pedido', 'public.motivo_da_loja_nao_aceitar_pedido()', 'bfe365fb64ad8d2bb9c06efca304375c', 'plpgsql', true, 's', 'text', false),
+    ('a_loja_aceita_pedido_novo', 'public.a_loja_aceita_pedido_novo()', 'b53378b9838954977af9bad3af6ccbc0', 'plpgsql', true, 'v', 'trigger', false),
+    ('situacao_das_vendas_da_loja', 'public.situacao_das_vendas_da_loja()', '3757e68d6bf74e5f4428eae612e60749', 'plpgsql', true, 's', 'jsonb', true)
+  ) AS f(nome, assinatura, hash, lingua, definer, volatil, retorno, do_logado) LOOP
+    v_oid := to_regprocedure(r.assinatura);
+    IF v_oid IS NULL
+       OR (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = r.nome) <> 1 THEN
+      RAISE EXCEPTION 'B2_POSVOO_DIVERGENTE: % sumiu ou ficou com sobrecarga.', r.assinatura;
+    END IF;
+    IF (SELECT md5(replace(p.prosrc, chr(13), '')) FROM pg_proc p WHERE p.oid = v_oid) IS DISTINCT FROM r.hash THEN
+      RAISE EXCEPTION 'B2_POSVOO_DIVERGENTE: o corpo vivo de % nao e o desta migration.', r.assinatura;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
+                    WHERE p.oid = v_oid AND l.lanname = r.lingua AND p.prosecdef = r.definer AND p.provolatile = r.volatil
+                      AND NOT p.proretset AND pg_get_function_result(p.oid) = r.retorno
+                      AND p.proconfig = ARRAY['search_path=public, pg_temp']::text[]) THEN
+      RAISE EXCEPTION 'B2_POSVOO_DIVERGENTE: os atributos de % mudaram (lingua, SECURITY DEFINER, volatilidade, retorno, search_path).', r.assinatura;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                WHERE p.oid = v_oid AND a.grantee = 0 AND a.privilege_type = 'EXECUTE')
+       OR has_function_privilege('anon', v_oid, 'EXECUTE')
+       OR has_function_privilege('service_role', v_oid, 'EXECUTE')
+       OR has_function_privilege('authenticated', v_oid, 'EXECUTE') IS DISTINCT FROM r.do_logado THEN
+      RAISE EXCEPTION 'B2_POSVOO_DIVERGENTE: o EXECUTE de % esta errado (PUBLIC, anon e service_role nada; authenticated so na leitura do painel).', r.assinatura;
+    END IF;
+    -- SECURITY DEFINER: o dono passa a RLS de pausa_de_vendas (superusuario / BYPASSRLS, ou dono da tabela)
+    IF r.definer AND NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_roles o ON o.oid = p.proowner
+                                  WHERE p.oid = v_oid AND (o.rolsuper OR o.rolbypassrls OR o.oid = (SELECT relowner FROM pg_class WHERE oid = v_tab))) THEN
+      RAISE EXCEPTION 'B2_POSVOO_DIVERGENTE: o dono de % nao passa a RLS de pausa_de_vendas.', r.assinatura;
+    END IF;
+  END LOOP;
+
+  -- os 2 gatilhos: definicao exata (deparseada com search_path = pg_catalog: nomes sempre qualificados) e ligados
+  v_caminho := current_setting('search_path');
+  PERFORM set_config('search_path', 'pg_catalog', true);
+  FOR r IN SELECT * FROM (VALUES
+    ('public.marketplace_orders', 'tr_a_loja_aceita_pedido_novo',
+     'CREATE TRIGGER tr_a_loja_aceita_pedido_novo BEFORE INSERT ON public.marketplace_orders FOR EACH ROW WHEN ((new.canal IS DISTINCT FROM ''presencial''::text)) EXECUTE FUNCTION public.a_loja_aceita_pedido_novo()'),
+    ('public.assinatura_da_loja', 'tr_assinatura_marca_suspensa_desde',
+     'CREATE TRIGGER tr_assinatura_marca_suspensa_desde AFTER INSERT OR UPDATE OF status ON public.assinatura_da_loja FOR EACH ROW EXECUTE FUNCTION public.marcar_suspensa_desde()')
+  ) AS g(tabela, nome, definicao) LOOP
+    SELECT pg_get_triggerdef(t.oid) INTO v_def FROM pg_trigger t
+     WHERE t.tgrelid = to_regclass(r.tabela) AND t.tgname = r.nome AND NOT t.tgisinternal AND t.tgenabled = 'O';
+    IF v_def IS DISTINCT FROM r.definicao THEN
+      PERFORM set_config('search_path', v_caminho, true);
+      RAISE EXCEPTION 'B2_POSVOO_DIVERGENTE: o gatilho % nao ficou com a forma desta migration ou esta desligado.', r.nome;
+    END IF;
+  END LOOP;
+  PERFORM set_config('search_path', v_caminho, true);
+END $conferencia_20261600000000$;
+
+NOTIFY pgrst, 'reload schema';

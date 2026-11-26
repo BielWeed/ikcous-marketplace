@@ -6,6 +6,7 @@
 // e os mutantes) e' provado no Postgres efemero por tests/banco/a-loja-pausa-o-pedido-novo-viva.cjs; aqui ficam as ancoras que se leem do arquivo, sem banco:
 //   - a migration e' ADITIVA e SEM transacao propria; nunca redefine quem cria pedido, a venda de balcao nem a porta do cartao da assinatura;
 //   - a tabela pausa_de_vendas nasce fechada (RLS sem politica, REVOKE de todos os papeis de aplicacao, inclusive service_role) e vazia.
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
@@ -16,6 +17,7 @@ import {
 
 const require = createRequire(import.meta.url);
 const {
+  avaliarFase0,
   detectarTransacaoExplicita,
   removerRuido,
 } = require("../scripts/db-prove-rollback.cjs");
@@ -54,7 +56,8 @@ Deno.test("20261600: ADITIVA - nunca redefine quem cria pedido, a venda de balca
     /\bDROP\s+TABLE\b/i,
     /\bDROP\s+COLUMN\b/i,
     /\bDELETE\s+FROM\b/i,
-    /\bTRUNCATE\b/i,
+    /\bTRUNCATE\s+(TABLE\s+)?public\./i,
+    /\bUPDATE\s+public\.(?!pausa_de_vendas\b)/i,
     /\bALTER\s+TABLE\s+public\.(marketplace_orders|assinatura_da_loja|store_config)\b/i,
     /\bINSERT\s+INTO\s+public\.pausa_de_vendas\s*\(id,\s*vale_pela_assinatura/i,
   ])
@@ -315,4 +318,128 @@ Deno.test("20261600: a leitura do painel exige o admin atual, devolve aceita/mot
   assertEquals(porta.tipo, "leitura");
   assertEquals(porta.secdef, true);
   assertEquals(porta.situacao, "logado");
+});
+
+const rollback = lerMig(`rollback-manual-${NOME}`);
+const destrutivo = lerMig(`rollback-manual-destrutivo-${NOME}`);
+const md5 = (t: string) => createHash("md5").update(t).digest("hex");
+/** As 5 funcoes novas: nome e assinatura (como to_regprocedure le). */
+const FUNCOES = [
+  [
+    "data_da_pausa_de_vendas",
+    "public.data_da_pausa_de_vendas(date, date, date, date)",
+  ],
+  ["marcar_suspensa_desde", "public.marcar_suspensa_desde()"],
+  [
+    "motivo_da_loja_nao_aceitar_pedido",
+    "public.motivo_da_loja_nao_aceitar_pedido()",
+  ],
+  ["a_loja_aceita_pedido_novo", "public.a_loja_aceita_pedido_novo()"],
+  ["situacao_das_vendas_da_loja", "public.situacao_das_vendas_da_loja()"],
+];
+/** O md5 do corpo (prosrc): o texto entre os dois $function$. */
+const hashDe = (nome: string) => {
+  const f = funcaoDe(migration, nome);
+  const a = f.indexOf("AS $function$") + "AS $function$".length;
+  return md5(f.slice(a, f.lastIndexOf("$function$;")));
+};
+const blocoDo = (sql: string, marca: string) => {
+  const i = sql.indexOf(`DO $${marca}$`);
+  assert(i >= 0, `bloco ${marca} ausente`);
+  return sql.slice(i, sql.indexOf(`END $${marca}$;`, i));
+};
+
+Deno.test("20261600: os md5 do pre-voo, do pos-voo e do rollback comum sao os dos corpos que o arquivo carrega", () => {
+  const pre = blocoDo(migration, "preflight_20261600000000");
+  const pos = blocoDo(migration, "conferencia_20261600000000");
+  const rb = blocoDo(rollback, "preflight_rollback_20261600000000");
+  for (const [nome, assinatura] of FUNCOES) {
+    const h = hashDe(nome);
+    assertStringIncludes(pre, `('${nome}', '${assinatura}', '${h}')`);
+    assertStringIncludes(pos, `('${nome}', '${assinatura}', '${h}',`);
+    assertStringIncludes(rb, `('${assinatura}', '${h}')`);
+  }
+  // o pos-voo vem DEPOIS de tudo que cria, e o NOTIFY e' a ultima linha
+  const iPos = migration.indexOf("DO $conferencia_20261600000000$");
+  assert(
+    iPos >
+      migration.indexOf(
+        "CREATE OR REPLACE TRIGGER tr_a_loja_aceita_pedido_novo",
+      ),
+  );
+  assert(
+    iPos >
+      migration.indexOf(
+        "GRANT EXECUTE ON FUNCTION public.situacao_das_vendas_da_loja() TO authenticated;",
+      ),
+  );
+  assertStringIncludes(
+    migration.trimEnd().split("\n").pop() ?? "",
+    "NOTIFY pgrst, 'reload schema';",
+  );
+  // a tabela fechada, o EXECUTE por papel e os 2 gatilhos pela definicao exata
+  for (const trecho of [
+    "has_table_privilege(v_papel, v_tab, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')",
+    "has_any_column_privilege(v_papel, v_tab, 'SELECT,INSERT,UPDATE,REFERENCES')",
+    "EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = v_tab)",
+    "WHEN ((new.canal IS DISTINCT FROM ''presencial''::text)) EXECUTE FUNCTION public.a_loja_aceita_pedido_novo()",
+    "AFTER INSERT OR UPDATE OF status ON public.assinatura_da_loja FOR EACH ROW EXECUTE FUNCTION public.marcar_suspensa_desde()",
+    "t.tgenabled = 'O'",
+  ])
+    assertStringIncludes(pos, trecho);
+});
+
+Deno.test("20261600: o par passa a Fase 0 do db-prove-rollback e nenhum dos dois rollbacks abre transacao propria", () => {
+  const r = avaliarFase0({
+    sqlMigration: migration,
+    sqlRollback: rollback,
+    temRollback: true,
+  });
+  assertEquals(r.recusado, false, `motivos: ${(r.motivos || []).join("; ")}`);
+  for (const [rotulo, sql] of [
+    ["rollback", rollback],
+    ["destrutivo", destrutivo],
+  ]) {
+    const t = detectarTransacaoExplicita(removerRuido(sql));
+    assertEquals(t.achados, [], `${rotulo}: ${t.achados.join("/")}`);
+    assert(!sql.includes("\r"), `${rotulo}: LF`);
+    assertStringIncludes(sql, "SET LOCAL lock_timeout = '5s';");
+  }
+});
+
+Deno.test("20261600: o rollback COMUM tira os 2 gatilhos e as 5 funcoes, sem CASCADE, e MANTEM a tabela", () => {
+  const sem = semComentario(rollback);
+  for (const [, assinatura] of FUNCOES)
+    assertStringIncludes(sem, `DROP FUNCTION IF EXISTS ${assinatura};`);
+  assertStringIncludes(
+    sem,
+    "DROP TRIGGER IF EXISTS tr_a_loja_aceita_pedido_novo ON public.marketplace_orders;",
+  );
+  assertStringIncludes(
+    sem,
+    "DROP TRIGGER IF EXISTS tr_assinatura_marca_suspensa_desde ON public.assinatura_da_loja;",
+  );
+  assert(!/\bCASCADE\b/i.test(sem));
+  assert(!/DROP\s+TABLE/i.test(sem), "o comum nao apaga a tabela");
+  assert(
+    !/CREATE\s+(OR\s+REPLACE\s+)?FUNCTION/i.test(sem),
+    "o estado anterior e' a ausencia: nada a recriar",
+  );
+});
+
+Deno.test("20261600: o rollback DESTRUTIVO so apaga a tabela, so com confirmacao, so depois do comum e so se nenhuma funcao ainda le a tabela", () => {
+  const sem = semComentario(destrutivo);
+  const pre = blocoDo(destrutivo, "destrutivo_20261600000000");
+  for (const trecho of [
+    "current_setting('app.confirmo_apagar_pausa_de_vendas', true), '') <> 'APAGAR'",
+    "PAUSA_DE_VENDAS_ROLLBACK_COMUM_PRIMEIRO",
+    "p.prosrc LIKE '%pausa_de_vendas%'",
+  ])
+    assertStringIncludes(pre, trecho);
+  assert(
+    sem.indexOf("DROP TABLE IF EXISTS public.pausa_de_vendas;") >
+      sem.indexOf("END $destrutivo_20261600000000$;"),
+  );
+  assertEquals([...sem.matchAll(/\bDROP\b/g)].length, 1, "um DROP so");
+  assert(!/\bCASCADE\b/i.test(sem));
 });
