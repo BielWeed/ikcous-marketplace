@@ -162,3 +162,54 @@ Deno.test("a raiz torta falha fechado, no objeto e no disco", () => {
     Deno.removeSync(dir, { recursive: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// O segredo da org NUNCA é o segredo PRÓPRIO de uma loja (pedido do coordenador,
+// 26/11/2026). O lojas.cjs aceita o segredo da org repetido entre lojas e o
+// gerador o entrega a toda loja da org: se o org-central.json apontasse para
+// SUPABASE_ACCESS_TOKEN_SAVY, o token de acesso TOTAL à conta do dono que a
+// Savy usa passaria a ir para toda loja nova. Só pelo dado não dá para separar
+// "a Savy entrou na org" de "o nome da org virou o da Savy", então a régua é
+// a lista FECHADA dos segredos próprios que existem (SEGREDOS_PROPRIOS), e o
+// teste cruzado abaixo reprova se uma loja do lojas.json tiver segredo próprio
+// fora dela.
+// ---------------------------------------------------------------------------
+Deno.test("segredoDoGitHub: nunca o segredo PRÓPRIO de uma loja de hoje (IKCOUS, Savy)", () => {
+  ruim(
+    (j) => (j.segredoDoGitHub = "SUPABASE_ACCESS_TOKEN_SAVY"),
+    "segredo próprio",
+  );
+  ruim(
+    (j) => (j.segredoDoGitHub = "SUPABASE_ACCESS_TOKEN_IKCOUS"),
+    "segredo próprio",
+  );
+  // o legado continua recusado pela regra dele
+  ruim((j) => (j.segredoDoGitHub = "SUPABASE_ACCESS_TOKEN"), "legado");
+  // um nome novo, que não é de loja nenhuma, passa
+  assertEquals(
+    orgMod.validarOrgCentral({
+      ...jsonDeHoje(),
+      segredoDoGitHub: "SUPABASE_ACCESS_TOKEN_ORG2",
+    }).segredoDoGitHub,
+    "SUPABASE_ACCESS_TOKEN_ORG2",
+  );
+});
+
+Deno.test("cruzado com o lojas.json: todo segredo próprio de loja (o que não é o da org) está na lista fechada, e o da org não é de nenhuma loja com segredo próprio", () => {
+  const org = orgMod.carregarOrgCentral();
+  const cadastro = lojasMod.carregarLojas();
+  const proprios = Object.values(cadastro.lojas)
+    .filter(
+      (l) =>
+        l.classe === "assinante" && l.segredoDoToken !== org.segredoDoGitHub,
+    )
+    .map((l) => l.segredoDoToken);
+  assert(proprios.length >= 2, "IKCOUS e Savy sumiram do cadastro?");
+  for (const s of proprios)
+    assert(
+      orgMod.SEGREDOS_PROPRIOS.includes(s),
+      `${s} é segredo próprio de loja e falta em SEGREDOS_PROPRIOS de org-central.cjs`,
+    );
+  assert(!orgMod.SEGREDOS_PROPRIOS.includes(org.segredoDoGitHub));
+  assert(Object.isFrozen(orgMod.SEGREDOS_PROPRIOS));
+});

@@ -11,7 +11,9 @@
  *  - o cadastro da loja nova grava `segredoDoGitHub` como o `segredoDoToken`
  *    dela no lojas.json;
  *  - o lojas.cjs só aceita um segredo REPETIDO entre lojas assinantes se for
- *    `segredoDoGitHub` (qualquer outro continua "um segredo por loja").
+ *    `segredoDoGitHub` (qualquer outro continua "um segredo por loja"), e o
+ *    gerador de workflows o entrega a toda loja da org — por isso ele nunca é
+ *    o legado nem o segredo PRÓPRIO de uma loja (SEGREDOS_PROPRIOS).
  *
  * Por isso a validação falha FECHADA: um arquivo torto LANÇA, nunca vira
  * "org nenhuma" nem "aceita qualquer segredo". Os formatos de `chaveDoCofre` e
@@ -35,6 +37,20 @@ const CAMINHO_ORG_CENTRAL = path.join(__dirname, "org-central.json");
 const RE_SLUG_DA_ORG = /^[a-z]{20}$/;
 /** Como a org aparece no painel: texto curto, sem quebra de linha. */
 const RE_NOME_DA_ORG = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/;
+/**
+ * Os segredos PRÓPRIOS das lojas (o `segredoDoToken` de quem não está na org),
+ * que o segredo da org NUNCA pode ser. Hoje são os da IKCOUS e da Savy, tokens
+ * de acesso TOTAL à conta do dono: se o nome da org virasse um deles, o lojas.cjs
+ * aceitaria esse nome repetido e o gerador o entregaria a toda loja da org. Só
+ * pelo dado não dá para separar "a loja entrou na org" de "o nome da org virou o
+ * da loja", por isso a lista é FECHADA; tests/frota_org_central_test.ts reprova
+ * se uma loja do lojas.json tiver segredo próprio fora dela. Loja nova nasce no
+ * segredo da org, então a lista não cresce com a frota.
+ */
+const SEGREDOS_PROPRIOS = Object.freeze([
+  "SUPABASE_ACCESS_TOKEN_IKCOUS",
+  "SUPABASE_ACCESS_TOKEN_SAVY",
+]);
 const CAMPOS = Object.freeze([
   "_comentario",
   "slug",
@@ -87,6 +103,10 @@ function validarOrgCentral(bruto) {
     throw erroDaOrg(
       `segredoDoGitHub nunca é o segredo legado ${SEGREDO_LEGADO} (o dos alvos de teste antigos)`,
     );
+  if (SEGREDOS_PROPRIOS.includes(bruto.segredoDoGitHub))
+    throw erroDaOrg(
+      `segredoDoGitHub nunca é o segredo próprio de uma loja (${bruto.segredoDoGitHub}): o da org é entregue a toda loja da org`,
+    );
   return Object.freeze({
     slug: bruto.slug,
     nome: bruto.nome,
@@ -110,6 +130,7 @@ function carregarOrgCentral(caminho = CAMINHO_ORG_CENTRAL) {
 module.exports = {
   CAMINHO_ORG_CENTRAL,
   RE_SLUG_DA_ORG,
+  SEGREDOS_PROPRIOS,
   validarOrgCentral,
   carregarOrgCentral,
 };
