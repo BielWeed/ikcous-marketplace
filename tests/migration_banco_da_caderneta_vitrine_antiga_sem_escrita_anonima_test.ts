@@ -10,10 +10,10 @@
 // migrations dos canais e ficou para trás. Os scripts deste lote levam o dekxab ao MESMO estado das lojas.
 //
 // Não é migration e nada aqui roda em banco: o teste lê os arquivos e confere a forma. A ACL NÃO separa o dekxab das
-// lojas (a "já aplicada" é idêntica à delas); quem separa é a primeira trava dos dois pré-voos: o banco tem de ter a
-// caderneta SEMEADA (frota_lojas e frota_segredo com linha). As tabelas sozinhas não bastam: a 20261141 e as da
-// caderneta também vão ao banco de cada loja, mas lá nascem e ficam vazias. A prova no banco é o pré-voo e o pós-voo
-// do próprio script, aplicado pela sessão.
+// lojas (a "já aplicada" é idêntica à delas). No aplicar, quem separa é a caderneta SEMEADA (frota_lojas e frota_segredo
+// com linha; numa loja o REVOKE seria no-op de qualquer jeito). No rollback, que DEVOLVE a escrita, a caderneta não basta
+// (o plano a copia para a CAF): antes dela ele recusa banco de loja pelo registro de migrations de canal e pela tabela da
+// 20261500000000. A prova no banco é o pré-voo e o pós-voo do próprio script, aplicado pela sessão.
 import { createRequire } from "node:module";
 import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
@@ -233,12 +233,127 @@ const TRAVA_TABELAS =
 const TRAVA_SEMEADA =
   "IF NOT EXISTS (SELECT 1 FROM public.frota_segredo) OR NOT EXISTS (SELECT 1 FROM public.frota_lojas) THEN";
 
-Deno.test("pre-voo (aplicar E rollback): ANTES de tudo confere que o banco e' o da caderneta semeada, nao uma loja atual", () => {
+/** O rollback DEVOLVE a escrita anônima: ele não pode passar em banco de loja nem depois que a caderneta for copiada
+ * para a CAF (aí a caderneta semeada deixa de separar). O que separa é o que só banco de CANAL tem: o registro de
+ * migrations com a 20261090000000 (a que fechou esta view nas lojas; o portão de release exige toda versão no registro
+ * de cada loja assinante, e o dekxab, fora dos canais, tem a view medida aberta, sem o efeito dela) ou com a
+ * 20261500000000, e a tabela que a 20261500000000 cria. Sem o registro de migrations não dá para provar: recusa também. */
+const TRAVA_SEM_REGISTRO =
+  "IF to_regclass('supabase_migrations.schema_migrations') IS NULL THEN";
+const TRAVA_LOJA =
+  "IF EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations m WHERE m.version IN ('20261090000000', '20261500000000')) OR to_regclass('public.saude_da_reconciliacao') IS NOT NULL THEN";
+
+Deno.test("pre-voo do rollback: ANTES de tudo recusa banco de loja pelo registro de migrations de canal, nunca so pela caderneta", () => {
+  const pre = preVoo(rollback, ...PRE_ROLLBACK);
+  const corpo = norm(pre.slice(pre.indexOf("\nBEGIN") + "\nBEGIN".length));
+  // 1a trava: sem o registro de migrations, nada prova que não é loja.
+  assertEquals(
+    corpo.indexOf("IF "),
+    corpo.indexOf(TRAVA_SEM_REGISTRO),
+    "rollback: o registro de migrations e' o primeiro IF",
+  );
+  assertEquals(
+    corpo.indexOf("RAISE EXCEPTION"),
+    corpo.indexOf(
+      "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: sem supabase_migrations.schema_migrations",
+    ),
+    "rollback: a primeira recusa e' a do registro ausente",
+  );
+  // 2a trava: o banco registra migration de canal (ou tem o objeto dela) = loja.
+  const iLoja = corpo.indexOf(TRAVA_LOJA);
+  assert(iLoja > 0, "rollback: trava de loja ausente");
+  assertEquals(
+    iLoja,
+    corpo.indexOf("IF ", corpo.indexOf(TRAVA_SEM_REGISTRO) + 3),
+    "rollback: a trava de loja e' o segundo IF",
+  );
+  assertEquals(
+    corpo.indexOf("RAISE EXCEPTION", iLoja),
+    corpo.indexOf(
+      "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: este banco é de loja",
+      iLoja,
+    ),
+    "rollback: a segunda recusa e' a de banco de loja",
+  );
+  // Só depois das duas: a caderneta semeada (necessária, não suficiente).
+  assert(
+    corpo.indexOf(norm(TRAVA_TABELAS)) > iLoja,
+    "rollback: caderneta depois da trava de loja",
+  );
+  assertStringIncludes(corpo, norm(TRAVA_SEMEADA));
+});
+
+Deno.test("pre-voo do rollback: a CAF com a caderneta copiada NAO passa (as travas do arquivo contra o estado de cada banco)", () => {
+  // Cada banco como o pré-voo o vê: registro de migrations, tabela da 20261500000000 e caderneta semeada. A simulação
+  // só vale se as travas do arquivo forem EXATAMENTE estas, na mesma ordem (o teste acima amarra a ordem).
+  const pre = norm(preVoo(rollback, ...PRE_ROLLBACK));
+  assertStringIncludes(pre, TRAVA_SEM_REGISTRO);
+  assertStringIncludes(pre, TRAVA_LOJA);
+  assertStringIncludes(pre, norm(TRAVA_SEMEADA));
+  const travas = (b) => {
+    if (b.registro === null) return "recusa: sem registro";
+    if (
+      b.registro.includes("20261090000000") ||
+      b.registro.includes("20261500000000") ||
+      b.saude
+    )
+      return "recusa: loja";
+    if (!b.semeada) return "recusa: caderneta vazia";
+    return "passa";
+  };
+  const casos = [
+    [
+      "CAF com a caderneta copiada",
+      {
+        registro: ["20261090000000", "20261500000000"],
+        saude: true,
+        semeada: true,
+      },
+      "recusa: loja",
+    ],
+    [
+      "CAF antes de receber a 20261500000000",
+      { registro: ["20261090000000"], saude: false, semeada: true },
+      "recusa: loja",
+    ],
+    [
+      "loja com lacuna no registro, mas com a tabela da 20261500000000",
+      { registro: [], saude: true, semeada: true },
+      "recusa: loja",
+    ],
+    [
+      "banco sem registro de migrations",
+      { registro: null, saude: false, semeada: true },
+      "recusa: sem registro",
+    ],
+    [
+      "dekxab (fora dos canais, caderneta semeada)",
+      { registro: ["20260801000000"], saude: false, semeada: true },
+      "passa",
+    ],
+    [
+      "dekxab com a caderneta esvaziada",
+      { registro: ["20260801000000"], saude: false, semeada: false },
+      "recusa: caderneta vazia",
+    ],
+  ];
+  for (const [nome, banco, esperado] of casos)
+    assertEquals(travas(banco), esperado, nome);
+});
+
+Deno.test("pre-voo (aplicar E rollback): confere que o banco e' o da caderneta semeada; no aplicar e' a 1a trava (o REVOKE numa loja e' no-op)", () => {
   for (const [nome, sql, marcas] of [
     ["aplicar", aplicar, PRE_APLICAR],
     ["rollback", rollback, PRE_ROLLBACK],
   ]) {
-    const pre = preVoo(sql, ...marcas);
+    const preInteiro = preVoo(sql, ...marcas);
+    // No rollback, a caderneta vem DEPOIS das duas travas de loja (teste acima): mede-se a partir dela.
+    if (nome === "rollback")
+      assert(preInteiro.indexOf(TRAVA_TABELAS) > 0, "rollback sem a caderneta");
+    const pre =
+      nome === "rollback"
+        ? `\nBEGIN${preInteiro.slice(preInteiro.indexOf(TRAVA_TABELAS))}`
+        : preInteiro;
     const corpo = pre.slice(pre.indexOf("\nBEGIN") + "\nBEGIN".length);
     // 1a trava: a primeira coisa do corpo, com a primeira recusa do pré-voo.
     assertEquals(
@@ -392,4 +507,9 @@ Deno.test("runbook: secao do banco da caderneta com a ordem (conferir antes, apl
   assertStringIncludes(sec, "begin;");
   assertStringIncludes(sec, "commit;");
   assertStringIncludes(sec, "dekxabvqdsuukijblazl");
+  // O rollback recusa banco de loja pelo registro de migrations, não pela caderneta (que vai ser copiada para a CAF).
+  assertStringIncludes(sec, "supabase_migrations.schema_migrations");
+  assertStringIncludes(sec, "20261090000000");
+  assertStringIncludes(sec, "public.saude_da_reconciliacao");
+  assert(!sec.includes("O rollback tem a mesma trava"), "runbook velho");
 });

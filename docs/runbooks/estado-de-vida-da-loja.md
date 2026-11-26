@@ -303,13 +303,18 @@ migrations do projeto):
    chamada. O pré-voo recusa com `B1_BASELINE_DIVERGENT` (e nada é gravado) se o banco não tiver a
    caderneta semeada (`frota_lojas` e `frota_segredo` com linha: é o que separa o dekxab de uma loja,
    que tem as tabelas vazias e a mesma ACL da view) ou se a ACL não for a medida nem a já aplicada; o
-   pós-voo recusa com `POSVOO_VITRINE_ANTIGA` se o resultado não for o esperado. O rollback tem a mesma
-   trava do banco certo.
+   pós-voo recusa com `POSVOO_VITRINE_ANTIGA` se o resultado não for o esperado. Numa loja o aplicar não
+   abre nada (o REVOKE ali não muda a ACL, que já é a das lojas).
 3. **Depois:** a mesma consulta do passo 1. Esperado: as 5 linhas com `ok = true`.
 
 **Desfazer:** `begin;` + `scripts/frota/banco-da-caderneta/rollback-manual-vitrine-antiga-sem-escrita-anonima.sql`
 + `commit;`, pelo `execute_sql`. Ele devolve a ACL medida, byte a byte, e **reabre o furo**; depois
-dele, a consulta do passo 1 volta a mostrar o retrato de antes.
+dele, a consulta do passo 1 volta a mostrar o retrato de antes. Por reabrir o furo, a trava dele é mais
+forte que a do aplicar: a caderneta semeada não basta (o plano copia a caderneta para a CAF). Antes de
+tudo ele recusa (`B1_BASELINE_DIVERGENT`) banco sem `supabase_migrations.schema_migrations` e banco de
+loja: o que registra a `20261090000000` ou a `20261500000000` (o portão de release exige toda versão no
+registro de cada loja assinante; o dekxab não recebe migrations de canal) ou tem a tabela
+`public.saude_da_reconciliacao`. Só depois confere a caderneta semeada.
 
 ## Rollback das migrations (ordem)
 
