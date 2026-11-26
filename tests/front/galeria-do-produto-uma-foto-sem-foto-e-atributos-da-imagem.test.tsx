@@ -32,7 +32,7 @@ import {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const SUPABASE = (nome: string) =>
-  `https://abcdefghijklmnopqrst.supabase.co/storage/v1/object/public/produtos/${nome}.jpg`;
+  `https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/${nome}.jpg`;
 const FOTOS = [SUPABASE("a"), SUPABASE("b"), SUPABASE("c")];
 
 let raiz: Root;

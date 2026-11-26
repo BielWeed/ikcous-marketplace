@@ -31,7 +31,7 @@ const { CartaoDaVitrine } = await import(
 );
 
 const ORIGINAL =
-  "https://proj.supabase.co/storage/v1/object/public/products/foto1.jpg";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/products/foto1.jpg";
 
 let raiz: Root;
 let hospedeiro: HTMLDivElement;

@@ -299,8 +299,8 @@ describe("useCacheWarmer — aquece só o que tem consumidor (laudo sócio r2, F
       name: "Caneca Termica Premium",
       category: "Casa",
       images: [
-        "https://xyzsupabase.co/storage/v1/object/public/produtos/prod-contrato/foto-1.jpg",
-        "https://xyzsupabase.co/storage/v1/object/public/produtos/prod-contrato/foto-2.jpg",
+        "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/prod-contrato/foto-1.jpg",
+        "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/prod-contrato/foto-2.jpg",
       ],
     });
 
@@ -327,7 +327,7 @@ describe("useCacheWarmer — aquece só o que tem consumidor (laudo sócio r2, F
     // continuam de fora.
     expect(imagensAquecidas).toHaveLength(3);
     expect(imagensAquecidas[0]).toBe(
-      "https://xyzsupabase.co/storage/v1/object/public/produtos/prod-contrato/foto-1.jpg",
+      "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/prod-contrato/foto-1.jpg",
     );
 
     // Renderiza a SearchBar de verdade e digita o nome do produto — mesmo

@@ -25,9 +25,9 @@ import {
 import { describe, expect, it } from "vitest";
 
 const BASE =
-  "https://abcdefghijklmnopqrst.supabase.co/storage/v1/object/public/produtos/foto.jpg";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/foto.jpg";
 const REDIMENSIONADA =
-  "https://abcdefghijklmnopqrst.supabase.co/storage/v1/render/image/public/produtos/foto.jpg";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/render/image/public/produtos/foto.jpg";
 
 describe("comMarcaDeTentativa", () => {
   it("a tentativa 0 (o pedido original) e as negativas voltam intactas", () => {

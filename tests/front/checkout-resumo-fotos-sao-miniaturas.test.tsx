@@ -124,7 +124,7 @@ async function esperarBarraMontar() {
 // Foto de fora do Storage: não há como redimensionar, fica como está.
 const DE_OUTRO_LUGAR = "https://loja.example/coxinha.jpg";
 const DO_STORAGE =
-  "https://abc.supabase.co/storage/v1/object/public/product-images/loja/blusa.jpg";
+  "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/product-images/loja/blusa.jpg";
 
 describe("CheckoutView — fotos do resumo do pedido usam a miniatura, não o original", () => {
   let raiz: Root;

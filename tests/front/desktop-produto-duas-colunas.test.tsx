@@ -397,7 +397,7 @@ describe("F3 — produto no computador e celular preservado", () => {
 
   it("se uma loja perder transformação, a foto principal recai para o original", async () => {
     const foto =
-      "https://abcdefghijklmnopqrst.supabase.co/storage/v1/object/public/produtos/foto.jpg";
+      "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/foto.jpg";
     await montar({ ...produto, images: [foto] });
     const imagem = elemento(".main-product-image") as HTMLImageElement;
     expect(imagem.src).toContain("/render/image/public/");

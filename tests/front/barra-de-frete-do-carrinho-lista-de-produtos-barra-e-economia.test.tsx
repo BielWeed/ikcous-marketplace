@@ -331,9 +331,9 @@ describe("ShippingProgress — a foto do produto da lista", () => {
 
   it("se a miniatura não carrega, tenta a foto ORIGINAL (a primeira) antes de desistir", () => {
     const primeira =
-      "https://exemplo-teste.supabase.co/storage/v1/object/public/produtos/caneca-1.jpg";
+      "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/caneca-1.jpg";
     const segunda =
-      "https://exemplo-teste.supabase.co/storage/v1/object/public/produtos/caneca-2.jpg";
+      "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/caneca-2.jpg";
     montar({
       freeShippingProducts: [produto({ images: [primeira, segunda] })],
     });

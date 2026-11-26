@@ -58,17 +58,17 @@ describe("compararNomes", () => {
 
 describe("miniaturaDeCompra", () => {
   const original =
-    "https://abc.supabase.co/storage/v1/object/public/produtos/foto.png";
+    "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/object/public/produtos/foto.png";
 
   it("foto do Storage vira a miniatura de 160 px com qualidade 70", () => {
     expect(miniaturaDeCompra(original)).toBe(
-      "https://abc.supabase.co/storage/v1/render/image/public/produtos/foto.png?width=160&resize=contain&quality=70",
+      "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/render/image/public/produtos/foto.png?width=160&resize=contain&quality=70",
     );
   });
 
   it("troca a consulta que já existia em vez de empilhar parâmetros", () => {
     expect(miniaturaDeCompra(`${original}?v=3`)).toBe(
-      "https://abc.supabase.co/storage/v1/render/image/public/produtos/foto.png?width=160&resize=contain&quality=70",
+      "https://gnjsrucsmjkajijrakzr.supabase.co/storage/v1/render/image/public/produtos/foto.png?width=160&resize=contain&quality=70",
     );
   });
 
