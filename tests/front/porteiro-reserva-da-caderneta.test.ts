@@ -34,6 +34,10 @@ const REF_A = "lojaalojaalojaalojaa"; // 20 letras, inventado
 const REF_B = "lojablojablojablojab"; // 20 letras, inventado
 const ORIGEM_A = `https://${REF_A}.supabase.co`;
 const ORIGEM_B = `https://${REF_B}.supabase.co`;
+// O banco NOVO da loja A (a caderneta, de volta, aponta A para ele).
+const REF_A_NOVO = "lojanovalojanovaloja"; // 20 letras, inventado
+const ORIGEM_A_NOVO = `https://${REF_A_NOVO}.supabase.co`;
+const K_A_NOVO = "sb_publishable_inventada_da_loja_a_nova";
 const K_A = "sb_publishable_inventada_da_loja_a";
 const K_B = "sb_publishable_inventada_da_loja_b";
 // Montada por partes para nenhum detector de segredo confundir o fixture.
@@ -143,7 +147,8 @@ type ModoDaCaderneta =
   | "401"
   | "malformado"
   | "miss"
-  | "hit-a";
+  | "hit-a"
+  | "hit-a-novo";
 
 function cadernetaNoModo(modo: ModoDaCaderneta) {
   const chamadas = { n: 0 };
@@ -173,6 +178,16 @@ function cadernetaNoModo(modo: ModoDaCaderneta) {
             supabase_url: ORIGEM_A,
             publishable_key: K_A,
             project_ref: REF_A,
+            nome: "Loja Alfa Inventada",
+            estado: "ativa",
+          },
+        ]);
+      case "hit-a-novo":
+        return Response.json([
+          {
+            supabase_url: ORIGEM_A_NOVO,
+            publishable_key: K_A_NOVO,
+            project_ref: REF_A_NOVO,
             nome: "Loja Alfa Inventada",
             estado: "ativa",
           },
@@ -450,6 +465,76 @@ describe("porteiro — a caderneta falha, sem ficha: abre pela reserva (T3)", ()
     expect(resp.headers.get("x-ikcous-porteiro")).toBe("banco-indisponivel");
     expect(resp.headers.get("x-ikcous-caderneta")).toBe("reserva");
     expect(banco.leituras).not.toContain(ORIGEM_B);
+  });
+});
+
+describe("porteiro — a caderneta VOLTA: ela manda de novo", () => {
+  // A garantia principal do desenho: a reserva só segura a loja enquanto a
+  // caderneta está fora. Passada a janela fresca de 60 s, a caderneta que
+  // voltou é perguntada e a resposta dela SUBSTITUI a conexão da reserva —
+  // mesmo apontando outro banco para o mesmo host (loja que trocou de banco
+  // depois da última gravação da reserva).
+  const BANCOS_COM_O_NOVO: Record<string, BancoFake> = {
+    ...BANCOS,
+    [ORIGEM_A_NOVO]: {
+      nome: "Loja Alfa no Banco Novo",
+      dominioPublico: HOST_A,
+    },
+  };
+
+  it("com waitUntil (produção): a revalidação troca a ficha, e a reserva não é mais lida", async () => {
+    espiarLog();
+    cadernetaNoModo("503");
+    const banco = bancosDasLojas(BANCOS_COM_O_NOVO);
+    const lerReserva = leitorDaReserva(async () => RESERVA_CERTA);
+    let agora = 1_000_000;
+    const pendentes: Promise<unknown>[] = [];
+    const d = deps(banco.fetchImpl, {
+      lerReserva,
+      agora: () => agora,
+      waitUntil: (p) => {
+        pendentes.push(p);
+      },
+    });
+
+    const pelaReserva = await visitar(d);
+    expect(pelaReserva.headers.get("x-ikcous-caderneta")).toBe("reserva");
+    expect(await pelaReserva.text()).toContain("Loja Alfa Inventada");
+    expect(lerReserva).toHaveBeenCalledTimes(1);
+
+    // A caderneta volta e aponta A para o banco NOVO; passou a janela fresca.
+    const caderneta = cadernetaNoModo("hit-a-novo");
+    agora += CACHE_FRESCO_MS + 1;
+    await visitar(d);
+    await Promise.all(pendentes);
+    expect(caderneta.n).toBe(1);
+
+    const seguinte = await visitar(d);
+    expect(seguinte.status).toBe(200);
+    expect(seguinte.headers.get("x-ikcous-caderneta")).toBe("hit");
+    expect(await seguinte.text()).toContain("Loja Alfa no Banco Novo");
+    expect(banco.leituras).toContain(ORIGEM_A_NOVO);
+    expect(lerReserva).toHaveBeenCalledTimes(1);
+  });
+
+  it("sem waitUntil: a visita depois dos 60 s já sai hit com o banco da caderneta", async () => {
+    espiarLog();
+    cadernetaNoModo("rede");
+    const banco = bancosDasLojas(BANCOS_COM_O_NOVO);
+    const lerReserva = leitorDaReserva(async () => RESERVA_CERTA);
+    let agora = 1_000_000;
+    const d = deps(banco.fetchImpl, { lerReserva, agora: () => agora });
+    expect((await visitar(d)).headers.get("x-ikcous-caderneta")).toBe(
+      "reserva",
+    );
+
+    cadernetaNoModo("hit-a-novo");
+    agora += CACHE_FRESCO_MS + 1;
+    const deVolta = await visitar(d);
+    expect(deVolta.status).toBe(200);
+    expect(deVolta.headers.get("x-ikcous-caderneta")).toBe("hit");
+    expect(await deVolta.text()).toContain("Loja Alfa no Banco Novo");
+    expect(lerReserva).toHaveBeenCalledTimes(1);
   });
 });
 

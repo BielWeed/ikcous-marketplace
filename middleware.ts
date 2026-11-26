@@ -3,6 +3,8 @@ import {
   registrarEntrada,
 } from "./src/hospedagem/contador";
 import type { CanalDeEntrada } from "./src/hospedagem/contador";
+import type { AmbienteDaReserva } from "./src/hospedagem/leitorDaReserva";
+import { leitorDaReservaDoAmbiente } from "./src/hospedagem/leitorDaReserva";
 import type {
   AmbientePorteiro,
   EntradaCacheCartaz,
@@ -382,6 +384,13 @@ export default async function middleware(
     typeof context?.waitUntil === "function"
       ? (promessa: Promise<unknown>) => context.waitUntil(promessa)
       : undefined;
+  // A reserva da caderneta (plano `PLANO-RESERVA-DA-CADERNETA-26-11.md`, T6):
+  // `undefined` sem `GLOBAL_CONFIG`/`EDGE_CONFIG` aceita = reserva desligada
+  // (o porteiro marca `x-ikcous-reserva: desligada`). O MESMO leitor vale para
+  // o documento e para o ramo de robô: um cliente e um cache por instância.
+  const lerReserva = leitorDaReservaDoAmbiente(
+    process.env as AmbienteDaReserva,
+  );
   const caminhoDaPrevia = url.pathname.replace(/\/$/, "");
   if (
     caminhoDaPrevia === "/product-detail" &&
@@ -402,6 +411,7 @@ export default async function middleware(
       {
         fetchImpl: fetch,
         resolverNaCaderneta,
+        lerReserva,
         cache: cachePorteiro,
         cacheForaDoAr,
         cacheSemLoja,
@@ -639,6 +649,7 @@ export default async function middleware(
   return atenderPorteiro(request, process.env as AmbientePorteiro, {
     fetchImpl: fetch,
     resolverNaCaderneta,
+    lerReserva,
     cache: cachePorteiro,
     cacheForaDoAr,
     cacheSemLoja,
