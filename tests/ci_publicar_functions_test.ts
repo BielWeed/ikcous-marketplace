@@ -299,6 +299,7 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
     () => {
       const nomes = [
         "Confere o segredo da loja assinante",
+        "Lista o que está no ar ANTES na loja assinante",
         "Publica loja assinante, uma function por vez",
         "Lista o que ficou publicado na loja assinante",
       ];
@@ -332,6 +333,7 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
       }
       for (const nome of [
         "Confere o segredo",
+        "Lista o que está no ar ANTES em loja ou sandbox",
         "Publica, uma function por vez, sempre pelo nome",
         "Lista o que ficou publicado",
       ]) {
@@ -760,7 +762,7 @@ function seRoda(passo: string, projeto: string, modo: string): boolean {
   return new Function(`return (${js});`)() === true;
 }
 
-Deno.test("publicar-functions: o passo 'Lista o que está no ar ANTES' existe só para ikcous-publicada, antes do deploy, igual ao de depois", async () => {
+Deno.test("publicar-functions: o passo 'Lista o que está no ar ANTES' da IKCOUS usa só o token IKCOUS, roda antes do deploy e também no modo listar", async () => {
   const yaml = await Deno.readTextFile(WORKFLOW);
   const passos = passosDoWorkflow(yaml);
   const nomes = passos.map(([n]) => n);
@@ -791,14 +793,11 @@ Deno.test("publicar-functions: o passo 'Lista o que está no ar ANTES' existe s�
   assertStringIncludes(antes, 'supabase functions list --project-ref "$REF"');
   assertStringIncludes(antes, 'echo "## No ar ANTES em \\`$REF\\`"');
   assertStringIncludes(antes, 'tee -a "$GITHUB_STEP_SUMMARY"');
-  // idêntico ao de depois, trocando só o título e o if
-  const corpoDe = (p: string) => p.slice(p.indexOf("run: |"));
-  assertEquals(
-    corpoDe(antes).replace("No ar ANTES em", "Publicado em"),
-    corpoDe(depois),
-    "o run do ANTES é o mesmo do 'Lista o que ficou publicado na IKCOUS publicada', só com outro título",
-  );
-  // não roda para nenhuma outra loja, em nenhum modo
+  // o mesmo formato de registro do "depois" (título de 2º nível com o ref, a
+  // lista do CLI num bloco de código), só com outro título
+  assertStringIncludes(depois, 'echo "## Publicado em \\`$REF\\`"');
+  // o passo de TOKEN IKCOUS não roda para nenhuma outra loja, em nenhum modo
+  // (as outras têm o próprio ANTES, com o token delas — teste abaixo)
   for (const projeto of ["savy", "sandbox", "loja"]) {
     for (const modo of ["publicar", "listar"]) {
       assertEquals(seRoda(antes, projeto, modo), false, `${projeto}/${modo}`);
@@ -806,6 +805,152 @@ Deno.test("publicar-functions: o passo 'Lista o que está no ar ANTES' existe s�
   }
   assertEquals(seRoda(antes, "ikcous-publicada", "publicar"), true);
   assertEquals(seRoda(antes, "ikcous-publicada", "listar"), true);
+});
+
+// ---------------------------------------------------------------------------
+// O registro do ANTES em TODA loja que o workflow publica (26/11/2026). Até
+// aqui só a IKCOUS guardava no resumo do run o que estava no ar antes do
+// deploy; nas outras o dono media à mão (docs/runbooks/producao-unica-fonte.md),
+// e o desfazer depende desse registro — com 300 lojas, 300 medições por release.
+// Sem o registro não há desfazer: se a lista falha, a loja NÃO é publicada.
+// ---------------------------------------------------------------------------
+const PROJETOS_QUE_PUBLICAM = [
+  "ikcous-publicada",
+  "savy",
+  // assinante nova, só no cadastro: cai nos passos da loja assinante
+  "loja-teste-xyz",
+  "sandbox",
+  "loja",
+];
+const ehAntes = (nome: string) =>
+  nome.startsWith("Lista o que está no ar ANTES");
+const linhaDoToken = (passo: string) =>
+  passo.match(/^\s*SUPABASE_ACCESS_TOKEN: .+$/m)?.[0].trim() ?? null;
+
+Deno.test("publicar-functions: toda loja que o workflow publica registra o ANTES no resumo do run, com o MESMO token do deploy, antes dele", async () => {
+  const passos = passosDoWorkflow(await Deno.readTextFile(WORKFLOW));
+  for (const projeto of PROJETOS_QUE_PUBLICAM) {
+    const rodam = passos
+      .map(([n, p], i) => ({ n, p, i }))
+      .filter(({ p }) => seRoda(p, projeto, "publicar"));
+    const antes = rodam.filter(({ n }) => ehAntes(n));
+    const deploy = rodam.filter(({ p }) =>
+      p.includes("supabase functions deploy"),
+    );
+    assertEquals(
+      antes.length,
+      1,
+      `${projeto}: um passo ANTES (achados: ${antes.map((a) => a.n).join(", ")})`,
+    );
+    assertEquals(deploy.length, 1, projeto);
+    assert(antes[0].i < deploy[0].i, `${projeto}: o ANTES vem antes do deploy`);
+    const token = linhaDoToken(antes[0].p);
+    assert(token, `${projeto}: o ANTES sem SUPABASE_ACCESS_TOKEN`);
+    assertEquals(
+      token,
+      linhaDoToken(deploy[0].p),
+      `${projeto}: o ANTES usa um token diferente do deploy`,
+    );
+    assertStringIncludes(antes[0].p, "REF: ${{ steps.alvo.outputs.ref }}");
+    assertStringIncludes(antes[0].p, 'tee -a "$GITHUB_STEP_SUMMARY"');
+    assert(!antes[0].p.includes("continue-on-error"), projeto);
+  }
+  // os três ANTES (legado, assinante, IKCOUS) rodam o MESMO script: só o
+  // `if` e o token mudam
+  const corpos = passos
+    .filter(([n]) => ehAntes(n))
+    .map(([, p]) => p.slice(p.indexOf("run: |")).trimEnd());
+  assertEquals(corpos.length, 3);
+  assertEquals(new Set(corpos).size, 1, "os passos ANTES divergem no run");
+});
+
+/** Roda o `run` de um passo ANTES com um `supabase` de mentira (função de
+ * bash, que ganha de qualquer binário do PATH), e devolve o resumo gravado. */
+async function rodarAntes(nomeDoPasso: string, supabase: string) {
+  // pelo nome EXATO: "Lista o que está no ar ANTES" (IKCOUS) é prefixo dos outros
+  const passo = passosDoWorkflow(await Deno.readTextFile(WORKFLOW)).find(
+    ([n]) => n === nomeDoPasso,
+  );
+  assert(passo, `passo "${nomeDoPasso}" ausente`);
+  const corpo = blocoRunDoStep(passo[1], nomeDoPasso);
+  const resumo = await Deno.makeTempFile({ prefix: "publicar_resumo_" });
+  const r = await new Deno.Command("bash", {
+    args: ["-c", `supabase() {\n${supabase}\n}\n${corpo}`],
+    env: { REF: "refdeteste", GITHUB_STEP_SUMMARY: resumo },
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  const texto = await Deno.readTextFile(resumo);
+  await Deno.remove(resumo);
+  const dec = new TextDecoder();
+  return {
+    codigo: r.code,
+    stdout: dec.decode(r.stdout),
+    stderr: dec.decode(r.stderr),
+    resumo: texto,
+  };
+}
+
+const PASSOS_ANTES = [
+  "Lista o que está no ar ANTES em loja ou sandbox",
+  "Lista o que está no ar ANTES na loja assinante",
+  "Lista o que está no ar ANTES",
+];
+
+Deno.test("publicar-functions: o ANTES grava a lista do CLI no resumo; se a lista falha, o passo falha, diz por quê e não deixa registro pela metade", async (t) => {
+  const TABELA =
+    "ID | NAME | VERSION | UPDATED_AT\nf1 | criar-pagamento | 12 | 2026-11-20 10:00:00";
+  for (const nome of PASSOS_ANTES) {
+    await t.step(`${nome}: lista OK vira o registro`, async () => {
+      const r = await rodarAntes(
+        nome,
+        // confere os argumentos: só `functions list` no ref da loja
+        `[ "$*" = "functions list --project-ref refdeteste" ] || return 9\n${TABELA.split(
+          "\n",
+        )
+          .map((l) => `echo '${l}'`)
+          .join("\n")}`,
+      );
+      assertEquals(r.codigo, 0, r.stdout + r.stderr);
+      assertEquals(
+        r.resumo,
+        `## No ar ANTES em \`refdeteste\`\n\n\`\`\`\n${TABELA}\n\`\`\`\n`,
+      );
+    });
+    await t.step(
+      `${nome}: lista falha -> passo falha, com o motivo`,
+      async () => {
+        const r = await rodarAntes(nome, `echo "erro de rede" >&2\nreturn 1`);
+        assert(r.codigo !== 0, "a falha da lista tem de reprovar o passo");
+        assertStringIncludes(r.stdout, "::error::");
+        assertStringIncludes(r.stdout, "refdeteste");
+        assertStringIncludes(r.stdout, "nada foi publicado");
+        assertEquals(r.resumo, "", "registro pela metade no resumo do run");
+      },
+    );
+  }
+});
+
+Deno.test("publicar-functions: passo que falha antes do deploy impede o deploy (nenhum deploy com always/failure/cancelled nem continue-on-error)", async () => {
+  const yaml = await Deno.readTextFile(WORKFLOW);
+  // Sem função de status no `if`, o GitHub põe `success() &&` na frente: um
+  // passo anterior que falhou (o ANTES) pula o deploy.
+  const deploys = passosDoWorkflow(yaml).filter(([, p]) =>
+    p.includes("supabase functions deploy"),
+  );
+  assertEquals(deploys.length, 3);
+  for (const [nome, p] of deploys) {
+    const m = p.match(/\n\s+if: (.+)/);
+    assert(m, `${nome}: deploy sem if`);
+    assert(
+      !/\b(always|failure|cancelled|success)\s*\(/.test(m[1]),
+      `${nome}: if com função de status`,
+    );
+  }
+  assert(
+    !semComentarios(yaml).includes("continue-on-error"),
+    "continue-on-error deixaria o deploy seguir sem o registro do ANTES",
+  );
 });
 
 Deno.test("publicar-functions: com `listar` NENHUM passo de deploy (nem a prova do banco) roda; com nome real o comportamento é o de sempre", async () => {
