@@ -243,6 +243,30 @@ Se vier diferente depois de 2 minutos, rode o `--ver` e confira o estado gravado
 Faça a mudança inversa pela porta (adormeceu por engano → `--acordar`; encerrou por engano →
 reabrir). O histórico guarda as duas linhas. Nunca apague linha do histórico.
 
+## O banco da caderneta: a vitrine antiga sem escrita anônima
+
+O banco onde a caderneta mora hoje é o projeto antigo `dekxabvqdsuukijblazl`. Ele não recebe as
+migrations dos canais, e a view `public.vw_produtos_public` dele ficou aberta para escrita com a chave
+pública (nas lojas, a 20260821000100 e a 20261090000000 já a fecharam). O conserto é um script à
+parte, **não** migration, em `scripts/frota/banco-da-caderneta/`. Pelo MCP, **só** com `execute_sql`
+no `dekxabvqdsuukijblazl` (nunca `apply_migration`, que grava uma versão falsa no histórico de
+migrations do projeto):
+
+1. **Antes (só leitura):** `scripts/frota/banco-da-caderneta/vitrine-antiga-sem-escrita-anonima-conferir.sql`.
+   Esperado: 5 linhas; a da ACL mostra no `vivo` a ACL medida em 26/11 (`anon=arwdDxtm/postgres`).
+2. **Aplicar, numa transação só:** `begin;` + o conteúdo de
+   `scripts/frota/banco-da-caderneta/vitrine-antiga-sem-escrita-anonima.sql` + `commit;`, na mesma
+   chamada. O pré-voo recusa com `B1_BASELINE_DIVERGENT` (e nada é gravado) se o banco não tiver a
+   caderneta semeada (`frota_lojas` e `frota_segredo` com linha: é o que separa o dekxab de uma loja,
+   que tem as tabelas vazias e a mesma ACL da view) ou se a ACL não for a medida nem a já aplicada; o
+   pós-voo recusa com `POSVOO_VITRINE_ANTIGA` se o resultado não for o esperado. O rollback tem a mesma
+   trava do banco certo.
+3. **Depois:** a mesma consulta do passo 1. Esperado: as 5 linhas com `ok = true`.
+
+**Desfazer:** `begin;` + `scripts/frota/banco-da-caderneta/rollback-manual-vitrine-antiga-sem-escrita-anonima.sql`
++ `commit;`, pelo `execute_sql`. Ele devolve a ACL medida, byte a byte, e **reabre o furo**; depois
+dele, a consulta do passo 1 volta a mostrar o retrato de antes.
+
 ## Rollback das migrations (ordem)
 
 1. Parar de usar este comando.
