@@ -278,7 +278,9 @@ node scripts/frota/acordar-projeto.mjs --loja "<nome da loja no scripts/frota/lo
 
   - `--loja` tem de estar em `scripts/frota/lojas.json`, e a loja tem de ter o acesso OAuth no cofre
     deste PC (o que o passo de autorizar a loja grava). Sem isso, o comando para antes de pedir qualquer
-    coisa ao Supabase e manda usar o plano B.
+    coisa ao Supabase e manda usar o plano B. **Hoje (27/11) isso vale para todas as lojas:** IKCOUS e
+    Savy usam segredo do GitHub (que não se lê do PC) e nenhuma loja entrou por OAuth ainda; até a
+    primeira loja OAuth, o caminho real é o plano B (o dono clica em "Restore project" no painel).
   - `--motivo` vai para o registro que o comando imprime (3 a 200 caracteres, só letras, números,
     espaço e `. , : ; ( ) / -`).
   - `--esperar-min N` (opcional): quanto tempo ele acompanha o projeto voltar. Padrão 10, máximo 30.

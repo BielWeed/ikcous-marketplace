@@ -191,7 +191,7 @@ export async function acordar({
   prazoMs,
 }) {
   const painel = `https://supabase.com/dashboard/project/${ref}`;
-  const planoB = `Plano B: a lojista entra no painel do Supabase (${painel}) e clica em "Restore project".`;
+  const planoB = `Plano B: quem é dono da conta Supabase da loja (o dono, para IKCOUS e Savy; a lojista, nas lojas autorizadas por OAuth) entra no painel do Supabase (${painel}) e clica em "Restore project".`;
   const hora = () => new Date(relogio.agora()).toISOString();
   // GUARDA do "nunca um 2º POST": vira true ANTES do pedido sair, então nem um POST que lança abre espaço para outro.
   let pediuRestore = false;
@@ -388,7 +388,7 @@ export async function executar(argv, deps) {
     cofre = deps.abrirCofre();
   } catch (e) {
     escrever(
-      `PAROU (canário do token): não consegui abrir o cofre deste PC (${erroSeguro(e)}). Nada foi pedido ao Supabase. Plano B: a lojista clica em "Restore project" no painel do Supabase (https://supabase.com/dashboard/project/${l.ref}).`,
+      `PAROU (canário do token): não consegui abrir o cofre deste PC (${erroSeguro(e)}). Nada foi pedido ao Supabase. Plano B: quem é dono da conta Supabase da loja (o dono, para IKCOUS e Savy; a lojista, nas lojas por OAuth) clica em "Restore project" no painel do Supabase (https://supabase.com/dashboard/project/${l.ref}).`,
     );
     return { codigo: 1 };
   }
