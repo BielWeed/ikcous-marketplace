@@ -40,7 +40,9 @@
 --       subtransacao e UM INSERT ... SELECT em lote, qualquer que seja o numero de linhas.
 --   (6) public.livro_de_registro_limpar() (pg_cron diario 'limpar-livro-de-registro', 06:17 UTC): apaga o que passou de 90 dias em
 --       lotes de 5000; corta acima de teto_linhas (as mais antigas); se o banco passou de teto_banco_mb, DESLIGA a chave com o motivo;
---       limpa falhas de mais de 90 dias. SECURITY DEFINER, search_path fixo, statement_timeout de 60s, EXECUTE de ninguem.
+--       limpa falhas de mais de 90 dias. SECURITY DEFINER, search_path fixo, EXECUTE de ninguem. O TETO DE 60s mora no COMANDO do
+--       job ('SET statement_timeout = 60000; SELECT ...'): o atributo statement_timeout=60s da funcao fica (forma conferida pelo
+--       pos-voo e pela 188a), mas sozinho nao arma o relogio de quem a chama. Chamada a mao: SET statement_timeout antes, no mesmo lote.
 --   (7) NOTIFY pgrst.
 --   Moram em public de proposito (as varreduras de LGPD olham public), sem grant algum e com RLS ligada sem politica (padrao de
 --   visitas_por_dia/frota_segredo): anon, authenticated e service_role recebem 42501. Fora do realtime.
@@ -48,10 +50,13 @@
 -- NUNCA NO CAMINHO DE QUEM COMPRA (e os limites, escritos): so UPDATE e DELETE anotam; erro do livro e' engolido (subtransacao); trava
 -- no livro espera no maximo 200ms e vira 55P03 engolido; AFTER + RETURN NULL; sem FK. LIMITES que NAO sao engolidos: 57014
 -- (statement_timeout/cancelamento) nao e' capturado por WHEN OTHERS; uma transacao com mais de 64 COMANDOS nessas tabelas ainda estoura
--- o cache de subtransacoes (SQL em massa nosso = UM comando; TRUNCATE proibido, e nao anota). OUTROS LIMITES: troca de id (PK) nao anota
--- a linha (o par antigo/novo e' casado pelo id); item/historico/devolucao_item apagados EM CASCATA junto com o pedido ou a devolucao
--- ficam sem titular (o pai ja nao e' visivel quando o gatilho do filho roda; nao guardam nome nem telefone); pedido de convidado
--- (user_id NULL) fica sem titular.
+-- o cache de subtransacoes (SQL em massa nosso = UM comando; TRUNCATE proibido, e nao anota). LACOS QUE JA EXISTEM fazem isso: a
+-- expirar_pedidos_vencidos (pg_cron) da um UPDATE por pedido vencido (mais os de devolver_estoque), e numa rodada com muitos pedidos
+-- passa de 64 subtransacoes na mesma transacao. Efeito, so enquanto ela durar: leitura de outras conexoes mais lenta por milissegundos
+-- (o Postgres passa a consultar o pg_subtrans); nenhuma venda cai, nenhum erro, nada deixa de gravar.
+-- OUTROS LIMITES: troca de id (PK) nao anota a linha (o par antigo/novo e' casado pelo id); item/historico/devolucao_item apagados
+-- EM CASCATA junto com o pedido ou a devolucao ficam sem titular (o pai ja nao e' visivel quando o gatilho do filho roda; nao
+-- guardam nome nem telefone); pedido de convidado (user_id NULL) fica sem titular.
 --
 -- DADOS EXISTENTES: nenhuma linha das 17 tabelas e' lida para fora nem alterada. O livro nasce VAZIO (nao ha backfill: so o que for
 -- alterado ou apagado DEPOIS do apply entra). A unica escrita de dado e' a linha da chave (id 1), so se ainda nao existir.
@@ -72,7 +77,9 @@
 --
 -- DESLIGAR: na hora (segundos, sem deploy): UPDATE public.livro_de_registro_chave SET ligado = false, motivo = '...', mudado_em = now();
 -- para sempre: rollback-manual-20261510000000_o_livro_de_registro_guarda_a_versao_antiga.sql (tira os 34 gatilhos e a funcao,
--- desagenda o job se existir; as tabelas ficam seladas com as linhas). rollback-manual-destrutivo-20261510000000_... apaga as tabelas
+-- desagenda o job se existir; as tabelas ficam seladas com as linhas). DEPOIS DO ROLLBACK COMUM A LIMPEZA AGENDADA SOME: nada mais
+-- apaga o que passou de 90 dias; rodar a mao 'SET statement_timeout = 60000; SELECT public.livro_de_registro_limpar();' (a funcao fica)
+-- ou o destrutivo. rollback-manual-destrutivo-20261510000000_... apaga as tabelas
 -- (so com SET LOCAL app.confirmo_apagar_livro = 'APAGAR' e o "pode" do dono). Desfazer dado PELO livro: docs/runbooks/
 -- desfazer-pelo-livro-de-registro.md (todo bloco com ENSAIO; mudar dado real = "pode" do dono a cada vez).
 -- TIPOS: src/types/database.types.ts nao muda (nada do front le o livro).
@@ -446,7 +453,11 @@ CREATE OR REPLACE TRIGGER tr_livro_exclusao AFTER DELETE ON public.politica_devo
 
 -- ===== (6) a agenda (upsert pelo nome: reaplicar nao duplica) =====
 
-SELECT cron.schedule('limpar-livro-de-registro', '17 6 * * *', 'SELECT public.livro_de_registro_limpar()');
+-- O teto de 60s vai NO COMANDO (60000 ms), antes do SELECT: o atributo SET statement_timeout da funcao nao arma o relogio quando o
+-- pg_cron a chama (o relogio e' armado pelo comando de fora). Com o pg_cron por conexao (o padrao; no Supabase cada job usa uma conexao),
+-- cada comando do texto ganha o proprio relogio (Postgres 13+). Se o pg_cron rodasse em background worker, o relogio seria armado uma
+-- vez antes do texto e este SET nao valeria; a limpeza ainda termina sozinha quando acaba o que apagar, so sem teto de tempo.
+SELECT cron.schedule('limpar-livro-de-registro', '17 6 * * *', 'SET statement_timeout = 60000; SELECT public.livro_de_registro_limpar()');
 
 -- ===== pos-voo =====
 
@@ -524,7 +535,7 @@ BEGIN
 
   IF NOT EXISTS (SELECT 1 FROM cron.job j
                   WHERE j.jobname = 'limpar-livro-de-registro' AND j.schedule = '17 6 * * *'
-                    AND j.command = 'SELECT public.livro_de_registro_limpar()') THEN
+                    AND j.command = 'SET statement_timeout = 60000; SELECT public.livro_de_registro_limpar()') THEN
     RAISE EXCEPTION 'B2_POSVOO_DIVERGENTE: o job limpar-livro-de-registro nao ficou agendado.';
   END IF;
   IF (SELECT count(*) FROM public.livro_de_registro_chave) <> 1 THEN

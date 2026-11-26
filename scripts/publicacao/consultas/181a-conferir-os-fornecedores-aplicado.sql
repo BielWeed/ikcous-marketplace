@@ -1,7 +1,9 @@
 -- 181a-conferir-os-fornecedores-aplicado: DEPOIS da 20261450000000. SO LEITURA, somente catalogo, rol fechado de 9 linhas.
 -- Nao le nenhuma linha de public.fornecedores (nem de nenhuma outra tabela): contato de fornecedor e' dado comercial da loja e
 -- esta consulta roda por papel sem privilegio de tabela. Confere o ESTADO NOVO inteiro: a funcao do gatilho, a tabela, as colunas,
--- os CHECKs, a RLS, as quatro politicas, os privilegios e o gatilho.
+-- os CHECKs, a RLS, as quatro politicas, os privilegios e o gatilho. Os gatilhos do livro de registro (20261510000000) em
+-- public.fornecedores saem da conta pela FUNCAO que executam (livro_de_registro_anotar), nunca pelo nome: um gatilho chamado tr_livro_*
+-- que execute outra funcao ainda reprova aqui. Os gatilhos do livro se conferem na 188a.
 WITH fn AS (
   SELECT p.oid, md5(replace(p.prosrc, chr(13), '')) AS h, l.lanname, p.prosecdef, p.proconfig, pg_get_function_result(p.oid) AS resultado
   FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
@@ -56,7 +58,8 @@ WITH fn AS (
        FROM tb t), false) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'fornecedores: um unico gatilho, BEFORE INSERT OR UPDATE por linha, habilitado, apontando para fornecedores_carimba_atualizado_em', 'sim', CASE WHEN COALESCE(
     (SELECT string_agg(g.tgname || ':' || g.tgtype::text || ':' || g.tgenabled::text || ':' || p.proname, ',' ORDER BY g.tgname)
-       FROM tb t JOIN pg_trigger g ON g.tgrelid = t.oid AND NOT g.tgisinternal AND g.tgname NOT LIKE 'tr\_livro\_%' JOIN pg_proc p ON p.oid = g.tgfoid)
+       FROM tb t JOIN pg_trigger g ON g.tgrelid = t.oid AND NOT g.tgisinternal
+                      AND g.tgfoid IS DISTINCT FROM to_regprocedure('public.livro_de_registro_anotar()')::oid JOIN pg_proc p ON p.oid = g.tgfoid)
       = 'fornecedores_carimba_atualizado_em:23:O:fornecedores_carimba_atualizado_em', false) THEN 'sim' ELSE 'nao' END
 )
 SELECT item, esperado, vivo, COALESCE(vivo = esperado, false) AS ok FROM itens ORDER BY ok, item;

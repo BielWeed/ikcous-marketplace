@@ -20,7 +20,9 @@
  *   (3) depois do rollback comum + destrutivo, 188b POSITIVA e 188a reprova tudo menos o controle;
  *   (4) defeitos plantados: cada um reprova EXATAMENTE o item certo (188a: 18; 188b: 7); papel cego do cron (RLS sem job visivel)
  *       deixa a linha do job em 'sim' e a linha volta a ser estrita quando ele ve algum job;
- *   (5) 181a (os fornecedores) continua POSITIVA com os gatilhos do livro em public.fornecedores, e um gatilho alheio ainda reprova.
+ *   (5) 181a (os fornecedores) continua POSITIVA com os gatilhos do livro em public.fornecedores (sai da conta quem EXECUTA a funcao do
+ *       livro, nunca pelo nome); um gatilho alheio ainda reprova, inclusive um chamado tr_livro_* com outra funcao; um gatilho extra com
+ *       a funcao do livro passa na 181a e reprova na 188a.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/o-livro-de-registro-portao-viva.cjs
  */
@@ -553,14 +555,34 @@ async function fornecedores(c) {
     [],
     "181a POSITIVA com os gatilhos do livro em public.fornecedores",
   );
+  // A 181a tira da conta so os gatilhos que EXECUTAM public.livro_de_registro_anotar(), nunca pelo nome: um gatilho alheio reprova,
+  // inclusive um chamado tr_livro_* que execute outra funcao (o filtro antigo, pelo prefixo do nome, deixava esse passar).
+  for (const nome of ["prova_1510_alheio", "tr_livro_estranho"])
+    await emSavepoint(c, async () => {
+      await c.query(
+        `CREATE TRIGGER ${nome} BEFORE UPDATE ON public.fornecedores FOR EACH ROW EXECUTE FUNCTION public.fornecedores_carimba_atualizado_em()`,
+      );
+      assert.deepEqual(
+        await r181(),
+        [item(A181, "fornecedores: um unico gatilho")],
+        `181a: o gatilho ${nome}, que executa outra funcao, reprova`,
+      );
+    });
+  // Um gatilho de outro nome que execute a funcao do livro sai da conta da 181a, e quem o reprova e' a 188a ("nenhum outro gatilho
+  // usando livro_de_registro_anotar"): a lacuna de uma consulta e' coberta pela outra.
   await emSavepoint(c, async () => {
     await c.query(
-      "CREATE TRIGGER prova_1510_alheio AFTER UPDATE ON public.fornecedores FOR EACH STATEMENT EXECUTE FUNCTION public.livro_de_registro_anotar()",
+      "CREATE TRIGGER prova_1510_usa_o_livro AFTER UPDATE ON public.fornecedores FOR EACH STATEMENT EXECUTE FUNCTION public.livro_de_registro_anotar()",
     );
     assert.deepEqual(
       await r181(),
-      [item(A181, "fornecedores: um unico gatilho")],
-      "181a: so o prefixo tr_livro_ sai da conta; outro gatilho ainda reprova",
+      [],
+      "181a: gatilho que executa a funcao do livro sai da conta",
+    );
+    assert.deepEqual(
+      await reprovados(c, A188),
+      [item(A188, "as 17 tabelas")],
+      "188a: o gatilho extra com a funcao do livro reprova",
     );
   });
 }
@@ -606,7 +628,7 @@ async function main() {
         () => defeitos(c),
       );
       await provar(
-        "181a positiva com os gatilhos do livro em fornecedores; gatilho alheio ainda reprova",
+        "181a positiva com os gatilhos do livro em fornecedores; gatilho alheio (ate tr_livro_* com outra funcao) ainda reprova",
         () => fornecedores(c),
       );
       console.log(

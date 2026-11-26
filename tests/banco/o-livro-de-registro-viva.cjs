@@ -999,7 +999,8 @@ async function comportamento(c) {
     [
       {
         schedule: "17 6 * * *",
-        command: "SELECT public.livro_de_registro_limpar()",
+        command:
+          "SET statement_timeout = 60000; SELECT public.livro_de_registro_limpar()",
       },
     ],
     "job agendado",
@@ -1481,7 +1482,7 @@ const MUTANTES = {
     muta: (s) =>
       trocar(
         s,
-        "SELECT cron.schedule('limpar-livro-de-registro', '17 6 * * *', 'SELECT public.livro_de_registro_limpar()');",
+        "SELECT cron.schedule('limpar-livro-de-registro', '17 6 * * *', 'SET statement_timeout = 60000; SELECT public.livro_de_registro_limpar()');",
         "",
       ),
     motivo: "job agendado",

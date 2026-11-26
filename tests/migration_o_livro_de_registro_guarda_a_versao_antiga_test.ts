@@ -278,7 +278,7 @@ Deno.test("anotar(): SECURITY DEFINER, search_path fixo, lock_timeout 200ms, EXC
       throw new Error(`nome nao qualificado no corpo: ${m[0]}`);
 });
 
-Deno.test("limpar(): SECURITY DEFINER, search_path fixo, statement_timeout 60s, 90 dias em lotes de 5000, teto, disjuntor; agenda diaria", () => {
+Deno.test("limpar(): SECURITY DEFINER, search_path fixo, statement_timeout 60s, 90 dias em lotes de 5000, teto, disjuntor; agenda diaria com o teto NO COMANDO", () => {
   const cab = norm(cabecalho(migration, "public.livro_de_registro_limpar"));
   assertStringIncludes(cab, "SECURITY DEFINER");
   assertStringIncludes(cab, "SET search_path = pg_catalog, pg_temp");
@@ -295,9 +295,19 @@ Deno.test("limpar(): SECURITY DEFINER, search_path fixo, statement_timeout 60s, 
     "o prazo do livro aparece UMA vez (o mutante limpa-com-9-dias depende disso)",
   );
   assertStringIncludes(codigo(migration), "SELECT cron.schedule('', '', '');");
+  // O atributo SET statement_timeout da funcao NAO arma o relogio quando o pg_cron a chama (o relogio e' armado no comando de fora):
+  // o teto de 60s vai no PROPRIO comando do job, ANTES do SELECT, e o pos-voo exige esse mesmo texto.
+  const comando =
+    "SET statement_timeout = 60000; SELECT public.livro_de_registro_limpar()";
   assertStringIncludes(
     migration,
-    "SELECT cron.schedule('limpar-livro-de-registro', '17 6 * * *', 'SELECT public.livro_de_registro_limpar()');",
+    `SELECT cron.schedule('limpar-livro-de-registro', '17 6 * * *', '${comando}');`,
+  );
+  assertStringIncludes(migration, `AND j.command = '${comando}') THEN`);
+  assertEquals(
+    migration.split("'SELECT public.livro_de_registro_limpar()'").length - 1,
+    0,
+    "nenhum lugar agenda ou confere o comando SEM o teto",
   );
 });
 

@@ -42,6 +42,19 @@ SELECT ligado, motivo, mudado_em, teto_linhas, teto_banco_mb FROM public.livro_d
 `ligado = false` com um `motivo` = alguém desligou (ou o disjuntor desligou porque o banco passou do teto).
 Enquanto ele esteve desligado, nada foi guardado.
 
+## Dois limites que vale saber
+
+- **Laço que já existe pode deixar leitura mais lenta por milissegundos.** Cada comando que altera ou
+  apaga linha numa das 17 tabelas abre uma subtransação no livro. Rotinas antigas que fazem um `UPDATE` por
+  linha dentro de uma transação só — por exemplo `expirar_pedidos_vencidos`, um `UPDATE` por pedido vencido
+  — podem passar de 64 subtransações numa rodada grande. Enquanto essa rodada durar, a leitura de outras
+  conexões fica mais lenta por milissegundos. Nenhuma venda cai, nenhum erro aparece, nada deixa de gravar.
+- **Depois do rollback comum, a limpeza agendada some.** O rollback comum tira os gatilhos e desagenda o
+  job `limpar-livro-de-registro`, mas deixa as tabelas com as linhas e a função de limpeza. A partir daí
+  ninguém apaga o que passou de 90 dias. Rode à mão, no SQL Editor da loja,
+  `SET statement_timeout = 60000; SELECT public.livro_de_registro_limpar();` (quantas vezes precisar, até
+  as linhas velhas acabarem), ou, com o "pode" do dono, o rollback destrutivo, que apaga as tabelas.
+
 ## Passo 1 — Achar o que mudou
 
 Troque os quatro marcadores: a tabela (ou `''` para todas), o id da linha (ou `''` para todas), e o começo e
