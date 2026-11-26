@@ -47,7 +47,7 @@
   "_comentario": {
     "estado": "manutencao = HTTP 503 + caderneta miss; redirecionamento = HTTP 308. Só política: quais endereços NÃO são loja. Quem é loja e qual loja vem da FICHA que o porteiro serve (cadastro frota_lojas), nunca daqui.",
     "aliasesDePreview": "Aliases automáticos de branch/preview do projeto (não são lojas); a inventariação por --vercel os ignora.",
-    "enderecosDeReserva": "SÓ para rodar sem --vercel (CI). Pode ficar velha: por isso a saída diz inventário PARCIAL. A fonte oficial do inventário é a lista de aliases do projeto Vercel (--vercel).",
+    "enderecosDeReserva": "SÓ para rodar sem --vercel (CI). Pode ficar velha: por isso a saída diz inventário PARCIAL. A fonte oficial do inventário é a lista de aliases do projeto Vercel (--vercel). Acompanha o cadastro: cada canal de canais-de-backend.json declara o seu enderecoDeReserva, e tests/frota_reserva_test.ts reprova se as duas listas divergirem (loja assinante nova fora da conferência do CI).",
     "migrationsForaDaRelease": "Lida pelo orquestrador de publicação; a conferência da frota só a mostra.",
     "lojasQueNuncaDormem": "Lojas que NUNCA podem estar adormecidas ou encerradas (L8, frota_lojas.estado): se uma delas responder fora do ar, a conferência da frota reprova (ESTADO_INESPERADO) e o publicar-release BLOQUEIA. Refs iguais aos de canais-de-backend.json."
   }
