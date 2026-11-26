@@ -20,7 +20,8 @@
  *   (e) a porta de leitura resolver_encaminhamento, como anon (o PostgREST): chave errada, NULL ou vazia = zero linhas; a chave certa
  *       devolve o endereço ATUAL da loja (duas mudanças seguidas não viram corrente); o host principal e a loja com ativa = false dão
  *       zero linhas; transação só de leitura responde sem gravar; só o anon executa; o bloco da chave é, texto por texto, o da v2;
- *   (f) o rollback comum (2x) tira as funções e preserva a tabela com as linhas; recusa corpo divergente; o destrutivo exige o comum;
+ *   (f) o rollback comum (2x) tira as funções e preserva a tabela com as linhas, também depois do apply com CRLF; recusa corpo
+ *       divergente; o destrutivo exige o comum;
  *   (g) a porta de troca frota_trocar_dominio (só o dono executa): as três escritas numa transação (o preparado sai da tabela, vira o
  *       principal, o principal antigo entra com motivo antigo); cada recusa sem escrever nada (validade vencida ou maior que 1 h, de
  *       diferente do atual, para que não é apelido desta loja — nem de outra —, de = para, host malformado, motivo vazio, loja que não
@@ -824,6 +825,36 @@ async function rollbackComum(c) {
       /ENDERECOS_QUE_ENCAMINHAM_ROLLBACK_COMUM_PRIMEIRO/,
       "destrutivo com a porta no ar",
     );
+  });
+  // A migration aplicada com CRLF (o arquivo vindo de um checkout Windows): o corpo guardado tem \r, e o rollback comum mede sem
+  // \r — reconhece o corpo da 20261570 e tira as duas portas (2x), sem B1_BASELINE_DIVERGENT. O replace do pré-voo é E'\r'
+  // escrito com a barra: um CR cru dentro do literal some no ler() (e em qualquer editor que normalize o fim de linha).
+  await desfeita(c, async () => {
+    await c.query(MIGRATION.replace(/\n/g, "\r\n"));
+    for (const fn of [LEITURA, TROCA])
+      assert.equal(
+        (
+          await c.query(
+            "SELECT strpos(prosrc, E'\\r') > 0 AS cr FROM pg_proc WHERE oid = to_regprocedure($1)",
+            [fn],
+          )
+        ).rows[0]?.cr,
+        true,
+        `controle: o corpo de ${fn} aplicado com CRLF guarda o \\r`,
+      );
+    for (const vez of [1, 2]) {
+      await c.query(ROLLBACK);
+      assert.equal(
+        await prosrc(c, LEITURA),
+        null,
+        `rollback ${vez} depois do apply com CRLF: a porta de leitura sai`,
+      );
+      assert.equal(
+        await prosrc(c, TROCA),
+        null,
+        `rollback ${vez} depois do apply com CRLF: a porta de troca sai`,
+      );
+    }
   });
   // O rollback comum recusa corpo divergente (sucessora no ar?) sem tirar nada.
   await desfeita(c, async () => {

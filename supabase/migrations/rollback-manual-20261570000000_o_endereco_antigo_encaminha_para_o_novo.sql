@@ -37,7 +37,7 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: frota_trocar_dominio existe com outra assinatura ou com sobrecarga (sucessora no ar?); nada foi desfeito.';
   END IF;
   IF v_troca IS NOT NULL
-     AND (SELECT md5(replace(p.prosrc, E'', '')) FROM pg_proc p WHERE p.oid = v_troca) IS DISTINCT FROM '5758ff83113e042fc927d83c254291bd' THEN
+     AND (SELECT md5(replace(p.prosrc, E'\r', '')) FROM pg_proc p WHERE p.oid = v_troca) IS DISTINCT FROM '5758ff83113e042fc927d83c254291bd' THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: frota_trocar_dominio não tem o corpo da 20261570000000 (sucessora no ar?); nada foi desfeito.';
   END IF;
 END $preflight_rollback_20261570000000$;

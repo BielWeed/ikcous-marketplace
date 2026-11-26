@@ -47,6 +47,27 @@ Deno.test("rpc-ci.yml roda a prova viva da 20261570 no job bloqueante, num clone
   );
 });
 
+// Um CR cru dentro de um literal (E'<CR>') some em qualquer leitura que normalize o fim de linha (o ler() das provas, editor,
+// checkout): o replace vira replace(x, '', '') e o rollback recusa a migration aplicada com CRLF. O \r se escreve com a barra.
+// Fim de linha CRLF de um checkout Windows (\r seguido de \n) não é CR solto.
+Deno.test("os três arquivos da 20261570 não têm byte \\r solto", async () => {
+  const NOME = "20261570000000_o_endereco_antigo_encaminha_para_o_novo.sql";
+  for (const arquivo of [
+    NOME,
+    `rollback-manual-${NOME}`,
+    `rollback-manual-destrutivo-${NOME}`,
+  ]) {
+    const sql = await Deno.readTextFile(
+      `${RAIZ}/supabase/migrations/${arquivo}`,
+    );
+    const i = sql.search(/\r(?!\n)/);
+    assert(
+      i < 0,
+      `${arquivo}: \\r solto na linha ${sql.slice(0, i).split("\n").length}`,
+    );
+  }
+});
+
 Deno.test("o LEIA-ME de tests/banco descreve a prova da 20261570", async () => {
   const leiame = await Deno.readTextFile(`${RAIZ}/tests/banco/LEIA-ME.md`);
   assertMatch(
