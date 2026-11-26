@@ -584,6 +584,29 @@ function ehRecusaDoPorteiro(response: Response): boolean {
 }
 
 /**
+ * Lista PERMITIDA dos motivos PASSAGEIROS do porteiro (o banco ou o HTML da
+ * loja falharam nesta tentativa; a loja continua aberta). Só eles, com 503,
+ * deixam a rota NUNCA visitada abrir o app guardado — como a rota visitada já
+ * abre (cache primeiro). Lista permitida de propósito: motivo novo ou
+ * desconhecido, loja fechada, adormecida, encerrada, `sem-loja`, `discorda`
+ * e o que não for exatamente estes valores passam como vieram. Na dúvida, a
+ * loja fechada nunca reabre pelo app guardado.
+ */
+const MOTIVOS_PASSAGEIROS_DO_PORTEIRO: ReadonlySet<string> = new Set([
+  "banco-indisponivel",
+  "html-indisponivel",
+]);
+
+/** A resposta de REDE é o 503 de uma falha PASSAGEIRA do porteiro? Par
+ * status 503 + `x-ikcous-porteiro` da lista permitida, nada mais. */
+function ehFalhaPassageiraDoPorteiro(response: Response): boolean {
+  if (response.status !== 503) return false;
+  return MOTIVOS_PASSAGEIROS_DO_PORTEIRO.has(
+    response.headers.get("x-ikcous-porteiro") ?? "",
+  );
+}
+
+/**
  * A recusa é a da loja FORA DO AR (`adormecida`/`encerrada`, caça de
  * 26/11/2026)? Aí apagar só a rota não basta: as outras páginas guardadas
  * abriam a vitrine inteira e a cliente pagava o PIX direto no banco da loja,
@@ -953,7 +976,7 @@ sw.addEventListener("fetch", (event: any) => {
           );
           return cached;
         }
-        const rede = fetch(event.request).then((response) => {
+        const rede = fetch(event.request).then(async (response) => {
           // Rota sem página guardada e loja fora do ar: a página fechada passa
           // como veio, e as OUTRAS rotas guardadas também saem. O try: um
           // `waitUntil` recusado não pode trocar a página fechada pela de
@@ -989,6 +1012,19 @@ sw.addEventListener("fetch", (event: any) => {
                 );
             } catch (e) {
               console.warn("[SW] Failed to clone navigation response:", e);
+            }
+          }
+          // Falha PASSAGEIRA do porteiro (banco ou HTML da loja caíram nesta
+          // tentativa) numa rota nunca visitada: abre o app guardado, como a
+          // rota visitada já abre. Sem app guardado útil, ou se o cache
+          // quebrar, a resposta passa como veio — a rede respondeu, então
+          // "sem internet" (o `.catch` abaixo) seria mentira.
+          if (ehFalhaPassageiraDoPorteiro(response)) {
+            try {
+              const guardada = await paginaGuardadaParaNavegacao(event.request);
+              if (guardada) return guardada;
+            } catch (e) {
+              console.warn("[SW] Falha ao ler o app guardado:", e);
             }
           }
           return response;
