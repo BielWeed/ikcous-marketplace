@@ -1,4 +1,12 @@
 {
+  "1.5.237": {
+    "titulo": "Nova tela Meus fornecedores",
+    "novidades": [
+      "Na tela de Produtos do painel, a barra de baixo ganhou o botão Fornecedores, ao lado de Novo produto. Ele abre a nova tela Meus fornecedores, onde você cadastra quem te vende (nome, cidade, WhatsApp, Instagram e site), marca os favoritos, busca e edita. Os atalhos de WhatsApp, Instagram e site abrem em outra aba."
+    ],
+    "correcoes": [],
+    "melhorias": []
+  },
   "1.5.236": {
     "titulo": "Nova aba Impostos no Financeiro",
     "novidades": [
