@@ -13,13 +13,18 @@
  *    conserto dela e saída 1, sem a chamada da porta (o caso que dói: dormiu na A, a B trouxe migration nova);
  *  - a instrução impressa é UMA, com valores escapados e validade de 30 minutos pelo relógio injetado;
  *  - contextoDaRelease + prontidaoDaLoja (exportados do publicar-release.mjs) dão a prontidão de UMA loja.
+ *  - loja OAuth: o --acordar lê pelo leitor OAuth (o mesmo roteamento do portão), nunca pelo CLI; sem token não acorda e diz o que
+ *    fazer; loja CLI fica idêntica à de antes.
  */
+import { createRequire } from "node:module";
 import {
   assert,
   assertEquals,
   assertRejects,
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { criarAcessoOAuth } from "../scripts/frota/acesso-oauth.mjs";
+import { criarCofreMemoria } from "../scripts/frota/cofre-local.mjs";
 import {
   VALIDADE_MINUTOS,
   executar,
@@ -29,10 +34,15 @@ import {
   sqlDeVer,
 } from "../scripts/frota/estado-da-loja.mjs";
 import {
+  AVISO_DA_SESSAO_OAUTH,
   arquivosEsperados,
   contextoDaRelease,
   prontidaoDaLoja,
 } from "../scripts/frota/publicar-release.mjs";
+
+const { validarCadastro } = createRequire(import.meta.url)(
+  "../scripts/frota/lojas.cjs",
+);
 
 const CAF = "cafkrminfnokvgjqtkle";
 const SAVY = "gnjsrucsmjkajijrakzr";
@@ -183,9 +193,12 @@ function deps({
   canais = canaisBase(),
   producao = SHA_B,
   release = {},
+  extras = null,
 } = {}) {
   const lidas = { producao: 0, release: 0 };
   const r = depsDaRelease(release);
+  // `extras`: o que dependenciasReais() acrescenta para a loja OAuth (cadastro, fetchGestao, tokenOAuth, baixarOAuth).
+  if (extras) Object.assign(r.d, extras);
   return {
     lidas,
     chamadas: r.chamadas,
@@ -857,6 +870,220 @@ Deno.test("depois de acordar: uso errado (sem --base, sem --sha, com --motivo) s
     const r = await executar(argv, d);
     assertEquals(r.codigo, 2, argv.join(" "));
     assertEquals(lidas, { producao: 0, release: 0 });
+  }
+});
+
+// ---------------------------------------------------------------- loja OAuth (acesso: "oauth" no lojas.json)
+// A loja aberta pelo nova-loja só tem acesso OAuth: o CLI do dono não a enxerga. O --acordar lê a prontidão dela pelo MESMO roteamento
+// do portão (publicar-release.mjs, comRoteamentoOAuth): ledger, lista e código das functions pelo leitor OAuth, com o token do cofre.
+// Sem token = "não lida" = não acorda, com o que fazer; nunca cai no CLI.
+
+// canário montado em tempo de execução (literal no fonte dispara o secretlint)
+const CANARIO = `sbp_oauth_${"ab".repeat(20)}`;
+const REF_OUTRA = "oauthoutralojabbbbbb";
+
+/** O cadastro (lojas.json) normalizado pelo código de verdade; `loja-teste` com o `acesso` pedido. */
+function cadastroCom({ acesso = "oauth", slug = LOJA, extras = {} } = {}) {
+  return validarCadastro({
+    lojas: {
+      "ikcous-publicada": {
+        ref: CAF,
+        classe: "assinante",
+        apelido: "CAF",
+        segredoDoToken: "SUPABASE_ACCESS_TOKEN_IKCOUS",
+        functionsNomeadas: true,
+      },
+      savy: {
+        ref: SAVY,
+        classe: "assinante",
+        apelido: "Savy",
+        segredoDoToken: "SUPABASE_ACCESS_TOKEN_SAVY",
+        functionsNomeadas: true,
+      },
+      [slug]: {
+        ref: REF,
+        classe: "assinante",
+        apelido: "Teste",
+        segredoDoToken: "SUPABASE_ACCESS_TOKEN_LOJA_TESTE",
+        functionsNomeadas: false,
+        ...(acesso === "oauth" ? { acesso: "oauth" } : {}),
+      },
+      ...extras,
+    },
+  });
+}
+
+/** O que dependenciasReais() acrescenta para a loja OAuth, em dublê; `oauth.chamadas` anota quem foi chamado. */
+function extrasOAuth({
+  cadastro = cadastroCom(),
+  ledger = [M1, M2],
+  tokenOAuth,
+} = {}) {
+  const chamadas = { gestao: [], token: [], baixarOAuth: [] };
+  return {
+    chamadas,
+    extras: {
+      cadastro,
+      fetchGestao: async (url, init) => {
+        const u = new URL(url);
+        chamadas.gestao.push({
+          caminho: u.pathname,
+          auth: init.headers.authorization,
+        });
+        const m =
+          /^\/v1\/projects\/([a-z]{20})\/(database\/migrations|functions)$/.exec(
+            u.pathname,
+          );
+        if (!m || m[1] !== REF) return new Response("", { status: 404 });
+        const corpo =
+          m[2] === "functions"
+            ? [{ slug: "criar-pagamento", verify_jwt: true, status: "ACTIVE" }]
+            : ledger.map((v) => ({ version: v, name: "m" }));
+        return new Response(JSON.stringify(corpo), { status: 200 });
+      },
+      tokenOAuth:
+        tokenOAuth ??
+        (async ({ slug, ref }) => {
+          chamadas.token.push([slug, ref]);
+          return { accessToken: CANARIO, expiraEm: AGORA + 20 * 3600 * 1000 };
+        }),
+      baixarOAuth: async (ref, nome, gestao) => {
+        chamadas.baixarOAuth.push([ref, nome, typeof gestao?.pedir]);
+        return pacote();
+      },
+    },
+  };
+}
+
+/** O cofre de verdade, vazio: o acesso não tem o refresh da loja (nunca conectada neste PC). */
+const tokenSemRefresh = () => {
+  const acesso = criarAcessoOAuth({
+    cofre: criarCofreMemoria(),
+    fetch: () => {
+      throw new Error("sem rede no teste");
+    },
+    agora: () => AGORA,
+  });
+  return ({ slug }) => acesso.tokenVigente({ slug, minimoMs: 2 * 3600 * 1000 });
+};
+
+const semCanario = (r) =>
+  assert(
+    ![...r.saida, ...r.erros].join("\n").includes(CANARIO),
+    "o token nunca aparece na saída",
+  );
+
+Deno.test("loja OAuth COM token: acorda pelo leitor OAuth (ledger e functions pela API, um token só); o CLI nunca recebe o ref dela", async () => {
+  const o = extrasOAuth();
+  const { d, chamadas } = deps({ extras: o.extras });
+  const r = await executar(ACORDAR, d);
+  assertEquals(r.codigo, 0, r.erros.join("\n"));
+  assertEquals(r.saida, [SQL_ACORDAR]);
+  assertEquals(chamadas.migrationList, [], "o CLI nunca lê a loja OAuth");
+  assertEquals(o.chamadas.gestao.map((g) => g.caminho).sort(), [
+    `/v1/projects/${REF}/database/migrations`,
+    `/v1/projects/${REF}/functions`,
+  ]);
+  assert(o.chamadas.gestao.every((g) => g.auth === `Bearer ${CANARIO}`));
+  assertEquals(o.chamadas.token, [[LOJA, REF]], "um pedido de token só");
+  assertEquals(o.chamadas.baixarOAuth, [[REF, "criar-pagamento", "function"]]);
+  semCanario(r);
+});
+
+Deno.test("loja OAuth SEM token (o cofre deste PC não tem o refresh): NÃO acorda, diz por quê e manda rodar o abrir/receber do nova-loja; nada cai no CLI", async () => {
+  const o = extrasOAuth({ tokenOAuth: tokenSemRefresh() });
+  const { d, chamadas } = deps({ extras: o.extras });
+  const r = await executar(ACORDAR, d);
+  assertEquals(r.codigo, 1);
+  assert(!temPorta(r), r.saida.join("\n"));
+  const erros = r.erros.join("\n");
+  assertStringIncludes(erros, "NÃO PRONTA");
+  assertStringIncludes(
+    erros,
+    "ledger não lido: loja OAuth loja-teste não lida",
+  );
+  assertStringIncludes(erros, "sem acesso");
+  assertStringIncludes(
+    erros,
+    "node scripts/frota/nova-loja.mjs abrir --loja loja-teste",
+  );
+  assertStringIncludes(erros, "receber --loja loja-teste --aplicar");
+  assertEquals(
+    chamadas.migrationList,
+    [],
+    "nem na falha a loja OAuth cai no CLI",
+  );
+  assertEquals(o.chamadas.gestao, [], "sem token, nenhuma chamada à API");
+});
+
+Deno.test("loja OAuth SEM token no --depois-de-acordar com a release mudada: CRÍTICO (1), nunca OK, e nada cai no CLI", async () => {
+  const o = extrasOAuth({ tokenOAuth: tokenSemRefresh() });
+  const { d, chamadas } = deps({ extras: o.extras });
+  const r = await executar(DEPOIS, d);
+  assertEquals(r.codigo, 1);
+  const erros = r.erros.join("\n");
+  assertStringIncludes(erros, "CRÍTICO");
+  assertStringIncludes(erros, "loja OAuth loja-teste não lida");
+  assert(!erros.includes("OK:"), erros);
+  assertEquals(chamadas.migrationList, []);
+});
+
+Deno.test("loja OAuth com cadastro INCOERENTE (o canal do ref aponta outro slug): NÃO acorda, nada dela é lido (nem pela API, nem pelo CLI)", async () => {
+  const o = extrasOAuth({ cadastro: cadastroCom({ slug: "loja-torta" }) });
+  const { d, chamadas } = deps({ extras: o.extras });
+  const r = await executar(ACORDAR, d);
+  assertEquals(r.codigo, 1);
+  assert(!temPorta(r));
+  assertStringIncludes(r.erros.join("\n"), "cadastro OAuth incoerente");
+  assertEquals(chamadas.migrationList, []);
+  assertEquals(o.chamadas.gestao, []);
+  assertEquals(o.chamadas.token, []);
+});
+
+Deno.test("loja OAuth não pronta (a API mostra o ledger sem a migration nova): os comandos de conserto saem com o aviso de que só valem dentro de --sessao", async () => {
+  const o = extrasOAuth({ ledger: [M1] });
+  const { d, chamadas } = deps({
+    release: { evidencia: false },
+    extras: o.extras,
+  });
+  const r = await executar(ACORDAR, d);
+  assertEquals(r.codigo, 1);
+  assert(!temPorta(r));
+  assertStringIncludes(r.erros.join("\n"), M2);
+  assert(ghDe(r.saida).length >= 1, r.saida.join("\n"));
+  assertEquals(r.saida[0], AVISO_DA_SESSAO_OAUTH);
+  assertEquals(chamadas.migrationList, []);
+  semCanario(r);
+});
+
+Deno.test("loja CLI (sem `acesso`, o padrão): o --acordar é IDÊNTICO ao de antes, mesmo com o cadastro e o acesso OAuth montados e outra loja OAuth (incoerente) no cadastro", async () => {
+  for (const [nome, release] of [
+    ["pronta", {}],
+    ["sem a migration nova", { ledger: [M1], evidencia: false }],
+    ["ledger ilegível", { falhaNoLedger: new Error("ECONNRESET") }],
+  ]) {
+    const antes = await executar(ACORDAR, deps({ release }).d);
+    const o = extrasOAuth({
+      cadastro: cadastroCom({
+        acesso: "cli",
+        extras: {
+          "outra-loja": {
+            ref: REF_OUTRA,
+            classe: "assinante",
+            apelido: "Outra",
+            segredoDoToken: "SUPABASE_ACCESS_TOKEN_OUTRA_LOJA",
+            functionsNomeadas: false,
+            acesso: "oauth",
+          },
+        },
+      }),
+    });
+    const { d, chamadas } = deps({ release, extras: o.extras });
+    const r = await executar(ACORDAR, d);
+    assertEquals(r, antes, nome);
+    assertEquals(chamadas.migrationList, [REF], `${nome}: pelo CLI`);
+    assertEquals(o.chamadas.gestao, [], nome);
+    assertEquals(o.chamadas.token, [], nome);
   }
 });
 
