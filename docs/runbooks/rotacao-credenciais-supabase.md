@@ -222,8 +222,10 @@ O detalhe que importa: as duas chaves antigas são assinadas pela mesma chave-me
 >    `anon` legada (`eyJ...`), troque pela mesma publishable **antes** de desligar a chave antiga
 >    (e refaça o Redeploy daquele projeto): com a `anon` desligada, a pergunta do porteiro leva
 >    401; instância já quente do porteiro segue até 1 hora com a última ficha boa, mas instância
->    fria responde 503 `banco-indisponivel` na hora — e a consulta é a mesma para **todas as
->    lojas**, não só esta.
+>    fria responde 503 `banco-indisponivel` na hora (e repete a pergunta só a cada 10 s por
+>    endereço) — e a consulta é a mesma para **todas as lojas**, não só esta. O sinal no log da
+>    Vercel é uma linha `[porteiro] falha ao resolver a loja ... etapa=caderneta` por endereço a
+>    cada recuo (10 s sem ficha, 30 s com ficha velha).
 > 3. Aba **Deployments** → o último de Production → menu `···` → **Redeploy**.
 >    **Por que este passo não é opcional:** essa chave entra no código no momento do build —
 >    a mesma mecânica da §2.3 passo 5 abaixo, só que para a chave nova em vez da `anon`. Salvar

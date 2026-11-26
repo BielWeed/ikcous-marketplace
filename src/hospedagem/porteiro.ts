@@ -13,7 +13,9 @@ import { BADGE_NEUTRO } from "../config/fichaDaLojaContract";
 // (seção PARA A HUB) e no brief `20260911-brief-escala-etapa2-site-por-host.md`
 // (tarefas T3/T3b). `resolverConexao` e `decidirConcordancia` são o ponto de
 // revisão Opus obrigatório: é aqui que nasce (ou não) "loja A com dado de
-// loja B".
+// loja B". O ciclo do cache da ficha por host (fresco, reserva com
+// revalidação em segundo plano, recuos depois de falha, log) está descrito
+// junto de `CACHE_FRESCO_MS`.
 import { escapeHtml, identityHtml } from "../config/identidadeNoHtml";
 import { MANIFESTO_BASE } from "../config/manifestoBase";
 import { nomeCurtoDaLoja } from "../config/nomeCurtoDaLoja";
@@ -973,7 +975,19 @@ export interface RecuoAposFalha {
 
 /** 60 s de cache fresco (não repete a consulta); serve o último bom por até
  * 1h em falha de rede (stale-if-error) — "loja conhecida sobrevive à queda
- * da caderneta, loja nova espera" (parecer, item 7). */
+ * da caderneta, loja nova espera" (parecer, item 7).
+ *
+ * O ciclo inteiro da ficha de um host, por instância (26/11/2026):
+ *   - até 60 s: servida sem perguntar;
+ *   - de 60 s a 1 h, com `waitUntil`: servida NA HORA e revalidada em segundo
+ *     plano (uma revalidação por host); o desfecho vale para a PRÓXIMA visita.
+ *     Sem `waitUntil`, a visita espera a caderneta, como antes;
+ *   - falha com ficha de até 1 h: a ficha velha, e 30 s de recuo sem perguntar
+ *     (`RECUO_APOS_FALHA_MS`);
+ *   - falha sem ficha que valha: 503 `banco-indisponivel`, e 10 s de recuo
+ *     sem perguntar (`RECUO_SEM_FICHA_MS`), no mapa do host sem ficha;
+ *   - cada recuo aberto escreve UMA linha `[porteiro]` no log (host, etapa,
+ *     nome da causa, estado da caderneta, duração; nunca chave nem URL). */
 export const CACHE_FRESCO_MS = 60_000;
 export const CACHE_STALE_MAX_MS = 3_600_000;
 
@@ -987,15 +1001,26 @@ export interface EntradaCacheForaDoAr {
 }
 export const CACHE_FORA_DO_AR_MS = 60_000;
 
-/** O "não achei" DEFINITIVO da caderneta (`miss`: host não cadastrado, alias
- * antigo, `www.` sem cadastro, Host inventado por robô), guardado por host
- * normalizado por 60 s — cada pergunta custa CPU no banco da principal
- * (bcrypt na conferência da chave). Só `miss`: erro/timeout/resposta
- * malformada e chave anômala NUNCA entram aqui. Preço aceito: uma loja
- * recém-cadastrada pode esperar até 60 s para abrir naquela instância. */
+/** O mapa do host SEM ficha. Duas espécies de entrada, e nunca uma pela outra:
+ *
+ * - sem `recuo`: o "não achei" DEFINITIVO da caderneta (`miss`: host não
+ *   cadastrado, alias antigo, `www.` sem cadastro, Host inventado por robô),
+ *   guardado por host normalizado por 60 s — cada pergunta custa CPU no banco
+ *   da principal (bcrypt na conferência da chave). Preço aceito: uma loja
+ *   recém-cadastrada pode esperar até 60 s para abrir naquela instância.
+ * - com `recuo`: uma FALHA (erro/timeout/resposta malformada/imprevisto) sem
+ *   ficha que valha, guardada só até `recuo.ate` (`RECUO_SEM_FICHA_MS`):
+ *   o host recebe o mesmo 503 `banco-indisponivel`, nunca `sem-loja`.
+ *
+ * A chave anômala não entra aqui de jeito nenhum (é resposta estranha, não
+ * "não achei" nem falha de rede: pergunta de novo). Mesmo mapa e mesmo teto
+ * de propósito: uma enxurrada de hosts inventados com a caderneta caída nunca
+ * empurra para fora a ficha de uma loja de verdade, que é justamente o que a
+ * mantém no ar durante a queda. */
 export interface EntradaCacheSemLoja {
   readonly quando: number;
   readonly versaoCaderneta?: VersaoCaderneta;
+  readonly recuo?: RecuoAposFalha;
 }
 export const CACHE_SEM_LOJA_MS = 60_000;
 
@@ -1003,6 +1028,13 @@ export const CACHE_SEM_LOJA_MS = 60_000;
  * antes de perguntar de novo à caderneta (doente ou lenta: sem o recuo, cada
  * visita esperava o prazo inteiro e batia de novo no banco). */
 export const RECUO_APOS_FALHA_MS = 30_000;
+
+/** Falha SEM ficha que valha (instância nova, recém-publicada, ou ficha
+ * passada de 1 h): o host recebe o mesmo 503 `banco-indisponivel` por este
+ * tanto, sem perguntar de novo à caderneta. Curto de propósito: aqui a loja já
+ * está fora para quem chega, e cada segundo de recuo é um segundo a mais de
+ * 503 depois que a caderneta volta. */
+export const RECUO_SEM_FICHA_MS = 10_000;
 
 /** Teto de entradas de TODO cache em memória do porteiro: Host aleatório
  * (ataque ou robô) não enche a memória da instância. No teto, sai a entrada
@@ -1083,6 +1115,11 @@ export interface DependenciasPorteiro {
   readonly cacheMapa?: Map<string, EntradaCacheMapa>;
   /** Relógio injetável — testes avançam o tempo sem `sleep`. */
   readonly agora?: () => number;
+  /** O `context.waitUntil` da borda: mantém a função viva depois da resposta.
+   * Com ele, a ficha passada dos 60 s (dentro da reserva de 1 h) sai NA HORA
+   * e a caderneta é perguntada em segundo plano (stale-while-revalidate). Sem
+   * ele (teste, chamada avulsa), a visita espera a resposta, como antes. */
+  readonly waitUntil?: (promessa: Promise<unknown>) => void;
   /** O contador de visitas (spec "visitas da loja", 02/11/2026). Chamado por
    * `atenderPorteiro` DEPOIS que o documento da loja saiu com 200 e só para
    * GET de página da loja com a loja fora de manutenção, com a conexão da
@@ -1158,16 +1195,27 @@ class DecisaoEncaminhamento extends Error {
 class FalhaResolucaoPorteiro extends Error {
   readonly caderneta: EstadoCaderneta;
   readonly versaoCaderneta: VersaoCaderneta | undefined;
+  /** Onde caiu (só para o log): perguntando à caderneta, ou já lendo o banco
+   * da loja que ela apontou. */
+  readonly etapa: EtapaDaFalha;
+  /** Quanto a tentativa durou até falhar, pelo relógio do porteiro. */
+  readonly duracaoMs: number;
   constructor(
     caderneta: EstadoCaderneta,
     causa: unknown,
-    versaoCaderneta?: VersaoCaderneta,
+    versaoCaderneta: VersaoCaderneta | undefined,
+    etapa: EtapaDaFalha,
+    duracaoMs: number,
   ) {
     super("PORTEIRO_FALHA_RESOLUCAO", { cause: causa });
     this.caderneta = caderneta;
     this.versaoCaderneta = versaoCaderneta;
+    this.etapa = etapa;
+    this.duracaoMs = duracaoMs;
   }
 }
+
+type EtapaDaFalha = "caderneta" | "banco-da-loja";
 
 export interface FichaResolvida {
   readonly ficha: FichaDaLoja;
@@ -1197,6 +1245,9 @@ async function resolverFichaViaRede(
   // fallback que já existia em `obterFichaValidada`.
   let caderneta: EstadoCaderneta = "ausente";
   let versao: VersaoCaderneta | undefined;
+  let etapa: EtapaDaFalha = "caderneta";
+  const relogio = deps.agora ?? Date.now;
+  const inicio = relogio();
   try {
     const resolucao = await resolverConexao(
       host,
@@ -1205,6 +1256,7 @@ async function resolverFichaViaRede(
     );
     caderneta = resolucao.caderneta;
     versao = resolucao.versaoCaderneta;
+    etapa = "banco-da-loja";
     // L8: ANTES de qualquer leitura do banco da loja (não há conexão).
     if (resolucao.foraDoAr)
       throw new DecisaoForaDoAr(resolucao.foraDoAr, caderneta);
@@ -1272,13 +1324,199 @@ async function resolverFichaViaRede(
     // próprio erro (`"erro"`, sempre), não da variável `caderneta` do
     // escopo externo, porque `resolverConexao` pode ter lançado ANTES de
     // atribuí-la.
+    const duracaoMs = relogio() - inicio;
     if (erro instanceof FalhaRpcCaderneta)
       throw new FalhaResolucaoPorteiro(
         erro.caderneta,
         erro,
         erro.versaoCaderneta,
+        etapa,
+        duracaoMs,
       );
-    throw new FalhaResolucaoPorteiro(caderneta, erro, versao);
+    throw new FalhaResolucaoPorteiro(caderneta, erro, versao, etapa, duracaoMs);
+  }
+}
+
+/** Pedidos do mesmo host esperam a MESMA resolução (na hora ou em segundo
+ * plano). Ela não depende do caminho do pedido (o encaminhamento monta o
+ * destino por pedido) e a `publicUrl` é refeita por pedido. A entrada sai do
+ * mapa quando a resolução termina, com sucesso ou erro. */
+function resolucaoCompartilhada(
+  host: string,
+  url: URL,
+  ambiente: AmbientePorteiro,
+  deps: DependenciasPorteiro,
+): ResolucaoEmVoo {
+  const emVoo = deps.resolucoesEmVoo?.get(host);
+  if (emVoo) return emVoo;
+  const nova = resolverFichaViaRede(host, url, ambiente, deps);
+  const mapa = deps.resolucoesEmVoo;
+  if (mapa) {
+    mapa.set(host, nova);
+    const liberar = () => {
+      if (mapa.get(host) === nova) mapa.delete(host);
+    };
+    nova.then(liberar, liberar);
+  }
+  return nova;
+}
+
+/** A falha que abriu um recuo, numa linha só. Só o host (já normalizado: sem
+ * porta, sem caminho, sem query), onde caiu, o NOME da causa (nunca a
+ * mensagem: ela pode trazer URL), o estado da caderneta e a duração. Nunca
+ * chave, nunca URL. Quem chama garante no máximo uma por host por recuo. */
+function avisarFalha(host: string, erro: unknown, recuoMs: number): void {
+  const falha = erro instanceof FalhaResolucaoPorteiro ? erro : undefined;
+  const causa: unknown = falha ? falha.cause : erro;
+  const nomeDaCausa = causa instanceof Error ? causa.name : typeof causa;
+  console.error(
+    `[porteiro] falha ao resolver a loja host=${host} etapa=${falha?.etapa ?? "desconhecida"} causa=${nomeDaCausa} caderneta=${falha?.caderneta ?? "ausente"} ms=${falha?.duracaoMs ?? "?"} recuo=${recuoMs / 1000}s`,
+  );
+}
+
+/** O estado da caderneta que a falha carrega (vai para `x-ikcous-caderneta`
+ * e para a marca de versão das respostas servidas no recuo). */
+function estadoDaFalha(erro: unknown): EstadoCaderneta {
+  return erro instanceof FalhaResolucaoPorteiro ? erro.caderneta : "ausente";
+}
+function versaoDaFalhaDe(erro: unknown): VersaoCaderneta | undefined {
+  return erro instanceof FalhaResolucaoPorteiro
+    ? erro.versaoCaderneta
+    : undefined;
+}
+
+/** Falha com ficha velha guardada: abre o recuo de 30 s DESTE host. Só grava
+ * (e só avisa no log) se a entrada ainda é a que o pedido leu: outro pedido
+ * da mesma resolução compartilhada, ou uma resolução boa que terminou antes,
+ * já pode tê-la trocado. */
+function abrirRecuoComFicha(
+  deps: DependenciasPorteiro,
+  host: string,
+  doCache: EntradaCachePorteiro,
+  momento: number,
+  erro: unknown,
+): void {
+  if (deps.cache.get(host) !== doCache) return;
+  const versao = versaoDaFalhaDe(erro);
+  guardarComTeto(deps.cache, host, {
+    ...doCache,
+    recuo: {
+      ate: momento + RECUO_APOS_FALHA_MS,
+      caderneta: estadoDaFalha(erro),
+      ...(versao === undefined ? {} : { versaoCaderneta: versao }),
+    },
+  });
+  avisarFalha(host, erro, RECUO_APOS_FALHA_MS);
+}
+
+/** Falha SEM ficha que valha: abre o recuo de 10 s no mapa do host sem ficha
+ * (NUNCA como "não achei": a entrada leva `recuo`). Vários pedidos da mesma
+ * resolução compartilhada chegam aqui com a mesma falha: só o primeiro grava
+ * e avisa. O relógio é o do MOMENTO da falha (não o do começo do pedido): um
+ * pedido que entrou na fila tarde não reabre o recuo que o primeiro abriu. */
+function abrirRecuoSemFicha(
+  deps: DependenciasPorteiro,
+  host: string,
+  erro: unknown,
+): void {
+  const mapa = deps.cacheSemLoja;
+  if (!mapa) {
+    // Sem o mapa (teste, chamada avulsa) não há recuo: só o aviso.
+    avisarFalha(host, erro, 0);
+    return;
+  }
+  const momento = (deps.agora ?? Date.now)();
+  const atual = mapa.get(host);
+  if (atual?.recuo && momento < atual.recuo.ate) return;
+  const versao = versaoDaFalhaDe(erro);
+  guardarComTeto(mapa, host, {
+    quando: momento,
+    recuo: {
+      ate: momento + RECUO_SEM_FICHA_MS,
+      caderneta: estadoDaFalha(erro),
+      ...(versao === undefined ? {} : { versaoCaderneta: versao }),
+    },
+  });
+  avisarFalha(host, erro, RECUO_SEM_FICHA_MS);
+}
+
+/**
+ * Stale-while-revalidate: a visita já saiu com a ficha guardada (passada dos
+ * 60 s, dentro da reserva de 1 h) e a caderneta é perguntada AQUI, entregue ao
+ * `waitUntil`. A promessa entregue nunca rejeita. O desfecho vale para a
+ * PRÓXIMA visita — inclusive loja que adormeceu ou encerrou: a visita que
+ * disparou a revalidação, e as que chegarem enquanto a pergunta está em voo
+ * (no máximo o prazo dela), já receberam a vitrine. Preço aceito: a mesma
+ * vitrine era servida até ontem por até 60 s depois da mudança de estado.
+ *
+ *   - ficha nova: substitui a velha (fresca a partir de AGORA) e apaga as
+ *     decisões guardadas deste host, igual à resolução na hora;
+ *   - adormecida/encerrada: a ficha velha sai e a decisão fica 60 s;
+ *   - qualquer outra DECISÃO (não achei, discorda, chave anômala, encaminha):
+ *     a ficha velha sai, para nunca mais ser servida em segundo plano — a
+ *     próxima visita pergunta na hora e recebe a decisão; o "não achei" fica
+ *     guardado 60 s como sempre;
+ *   - falha: abre o recuo de 30 s da ficha velha, como a falha na hora.
+ */
+function revalidarEmSegundoPlano(
+  host: string,
+  url: URL,
+  ambiente: AmbientePorteiro,
+  deps: DependenciasPorteiro,
+  doCache: EntradaCachePorteiro,
+  waitUntil: (promessa: Promise<unknown>) => void,
+): void {
+  const relogio = deps.agora ?? Date.now;
+  const revalidacao = resolucaoCompartilhada(host, url, ambiente, deps).then(
+    (resolvida) => {
+      guardarComTeto(deps.cache, host, {
+        ficha: resolvida.ficha,
+        quando: relogio(),
+        caderneta: resolvida.caderneta,
+        ...(resolvida.versaoCaderneta === undefined
+          ? {}
+          : { versaoCaderneta: resolvida.versaoCaderneta }),
+      });
+      deps.cacheForaDoAr?.delete(host);
+      deps.cacheSemLoja?.delete(host);
+    },
+    (erro: unknown) => {
+      const momento = relogio();
+      if (erro instanceof DecisaoForaDoAr) {
+        deps.cache.delete(host);
+        deps.cacheSemLoja?.delete(host);
+        guardarComTeto(deps.cacheForaDoAr, host, {
+          loja: erro.loja,
+          quando: momento,
+        });
+        return;
+      }
+      if (
+        erro instanceof DecisaoPorteiro ||
+        erro instanceof DecisaoEncaminhamento
+      ) {
+        if (deps.cache.get(host) === doCache) deps.cache.delete(host);
+        if (
+          erro instanceof DecisaoPorteiro &&
+          erro.motivo === "sem-loja" &&
+          erro.caderneta === "miss"
+        )
+          guardarComTeto(deps.cacheSemLoja, host, {
+            quando: momento,
+            ...(erro.versaoCaderneta === undefined
+              ? {}
+              : { versaoCaderneta: erro.versaoCaderneta }),
+          });
+        return;
+      }
+      abrirRecuoComFicha(deps, host, doCache, momento, erro);
+    },
+  );
+  try {
+    waitUntil(revalidacao);
+  } catch {
+    // Sem `waitUntil` que funcione a revalidação segue solta (pode ser
+    // cortada quando a função dormir); a visita já tem a sua resposta.
   }
 }
 
@@ -1419,9 +1657,14 @@ export async function obterFichaValidada(
   }
   // O "não achei" guardado. Vem DEPOIS da ficha fresca: uma loja ativa com
   // ficha fresca nunca recebe 503 por causa deste cache (e uma resolução boa
-  // apaga a entrada, abaixo).
+  // apaga a entrada, abaixo). Entrada com `recuo` é FALHA, não "não achei":
+  // é tratada mais abaixo, depois da ficha velha.
   const semLojaGuardada = deps.cacheSemLoja?.get(host);
-  if (semLojaGuardada && agora - semLojaGuardada.quando < CACHE_SEM_LOJA_MS) {
+  if (
+    semLojaGuardada &&
+    !semLojaGuardada.recuo &&
+    agora - semLojaGuardada.quando < CACHE_SEM_LOJA_MS
+  ) {
     return {
       tipo: "manutencao",
       resposta: marcarVersaoDaCaderneta(
@@ -1444,24 +1687,51 @@ export async function obterFichaValidada(
       ...comVersao(doCache.recuo.versaoCaderneta),
     };
   }
+  const fichaNaReserva =
+    doCache !== undefined && agora - doCache.quando < CACHE_STALE_MAX_MS;
+  // Recuo depois de uma falha SEM ficha que valha (instância nova, ou ficha
+  // passada de 1 h): o MESMO 503 de falha, sem perguntar.
+  if (
+    !fichaNaReserva &&
+    semLojaGuardada?.recuo &&
+    agora < semLojaGuardada.recuo.ate
+  ) {
+    return {
+      tipo: "manutencao",
+      resposta: marcarVersaoDaCaderneta(
+        respostaManutencao(
+          "banco-indisponivel",
+          semLojaGuardada.recuo.caderneta,
+        ),
+        semLojaGuardada.recuo.versaoCaderneta,
+      ),
+    };
+  }
+  // Stale-while-revalidate: ficha passada dos 60 s, dentro da reserva de 1 h,
+  // com `waitUntil` -> a visita sai AGORA com ela e a caderneta é perguntada
+  // em segundo plano (uma só por host: se já há resolução em voo para este
+  // host, ela é que vai renovar a ficha). O estado servido é o último
+  // conhecido: o da falha, se a ficha já passou por um recuo (vencido).
+  if (doCache && fichaNaReserva && deps.waitUntil) {
+    if (!deps.resolucoesEmVoo?.has(host))
+      revalidarEmSegundoPlano(
+        host,
+        url,
+        ambiente,
+        deps,
+        doCache,
+        deps.waitUntil,
+      );
+    const conhecido = doCache.recuo ?? doCache;
+    return {
+      tipo: "ok",
+      ficha: comPublicUrlAtual(doCache.ficha),
+      caderneta: conhecido.caderneta,
+      ...comVersao(conhecido.versaoCaderneta),
+    };
+  }
   try {
-    // Pedidos simultâneos do mesmo host esperam a MESMA resolução. Ela não
-    // depende do caminho do pedido (o encaminhamento monta o destino abaixo,
-    // por pedido) e a `publicUrl` é refeita por pedido (`comPublicUrlAtual`).
-    let emVoo = deps.resolucoesEmVoo?.get(host);
-    if (!emVoo) {
-      const nova = resolverFichaViaRede(host, url, ambiente, deps);
-      emVoo = nova;
-      const mapa = deps.resolucoesEmVoo;
-      if (mapa) {
-        mapa.set(host, nova);
-        const liberar = () => {
-          if (mapa.get(host) === nova) mapa.delete(host);
-        };
-        nova.then(liberar, liberar);
-      }
-    }
-    const resolvida = await emVoo;
+    const resolvida = await resolucaoCompartilhada(host, url, ambiente, deps);
     guardarComTeto(deps.cache, host, {
       ficha: resolvida.ficha,
       quando: agora,
@@ -1539,23 +1809,11 @@ export async function obterFichaValidada(
     // já sabia sobre a caderneta antes de falhar — informação mais atual
     // do que a caderneta que produziu a ficha em cache, ainda que a ficha
     // servida seja a antiga. A marca de versão segue a mesma regra.
-    const cadernetaDaFalha =
-      erro instanceof FalhaResolucaoPorteiro ? erro.caderneta : "ausente";
-    const versaoDaFalha =
-      erro instanceof FalhaResolucaoPorteiro ? erro.versaoCaderneta : undefined;
+    const cadernetaDaFalha = estadoDaFalha(erro);
+    const versaoDaFalha = versaoDaFalhaDe(erro);
     if (doCache && agora - doCache.quando < CACHE_STALE_MAX_MS) {
-      // Abre o recuo deste host. Só grava se a entrada ainda é a que este
-      // pedido leu: outro pedido (da mesma resolução compartilhada, ou uma
-      // resolução boa que terminou antes) já pode tê-la trocado.
-      if (deps.cache.get(host) === doCache)
-        guardarComTeto(deps.cache, host, {
-          ...doCache,
-          recuo: {
-            ate: agora + RECUO_APOS_FALHA_MS,
-            caderneta: cadernetaDaFalha,
-            ...comVersao(versaoDaFalha),
-          },
-        });
+      // Abre o recuo de 30 s deste host (e o aviso no log, uma vez).
+      abrirRecuoComFicha(deps, host, doCache, agora, erro);
       return {
         tipo: "ok",
         ficha: comPublicUrlAtual(doCache.ficha),
@@ -1563,6 +1821,8 @@ export async function obterFichaValidada(
         ...comVersao(versaoDaFalha),
       };
     }
+    // Sem ficha que valha: o recuo de 10 s (e o aviso no log, uma vez).
+    abrirRecuoSemFicha(deps, host, erro);
     return {
       tipo: "manutencao",
       resposta: marcarVersaoDaCaderneta(
