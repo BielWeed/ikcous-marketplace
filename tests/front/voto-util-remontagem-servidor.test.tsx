@@ -63,7 +63,8 @@ vi.mock("@/lib/supabase", () => ({
           h.filtros(tabela, coluna, ids);
           return h.lerVotos(usuario, ids);
         },
-        order: async () => ({
+        order: () => builder,
+        limit: async () => ({
           data: [
             {
               id: "avaliacao-inventada",

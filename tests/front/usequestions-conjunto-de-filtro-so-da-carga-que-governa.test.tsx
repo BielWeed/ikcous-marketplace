@@ -69,6 +69,7 @@ function builderSimples(dados: any) {
   builder.in = vi.fn(() => builder);
   builder.abortSignal = vi.fn(() => builder);
   builder.order = vi.fn(() => builder);
+  builder.limit = vi.fn(() => builder);
   builder.maybeSingle = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) =>
@@ -106,6 +107,7 @@ vi.mock("@/lib/supabase", () => ({
         builder.select = vi.fn(() => builder);
         builder.eq = vi.fn(() => builder);
         builder.order = vi.fn(() => builder);
+        builder.limit = vi.fn(() => builder);
         builder.in = vi.fn(() => builder);
         builder.abortSignal = vi.fn(() => builder);
         // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase

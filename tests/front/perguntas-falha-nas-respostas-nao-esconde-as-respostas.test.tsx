@@ -34,6 +34,9 @@ function builderSimples(resultado: () => unknown) {
     order() {
       return this;
     },
+    limit() {
+      return this;
+    },
     maybeSingle() {
       return this;
     },

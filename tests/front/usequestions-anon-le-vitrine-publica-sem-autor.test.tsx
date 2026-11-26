@@ -51,6 +51,7 @@ function builderSimples(resultado: () => unknown, tabela?: string) {
     ordem = { coluna, ascending: opcoes.ascending };
     return builder;
   };
+  builder.limit = () => builder;
   builder.maybeSingle = () => builder;
   builder.abortSignal = () => builder;
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
