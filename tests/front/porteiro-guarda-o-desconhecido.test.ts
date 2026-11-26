@@ -21,6 +21,7 @@ import {
   CACHE_SEM_LOJA_MS,
   CACHE_STALE_MAX_MS,
   RECUO_APOS_FALHA_MS,
+  RECUO_SEM_FICHA_MS,
   SELECT_CONFIGURACAO_PUBLICA,
   TETO_ENTRADAS_CACHE,
   obterFichaValidada,
@@ -235,21 +236,15 @@ describe("porteiro — host desconhecido da caderneta (miss) é guardado 60 s", 
     expect(caderneta).toHaveBeenCalledTimes(1);
   });
 
-  it.each([
-    ["erro da RPC (HTTP/rede/timeout)", { tipo: "erro" } as ResultadoCaderneta],
-    [
-      "chave anômala (sem-loja, mas NÃO é 'não achei')",
-      {
-        tipo: "hit",
-        conexao: {
-          supabaseUrl: ORIGEM,
-          publishableKey: "chave-service-role-nao-publica",
-          origem: "caderneta",
-        },
-      } as ResultadoCaderneta,
-    ],
-  ])("%s NUNCA é guardado como 'não achei'", async (_nome, resultado) => {
-    const caderneta = cadernetaFixa(resultado);
+  it("chave anômala (sem-loja, mas NÃO é 'não achei') NUNCA é guardada", async () => {
+    const caderneta = cadernetaFixa({
+      tipo: "hit",
+      conexao: {
+        supabaseUrl: ORIGEM,
+        publishableKey: "chave-service-role-nao-publica",
+        origem: "caderneta",
+      },
+    });
     const cacheSemLoja = new Map<string, EntradaCacheSemLoja>();
     const d: DependenciasPorteiro = {
       fetchImpl: fetchProibido,
@@ -264,27 +259,51 @@ describe("porteiro — host desconhecido da caderneta (miss) é guardado 60 s", 
     expect(caderneta).toHaveBeenCalledTimes(2);
   });
 
-  it("caderneta que LANÇA (imprevisto) também nunca é guardada", async () => {
-    const caderneta = vi.fn<ResolverLojaNaCaderneta>(async () => {
-      throw new Error("imprevisto");
-    });
+  // Desde 26/11/2026 (`porteiro-aguenta-o-central-lento`), a falha sem ficha
+  // abre um recuo curto NO MESMO mapa — mas como FALHA (`recuo`), nunca como
+  // "não achei": a resposta segue `banco-indisponivel` e, vencido o recuo, a
+  // caderneta é perguntada de novo.
+  it.each([
+    [
+      "erro da RPC (HTTP/rede/timeout)",
+      cadernetaFixa({ tipo: "erro" }) as ResolverLojaNaCaderneta,
+    ],
+    [
+      "caderneta que LANÇA (imprevisto)",
+      (async () => {
+        throw new Error("imprevisto");
+      }) as ResolverLojaNaCaderneta,
+    ],
+  ])("%s NUNCA é guardado como 'não achei'", async (_nome, implementacao) => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const caderneta = vi.fn<ResolverLojaNaCaderneta>(implementacao);
     const cacheSemLoja = new Map<string, EntradaCacheSemLoja>();
+    let agora = 0;
     const d: DependenciasPorteiro = {
       fetchImpl: fetchProibido,
       resolverNaCaderneta: caderneta,
       cache: new Map(),
       cacheSemLoja,
-      agora: () => 0,
+      agora: () => agora,
     };
-    const r = await obterFichaValidada(
-      pedido("https://z.exemplo/"),
+    const a = await obterFichaValidada(
+      pedido("https://y.exemplo/"),
       AMBIENTE,
       d,
     );
-    expect(cabecalho(r, "x-ikcous-porteiro")).toBe("banco-indisponivel");
-    await obterFichaValidada(pedido("https://z.exemplo/"), AMBIENTE, d);
-    expect(cacheSemLoja.size).toBe(0);
+    const b = await obterFichaValidada(
+      pedido("https://y.exemplo/"),
+      AMBIENTE,
+      d,
+    );
+    expect(cabecalho(a, "x-ikcous-porteiro")).toBe("banco-indisponivel");
+    expect(cabecalho(b, "x-ikcous-porteiro")).toBe("banco-indisponivel");
+    for (const entrada of cacheSemLoja.values())
+      expect(entrada.recuo).toBeDefined();
+    agora += RECUO_SEM_FICHA_MS;
+    await obterFichaValidada(pedido("https://y.exemplo/"), AMBIENTE, d);
     expect(caderneta).toHaveBeenCalledTimes(2);
+    vi.restoreAllMocks();
   });
 
   it("loja ATIVA com ficha fresca nunca recebe 503 por causa do cache negativo", async () => {
@@ -542,7 +561,9 @@ describe("porteiro — falha da caderneta com ficha velha adia a próxima tentat
     expect(caderneta).toHaveBeenCalledTimes(2);
   });
 
-  it("falha SEM ficha velha não abre recuo: a próxima visita pergunta de novo", async () => {
+  // Sem o mapa do host sem ficha injetado: o recuo de 10 s da falha sem ficha
+  // (`porteiro-aguenta-o-central-lento`) mora lá, então aqui não há recuo.
+  it("falha SEM ficha velha (e sem o mapa do host sem ficha) não abre recuo: a próxima visita pergunta de novo", async () => {
     const caderneta = cadernetaFixa({ tipo: "erro" });
     const cache = new Map<string, EntradaCachePorteiro>();
     const d: DependenciasPorteiro = {
