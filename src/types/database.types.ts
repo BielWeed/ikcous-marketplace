@@ -214,6 +214,7 @@ export type Database = {
           id: number;
           inicio_em: string | null;
           observacao: string | null;
+          pausa_em: string | null;
           plano: string;
           proxima_cobranca_em: string | null;
           recursos: string[];
@@ -229,6 +230,7 @@ export type Database = {
           id?: number;
           inicio_em?: string | null;
           observacao?: string | null;
+          pausa_em?: string | null;
           plano: string;
           proxima_cobranca_em?: string | null;
           recursos?: string[];
@@ -244,6 +246,7 @@ export type Database = {
           id?: number;
           inicio_em?: string | null;
           observacao?: string | null;
+          pausa_em?: string | null;
           plano?: string;
           proxima_cobranca_em?: string | null;
           recursos?: string[];
