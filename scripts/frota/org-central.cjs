@@ -66,9 +66,12 @@ function erroDaOrg(msg) {
 /**
  * Valida o conteúdo e devolve a versão congelada (sem `_comentario`). Qualquer
  * desvio LANÇA. `slug` é obrigatório: `null` diz "a org ainda não foi criada",
- * e ausente não é o mesmo que `null`.
+ * e ausente não é o mesmo que `null`. Com `slugsDasLojas` (os nomes do
+ * lojas.json), recusa a `chaveDoCofre` que seja o nome de uma loja: o cofre
+ * local guarda a autorização da org sob ela e a de cada loja sob o nome da
+ * loja, e uma loja com esse nome leria e gravaria a autorização da ORG.
  */
-function validarOrgCentral(bruto) {
+function validarOrgCentral(bruto, { slugsDasLojas } = {}) {
   if (bruto === null || typeof bruto !== "object" || Array.isArray(bruto))
     throw erroDaOrg("a raiz precisa ser um objeto");
   // `Object.keys` vê `__proto__` vindo de JSON.parse (é propriedade própria).
@@ -103,6 +106,13 @@ function validarOrgCentral(bruto) {
     throw erroDaOrg(
       `segredoDoGitHub nunca é o segredo legado ${SEGREDO_LEGADO} (o dos alvos de teste antigos)`,
     );
+  if (
+    Array.isArray(slugsDasLojas) &&
+    slugsDasLojas.includes(bruto.chaveDoCofre)
+  )
+    throw erroDaOrg(
+      `chaveDoCofre ${bruto.chaveDoCofre} é o nome de uma loja do lojas.json: a loja leria e gravaria a autorização da org inteira`,
+    );
   if (SEGREDOS_PROPRIOS.includes(bruto.segredoDoGitHub))
     throw erroDaOrg(
       `segredoDoGitHub nunca é o segredo próprio de uma loja (${bruto.segredoDoGitHub}): o da org é entregue a toda loja da org`,
@@ -115,6 +125,27 @@ function validarOrgCentral(bruto) {
   });
 }
 
+/**
+ * Os NOMES das lojas do lojas.json ao lado do org-central.json. Lê o JSON cru,
+ * sem `validarCadastro`: o lojas.cjs chama este arquivo de dentro da validação
+ * dele, e validar aqui seria uma volta sem fim. Ausente ou torto LANÇA.
+ */
+function slugsDoLojasJson(caminhoLojas) {
+  let bruto;
+  try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- o lojas.json ao lado do org-central.json (diretório fixo deste repositório; só teste passa outro).
+    bruto = JSON.parse(fs.readFileSync(caminhoLojas, "utf8"));
+  } catch {
+    throw erroDaOrg(
+      "não deu para ler o lojas.json ao lado (ausente ou não é JSON)",
+    );
+  }
+  const lojas = bruto?.lojas;
+  if (lojas === null || typeof lojas !== "object" || Array.isArray(lojas))
+    throw erroDaOrg("o lojas.json ao lado não tem o objeto `lojas`");
+  return Object.keys(lojas);
+}
+
 function carregarOrgCentral(caminho = CAMINHO_ORG_CENTRAL) {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- o padrão é a constante CAMINHO_ORG_CENTRAL; só teste passa outro caminho local.
   const texto = fs.readFileSync(caminho, "utf8");
@@ -124,7 +155,11 @@ function carregarOrgCentral(caminho = CAMINHO_ORG_CENTRAL) {
   } catch {
     throw erroDaOrg("não é JSON");
   }
-  return validarOrgCentral(bruto);
+  return validarOrgCentral(bruto, {
+    slugsDasLojas: slugsDoLojasJson(
+      path.join(path.dirname(caminho), "lojas.json"),
+    ),
+  });
 }
 
 module.exports = {

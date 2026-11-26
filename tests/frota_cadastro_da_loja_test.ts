@@ -631,6 +631,20 @@ Deno.test("recusa a loja cujo segredo derivado é o NOME do segredo da org centr
       assertStringIncludes(r.saida, "segredo da org central");
       assertEquals(fotografia(raiz), antes, "escreveu na árvore");
     }
+    // a loja com o nome da chave do cofre da org também é recusada: ela leria e
+    // gravaria a autorização da org inteira como se fosse a dela
+    const chave = await cadastrar(raiz, [
+      "--loja",
+      "org-ikcous-lojas",
+      "--projeto",
+      REF_NOVA,
+      "--nome",
+      NOME_NOVO,
+      "--aplicar",
+    ]);
+    assertEquals(chave.codigo, 2, chave.saida);
+    assertStringIncludes(chave.saida, "chave do cofre da org central");
+    assertEquals(fotografia(raiz), antes, "escreveu na árvore");
     // o vizinho de nome parecido continua aceito (a recusa é pelo nome exato)
     const ok = await cadastrar(raiz, [
       "--loja",

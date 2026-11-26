@@ -632,7 +632,13 @@ function slugQueNaoCabe(slug) {
   // o segredo derivado não pode ser o NOME do segredo da org central (a loja
   // `lojas`): o dono gravaria o token dela por cima do da org e derrubaria
   // todas as lojas da org
-  const segredoDaOrg = carregarOrgCentral().segredoDoGitHub;
+  const org = carregarOrgCentral();
+  // nem o nome da chave do cofre da org: a loja leria e gravaria a autorização
+  // da org inteira como se fosse a dela
+  if (slug === org.chaveDoCofre) {
+    return `a loja ${slug} tem o nome da chave do cofre da org central (scripts/frota/org-central.json): ela leria e gravaria a autorização da org inteira. Escolha outro nome e rode de novo; nada foi feito.`;
+  }
+  const segredoDaOrg = org.segredoDoGitHub;
   if (segredoDoToken(slug) === segredoDaOrg) {
     return `a loja ${slug} teria o segredo ${segredoDaOrg}, que é o NOME do segredo da org central (scripts/frota/org-central.json): gravar o token dela nele derrubaria todas as lojas da org. Escolha outro nome e rode de novo; nada foi feito.`;
   }

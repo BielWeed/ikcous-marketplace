@@ -153,8 +153,13 @@ Deno.test("a raiz torta falha fechado, no objeto e no disco", () => {
       msg = e.message;
     }
     assertStringIncludes(msg, "não é JSON");
-    // e um arquivo bom fora do lugar padrão é lido igual
+    // e um arquivo bom fora do lugar padrão é lido igual (com o lojas.json ao
+    // lado, que o leitor confere contra a chave do cofre)
     Deno.writeTextFileSync(caminho, JSON.stringify(jsonDeHoje()));
+    Deno.copyFileSync(
+      join(RAIZ, "scripts/frota/lojas.json"),
+      join(dir, "lojas.json"),
+    );
     assertEquals(
       orgMod.carregarOrgCentral(caminho).chaveDoCofre,
       "org-ikcous-lojas",
@@ -273,4 +278,71 @@ Deno.test("cruzado com o lojas.json: todo segredo próprio de loja está na list
     problemasDoCruzamento(org, comLoja("loja-da-ana", org.segredoDoGitHub)),
     [],
   );
+});
+
+// ---------------------------------------------------------------------------
+// A chave do cofre da org NUNCA é o nome de uma loja (revisão Opus de
+// aac075e73): o cofre local guarda a autorização da org sob `chaveDoCofre` e a
+// de cada loja sob o nome dela; uma loja `org-ikcous-lojas` leria e gravaria a
+// autorização da ORG INTEIRA como se fosse a dela.
+// ---------------------------------------------------------------------------
+Deno.test("chaveDoCofre: recusada se for o nome de uma loja do lojas.json (a loja org-ikcous-lojas)", () => {
+  const msg = (() => {
+    try {
+      orgMod.validarOrgCentral(jsonDeHoje(), {
+        slugsDasLojas: ["savy", "org-ikcous-lojas"],
+      });
+    } catch (e) {
+      return e.message;
+    }
+    return "";
+  })();
+  assertStringIncludes(msg, "chaveDoCofre");
+  assertStringIncludes(msg, "org-ikcous-lojas");
+  // sem colisão passa
+  assertEquals(
+    orgMod.validarOrgCentral(jsonDeHoje(), {
+      slugsDasLojas: ["savy", "ikcous-publicada"],
+    }).chaveDoCofre,
+    "org-ikcous-lojas",
+  );
+});
+
+Deno.test("carregarOrgCentral confere a chave contra o lojas.json ao lado: loja org-ikcous-lojas é recusada, lojas.json ausente ou torto falha fechado", () => {
+  const dir = Deno.makeTempDirSync({ prefix: "org-central-lojas-" });
+  try {
+    const caminho = join(dir, "org-central.json");
+    Deno.writeTextFileSync(caminho, JSON.stringify(jsonDeHoje()));
+    const carregar = () => {
+      try {
+        return { org: orgMod.carregarOrgCentral(caminho), msg: "" };
+      } catch (e) {
+        return { org: null, msg: e.message };
+      }
+    };
+    // sem lojas.json: falha fechado
+    assertStringIncludes(carregar().msg, "lojas.json");
+    // lojas.json torto: falha fechado
+    Deno.writeTextFileSync(join(dir, "lojas.json"), "{ torto");
+    assertStringIncludes(carregar().msg, "lojas.json");
+    Deno.writeTextFileSync(join(dir, "lojas.json"), '{"lojas": []}');
+    assertStringIncludes(carregar().msg, "lojas.json");
+    // com uma loja chamada org-ikcous-lojas: recusado
+    const lojas = JSON.parse(
+      Deno.readTextFileSync(join(RAIZ, "scripts/frota/lojas.json")),
+    );
+    lojas.lojas["org-ikcous-lojas"] = { ...lojas.lojas.savy };
+    Deno.writeTextFileSync(join(dir, "lojas.json"), JSON.stringify(lojas));
+    const r = carregar();
+    assertStringIncludes(r.msg, "chaveDoCofre");
+    assertStringIncludes(r.msg, "org-ikcous-lojas");
+    // o lojas.json de hoje: passa
+    Deno.copyFileSync(
+      join(RAIZ, "scripts/frota/lojas.json"),
+      join(dir, "lojas.json"),
+    );
+    assertEquals(carregar().org?.chaveDoCofre, "org-ikcous-lojas");
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
 });

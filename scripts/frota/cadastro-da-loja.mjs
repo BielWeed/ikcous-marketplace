@@ -165,7 +165,14 @@ export function lojaPedida({ loja, projeto, nome, dominio, chavePublica }) {
   // A loja cujo segredo DERIVADO é o nome do segredo da org central (a loja
   // `lojas` → SUPABASE_ACCESS_TOKEN_LOJAS): o passo a passo mandaria o dono
   // gravar o token dela POR CIMA do da org e derrubaria todas as lojas da org.
-  const segredoDaOrg = carregarOrgCentral().segredoDoGitHub;
+  const org = carregarOrgCentral();
+  // e a loja com o nome da chave do cofre da org leria e gravaria a
+  // autorização da org inteira como se fosse a dela
+  if (loja === org.chaveDoCofre)
+    throw new UsoErrado(
+      `--loja ${loja}: é o nome da chave do cofre da org central (scripts/frota/org-central.json); a loja leria e gravaria a autorização da org inteira. Escolha outro nome`,
+    );
+  const segredoDaOrg = org.segredoDoGitHub;
   if (entrada.segredoDoToken === segredoDaOrg)
     throw new UsoErrado(
       `--loja ${loja}: o segredo dela seria ${segredoDaOrg}, que é o NOME do segredo da org central (scripts/frota/org-central.json); gravar o token desta loja nele derrubaria todas as lojas da org. Escolha outro nome`,
