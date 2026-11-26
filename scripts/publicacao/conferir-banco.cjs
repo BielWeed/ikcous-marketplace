@@ -3311,7 +3311,30 @@ const ROL_DA_180B = [
   "dono_da_loja existe com a forma da 20261383000000 (loja boolean, user_id uuid, desde timestamptz, tudo NOT NULL) e RLS ligada",
   "a politica fin_lancamentos_admin_select_policy existe como a 20261202000000 a deixa (SELECT, so authenticated, rls_admin_atual())",
 ];
+// Lote 181 (20261450000000, a loja guarda os fornecedores e so o admin da loja enxerga: tabela fornecedores e a funcao do gatilho que carimba
+// as datas). A 181a prova o estado novo (9 itens, so catalogo, sem ler linha de tabela alguma). A 181b prova os objetos novos AUSENTES e a base que o
+// pre-voo da migration exige (5 itens). Nenhuma das duas le contato de fornecedor: e' dado comercial da loja.
+const ROL_DA_181A = [
+  "controle: catalogo publico visivel",
+  "fornecedores_carimba_atualizado_em: uma so, com o corpo da 20261450000000 (md5)",
+  "fornecedores_carimba_atualizado_em: atributos de sempre (plpgsql, trigger, NAO SECURITY DEFINER, search_path fixo em public) e EXECUTE para ninguem de aplicacao",
+  "fornecedores: tabela comum com RLS ligada sem FORCE e fora da publicacao do realtime",
+  "fornecedores: colunas com o tipo e a nulidade da migration (id uuid, nome NOT NULL, favorito boolean NOT NULL, criado_em e atualizado_em NOT NULL)",
+  "fornecedores: chave primaria em id e os sete CHECKs (nome, whatsapp, instagram, site, cidade, uf, observacoes), sem chave estrangeira",
+  "fornecedores: exatamente QUATRO politicas (select, insert, update, delete), so para authenticated, so do admin atual (rls_admin_atual())",
+  "fornecedores: SELECT, INSERT, UPDATE e DELETE so para authenticated; anon, PUBLIC e service_role nada; nenhum privilegio por coluna",
+  "fornecedores: um unico gatilho, BEFORE INSERT OR UPDATE por linha, habilitado, apontando para fornecedores_carimba_atualizado_em",
+];
+const ROL_DA_181B = [
+  "controle: catalogo publico visivel",
+  "fornecedores_carimba_atualizado_em: ainda NAO existe",
+  "fornecedores: a tabela ainda NAO existe",
+  "a porta rls_admin_atual() existe com o corpo da 20261197000000 (md5), executavel pelo authenticated e nao pelo anon",
+  "gen_random_uuid() existe (default do id; PostgreSQL 13 ou mais novo)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "181a-conferir-os-fornecedores-aplicado": ROL_DA_181A,
+  "181b-antes-os-fornecedores-ausentes": ROL_DA_181B,
   "180a-conferir-o-cadastro-fiscal-aplicado": ROL_DA_180A,
   "180b-antes-o-cadastro-fiscal-ausente": ROL_DA_180B,
   "168a-conferir-o-crm-ignora-reembolso-integral-aplicado": ROL_DA_168,

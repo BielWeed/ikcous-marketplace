@@ -748,6 +748,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "168b-antes-o-crm-ignora-reembolso-integral-base-vigente",
   "180a-conferir-o-cadastro-fiscal-aplicado",
   "180b-antes-o-cadastro-fiscal-ausente",
+  "181a-conferir-os-fornecedores-aplicado",
+  "181b-antes-os-fornecedores-ausentes",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

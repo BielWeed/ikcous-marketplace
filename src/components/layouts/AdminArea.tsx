@@ -49,6 +49,12 @@ const AdminDevolucoes = lazyWithPreload(() =>
     default: m.AdminDevolucoesView,
   })),
 );
+// Central de Fornecedores (E1): a tela só é baixada quando a lojista a abre.
+const AdminFornecedores = lazyWithPreload(() =>
+  import("@/views/admin/AdminFornecedoresView").then((m) => ({
+    default: m.AdminFornecedoresView,
+  })),
+);
 const AdminCoupons = lazyWithPreload(() =>
   import("@/views/admin/AdminCouponsView").then((m) => ({
     default: m.AdminCouponsView,
@@ -617,6 +623,19 @@ export function AdminArea({
                             onSetDirty: setIsAdminDirty,
                             onSetBackOverride: setBackOverride,
                             userId,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-fornecedores":
+                    return (
+                      <LocalErrorBoundary key="admin-fornecedores">
+                        <PreloadedOrLazy
+                          component={AdminFornecedores}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-fornecedores",
+                            onSetDirty: setIsAdminDirty,
                           }}
                         />
                       </LocalErrorBoundary>

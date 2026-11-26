@@ -121,8 +121,11 @@ export function paiDaTelaDoAdmin(
   switch (view) {
     case "admin-coupon-form":
       return "admin-coupons";
+    // "admin-fornecedores" (Central de Fornecedores, E1) abre pelo botão da
+    // barra de Produtos e volta para ela.
     case "admin-product-form":
     case "admin-coupons":
+    case "admin-fornecedores":
       return "admin-products";
     // Sub-view de "Fora da cidade" (botão "Estratégias do frete nacional
     // →" em FreteNacionalBloco, dentro de admin-shipping) — o Voltar

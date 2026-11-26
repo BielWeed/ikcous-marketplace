@@ -1124,6 +1124,51 @@ export type Database = {
         };
         Relationships: [];
       };
+      // Escrito à mão (migration 20261450000000), no formato do gerador; não regenerar por cima.
+      // Cadastro de fornecedores da loja: só o admin de agora lê e escreve (RLS por rls_admin_atual()).
+      // Os CHECKs (nome 1-80, WhatsApp só dígitos 10-13, Instagram só o usuário, site https, UF, observações) o gerador não vê.
+      fornecedores: {
+        Row: {
+          atualizado_em: string;
+          cidade: string | null;
+          criado_em: string;
+          favorito: boolean;
+          id: string;
+          instagram: string | null;
+          nome: string;
+          observacoes: string | null;
+          site: string | null;
+          uf: string | null;
+          whatsapp: string | null;
+        };
+        Insert: {
+          atualizado_em?: string;
+          cidade?: string | null;
+          criado_em?: string;
+          favorito?: boolean;
+          id?: string;
+          instagram?: string | null;
+          nome: string;
+          observacoes?: string | null;
+          site?: string | null;
+          uf?: string | null;
+          whatsapp?: string | null;
+        };
+        Update: {
+          atualizado_em?: string;
+          cidade?: string | null;
+          criado_em?: string;
+          favorito?: boolean;
+          id?: string;
+          instagram?: string | null;
+          nome?: string;
+          observacoes?: string | null;
+          site?: string | null;
+          uf?: string | null;
+          whatsapp?: string | null;
+        };
+        Relationships: [];
+      };
       marketplace_ai_state: {
         Row: {
           component_name: string;

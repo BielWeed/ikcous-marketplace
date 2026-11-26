@@ -317,6 +317,8 @@ on:
       - "scripts/publicacao/consultas/168b-antes-o-crm-ignora-reembolso-integral-base-vigente.sql"
       - "scripts/publicacao/consultas/180a-conferir-o-cadastro-fiscal-aplicado.sql"
       - "scripts/publicacao/consultas/180b-antes-o-cadastro-fiscal-ausente.sql"
+      - "scripts/publicacao/consultas/181a-conferir-os-fornecedores-aplicado.sql"
+      - "scripts/publicacao/consultas/181b-antes-os-fornecedores-ausentes.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -607,6 +609,8 @@ on:
       - "scripts/publicacao/consultas/168b-antes-o-crm-ignora-reembolso-integral-base-vigente.sql"
       - "scripts/publicacao/consultas/180a-conferir-o-cadastro-fiscal-aplicado.sql"
       - "scripts/publicacao/consultas/180b-antes-o-cadastro-fiscal-ausente.sql"
+      - "scripts/publicacao/consultas/181a-conferir-os-fornecedores-aplicado.sql"
+      - "scripts/publicacao/consultas/181b-antes-os-fornecedores-ausentes.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1527,6 +1531,15 @@ jobs:
       - name: Prova viva das consultas 180a/180b do cadastro fiscal (migration 20261440000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-cadastro-fiscal-portao-viva.cjs
+      # Migration 20261450000000 (a loja guarda os fornecedores, e so o admin atual mexe): tabela nova public.fornecedores com RLS
+      # e quatro politicas pela porta rls_admin_atual() (nunca o JWT). Com papeis reais: admin atual escreve (upsert por id nao
+      # duplica; datas e id vem do servidor); cliente, anon, service_role e admin rebaixado nas duas direcoes (JWT ainda admin) nao
+      # leem nem escrevem; CHECKs nos dois lados de cada limite; corrida de duas conexoes no mesmo id = uma linha; aplicar 2x,
+      # rollback comum (preserva as linhas) e destrutivo (exige confirmacao); pre-voo recusa 12 estados divergentes; consultas
+      # 181a/181b EXECUTADAS com 16 defeitos plantados; 15 mutantes da migration. CLONE proprio.
+      - name: Prova viva de so o admin da loja mexer nos fornecedores (migration 20261450000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/os-fornecedores-so-o-admin-da-loja-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam

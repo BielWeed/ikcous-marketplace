@@ -560,6 +560,7 @@ export type View =
   | "admin-dashboard"
   | "admin-products"
   | "admin-product-form"
+  | "admin-fornecedores"
   | "admin-orders"
   | "admin-pdv"
   | "admin-crm"
