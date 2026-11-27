@@ -21,9 +21,14 @@
 2. **Nunca apagar** a linha do login (`auth.users`) nem os pedidos
    (`marketplace_orders`). Os pedidos apontam para o login, sem cascata, e apagar
    levaria junto o histórico fiscal e financeiro da loja. A exclusão é
-   **anonimizar + bloquear a entrada**. (A conta do dono da loja, linha de
-   `dono_da_loja`, nem pode ser apagada: a chave estrangeira bloqueia; trocar o dono
-   é `DELETE FROM public.dono_da_loja` e novo `INSERT`, só com o "pode" dele.)
+   **anonimizar + bloquear a entrada**. **A conta da dona da loja** (linha de
+   `dono_da_loja`) **e a de quem é administrador** (`profiles.role = 'admin'` ou o
+   papel de admin no login) **não se anonimizam por este roteiro: o bloco do passo 4
+   para** com `PARADO:`. A chave estrangeira de `dono_da_loja` só impede APAGAR a
+   linha do login, e este roteiro não apaga — por isso a trava fica no bloco. Se o
+   pedido veio de uma dessas contas, leve ao dono: primeiro ele tira o cargo de
+   administrador ou troca o dono da loja (`DELETE FROM public.dono_da_loja` e novo
+   `INSERT`, só com o "pode" dele); só depois o roteiro segue.
 3. **O prazo é de 15 dias**, contados do dia em que a cliente pediu. Como a loja
    é avisada: a **bolinha vermelha do sino** do painel acende enquanto houver
    pedido de privacidade esperando, a tela de Notificações lista quantos são, e
@@ -93,7 +98,7 @@ mudar, este bloco e o SQL mudam junto (um teste confere que são o mesmo texto):
 <!-- /tela:apaga -->
 
 <!-- tela:fica -->
-Os pedidos e as notas fiscais ficam guardados (valores, itens, datas e forma de pagamento), mas sem o seu nome, telefone, CPF, e-mail e endereço. Suas avaliações e perguntas públicas, se houver, também ficam, sem o seu nome.
+Os pedidos e as notas fiscais ficam guardados (valores, itens, datas e forma de pagamento), mas sem o seu nome, telefone, CPF, e-mail e endereço. Suas avaliações e perguntas públicas, se houver, também ficam, sem o seu nome. O registro dos seus pedidos de privacidade também fica, com o e-mail novo que você digitou se pediu para corrigir o e-mail.
 <!-- /tela:fica -->
 
 O que **não** está nessa promessa e continua fora do nosso alcance (diga ao dono):
@@ -161,6 +166,7 @@ UNION ALL SELECT 'troca de telefone pendente', nullif(u.phone_change, '') FROM a
 UNION ALL SELECT 'favoritos', count(*)::text FROM public.favorites f, alvo WHERE f.user_id = alvo.id
 UNION ALL SELECT 'itens no carrinho', count(*)::text FROM public.cart_items c, alvo WHERE c.user_id = alvo.id
 UNION ALL SELECT 'avisos no app', count(*)::text FROM public.notificacoes n, alvo WHERE n.usuario_id = alvo.id
+UNION ALL SELECT 'avisos de celular (push)', count(*)::text FROM public.push_subscriptions ps, alvo WHERE ps.user_id = alvo.id
 UNION ALL SELECT 'pedidos (todos)', count(*)::text FROM public.marketplace_orders o, alvo WHERE o.user_id = alvo.id
 UNION ALL SELECT 'pedidos EM ANDAMENTO', count(*)::text FROM public.marketplace_orders o, alvo
   WHERE o.user_id = alvo.id
@@ -181,6 +187,18 @@ UNION ALL SELECT 'devoluções com REEMBOLSO NÃO CONCLUÍDO', count(*)::text
   FROM public.devolucoes d JOIN public.order_refunds r ON r.id = d.refund_id, alvo
   WHERE d.user_id = alvo.id AND d.status = 'concluida' AND d.resolucao_final = 'reembolso'
     AND NOT d.reembolso_manual AND r.status <> 'concluido'
+UNION ALL SELECT 'devoluções concluídas com VALE ou TROCA', count(*)::text FROM public.devolucoes d, alvo
+  WHERE d.user_id = alvo.id AND d.status = 'concluida' AND d.resolucao_final IN ('vale', 'troca')
+UNION ALL SELECT 'cupons EXCLUSIVOS dela ainda válidos', count(*)::text
+  FROM public.cupom_clientes cc JOIN public.coupons c ON c.id = cc.coupon_id, alvo
+  WHERE cc.user_id = alvo.id AND c.alcance = 'exclusivo' AND c.active = true
+    AND (c.valid_until IS NULL OR c.valid_until > now())
+    AND NOT (c.usage_limit IS NOT NULL AND c.usage_limit > 0 AND COALESCE(c.usage_count, 0) >= c.usage_limit)
+UNION ALL SELECT 'cupom exclusivo válido (código)', c.code
+  FROM public.cupom_clientes cc JOIN public.coupons c ON c.id = cc.coupon_id, alvo
+  WHERE cc.user_id = alvo.id AND c.alcance = 'exclusivo' AND c.active = true
+    AND (c.valid_until IS NULL OR c.valid_until > now())
+    AND NOT (c.usage_limit IS NOT NULL AND c.usage_limit > 0 AND COALESCE(c.usage_count, 0) >= c.usage_limit)
 UNION ALL SELECT 'fotos de devolução guardadas', count(*)::text FROM storage.objects s, alvo
   WHERE s.bucket_id = 'devolucoes' AND split_part(s.name, '/', 1) = alvo.id::text;
 ```
@@ -206,6 +224,26 @@ Anonimizar agora pode atrapalhar a entrega ou tirar da cliente o acesso para
 acompanhar o reembolso. O passo 4 também recusa nesses casos. Espere resolver e
 volte. O pedido de privacidade continua aberto — o prazo corre, então avise a
 cliente por fora do app.
+
+**Vale-troca, troca e cupom só dela: avise ANTES de anonimizar.** Depois do
+passo 4 a conta antiga fica bloqueada e, se a cliente criar outra, a conta nova
+tem outro identificador: nada do que estava preso à conta antiga passa sozinho.
+
+- **"devoluções concluídas com VALE ou TROCA" maior que zero:** o app não guarda
+  se o vale (o cupom que a loja criou à mão) já foi usado nem se a troca já foi
+  entregue. Confira na conversa com a cliente. **Troca ainda não entregue:
+  entregue antes** de anonimizar (o endereço some no passo 4). **Vale ainda não
+  usado:** escreva à cliente, na conversa do aviso, dizendo que o vale continua
+  valendo e como usá-lo (se for um código, ela usa digitando o código, com
+  qualquer conta). Anote só a data do aviso.
+- **"cupons EXCLUSIVOS dela ainda válidos" maior que zero** (as linhas "cupom
+  exclusivo válido (código)" dizem quais): o cupom de "Clientes escolhidos" só
+  vale para a conta antiga. **O passo 4 para enquanto um deles valer.** Avise a
+  cliente e, no painel, abra **Cupons** > o cupom > **Quem pode usar** >
+  **Clientes escolhidos** e tire a conta dela da lista (se ela já tiver conta
+  nova, ponha a conta nova no lugar). Rode o passo 2 de novo: a contagem tem de
+  dar 0.
+- "avisos de celular (push)" não pede nada: o passo 4 apaga esses registros.
 
 A linha "pedidos com DINHEIRO A DEVOLVER" segue a mesma conta do painel
 "Dinheiro a devolver" (trecho `a_devolver` da migration
@@ -263,6 +301,12 @@ apagados separadamente e não voltam se o SQL falhar:
   mão no passo 6;
 - eventos de navegação (`analytics_events`): perdem o vínculo com a cliente.
 
+O bloco **para sem mudar nada** (`PARADO:`) se: não há pedido de exclusão
+aberto; a conta não existe; é a conta da **dona da loja** ou de um
+**administrador** (regra 2); há pendência de entrega, devolução ou dinheiro do
+passo 2; há **cupom exclusivo dela ainda válido** (passo 2); ou, valendo,
+ainda há fotos dela no Storage.
+
 Como usar:
 
 1. Cole, troque `COLE-O-ID-AQUI` pelo identificador. **Deixe `v_confirmar := false`.**
@@ -280,8 +324,9 @@ Como usar:
    conseguir confirmar o endereço, deixe o pedido aberto e avise o dono.
    Com o destinatário conferido e a espera cumprida, rode de novo o passo 2
    e o ensaio com `v_confirmar := false`. Confirme que o pedido de exclusão
-   segue aberto, que não chegou resposta "não fui eu" e que todas as
-   contagens de pendências do passo 2 estão zeradas. Se aparecer `PARADO:`,
+   segue aberto, que não chegou resposta "não fui eu", que todas as
+   contagens de pendências do passo 2 estão zeradas e que o vale, a troca e o
+   cupom exclusivo do passo 2 já foram avisados ou resolvidos. Se aparecer `PARADO:`,
    outro erro ou algo diferente do aprovado, pare sem apagar e leve ao dono.
    Se houver fotos, liste os caminhos dos arquivos, no mesmo Supabase.
    A lista precisa bater com a contagem de fotos que você acabou de conferir:
@@ -329,6 +374,20 @@ BEGIN
   SELECT email INTO v_email FROM auth.users WHERE id = v_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'PARADO: não achei esta cliente no login. Confira o identificador. Nada foi mudado.';
+  END IF;
+  -- Conta da DONA da loja ou de ADMINISTRADOR: bloquear a entrada tiraria a loja de quem a
+  -- administra. A chave estrangeira de dono_da_loja só segura DELETE, e este bloco não apaga:
+  -- quem segura é esta trava. Papel admin nas DUAS fontes (perfil e login), qualquer uma basta.
+  -- O papel "vendedor" é o padrão de todo perfil (não é cargo) e não entra aqui.
+  -- Loja que ainda não recebeu a 20261383 não tem dono_da_loja: fica só a trava do admin.
+  IF to_regclass('public.dono_da_loja') IS NOT NULL THEN
+    IF EXISTS (SELECT 1 FROM public.dono_da_loja WHERE user_id = v_id) THEN
+      RAISE EXCEPTION 'PARADO: esta conta é da DONA da loja. Não se anonimiza por este roteiro: leve ao dono. Nada foi mudado.';
+    END IF;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.profiles WHERE id = v_id AND role = 'admin')
+     OR EXISTS (SELECT 1 FROM auth.users WHERE id = v_id AND (raw_app_meta_data ->> 'role') = 'admin') THEN
+    RAISE EXCEPTION 'PARADO: esta conta é de um ADMINISTRADOR da loja. Primeiro o dono tira o cargo; depois rode de novo. Nada foi mudado.';
   END IF;
   IF EXISTS (SELECT 1 FROM public.marketplace_orders o
               WHERE o.user_id = v_id
@@ -395,6 +454,17 @@ BEGIN
                     - GREATEST(COALESCE(l.concluido, 0) - b.estornado, 0), 0) > 0
   ) THEN
     RAISE EXCEPTION 'PARADO: há pedido com DINHEIRO A DEVOLVER para esta cliente. Resolva o reembolso antes. Nada foi mudado no banco.';
+  END IF;
+  -- Cupom exclusivo (vale-troca, presente) preso ao identificador dela: uma conta nova teria
+  -- outro identificador e não veria o cupom. Válido = o mesmo critério do checkout
+  -- (cupons_do_checkout, 20261208000000). Usado até o limite, vencido ou desligado não trava.
+  IF EXISTS (
+    SELECT 1 FROM public.cupom_clientes cc JOIN public.coupons c ON c.id = cc.coupon_id
+     WHERE cc.user_id = v_id AND c.alcance = 'exclusivo' AND c.active = true
+       AND (c.valid_until IS NULL OR c.valid_until > now())
+       AND NOT (c.usage_limit IS NOT NULL AND c.usage_limit > 0 AND COALESCE(c.usage_count, 0) >= c.usage_limit)
+  ) THEN
+    RAISE EXCEPTION 'PARADO: há CUPOM EXCLUSIVO ainda válido só desta cliente. Avise a cliente e, no painel, tire-a da lista do cupom (ou passe-o para a conta nova dela). Nada foi mudado no banco.';
   END IF;
   IF v_confirmar AND EXISTS (SELECT 1 FROM storage.objects s
                              WHERE s.bucket_id = 'devolucoes' AND split_part(s.name, '/', 1) = v_id::text) THEN
@@ -631,19 +701,23 @@ se o dono quiser limpar também, é um passo novo a pedir a quem programa.
 Faça esta conferência **antes de marcar o pedido como atendido**, depois do
 passo 4 valendo e da espera e reconferência do passo 5.
 
-**Confira as notas de inspeção e das decisões da loja vinculadas à conta**,
-mesmo que a busca pelo nome completo não encontre nada. No detalhe da devolução,
-o painel mostra essas notas em **Inspeção** e **Histórico**.
+**Confira as notas de inspeção, as mensagens ao cliente e as notas das decisões
+da loja vinculadas à conta**, mesmo que a busca pelo nome completo não encontre
+nada. No detalhe da devolução, o painel mostra essas notas em **Inspeção**,
+**Sua mensagem ao cliente** e **Histórico**. Ao aprovar, recusar ou reprovar
+uma devolução, a loja grava o MESMO texto em dois lugares (`mensagem_loja` e a
+nota do histórico): limpe os dois.
 
 1. Rode as duas leituras com o identificador da cliente. Leia cada nota inteira:
    um primeiro nome sozinho, apelido ou telefone antigo pode não aparecer na
    busca automática.
 
    ```sql
-   SELECT d.id, d.protocolo, d.observacao_inspecao
+   SELECT d.id, d.protocolo, d.observacao_inspecao, d.mensagem_loja
      FROM public.devolucoes d
     WHERE d.user_id = 'COLE-O-ID-AQUI'::uuid
-      AND nullif(btrim(d.observacao_inspecao), '') IS NOT NULL
+      AND (nullif(btrim(d.observacao_inspecao), '') IS NOT NULL
+           OR nullif(btrim(d.mensagem_loja), '') IS NOT NULL)
     ORDER BY d.protocolo;
    ```
 
@@ -659,8 +733,9 @@ o painel mostra essas notas em **Inspeção** e **Histórico**.
 2. No Supabase > **Table Editor**, filtre pelos identificadores antes de editar:
    em **devolucoes**, confira `user_id`, `id` e o protocolo; em
    **devolucao_eventos**, confira `devolucao_id`, o `id` do evento e
-   `ator = loja`. Confira o texto atual. Na célula `observacao_inspecao` ou
-   `nota`, troque só o trecho que identifica a cliente por `[removido]`.
+   `ator = loja`. Confira o texto atual. Na célula `observacao_inspecao`,
+   `mensagem_loja` ou `nota`, troque só o trecho que identifica a cliente por
+   `[removido]`.
    Preserve as informações sobre o produto, os valores, a situação e as
    linhas do histórico. Não copie a nota original para fora do Supabase.
 3. Rode as duas leituras de novo e confira as notas. Se não conseguir confirmar a
@@ -782,6 +857,14 @@ da cliente que você não consiga tratar, deixe o pedido aberto e avise o dono.
    conferência na vitrine. Se não conseguir confirmar a correção, mantenha
    o pedido aberto e avise o dono. Não passe para o passo 7.
 
+**Planilhas já baixadas (fora do banco).** O painel exporta os pedidos em
+planilha (Pedidos > **Exportar CSV**), com o **nome e o telefone** da cliente. O
+passo 4 não alcança arquivo baixado. Pergunte a quem usa o painel se baixou
+planilha com pedidos dela; em cada arquivo achado, apague as linhas dela ou troque
+nome e telefone por `[removido]`, inclusive cópias enviadas por e-mail ou
+WhatsApp a quem cuida das contas. Se não conseguir conferir, avise o dono. Não
+reenvie planilha antiga.
+
 O que **fica de propósito**: a linha do pedido de privacidade (a tabela
 `pedidos_de_privacidade`, que guarda o e-mail novo quando o pedido era de
 correção — é o registro legal do que foi pedido); `vor_receipts` (cadeia de
@@ -850,7 +933,8 @@ alguém pedir a troca para o e-mail dele e ficar com a conta):
 - Não marcar "atendido" antes de terminar os passos 3, 4, 5 e 6 e, na exclusão,
   enviar a confirmação do passo 7 (a decisão é final).
 - Não pedir a senha da cliente, nem por e-mail.
-- Não copiar dados da cliente para planilha, e-mail ou conversa.
+- Não copiar dados da cliente para planilha, e-mail ou conversa (e as planilhas
+  CSV já baixadas entram na limpeza do passo 6).
 
 ## Como desfazer a migration (só se nunca houve pedido)
 
