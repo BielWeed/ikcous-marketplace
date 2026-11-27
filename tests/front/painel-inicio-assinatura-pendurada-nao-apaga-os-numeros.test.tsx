@@ -44,6 +44,9 @@ const ASSINATURA = { plano: "Plano de teste", situacao: "ativa" };
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: vi.fn((nome: string) => {
+      // A terceira leitura (se a loja aceita pedido) não é o assunto daqui.
+      if (nome === "situacao_das_vendas_da_loja")
+        return Promise.resolve<Resposta>({ data: null, error: null });
       const ehPainel = nome === "painel_inicio";
       const modo = ehPainel ? h.modoPainel : h.modoAssinatura;
       const fila = ehPainel ? h.painel : h.assinatura;
