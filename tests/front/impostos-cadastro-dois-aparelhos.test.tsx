@@ -124,6 +124,7 @@ import {
   parseCadastroFiscal,
 } from "@/lib/fiscal/cadastro";
 import { supabase } from "@/lib/supabase";
+import { escolherNaLista, valorDaLista } from "./helpers/lista-de-escolha";
 
 const HOJE = "2026-11-24";
 const ID_REGIME = "fiscal-cadastro-regime";
@@ -205,25 +206,42 @@ async function clicar(el: HTMLElement) {
   });
   await assentar();
 }
-function campo(id: string): HTMLInputElement | HTMLSelectElement {
+function campo(id: string): HTMLElement {
   const el = document.getElementById(id);
   if (!el) throw new Error(`Campo ${id} não está na tela.`);
-  return el as HTMLInputElement | HTMLSelectElement;
+  return el;
 }
+/** Regime e atividade são listas de escolha (botão que abre a lista). */
+function ehLista(el: HTMLElement): boolean {
+  return el.getAttribute("aria-haspopup") === "listbox";
+}
+/**
+ * Preenche como a lojista: nas listas toca no campo e na opção (e espera a
+ * lista fechar, o foco volta numa tarefa seguinte); nas datas digita.
+ */
 async function preencher(id: string, valor: string) {
   const el = campo(id);
-  const prototipo =
-    el instanceof HTMLSelectElement
-      ? HTMLSelectElement.prototype
-      : HTMLInputElement.prototype;
+  if (ehLista(el)) {
+    await act(async () => {
+      escolherNaLista(id, valor);
+    });
+    await act(async () => {
+      await new Promise((resolver) => setTimeout(resolver, 0));
+    });
+    return;
+  }
   await act(async () => {
-    Object.getOwnPropertyDescriptor(prototipo, "value")?.set?.call(el, valor);
-    el.dispatchEvent(
-      new Event(el instanceof HTMLSelectElement ? "change" : "input", {
-        bubbles: true,
-      }),
-    );
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set?.call(el, valor);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
   });
+}
+/** O que o campo mostra: o valor da lista ou o texto do campo de data. */
+function valorDo(id: string): string {
+  const el = campo(id);
+  return ehLista(el) ? valorDaLista(id) : (el as HTMLInputElement).value;
 }
 
 beforeEach(() => {
@@ -245,7 +263,7 @@ describe("Cadastro fiscal em dois aparelhos", () => {
   it("D1 o regime trocado no celular sobrevive à data corrigida no computador", async () => {
     // 1. O computador abre a folha com MEI.
     await abrirFolha(cadastroDoBanco());
-    expect(campo(ID_REGIME).value).toBe("mei");
+    expect(valorDo(ID_REGIME)).toBe("mei");
 
     // 2. No celular, a dona troca para Simples Nacional e salva.
     await celularGrava({ regime: "simples" });
@@ -309,7 +327,7 @@ describe("Cadastro fiscal em dois aparelhos", () => {
   it("D4 folha aberta sem cadastro e o outro aparelho criou um: o que a dona não preencheu fica", async () => {
     banco.linha = null;
     await abrirFolha(cadastroDoBanco());
-    expect(campo(ID_REGIME).value).toBe("");
+    expect(valorDo(ID_REGIME)).toBe("");
 
     banco.linha = { ...LINHA_MEI, regime: "simples" };
 
