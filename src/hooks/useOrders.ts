@@ -4654,10 +4654,13 @@ export function useOrders(
             // ficha avisa a cliente), não "mudou". A marca sai aqui de
             // qualquer jeito: uma tentativa seguinte não avisa de novo.
             const marca = avancosSemRespostaRef.current.get(orderId);
+            // Negativo = o relógio do aparelho voltou: a marca não vale.
+            const decorrido = marca ? Date.now() - marca.em : -1;
             const eraOAvancoSemResposta =
               statusVerdadeiro === status &&
               marca?.status === status &&
-              Date.now() - marca.em <= VALIDADE_DA_MARCA_DO_AVANCO_MS;
+              decorrido >= 0 &&
+              decorrido <= VALIDADE_DA_MARCA_DO_AVANCO_MS;
             avancosSemRespostaRef.current.delete(orderId);
             if (eraOAvancoSemResposta) {
               clearAnalyticsCache();

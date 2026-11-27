@@ -369,6 +369,24 @@ describe("Avançar status: gravou no banco, mas a resposta se perdeu", () => {
     expect(gravacoes()).toHaveLength(0);
   });
 
+  it("(d) relógio do aparelho voltou 1 dia: a marca não revive — 'mudou' e sem aviso", async () => {
+    gravacao = () => new Promise(() => {});
+    redeCaiDepoisDaPrimeiraLeitura();
+    await avancar("processing", "pending");
+
+    statusNoBanco = "processing";
+    releitura = async () => ({ data: { status: statusNoBanco }, error: null });
+    vi.setSystemTime(Date.now() - 24 * 60 * 60 * 1000);
+    vi.clearAllMocks();
+
+    const r2 = await avancar("processing", "pending");
+
+    expect(r2.erro).toBeInstanceOf(ErroPedidoMudou);
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(gravacoes()).toHaveLength(0);
+  });
+
   it("(d) nunca duas vezes: o sucesso confirmado na hora não deixa marca para uma tentativa seguinte", async () => {
     gravacao = () => {
       statusNoBanco = "processing";
