@@ -456,8 +456,12 @@ export async function validar() {
  for (const user of [null, {id:"pessoa-ficticia"}]) {
   for (const exigeCpfDoDestinatario of [false,true]) {
    for (const ehRetirada of [false,true]) {
-    const dynamicSchema = ${checkout};
-    cenarios.push([dynamicSchema, [compra,{}, {...compra,whatsapp:"1134567890"}, {...compra,cep:"12345-67",street:" ",number:""}, {...compra,cpf:""}, {...compra,cpf:"11111111111"}, {...compra,street:"x".repeat(300),number:"9".repeat(30)}, {...compra,street:"",number:"",neighborhood:"",city:"",state:""}]]);
+    // Só quem tem conta pode estar "sem endereço salvo" (o componente exige
+    // \`!!user\`); para a visitante o valor nem é lido.
+    for (const contaSemEnderecoSalvo of user ? [false,true] : [false]) {
+     const dynamicSchema = ${checkout};
+     cenarios.push([dynamicSchema, [compra,{}, {...compra,whatsapp:"1134567890"}, {...compra,cep:"12345-67",street:" ",number:""}, {...compra,cpf:""}, {...compra,cpf:"11111111111"}, {...compra,street:"x".repeat(300),number:"9".repeat(30)}, {...compra,street:"",number:"",neighborhood:"",city:"",state:""}]]);
+    }
    }
   }
  }
@@ -478,7 +482,7 @@ export async function validar() {
       resultado: { data?: unknown; issues?: unknown };
     }[][];
     expect(await enxuto.api.validar()).toEqual(esperado);
-    expect(esperado).toHaveLength(10);
+    expect(esperado).toHaveLength(14);
     expect(esperado[0][0].resultado.data).toBeDefined();
     expect(esperado[0][2].resultado.issues).toBeDefined();
     expect(esperado[1][2].resultado.issues).toBeDefined();
@@ -486,16 +490,20 @@ export async function validar() {
       expect(casos[0].resultado.data).toBeDefined();
       expect(casos[2].resultado.issues).toBeDefined();
     }
-    // Tetos de endereço do checkout (r50-c): valem para o visitante (os dois
-    // primeiros cenários do checkout, `user = null`) e NÃO para quem tem conta
-    // (os dois últimos, `user = { id }`), que usa o endereço salvo.
-    // Ordem dos cenários: conta (fora/dentro) x CPF x retirada (não/sim).
+    // Tetos de endereço do checkout (r50-c): valem para o visitante (os
+    // quatro primeiros cenários do checkout, `user = null`) e NÃO para quem
+    // tem conta (os oito últimos, `user = { id }`), que usa o endereço salvo.
+    // Ordem: visitante x CPF x retirada (não/sim); depois conta x CPF x
+    // retirada x sem endereço salvo (não/sim).
     // Retirada na loja (12/11/2026): o visitante que retira só precisa do
     // CEP — rua, número, bairro, cidade e estado deixam de ser exigidos (e
     // os tetos deles deixam de valer), como já era para quem tem conta.
+    // Retirada com conta (26/11/2026): a conta SEM endereço salvo que retira
+    // informa o CEP com a régua da visitante; o resto da conta não o exige.
     for (const [i, casos] of esperado.slice(2).entries()) {
       const comConta = i >= 4;
-      const ehRetirada = i % 2 === 1;
+      const ehRetirada = comConta ? ((i - 4) >> 1) % 2 === 1 : i % 2 === 1;
+      const semEnderecoSalvo = comConta && (i - 4) % 2 === 1;
       expect(casos[6].resultado.issues === undefined, `cenário ${i}`).toBe(
         comConta || ehRetirada,
       );
@@ -503,6 +511,13 @@ export async function validar() {
         casos[7].resultado.issues === undefined,
         `endereço vazio, cenário ${i}`,
       ).toBe(comConta || ehRetirada);
+      const problemas = (casos[3].resultado.issues ?? []) as {
+        path: unknown[];
+      }[];
+      expect(
+        problemas.some((p) => p.path[0] === "cep"),
+        `CEP incompleto, cenário ${i}`,
+      ).toBe(!comConta || (semEnderecoSalvo && ehRetirada));
     }
   }, 30_000);
 });
