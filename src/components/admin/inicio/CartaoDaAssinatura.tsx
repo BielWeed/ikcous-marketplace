@@ -2,6 +2,7 @@ import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { useAgoraDoPainel } from "@/hooks/useAgoraDoPainel";
 import {
+  avisoDaMensalidadeEmAberto,
   avisoDoTesteEncerrado,
   contagemDoTeste,
   formatarData,
@@ -123,15 +124,24 @@ export function CartaoDaAssinatura({
   // gestão o cartão diz "Teste encerrado" e o prazo; sinal torto → cartão de
   // hoje (`avisoDoTesteEncerrado` devolve null).
   const aviso = avisoDoTesteEncerrado(assinatura, new Date(agora));
+  // A pagante atrasada com o dia da pausa da gestão: "Mensalidade em aberto" e
+  // o prazo. O aviso do teste tem prioridade; sem `pausa_em` (Savy, IKCOUS) o
+  // cartão continua o de hoje.
+  const avisoPagante = aviso
+    ? null
+    : avisoDaMensalidadeEmAberto(assinatura, new Date(agora));
+  const prazo = aviso ?? avisoPagante;
   const estado: { tom: TomDeEstado; texto: string } = aviso
     ? { tom: "atencao", texto: "Teste encerrado" }
-    : estadoDoPlano(assinatura.status);
+    : avisoPagante
+      ? { tom: "atencao", texto: "Mensalidade em aberto" }
+      : estadoDoPlano(assinatura.status);
   const suporte = linkWhatsappDoCliente(assinatura.suporteWhatsapp);
   const recursosVisiveis = assinatura.recursos.slice(0, MAXIMO_DE_RECURSOS);
   const recursosEscondidos =
     assinatura.recursos.length - recursosVisiveis.length;
   const precisaRegularizar =
-    !aviso &&
+    !prazo &&
     (assinatura.status === "atrasada" ||
       assinatura.status === "suspensa" ||
       assinatura.status === "pendente");
@@ -140,9 +150,9 @@ export function CartaoDaAssinatura({
   const contagem = emTeste
     ? contagemDoTeste(assinatura.testeAte, new Date(agora))
     : null;
-  // No teste encerrado somem "Em aberto desde" e "Teste até": fica só
-  // "Cliente desde", montada direto de `inicioEm`.
-  const linhasDeDatas = aviso
+  // No teste encerrado e na mensalidade em aberto somem "Em aberto desde" e
+  // "Teste até": fica só "Cliente desde", montada direto de `inicioEm`.
+  const linhasDeDatas = prazo
     ? assinatura.inicioEm
       ? [{ rotulo: "Cliente desde", data: assinatura.inicioEm }]
       : []
@@ -190,16 +200,18 @@ export function CartaoDaAssinatura({
           {fraseDoCiclo(assinatura.ciclo)}
         </p>
       ) : null}
-      {aviso ? (
+      {prazo ? (
         <>
           <p className="text-sm font-medium leading-relaxed text-white">
-            {`Seu teste grátis acabou. A primeira mensalidade, de ${formatarMoeda(aviso.valorMensal)}, venceu em ${formatarDiaEMes(aviso.venceuEm)}.`}
+            {aviso
+              ? `Seu teste grátis acabou. A primeira mensalidade, de ${formatarMoeda(prazo.valorMensal)}, venceu em ${formatarDiaEMes(prazo.venceuEm)}.`
+              : `A mensalidade de ${formatarMoeda(prazo.valorMensal)} venceu em ${formatarDiaEMes(prazo.venceuEm)}.`}
           </p>
           <p
             className={cn("text-sm leading-relaxed", classeDoTexto("atencao"))}
           >
-            {aviso.pagueAte && aviso.pausaEm
-              ? `Para continuar vendendo, pague até ${formatarDiaEMes(aviso.pagueAte)}. Sem o pagamento, os pedidos pela loja ficam pausados a partir de ${formatarDiaEMes(aviso.pausaEm)}.`
+            {prazo.pagueAte && prazo.pausaEm
+              ? `Para continuar vendendo, pague até ${formatarDiaEMes(prazo.pagueAte)}. Sem o pagamento, os pedidos pela loja ficam pausados a partir de ${formatarDiaEMes(prazo.pausaEm)}.`
               : "Para continuar vendendo, pague a mensalidade."}
           </p>
           <p className="text-sm leading-relaxed text-zinc-400">

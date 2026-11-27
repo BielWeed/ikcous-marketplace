@@ -991,6 +991,43 @@ export function avisoDoTesteEncerrado(
     : { venceuEm, valorMensal, pagueAte: null, pausaEm: null };
 }
 
+/**
+ * A lojista que entrou pagando atrasou a mensalidade (26/11/2026, "sem teste
+ * grátis"): a gestão manda `atrasada` com `teste_ate` nulo e o `pausa_em`, o
+ * dia em que os pedidos pausam. O cartão troca "Atrasada" por "Mensalidade em
+ * aberto" e diz o prazo com a mesma data do WhatsApp — mas SÓ com o sinal
+ * completo: valor > 0, vencimento já chegado (dia de São Paulo) e `pausa_em`
+ * real e depois do vencimento. Sem `pausa_em` (Savy, IKCOUS, gestão velha) ou
+ * com `teste_ate` preenchido (vale `avisoDoTesteEncerrado`), `null` e o cartão
+ * continua o de hoje. `pagueAte` (véspera da pausa) e `pausaEm` só vêm enquanto
+ * hoje é anterior à pausa.
+ */
+export function avisoDaMensalidadeEmAberto(
+  assinatura: Pick<
+    AssinaturaDaLoja,
+    "status" | "valorMensal" | "proximaCobrancaEm" | "testeAte" | "pausaEm"
+  >,
+  agora: Date = new Date(),
+): {
+  venceuEm: string;
+  valorMensal: number;
+  pagueAte: string | null;
+  pausaEm: string | null;
+} | null {
+  const { status, valorMensal } = assinatura;
+  if (status !== "atrasada" || assinatura.testeAte !== null) return null;
+  if (valorMensal == null || !Number.isFinite(valorMensal) || valorMensal <= 0)
+    return null;
+  const venceuEm = diaRealDoAviso(assinatura.proximaCobrancaEm);
+  const pausaEm = diaRealDoAviso(assinatura.pausaEm);
+  if (!venceuEm || !pausaEm || pausaEm <= venceuEm) return null;
+  const hoje = diaEmSaoPaulo(agora);
+  if (venceuEm > hoje) return null;
+  return hoje < pausaEm
+    ? { venceuEm, valorMensal, pagueAte: somarDias(pausaEm, -1), pausaEm }
+    : { venceuEm, valorMensal, pagueAte: null, pausaEm: null };
+}
+
 // ─── Erro ────────────────────────────────────────────────────────────────
 
 // A fonte única da frase de erro mora em `erro-do-painel.ts`; os hooks do

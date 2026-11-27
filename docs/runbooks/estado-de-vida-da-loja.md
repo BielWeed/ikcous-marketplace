@@ -87,10 +87,17 @@ pagar. "Dia 0" é o vencimento da mensalidade ou o fim do teste.
 | Encerrar | "Não está mais no ar" | Só com ordem escrita do dono, depois do dia 60, com a cópia dos dados oferecida |
 | Pagou | Volta a vender no próximo pedido | A faixa some |
 
-- Nunca pausar na sexta, no sábado ou no domingo: a pausa passa para a segunda seguinte.
+- Loja antiga em teste: nunca pausar na sexta, no sábado ou no domingo; a pausa passa
+  para a segunda seguinte. Loja que entrou pagando: o dia é o que o app de gestão
+  calcula (também pula feriado nacional e véspera), e a loja nunca pausa antes dele.
 - Pausar é manual, com um clique numa lista que o sistema monta.
 - Reabrir é automático, quando o pagamento é registrado.
 - A Savy fica fora da pausa até o dono dizer o contrário.
+- **O ramo da pagante vale só para a assinatura que entrou pagando** (decisão "sem teste grátis",
+  26/11/2026): a ficha com a marca de quem pagou a 1ª mensalidade no balcão, no app de gestão. Só
+  ela recebe o dia da pausa (`pausa_em`, em [assinatura-da-loja.md](assinatura-da-loja.md)) e entra
+  nas listas de pausar e de adormecer. **Savy e IKCOUS ficam fora**: nunca recebem o dia e nunca
+  entram nessas listas; a mensalidade atrasada delas segue o cartão "Atrasada" de sempre.
 - **Enquanto a "pausa de vendas" não existir no servidor**, a loja adormecida continua aceitando
   pedido de quem já estava com ela aberta ou com o app guardado no aparelho, e perde o painel.
   Por isso, hoje, adormecer exige as quatro consultas zeradas, e isso vale também para encerrar.
@@ -112,6 +119,14 @@ pagar. "Dia 0" é o vencimento da mensalidade ou o fim do teste.
   adormece.
 - **Quem roda.** Do dia 30 em diante, quem opera (a sessão, por ordem do dono, ou o dono) roda o
   `--adormecer` da seção seguinte com `--motivo "por <nome>: teste vencido sem pagamento"`.
+- **A pagante atrasada segue a mesma escada (26/11/2026).** Esta seção vale também para a
+  assinatura que entrou pagando e não pagou a mensalidade seguinte (Savy e IKCOUS nunca: veja a
+  regra acima). O dia 0 é o vencimento mais antigo em aberto. O dia da pausa é o dia 0 + 11 dias
+  corridos, empurrado enquanto cair em sexta, sábado, domingo, feriado nacional ou véspera (a conta
+  é do app de gestão, e é a mesma do cartão "Mensalidade em aberto" e do WhatsApp). Do dia da pausa
+  até o dia 29 ela aparece na lista de pausar; a partir do dia 30, na de adormecer, com as mesmas
+  quatro consultas abaixo. O motivo fica `--motivo "por <nome>: mensalidade vencida em DD/MM sem
+  pagamento"`.
 - **Antes, conferir que não há pedido em aberto.** O comando não olha os pedidos (ele só fala com
   a caderneta). Pelo MCP, no banco **da loja** (o `--ref` dela, não o da caderneta), rode esta
   consulta, só leitura:

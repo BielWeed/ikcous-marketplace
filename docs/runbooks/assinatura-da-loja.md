@@ -111,11 +111,24 @@ fica com NULL e o cartão de hoje não muda).
   `DETAIL` `campo: pausa_em`. **Chave ausente grava NULL**: apaga o dia que estava
   guardado. Por isso o app de gestão velho (10 chaves) continua gravando, e
   sempre limpa o dia.
-- **O sinal.** O app de gestão manda `pausa_em` só junto com o sinal do teste
-  encerrado sem pagamento: `status` `atrasada` com `teste_ate` igual a
+- **O sinal.** Para a loja antiga em teste, o app de gestão manda `pausa_em` junto
+  com o sinal do teste encerrado sem pagamento: `status` `atrasada` com `teste_ate` igual a
   `proxima_cobranca_em` (o fim do teste) e `pausa_em` depois desse dia. Fora
-  disso, a chave não vai no corpo. O painel só mostra o cartão "Teste encerrado"
+  disso e do caso da pagante abaixo, a chave não vai no corpo. O painel só mostra o cartão "Teste encerrado"
   com o sinal completo e coerente; sinal torto cai no cartão de sempre.
+- **A pagante atrasada (desde 26/11/2026, decisão "sem teste grátis").**
+  `pausa_em` também chega para a lojista que entrou pagando e atrasou a
+  mensalidade: `status` `atrasada`, `teste_ate` **nulo** e `pausa_em` depois de
+  `proxima_cobranca_em` (o vencimento + 11 dias corridos, empurrado enquanto cair
+  em sexta, sábado, domingo, feriado nacional ou véspera; a conta é do app de
+  gestão). O painel troca "Atrasada" por **"Mensalidade em aberto"** com o mesmo
+  prazo da mensagem de WhatsApp (`avisoDaMensalidadeEmAberto`, em
+  `src/lib/crm.ts`). Savy e IKCOUS nunca recebem o dia: sem `pausa_em` o cartão
+  continua "Atrasada" com "Regularize". Com `teste_ate` preenchido vale o "Teste
+  encerrado" de cima. **A porta e a migration 20261590000000 NÃO mudam**: a chave,
+  o tipo e o recuo são os mesmos. O `COMMENT` da coluna ainda diz que ela "só vem
+  com o sinal do teste encerrado"; isso ficou desatualizado, e quem manda é esta
+  seção.
 - **O recuo (qualquer ordem de publicação é segura).** A porta de uma loja ainda
   sem a migration recusa o corpo novo com HTTP 400 e
   `{code: "22023", message: "campo_nao_permitido", details: "campo: pausa_em"}`,
