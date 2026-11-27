@@ -216,6 +216,18 @@ function FormularioDoCupom({
   const lojaSoRecebePeloApp =
     formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).length === 0;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // ADMIN-060 (o mesmo do formulário de produto): a lojista pode sair da tela
+  // durante o "Salvando…" (internet lenta). Quando a gravação termina, só a
+  // tela ainda montada leva à lista de cupons e zera o aviso de "alterações
+  // não salvas" — senão ela era puxada de volta e o aviso da tela em que
+  // estava agora sumia.
+  const montadoRef = useRef(true);
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => {
+      montadoRef.current = false;
+    };
+  }, []);
   const [previaAberta, setPreviaAberta] = useState(false);
   // null = ainda não editado: exibe o valor carregado sem alterar seus centavos.
   // Inválido permanece visível e vira NaN; só no mínimo vazio significa zero.
@@ -869,6 +881,9 @@ function FormularioDoCupom({
         }
       }
 
+      // Saiu da tela durante o salvar: o cupom foi salvo (o hook já avisou),
+      // mas a navegação e o aviso de "não salvo" agora são de outra tela.
+      if (!montadoRef.current) return;
       if (onSetDirty) onSetDirty(false); // Reset dirty state before navigating
       onNavigate("admin-coupons");
     } catch (error) {
