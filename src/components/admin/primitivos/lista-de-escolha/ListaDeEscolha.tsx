@@ -103,6 +103,9 @@ export function ListaDeEscolha<V extends string>(
       comBusca={comBusca}
       variante={computador ? "popover" : "folha"}
       anelAoAbrir={peloTeclado}
+      // Modo ação (Combinações) é comando, como item de menu: o Tab só sai,
+      // nunca aplica a ação (APG, "menu button").
+      tabConfirma={computador && props.modo !== "acao"}
       aoEscolher={escolher}
       listaRef={listaRef}
       buscaRef={buscaRef}

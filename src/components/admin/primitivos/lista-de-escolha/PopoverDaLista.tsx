@@ -27,9 +27,11 @@ function vizinhoNoTab(campo: HTMLElement, sentido: 1 | -1): HTMLElement | null {
  * folha e a fecharia. Por isso o popover fica travado em 1.1.15
  * (`tests/front/lista-de-escolha-dependencia.test.ts`).
  *
- * Tab e Shift+Tab saem da lista (combobox do APG): ela fecha sem escolher e
- * o foco segue para o campo seguinte (ou o anterior) — o `modal` do Radix
- * prenderia o Tab aqui dentro.
+ * Tab e Shift+Tab saem da lista (combobox do APG): ela fecha e o foco segue
+ * para o campo seguinte (ou o anterior) — o `modal` do Radix prenderia o Tab
+ * aqui dentro. Se o anel de teclado está numa opção diferente da de agora, o
+ * `CorpoDaLista` a escolhe antes (o evento passa por ele primeiro); aberta
+ * pelo mouse e sem andar, o Tab só fecha.
  *
  * Só sintaxe do Tailwind 3.4 (`[var(--x)]`, nunca `(--x)`).
  */

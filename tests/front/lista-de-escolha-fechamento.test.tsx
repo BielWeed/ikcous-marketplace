@@ -2,9 +2,10 @@
 //
 // Lote Z da lista de escolha — as pontas soltas do componente-base:
 //  - campo que TRAVA com a lista aberta (o envio começou): a lista fecha e
-//    nenhuma escolha passa;
+//    nenhuma escolha passa (nem o toque que chega durante a saída animada);
 //  - Tab e Shift+Tab no popover do computador saem dele (combobox do APG): a
-//    lista fecha e o foco segue para o campo seguinte (ou o anterior);
+//    lista fecha e o foco segue para o campo seguinte (ou o anterior) — e, com
+//    o anel numa opção diferente da de agora, escolhem ela antes de sair;
 //  - girar o aparelho ou redimensionar cruzando 1024px com a lista aberta
 //    devolve a entrada que a folha empurrou no histórico;
 //  - a opção que o Enter vai escolher já mostra o anel ouro antes do Enter.
@@ -164,6 +165,53 @@ describe("lista de escolha — campo que trava com a lista aberta", () => {
     expect(document.querySelector('[role="listbox"]')).toBeNull();
     expect(aoMudar).not.toHaveBeenCalled();
   });
+
+  // No navegador a lista sai com animação (`data-[state=closed]:animate-out`)
+  // e o Radix (Presence) a mantém no DOM até a animação acabar: um toque que
+  // chega nesse meio-tempo ainda acerta uma opção. O jsdom não anima nada, então
+  // o `getComputedStyle` daqui dá à lista o nome de animação que o CSS daria
+  // (entrada aberta, saída fechada) — só para ela; o resto segue o original.
+  it.each([
+    ["celular (folha)", false],
+    ["computador (popover)", true],
+  ])(
+    "no %s, o toque durante a saída animada não escolhe",
+    async (_nome, pc) => {
+      computador = pc;
+      const original = window.getComputedStyle.bind(window);
+      vi.stubGlobal(
+        "getComputedStyle",
+        (el: Element, pseudo?: string | null) => {
+          const estilo = original(el, pseudo);
+          if (!(el instanceof HTMLElement) || !el.dataset.listaDeEscolha) {
+            return estilo;
+          }
+          return new Proxy(estilo, {
+            get(alvo, chave) {
+              if (chave === "animationName") {
+                return el.dataset.state === "closed" ? "saida" : "entrada";
+              }
+              const valor = Reflect.get(alvo, chave, alvo);
+              return typeof valor === "function" ? valor.bind(alvo) : valor;
+            },
+          });
+        },
+      );
+      const aoMudar = vi.fn();
+      render(aoMudar, { opcoes: POUCAS, valor: "2" });
+      await act(async () => botao().click());
+
+      render(aoMudar, { desabilitado: true, opcoes: POUCAS, valor: "2" });
+      expect(botao().getAttribute("aria-expanded")).toBe("false");
+      // Ainda no DOM, saindo: é aqui que o toque atrasado chega.
+      const opcao = document.querySelector<HTMLElement>(
+        '[role="option"][data-valor="3"]',
+      );
+      expect(opcao).not.toBeNull();
+      await act(async () => opcao?.click());
+      expect(aoMudar).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("lista de escolha — Tab sai do popover do computador", () => {
@@ -204,6 +252,152 @@ describe("lista de escolha — Tab sai do popover do computador", () => {
     expect(popover()).toBeNull();
     await esperar();
     expect(document.activeElement).toBe(botao());
+  });
+});
+
+// APG, "select-only combobox": o Tab confirma a opção com o anel antes de
+// sair. A lojista desce até "6x", aperta Tab achando que escolheu — e o campo
+// tem de ficar em 6x, não no 12x de antes.
+describe("lista de escolha — Tab confirma a opção com o anel", () => {
+  it("↓ até outra opção e Tab: escolhe ela e leva o foco ao campo seguinte", async () => {
+    computador = true;
+    const aoMudar = vi.fn();
+    render(aoMudar, { opcoes: POUCAS, valor: "2" });
+    botao().focus();
+    tecla(botao(), "ArrowDown");
+    await esperar();
+    const lista = document.activeElement as HTMLElement;
+    expect(lista.getAttribute("role")).toBe("listbox");
+    tecla(lista, "ArrowDown");
+    expect(comAnel()).toEqual(["3"]);
+
+    const evento = tecla(lista, "Tab");
+    expect(evento.defaultPrevented).toBe(true);
+    expect(aoMudar).toHaveBeenCalledTimes(1);
+    expect(aoMudar).toHaveBeenCalledWith("3");
+    expect(popover()).toBeNull();
+    await esperar();
+    expect(document.activeElement?.id).toBe("depois");
+  });
+
+  it("Shift+Tab com o anel: escolhe e leva o foco ao campo anterior", async () => {
+    computador = true;
+    const aoMudar = vi.fn();
+    render(aoMudar, { opcoes: POUCAS, valor: "2" });
+    botao().focus();
+    tecla(botao(), "ArrowDown");
+    await esperar();
+    const lista = document.activeElement as HTMLElement;
+    tecla(lista, "ArrowUp");
+    expect(comAnel()).toEqual(["1"]);
+
+    tecla(lista, "Tab", { shiftKey: true });
+    expect(aoMudar).toHaveBeenCalledTimes(1);
+    expect(aoMudar).toHaveBeenCalledWith("1");
+    expect(popover()).toBeNull();
+    await esperar();
+    expect(document.activeElement?.id).toBe("antes");
+  });
+
+  it("com busca: ↓ até outra opção e Tab escolhe ela", async () => {
+    computador = true;
+    const aoMudar = vi.fn();
+    render(aoMudar, { valor: "12" });
+    await act(async () => botao().click());
+    const busca = document.activeElement as HTMLElement;
+    expect(busca.getAttribute("role")).toBe("combobox");
+    tecla(busca, "ArrowUp");
+    expect(comAnel()).toEqual(["11"]);
+
+    tecla(busca, "Tab");
+    expect(aoMudar).toHaveBeenCalledWith("11");
+    expect(popover()).toBeNull();
+    await esperar();
+    expect(document.activeElement?.id).toBe("depois");
+  });
+
+  it("aberta pelo mouse, sem andar: Tab só fecha, sem escolher", async () => {
+    computador = true;
+    const aoMudar = vi.fn();
+    render(aoMudar, { opcoes: POUCAS, valor: "2" });
+    await act(async () => botao().click());
+    expect(comAnel()).toEqual([]);
+
+    tecla(document.activeElement as HTMLElement, "Tab");
+    expect(popover()).toBeNull();
+    expect(aoMudar).not.toHaveBeenCalled();
+    await esperar();
+    expect(document.activeElement?.id).toBe("depois");
+  });
+
+  it("anel na própria escolhida: Tab fecha sem chamar aoMudar", async () => {
+    computador = true;
+    const aoMudar = vi.fn();
+    render(aoMudar, { opcoes: POUCAS, valor: "2" });
+    botao().focus();
+    tecla(botao(), "ArrowDown");
+    await esperar();
+    expect(comAnel()).toEqual(["2"]);
+
+    tecla(document.activeElement as HTMLElement, "Tab");
+    expect(popover()).toBeNull();
+    expect(aoMudar).not.toHaveBeenCalled();
+  });
+
+  it("modo ação (Combinações): Tab com o anel NÃO aplica a ação, só fecha", async () => {
+    computador = true;
+    const aoEscolher = vi.fn();
+    act(() => {
+      raiz.render(
+        <>
+          <CampoDeEscolha
+            id="combinacao"
+            rotulo="Combinações"
+            modo="acao"
+            placeholder="Escolha uma combinação"
+            opcoes={POUCAS}
+            aoEscolher={aoEscolher}
+          />
+          <input id="depois" aria-label="Campo de depois" />
+        </>,
+      );
+    });
+    const campo = document.getElementById("combinacao") as HTMLButtonElement;
+    campo.focus();
+    tecla(campo, "ArrowDown");
+    await esperar();
+    const lista = document.activeElement as HTMLElement;
+    tecla(lista, "ArrowDown");
+    expect(comAnel()).not.toEqual([]);
+
+    tecla(lista, "Tab");
+    expect(popover()).toBeNull();
+    expect(aoEscolher).not.toHaveBeenCalled();
+  });
+
+  it("no celular (folha), Tab com o anel não escolhe nada", async () => {
+    const aoMudar = vi.fn();
+    render(aoMudar, { opcoes: POUCAS, valor: "2" });
+    botao().focus();
+    tecla(botao(), "ArrowDown");
+    await esperar();
+    const lista = document.querySelector<HTMLElement>(
+      '[role="listbox"]',
+    ) as HTMLElement;
+    tecla(lista, "ArrowDown");
+    expect(comAnel()).toEqual(["3"]);
+
+    tecla(lista, "Tab");
+    expect(aoMudar).not.toHaveBeenCalled();
+    expect(folha()).not.toBeNull();
+
+    // Fecha a folha e espera o `history.back()` dela: a entrada que ela
+    // empurrou não pode sobrar para o teste seguinte (o histórico do jsdom
+    // vive o arquivo inteiro).
+    tecla(document.activeElement as HTMLElement, "Escape");
+    expect(folha()).toBeNull();
+    await esperar(20);
+    expect(history.state?.folhaDePolitica).not.toBe(true);
   });
 });
 

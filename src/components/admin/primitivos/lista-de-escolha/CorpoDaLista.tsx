@@ -46,6 +46,7 @@ export function CorpoDaLista<V extends string>({
   comBusca,
   variante,
   anelAoAbrir = false,
+  tabConfirma = false,
   aoEscolher,
   listaRef,
   buscaRef,
@@ -61,6 +62,12 @@ export function CorpoDaLista<V extends string>({
   readonly variante: "folha" | "popover";
   /** Aberta pelo teclado: o anel já nasce na ativa (a que o Enter escolhe). */
   readonly anelAoAbrir?: boolean;
+  /**
+   * Popover do computador, modo valor: Tab (e Shift+Tab) escolhe a opção com o
+   * anel antes de sair (APG, "select-only combobox"). Quem fecha a lista e leva
+   * o foco ao vizinho é o `PopoverDaLista`.
+   */
+  readonly tabConfirma?: boolean;
   readonly aoEscolher: (valor: V) => void;
   readonly listaRef?: Ref<HTMLDivElement>;
   readonly buscaRef?: Ref<HTMLInputElement>;
@@ -150,6 +157,19 @@ export function CorpoDaLista<V extends string>({
       case "Enter":
         evento.preventDefault();
         escolher(opcaoAtiva);
+        return;
+      case "Tab":
+        // Só com o anel à vista e numa opção que NÃO é a de agora: aberta pelo
+        // mouse e sem andar, o Tab só sai (nada se escolhe sem anel). Sem
+        // `preventDefault`: o `PopoverDaLista` trata o Tab logo acima.
+        if (
+          tabConfirma &&
+          teclado &&
+          opcaoAtiva &&
+          opcaoAtiva.valor !== valorEscolhido
+        ) {
+          escolher(opcaoAtiva);
+        }
         return;
       case " ":
         // Na busca o espaço é letra ("Rio de Janeiro").
