@@ -243,3 +243,34 @@ export function ehConsultaSemResposta(erro: unknown): boolean {
     (erro as { code?: unknown }).code === CODIGO_CONSULTA_SEM_RESPOSTA
   );
 }
+
+// A CONEXÃO CAIU SEM RESPOSTA (27/11/2026): no iPhone, trocar de app no meio
+// de uma gravação derruba o fetch na hora ("Load failed") — o servidor pode
+// já ter gravado. O supabase-js não lança; devolve `{ error }` (formas
+// conferidas em node_modules, 2.117.2):
+// - postgrest-js: `{ message: "TypeError: Failed to fetch", code: "" }`
+//   (objeto simples no `.catch` do `then`, `PostgrestError` no
+//   `toTransportFailure`). O texto de rede é o que separa a queda de um corpo
+//   HTTP sem código (502 de gateway): esse o servidor respondeu.
+// - functions-js: `FunctionsFetchError` (o fetch da edge rejeitou). Também
+//   aparece com a função não publicada (gateway sem CORS); tratar como
+//   incerto só pede para conferir antes de repetir.
+// Fica de fora de propósito o `ehGravacaoIncerta` (todo erro sem código é
+// incerto, inclusive o HTTP com corpo) e o `AbortError` (o app cancelou).
+const MENSAGEM_DE_FETCH_QUE_CAIU =
+  /^TypeError: (failed to fetch|load failed|networkerror|network request failed)/i;
+
+export function ehConexaoCaiuSemResposta(erro: unknown): boolean {
+  if (typeof erro !== "object" || erro === null) return false;
+  const { code, name, message } = erro as {
+    code?: unknown;
+    name?: unknown;
+    message?: unknown;
+  };
+  if (name === "FunctionsFetchError") return true;
+  return (
+    code === "" &&
+    typeof message === "string" &&
+    MENSAGEM_DE_FETCH_QUE_CAIU.test(message)
+  );
+}
