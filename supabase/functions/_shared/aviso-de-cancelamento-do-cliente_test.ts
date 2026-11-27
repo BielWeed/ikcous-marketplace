@@ -555,3 +555,64 @@ Deno.test("aviso de cancelamento: o toque leva ao pedido do aviso — id na url,
     assertEquals(montarAvisoDeCancelamento({ id: PEDIDO, ...extra }, historico).url, `/admin-orders?id=${PEDIDO}`);
   }
 });
+
+// 27/11/2026 (caça): a cliente pode cancelar pedido em `processing` que JÁ TEM
+// etiqueta paga no Melhor Envio. O banco devolve o estoque e abre o reembolso,
+// mas cancelar o pedido NÃO cancela a etiqueta: o saldo segue gasto e o pacote
+// pode até já estar no correio. O aviso dizia só "pago, o reembolso é
+// automático". A frase da etiqueta é a mesma do sino do painel
+// (`src/utils/avisos-do-lojista.ts`).
+const FRASE_DA_ETIQUETA =
+  "Esse pedido já tinha etiqueta de envio: se ainda não postou, cancele a etiqueta no Melhor Envio para recuperar o valor; se já postou, fale com a cliente.";
+
+Deno.test("cliente cancelou pedido PAGO em processing com ETIQUETA paga -> aviso fala da etiqueta (lida do banco)", async () => {
+  const r = await rodar({
+    historico: [hist("h1", { old_status: "processing" })],
+    pedidos: [pedido({ shipping_label_id: "label-123" })],
+    perfis,
+  });
+  assertEquals(r.avisos.length, 1);
+  assertEquals(
+    r.avisos[0].aviso.body,
+    `#4F5A6B · R$ 149,90 · Maria Silva — pago, o reembolso é automático. ${FRASE_DA_ETIQUETA}`,
+  );
+});
+
+Deno.test("etiqueta paga em pedido SEM pagamento online e ainda não saído -> aviso também fala da etiqueta", () => {
+  const aviso = montarAvisoDeCancelamento(
+    pedido({ payment_status: null, shipping_label_id: "label-123" }),
+    { old_status: "processing" },
+  );
+  assertEquals(
+    aviso.body,
+    `#4F5A6B · R$ 149,90 · Maria Silva — sem pagamento pelo app: não separe nem envie. ${FRASE_DA_ETIQUETA}`,
+  );
+});
+
+Deno.test("etiqueta paga em pedido que JÁ SAIU -> sem a frase da etiqueta (ela já foi usada)", () => {
+  for (const [extra, historico] of [
+    [{ cancelled_after_shipping: true }, { old_status: "processing" }],
+    [{ cancelled_after_shipping: false }, { old_status: "shipping" }],
+  ] as const) {
+    const aviso = montarAvisoDeCancelamento(
+      pedido({ shipping_label_id: "label-123", ...extra }),
+      historico,
+    );
+    assertStringIncludes(aviso.body, "o produto já saiu");
+    assertEquals(aviso.body.includes("etiqueta"), false, JSON.stringify(extra));
+  }
+});
+
+Deno.test("sem etiqueta (nula, vazia ou só espaços) -> texto de sempre, sem falar de etiqueta", () => {
+  for (const shipping_label_id of [null, undefined, "", "   "]) {
+    const aviso = montarAvisoDeCancelamento(
+      pedido({ shipping_label_id }),
+      { old_status: "processing" },
+    );
+    assertEquals(
+      aviso.body,
+      "#4F5A6B · R$ 149,90 · Maria Silva — pago, o reembolso é automático",
+      String(shipping_label_id),
+    );
+  }
+});

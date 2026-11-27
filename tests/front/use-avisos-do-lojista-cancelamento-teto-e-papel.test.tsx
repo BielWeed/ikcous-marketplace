@@ -163,6 +163,18 @@ describe("useAvisosDoLojista — cancelamento do cliente: teto e quem e excluido
     expect(limite?.[1]).toBe(100);
   });
 
+  // 27/11/2026: o aviso fala da etiqueta ja paga (`etiquetaPaga`) so se a
+  // leitura trouxer a coluna; sem ela o pedido chega sem etiqueta e o aviso
+  // volta a dizer so "o reembolso e automatico".
+  it("pede o shipping_label_id do pedido embutido (o aviso da etiqueta paga depende dele)", async () => {
+    await montar();
+
+    const selecao = chamadasDoHistorico.find((c) => c[0] === "select");
+    expect(String(selecao?.[1])).toMatch(
+      /marketplace_orders\([^)]*\bshipping_label_id\b/,
+    );
+  });
+
   it("so o papel admin e excluido: cliente e perfil SEM papel continuam virando aviso", async () => {
     historico.resposta = {
       data: [

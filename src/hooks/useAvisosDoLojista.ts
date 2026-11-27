@@ -272,7 +272,7 @@ async function buscarCancelamentosDoCliente(): Promise<LeituraDeCancelamentos> {
   const { data, error, count } = await supabase
     .from("marketplace_order_history")
     .select(
-      "id, order_id, old_status, created_by, created_at, marketplace_orders(id, user_id, customer_name, total, payment_status, status, cancelled_after_shipping, returned_to_seller_at, customer_data->>pickup_address)",
+      "id, order_id, old_status, created_by, created_at, marketplace_orders(id, user_id, customer_name, total, payment_status, status, cancelled_after_shipping, returned_to_seller_at, shipping_label_id, customer_data->>pickup_address)",
       { count: "exact" },
     )
     .eq("new_status", "cancelled")
