@@ -26,7 +26,7 @@ import {
   parametrosPorForaAposEspera,
 } from "@/lib/reembolso-em-duvida";
 import { supabase } from "@/lib/supabase";
-import { formatCurrency } from "@/lib/utils";
+import { arredondarParaCentavos, formatCurrency } from "@/lib/utils";
 
 /** Status possíveis de uma linha de `order_refunds` (Task 1 do plano-mãe de
  * estorno, `20260907-plano-estorno-pelo-app.md`). */
@@ -58,10 +58,6 @@ export interface LinhaEstornoDoPedido {
   /** Servidor: o reembolso manual tomou o lugar desta linha. */
   substituida_por_manual: boolean;
   eh_pix: boolean;
-  /** A chave da intenção com que a linha nasceu (`solicitar_estorno_com_chave`,
-   * 20261640000000); `null` nas das outras portas e nas de antes. Opcional só
-   * para quem monta a linha à mão (o hook sempre a lê). */
-  chave_da_solicitacao?: string | null;
 }
 
 /** Colunas de exibição lidas de `order_refunds` (texto da linha). */
@@ -151,8 +147,10 @@ const textoSemResposta = (numero: string) =>
   `Devolução do pedido #${numero}: sem resposta da rede. Não dá para saber se a devolução foi registrada. Confira a lista de devoluções antes de tentar de novo.`;
 // A mesma intenção chegou de novo e o servidor já a tinha registrado (a
 // primeira tentativa chegou, a resposta é que se perdeu): nada novo foi pedido.
-const textoJaRegistrada = (numero: string) =>
-  `Pedido #${numero}: esta devolução já estava registrada (o primeiro envio chegou). Acompanhe a linha na lista.`;
+// A intenção acabou aqui, então o aviso ensina a saída da devolução LEGÍTIMA de
+// igual valor (outro item): o próximo toque já vai com chave nova.
+const textoJaRegistrada = (numero: string, valor: string) =>
+  `Pedido #${numero}: esta devolução de ${valor} já estava registrada (o primeiro envio chegou) — é a que aparece na lista. Se você quer devolver MAIS ${valor}, toque em Devolver de novo.`;
 
 /**
  * Junta o texto de `order_refunds` ao veredito do servidor. Linha que o
@@ -245,7 +243,7 @@ export function useEstornosDoPedido(
           supabase
             .from("order_refunds")
             .select(
-              "id, amount, status, solicitado_por, mp_status, mp_status_detail, tentativas, ultimo_erro, motivo, created_at, concluido_em, chave_da_solicitacao",
+              "id, amount, status, solicitado_por, mp_status, mp_status_detail, tentativas, ultimo_erro, motivo, created_at, concluido_em",
             )
             .eq("order_id", orderId)
             .order("created_at", { ascending: true }),
@@ -331,7 +329,7 @@ export function useEstornosDoPedido(
 
   const solicitarEstorno = useCallback(
     async ({
-      amount,
+      amount: valorDigitado,
       motivo,
       repetindo,
     }: {
@@ -340,25 +338,21 @@ export function useEstornosDoPedido(
       repetindo?: string;
     }) => {
       if (enviandoRef.current) return;
+      // O valor em centavos UMA vez, como o servidor o grava (`round(p_amount, 2)`, metade para longe do
+      // zero): a chave e o `p_amount` saem do MESMO número. Sem isso, 1,005 e 1 caem na mesma chave (100
+      // centavos), o servidor grava 1,01, compara com 1,00 e recusa a chave (P0001) por 30 min.
+      const amount = arredondarParaCentavos(valorDigitado);
       enviandoRef.current = true;
       setEnviando(true);
       const numero = numeroDoPedido(orderId);
       // A chave da INTENÇÃO (pedido + valor), a mesma em toda retentativa dela — inclusive depois do
       // "não dá para saber", de reabrir a ficha ou de recarregar a página (20261640000000). O servidor
       // devolve a linha que já tem a chave em vez de criar outra. O "Tentar de novo" não leva chave: o
-      // servidor já reconhece a linha falhada que se repete. Se a lista em tela JÁ mostra a linha da chave
-      // guardada, a intenção chegou (a resposta é que se perdeu) e a lojista a vê: este toque é uma devolução
-      // A MAIS e leva chave nova — repetir a velha faria o servidor responder "já registrada" e o cliente
-      // deixaria de receber. Lista que ainda não a mostra = retentativa: repete a chave.
-      const confirmadas = new Set<string>();
-      for (const linha of linhasRef.current) {
-        if (linha.chave_da_solicitacao) {
-          confirmadas.add(linha.chave_da_solicitacao);
-        }
-      }
-      const chave = repetindo
-        ? null
-        : chaveDaDevolucao(orderId, amount, Date.now(), confirmadas);
+      // servidor já reconhece a linha falhada que se repete. A LISTA em tela não gira a chave: depois de a
+      // rede cair (o servidor gravou, a resposta se perdeu) a lista relida já mostra a linha, e o toque do
+      // "tente de novo" é a MESMA intenção — chave nova ali pagaria em dobro. Só a resposta do servidor
+      // encerra a intenção; a devolução legítima de igual valor passa pelo "já registrada" (aviso abaixo).
+      const chave = repetindo ? null : chaveDaDevolucao(orderId, amount);
       // O servidor confirmou a intenção (linha criada ou já registrada): a próxima é intenção nova.
       const encerrarIntencao = (dados: unknown) => {
         if (
@@ -404,17 +398,17 @@ export function useEstornosDoPedido(
           // valendo o estado real, com a linha do estorno se ela existir.
           toast.warning(textoSemResposta(numero), { duration: 15_000 });
           await relerAteValer();
-          // A resposta tardia só relê (registrada DEPOIS da releitura acima,
-          // para nunca descartá-la e soltar o botão sobre o saldo antigo). Se
-          // ela confirmar a linha, a intenção acabou: a próxima é nova. Sem
-          // ela, a chave fica e o próximo toque de igual valor a repete.
+          // A resposta tardia SÓ relê (registrada DEPOIS da releitura acima,
+          // para nunca descartá-la e soltar o botão sobre o saldo antigo). Ela
+          // NÃO encerra a intenção: chega em silêncio, com o botão já solto e a
+          // tela ainda com o saldo de antes — encerrar aqui faria o próximo
+          // toque de igual valor sair com chave nova, em dobro. A chave fica: o
+          // próximo toque a repete e o servidor responde "já registrada" (com o
+          // aviso que a lojista vê), e só aí a intenção acaba.
           const reler = () => {
             if (ativoRef.current) void carregar();
           };
-          void pedidoAoServidor.then((tardia) => {
-            if (!tardia.error) encerrarIntencao(tardia.data);
-            reler();
-          }, reler);
+          void pedidoAoServidor.then(reler, reler);
           return;
         }
         const { data, error } = resposta;
@@ -463,7 +457,20 @@ export function useEstornosDoPedido(
           (data as unknown as { ja_registrada?: boolean } | null)
             ?.ja_registrada === true;
         if (jaRegistrada) {
-          toast.info(textoJaRegistrada(numero));
+          // O valor é o da linha que o servidor JÁ tinha (é ela que a lista mostra).
+          const valorDaLinha = (data as unknown as { amount?: unknown } | null)
+            ?.amount;
+          toast.info(
+            textoJaRegistrada(
+              numero,
+              formatCurrency(
+                typeof valorDaLinha === "number" &&
+                  Number.isFinite(valorDaLinha)
+                  ? valorDaLinha
+                  : amount,
+              ),
+            ),
+          );
           await carregar();
           return;
         }

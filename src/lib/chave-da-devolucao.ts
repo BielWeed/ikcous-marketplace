@@ -16,7 +16,10 @@
 // página, é retentativa real (o mesmo motivo de `chave-do-pedido.ts`). A
 // validade de 30 min (criação + 30 min, nunca estendida) impede que a
 // devolução de amanhã, de igual valor, herde a de hoje. Sem localStorage
-// (navegador que recusa), a chave ainda vale na aba.
+// (navegador que recusa, ou leitura que falha), a chave ainda vale na aba.
+// Quando o localStorage RESPONDE (registro ou "não há"), ele é a única fonte: a
+// memória da aba não o completa — senão a chave que outra aba encerrou (o
+// servidor confirmou lá) voltaria por aqui.
 //
 // UMA CHAVE POR VALOR (pedido + centavos), não uma por pedido: R$ 50 presa na
 // trava do pedido, depois R$ 60, depois R$ 50 de novo — se a de R$ 60
@@ -24,14 +27,13 @@
 // gravasse, nasceriam duas linhas de R$ 50.
 //
 // Intenção NOVA = chave nova: outro valor (centavos), outro pedido, ou depois
-// de a intenção ser CONFIRMADA — pela resposta do servidor
-// (`encerrarChaveDaDevolucao`) ou pela LISTA que a lojista vê, quando ela já
-// mostra a linha criada com a chave (`confirmadas` em `chaveDaDevolucao`). Sem
-// a segunda, a resposta perdida deixava a chave viva por 30 min e a segunda
-// devolução legítima de igual valor (outro item) voltava como "já registrada":
-// o cliente deixava de receber. A lista decide no TOQUE, com o que a tela
-// mostra: se ela ainda não mostra a linha, o toque é retentativa e repete a
-// chave (o servidor devolve a linha que já existe, se existir).
+// de o SERVIDOR confirmar a anterior (`encerrarChaveDaDevolucao`, inclusive com
+// "já registrada"). A LISTA em tela NÃO decide: a rede cai depois de o servidor
+// gravar, a tela diz "tente de novo" e a lista relida já mostra a linha — girar
+// a chave ali transformava a retentativa em SEGUNDA devolução (o cliente
+// recebia em dobro). A devolução legítima de igual valor (outro item) custa um
+// toque a mais: o primeiro volta "já registrada" (o aviso explica), encerra a
+// intenção, e o seguinte leva chave nova.
 
 import { PRAZO_DA_RETENTATIVA_MS } from "./pedido-sem-resposta";
 import { gerarUuidV4 } from "./uuid-v4";
@@ -92,6 +94,8 @@ function valido(
   return r as RegistroDaDevolucao;
 }
 
+/** `undefined` = sem localStorage ou ilegível (só então a memória da aba
+ * vale); `null` = o localStorage respondeu que não há registro. */
 function lerDoStorage(endereco: string): unknown {
   const s = armazenamento();
   if (!s) return undefined;
@@ -123,10 +127,15 @@ function ler(
   agora: number,
 ): RegistroDaDevolucao | null {
   const endereco = enderecoDe(orderId, centavos);
+  const doStorage = lerDoStorage(endereco);
+  // O localStorage respondeu: ele é a única fonte (o que ele não tem, outra
+  // aba pode ter encerrado). A memória só vale quando ele falta.
+  const atual =
+    doStorage === undefined
+      ? valido(naMemoria.get(endereco), centavos, agora)
+      : valido(doStorage, centavos, agora);
   return (
-    valido(lerDoStorage(endereco), centavos, agora) ??
-    valido(naMemoria.get(endereco), centavos, agora) ??
-    valido(lerDoStorage(enderecoAntigoDe(orderId)), centavos, agora)
+    atual ?? valido(lerDoStorage(enderecoAntigoDe(orderId)), centavos, agora)
   );
 }
 
@@ -148,26 +157,19 @@ function centavosDe(valor: number): number {
   return Math.round(valor * 100);
 }
 
-const NENHUMA: ReadonlySet<string> = new Set();
-
 /**
- * A chave da intenção "devolver `valor` do pedido `orderId`": a mesma enquanto
- * a intenção não for encerrada (até 30 min); cada valor tem a sua. `confirmadas`
- * = as chaves das linhas que a lista em tela JÁ mostra: se a chave guardada
- * está ali, a intenção chegou e a lojista a vê — este toque é intenção nova.
+ * A chave da intenção "devolver `valor` do pedido `orderId`": a mesma em toda
+ * tentativa até o servidor confirmar (`encerrarChaveDaDevolucao`) ou vencer
+ * (30 min); cada valor tem a sua.
  */
 export function chaveDaDevolucao(
   orderId: string,
   valor: number,
   agora: number = Date.now(),
-  confirmadas: ReadonlySet<string> = NENHUMA,
 ): string {
   const centavos = centavosDe(valor);
   const atual = ler(orderId, centavos, agora);
-  if (atual && !confirmadas.has(atual.chave)) return atual.chave;
-  // A confirmada não pode ressurgir por baixo da nova (o formato antigo é lido
-  // por último): sai antes.
-  if (atual) apagarDoStorage(enderecoAntigoDe(orderId), atual.chave);
+  if (atual) return atual.chave;
   const novo: RegistroDaDevolucao = {
     centavos,
     chave: gerarUuidV4(),
