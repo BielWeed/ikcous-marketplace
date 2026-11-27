@@ -531,6 +531,7 @@ export function AdminFinanceiroView({
       case "novo-lancamento":
         return (
           <NovoLancamentoFolha
+            key={user?.id ?? "sem-autor"}
             autorId={user?.id ?? null}
             hoje={hoje}
             contas={listaDeContas}

@@ -2,9 +2,11 @@
 //
 // A chave anti-repetição de um lançamento do Financeiro que ficou "pode ter
 // sido salvo" (src/components/admin/financeiro/tentativasEmAberto.ts) é de quem
-// lançou: o "Sair" a esquece nos dois caminhos de saída (`SIGNED_OUT` e o
-// `logout()` com o `signOut()` falhando), e a limpeza quebrada nunca segura o
-// Sair. A trava principal é o dono gravado junto da chave; esta é a faxina.
+// lançou e SOBREVIVE ao "Sair": a lojista com rede ruim que salva, vê "pode ter
+// sido salvo", sai (até com o `signOut()` falhando) e entra de novo na mesma aba
+// reaproveita a chave — salvar igual não duplica o lançamento. Outra conta que
+// entra na aba nunca a herda (o dono vai gravado junto da chave), e o prazo de
+// 10 minutos continua valendo para quem volta.
 //
 // Andaime: o MESMO de checkout-recibo-limpa-no-logout.test.tsx.
 import { act, useContext } from "react";
@@ -17,6 +19,8 @@ import {
 } from "@/components/admin/financeiro/tentativasEmAberto";
 
 const CONTEUDO = JSON.stringify({ descricao: "Aluguel", valor: 120 });
+const ARMAZEM = "fin-lancamento-tentativas-em-aberto";
+const DEZ_MINUTOS = 10 * 60_000;
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
@@ -114,7 +118,7 @@ function sessaoDe(userId: string) {
   };
 }
 
-describe("chave em aberto do Financeiro — esquecida no logout", () => {
+describe("chave em aberto do Financeiro — sobrevive ao Sair, só para quem lançou", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -178,63 +182,100 @@ describe("chave em aberto do Financeiro — esquecida no logout", () => {
     return { callback: () => callback, aoAtualizar };
   }
 
-  it("SIGNED_OUT esquece a chave em aberto de quem saiu", async () => {
+  it("SIGNED_OUT e a mesma conta volta: reaproveita a chave (não duplica)", async () => {
     const { callback, aoAtualizar } = await montarLogado();
     expect(ultimoEstado(aoAtualizar)?.userId).toBe("user-a");
     guardarChaveEmAberto("user-a", CONTEUDO, "chave-da-a");
-    expect(chaveEmAbertoDoConteudo("user-a", CONTEUDO)).toBe("chave-da-a");
 
-    const cb = callback();
     await act(async () => {
-      cb("SIGNED_OUT", null);
+      callback()("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+    expect(ultimoEstado(aoAtualizar)?.userId).toBeNull();
+    await act(async () => {
+      callback()("SIGNED_IN", sessaoDe("user-a"));
       await esperarMicrotarefas();
     });
 
-    expect(chaveEmAbertoDoConteudo("user-a", CONTEUDO)).toBeNull();
+    expect(ultimoEstado(aoAtualizar)?.userId).toBe("user-a");
+    expect(chaveEmAbertoDoConteudo("user-a", CONTEUDO)).toBe("chave-da-a");
   });
 
-  it("logout() com signOut() falhando (rede caída) também esquece", async () => {
-    const { aoAtualizar } = await montarLogado();
+  it("logout() com signOut() falhando (rede caída) não toca nas chaves; a mesma conta volta e reaproveita", async () => {
+    const { callback, aoAtualizar } = await montarLogado();
     const { supabase } = await import("@/lib/supabase");
     guardarChaveEmAberto("user-a", CONTEUDO, "chave-da-a");
     (
       supabase.auth.signOut as unknown as ReturnType<typeof vi.fn>
     ).mockResolvedValue({ error: { message: "Failed to fetch" } });
-
-    const estado = ultimoEstado(aoAtualizar)!;
-    await act(async () => {
-      await estado.logout();
-      await esperarMicrotarefas();
-    });
-
-    expect(chaveEmAbertoDoConteudo("user-a", CONTEUDO)).toBeNull();
-    expect(ultimoEstado(aoAtualizar)?.userId).toBeNull();
-  });
-
-  it("armazenamento que lança ao esquecer não segura o Sair", async () => {
-    const { aoAtualizar } = await montarLogado();
-    const { supabase } = await import("@/lib/supabase");
-    guardarChaveEmAberto("user-a", CONTEUDO, "chave-da-a");
     const armazem = sessionStorage as unknown as {
       setItem: (k: string, v: string) => void;
+      removeItem: (k: string) => void;
     };
-    const original = armazem.setItem;
+    const escreverNasChaves = vi.fn();
+    const setItem = armazem.setItem;
+    const removeItem = armazem.removeItem;
     armazem.setItem = (k, v) => {
-      if (k === "fin-lancamento-tentativas-em-aberto") {
-        throw new Error("QuotaExceededError");
-      }
-      original(k, v);
+      if (k === ARMAZEM) escreverNasChaves("setItem");
+      setItem(k, v);
     };
-    (
-      supabase.auth.signOut as unknown as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ error: { message: "Failed to fetch" } });
+    armazem.removeItem = (k) => {
+      if (k === ARMAZEM) escreverNasChaves("removeItem");
+      removeItem(k);
+    };
 
     const estado = ultimoEstado(aoAtualizar)!;
     await act(async () => {
       await estado.logout();
       await esperarMicrotarefas();
     });
-
     expect(ultimoEstado(aoAtualizar)?.userId).toBeNull();
+    expect(escreverNasChaves).not.toHaveBeenCalled();
+
+    await act(async () => {
+      callback()("SIGNED_IN", sessaoDe("user-a"));
+      await esperarMicrotarefas();
+    });
+    expect(chaveEmAbertoDoConteudo("user-a", CONTEUDO)).toBe("chave-da-a");
+  });
+
+  it("outra conta que entra na mesma aba depois do Sair não herda a chave", async () => {
+    const { callback, aoAtualizar } = await montarLogado();
+    guardarChaveEmAberto("user-a", CONTEUDO, "chave-da-a");
+
+    await act(async () => {
+      callback()("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      callback()("SIGNED_IN", sessaoDe("user-b"));
+      await esperarMicrotarefas();
+    });
+
+    expect(ultimoEstado(aoAtualizar)?.userId).toBe("user-b");
+    expect(chaveEmAbertoDoConteudo("user-b", CONTEUDO)).toBeNull();
+    // A chave continua da A, só dela.
+    expect(chaveEmAbertoDoConteudo("user-a", CONTEUDO)).toBe("chave-da-a");
+  });
+
+  it("quem volta depois dos 10 minutos já não reaproveita: o prazo continua valendo", async () => {
+    const { callback } = await montarLogado();
+    const agora = Date.now();
+    const relogio = vi.spyOn(Date, "now").mockReturnValue(agora);
+    guardarChaveEmAberto("user-a", CONTEUDO, "chave-da-a");
+
+    await act(async () => {
+      callback()("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      callback()("SIGNED_IN", sessaoDe("user-a"));
+      await esperarMicrotarefas();
+    });
+
+    relogio.mockReturnValue(agora + DEZ_MINUTOS);
+    expect(chaveEmAbertoDoConteudo("user-a", CONTEUDO)).toBe("chave-da-a");
+    relogio.mockReturnValue(agora + DEZ_MINUTOS + 1);
+    expect(chaveEmAbertoDoConteudo("user-a", CONTEUDO)).toBeNull();
   });
 });
