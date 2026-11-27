@@ -4939,10 +4939,15 @@ export function useOrders(
           localStorage.setItem(chaveDaFila, JSON.stringify(cleanQueue));
 
           if (!silent) {
-            toast.info("Alteração de status guardada offline.", {
-              description:
-                "Será sincronizada com o servidor quando reestabelecer conexão.",
-            });
+            // Diz QUAL pedido foi guardado: com vários mudados sem internet,
+            // avisos iguais não diziam à lojista o que ficou para enviar.
+            toast.info(
+              `Alteração de status do pedido #${numeroDoPedido(orderId)} guardada offline.`,
+              {
+                description:
+                  "Será sincronizada com o servidor quando reestabelecer conexão.",
+              },
+            );
           }
           // Quem chamou decide o aviso à cliente pelo que aconteceu AQUI, não
           // por um "estou offline" capturado no render (a rede pode ter caído

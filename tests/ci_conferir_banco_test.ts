@@ -600,6 +600,173 @@ Deno.test("201a/201b — rol fechado, um statement so de catalogo, md5 do pre-vo
     );
 });
 
+// 205 (27/11/2026): o lote da 20261645000000 (o aviso do vale-troca diz que a loja combina). Rol fechado de 3 linhas, o mesmo na
+// 205a e na 205b, so catalogo; a 205a espera o corpo desta e a 205b o vigente (o da 20261241000000) ou o desta. Os md5 saem do
+// PRE-VOO da propria migration e sao RECALCULADOS dos arquivos (o desta e o da 1241, que o rollback devolve byte a byte); as
+// consultas da antecessora (28a, 43a) aceitam o desta como sucessora.
+Deno.test("205a/205b — rol fechado, um statement so de catalogo, md5 do pre-voo da 20261645000000 recalculado dos arquivos, menu, rpc-ci, release e lote no canais", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { createHash } = require("node:crypto");
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A205 =
+    "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado";
+  const B205 =
+    "205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente";
+  const NOME =
+    "20261645000000_o_aviso_do_vale_troca_diz_que_a_loja_combina.sql";
+  const migration = await Deno.readTextFile(`${MIGRATIONS_DIR}/${NOME}`);
+  const rollback = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/rollback-manual-${NOME}`,
+  );
+  const m1241 = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql`,
+  );
+  const par = /NOT IN \('([0-9a-f]{32})', '([0-9a-f]{32})'\)/.exec(migration);
+  assert(par, "o pre-voo cita (vigente, desta)");
+  const [, vigente, desta] = par;
+  const corpo = (sql: string) => {
+    const i = sql.lastIndexOf(
+      "CREATE OR REPLACE FUNCTION public.devolucao_avisa_o_cliente()",
+    );
+    assert(i >= 0, "funcao nao achada");
+    const a = sql.indexOf("$avisa_o_cliente$", i) + "$avisa_o_cliente$".length;
+    return sql.slice(a, sql.indexOf("$avisa_o_cliente$", a)).replace(/\r/g, "");
+  };
+  const md5 = (s: string) =>
+    createHash("md5").update(s).digest("hex") as string;
+  assertEquals(md5(corpo(migration)), desta, "o md5 desta e' o do arquivo");
+  assertEquals(md5(corpo(m1241)), vigente, "o vigente e' o da 1241");
+  assertEquals(
+    md5(corpo(rollback)),
+    vigente,
+    "o rollback devolve o da 1241 byte a byte",
+  );
+  assertEquals(
+    corpo(rollback),
+    corpo(m1241),
+    "o rollback e' o corpo da 1241 byte a byte",
+  );
+  // So a frase do vale (e o comentario dela) muda.
+  assert(!corpo(migration).includes("foi emitido"));
+  assertStringIncludes(
+    corpo(migration),
+    "' foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja.'",
+  );
+  assertEquals(
+    corpo(m1241)
+      .split("\n")
+      .filter((l) => !corpo(migration).split("\n").includes(l)),
+    [
+      "          ELSE 'O vale-troca da devolução ' || NEW.protocolo || ' foi emitido.'",
+    ],
+  );
+  const itens = [
+    "devolucao_avisa_o_cliente: corpo exato (md5), o aviso do vale diz que a loja combina",
+    "devolucao_avisa_o_cliente: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno trigger, search_path=public, sem EXECUTE de PUBLIC, anon nem authenticated",
+    "tr_devolucao_avisa_o_cliente: em devolucoes, ligado, chama a funcao",
+  ];
+  for (const consulta of [A205, B205]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(
+      !/FROM\s+public\.(devolucoes|notificacoes)\b/i.test(limpo),
+      `${consulta}: le so catalogo`,
+    );
+    assertStringIncludes(menu, `- ${consulta}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A205}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B205}.sql`),
+  );
+  // A 205a aceita SO o corpo desta; a 205b, o vigente OU o desta (reaplicacao idempotente).
+  assertStringIncludes(sqlA, `= '${desta}'`);
+  assert(!sqlA.includes(vigente), "a 205a nao pode aceitar o corpo vigente");
+  assertStringIncludes(sqlB, `IN ('${vigente}', '${desta}')`);
+  // As consultas da antecessora aceitam o corpo desta como SUCESSORA: senao reprovam em toda loja depois do apply.
+  const ler = async (prefixo: string) =>
+    sqlSemComentarios(
+      await Deno.readTextFile(
+        `${CONSULTAS_DIR}/${listarConsultas().find((c: string) => c.startsWith(prefixo))}.sql`,
+      ),
+    );
+  assertStringIncludes(await ler("28a-"), `'${desta}'`);
+  assertStringIncludes(
+    (await ler("43a-")).replace(/\s+/g, " "),
+    `WHEN t.chave = 'avisa' AND md5(replace(p.prosrc, chr(13), '')) = '${desta}' THEN t.hash_desta`,
+  );
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/o-aviso-do-vale-troca-diz-que-a-loja-combina-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A205,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261645000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B205);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 205a: ${chave} nao se aplica`);
+  const ordem = canais.provasDeObjetos.map(
+    (p: { consulta: string }) => p.consulta,
+  );
+  const a43 = "43a-conferir-reembolso-em-duvida-aplicado";
+  assert(
+    ordem.indexOf(a43) >= 0 && ordem.indexOf(a43) < ordem.indexOf(A205),
+    "o lote da 205a vem depois do da 43a",
+  );
+});
+
 // 129: medicao ANTES; nao autoriza apply nem registra uma prova de pos-aplicacao.
 const CONSULTAS_129 = [
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
@@ -15357,10 +15524,11 @@ Deno.test("43a/43b — as consultas dos lotes 28, 29 e 8e aceitam o corpo da 202
   );
   const limpo28 = sqlSemComentarios(a28).replace(/\s+/g, " ");
   const limpo29 = sqlSemComentarios(a29).replace(/\s+/g, " ");
-  // 28a: avisa_o_cliente aceita o da 1225 OU o da 1241 e mostra o da 1225
+  // 28a: avisa_o_cliente aceita o da 1225, o da 1241 OU o da 20261645000000 (a sucessora da 1241: so a frase do vale muda) e mostra
+  // o da 1225
   assertStringIncludes(
     limpo28,
-    "CASE WHEN f.m IN ('2cd21f47021cafc15cae4ccd0c8c67e5', '56502b960dcf3e136c1d0d5c41091c20') THEN '2cd21f47021cafc15cae4ccd0c8c67e5' ELSE f.m END FROM fn f WHERE f.chave = 'avisa'",
+    "CASE WHEN f.m IN ('2cd21f47021cafc15cae4ccd0c8c67e5', '56502b960dcf3e136c1d0d5c41091c20', '68792e520aa47e6e62330718430d82a8') THEN '2cd21f47021cafc15cae4ccd0c8c67e5' ELSE f.m END FROM fn f WHERE f.chave = 'avisa'",
   );
   // 29a: reemitir e por fora, cada um com o PROPRIO sucessor
   assertStringIncludes(
@@ -16940,6 +17108,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
     // 20261643000000: as listas dos ajustes nao somem entre aparelhos.
     "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado",
+    // 20261645000000: o aviso do vale-troca diz que a loja combina.
+    "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos
