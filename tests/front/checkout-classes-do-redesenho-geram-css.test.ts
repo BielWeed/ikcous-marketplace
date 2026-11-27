@@ -166,6 +166,9 @@ const NAO_E_CLASSE = new Set([
   "guest-neighborhood",
   "guest-city",
   "guest-state",
+  // id do campo de CEP da conta sem endereço salvo (CAMPO_DO_INPUT e o foco
+  // da pendência da barra), não classe
+  "checkout-cep-conta",
   "calculate-shipping",
   "sem-destino",
   "cupom-aplicado",
