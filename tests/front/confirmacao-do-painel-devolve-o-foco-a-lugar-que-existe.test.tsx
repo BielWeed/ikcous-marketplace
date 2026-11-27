@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 //
 // Caça de leitor de tela: ao fechar a pergunta "tem certeza?" (useConfirmarAcao)
-// o Radix devolve o foco ao botão que a abriu — mas no "sim" esse botão fica
-// desligado ("Devolvendo…") ou some (pedido cancelado), o foco não entra nele
-// e cai no body: o leitor de tela fica sem lugar. O gancho agora leva o foco ao
-// alvo estável que o chamador informa (o título do cartão), como o
-// AdminOrderCard já fazia na folha de ações.
+// o Radix (react-dialog 1.1.15) cancela a volta automática do foco e tenta
+// focar o gatilho (`Trigger`) da janela — esta pergunta não tem gatilho, então
+// o foco caía no body e o leitor de tela ficava sem lugar. O gancho agora volta
+// ao botão que a abriu quando ele segue na tela e ligado; no "sim" ele fica
+// desligado ("Devolvendo…") ou some (pedido cancelado), e o foco vai ao alvo
+// estável que o chamador informa (o título do cartão), como o AdminOrderCard
+// já fazia na folha de ações.
 import { act, useRef, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

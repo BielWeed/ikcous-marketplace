@@ -10,13 +10,14 @@
 import { CupomDaVenda } from "@/components/admin/pdv/CupomDaVenda";
 import { ReciboDaVenda } from "@/components/admin/pdv/ReciboDaVenda";
 import {
+  type AcaoDaVenda,
   type EstadoDaVenda,
   type ItemDoCupom,
   type ReciboDaVendaRegistrada,
   estadoInicialDaVenda,
   reducerDaVenda,
 } from "@/hooks/useVendaPresencial";
-import { act, useReducer } from "react";
+import { act, useEffect, useReducer } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import {
   afterEach,
@@ -298,5 +299,123 @@ describe("cupom do balcão — +/− fala a quantidade e remover não perde o fo
     expect(host.querySelectorAll("li")).toHaveLength(0);
     expect(document.activeElement?.textContent).toBe("Câmera");
     expect(aoRetomarBusca).not.toHaveBeenCalled();
+  });
+});
+
+// O leitor de tela fala o que MUDA no DOM da região viva. Frase igual à
+// anterior não mudava nada (o React não regrava texto igual) e o toque ficava
+// mudo. Aqui se observa o que o leitor observa: nó acrescentado ou texto
+// trocado dentro da região.
+function observarFala(): { falas: () => string[] } {
+  const observador = new MutationObserver(() => {});
+  observador.observe(regiaoFalada(), {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+  onTestFinished(() => observador.disconnect());
+  return {
+    falas: () =>
+      observador
+        .takeRecords()
+        .flatMap((r) =>
+          r.type === "characterData"
+            ? [r.target.textContent ?? ""]
+            : [...r.addedNodes].map((n) => n.textContent ?? ""),
+        )
+        .filter((t) => t !== ""),
+  };
+}
+
+// Quem está fora do cupom (o bipe, a busca) também mexe na venda.
+const deFora: { despachar: (acao: AcaoDaVenda) => void } = {
+  despachar: () => {},
+};
+
+function CupomComBipe({
+  inicial,
+  reducer = reducerDaVenda,
+}: {
+  inicial: EstadoDaVenda;
+  reducer?: (estado: EstadoDaVenda, acao: AcaoDaVenda) => EstadoDaVenda;
+}) {
+  const [estado, despachar] = useReducer(reducer, inicial);
+  useEffect(() => {
+    deFora.despachar = despachar;
+  }, []);
+  return (
+    <>
+      <input id="busca-manual-de-produto" aria-label="Buscar produto" />
+      <CupomDaVenda
+        estado={estado}
+        despachar={despachar}
+        subtotal={0}
+        onNavigate={() => {}}
+        feedback={null}
+      />
+    </>
+  );
+}
+
+function bipar(parcial: Partial<ItemDoCupom>) {
+  act(() =>
+    deFora.despachar({
+      tipo: "item_adicionado_manualmente",
+      item: item(parcial),
+      em: 1,
+    }),
+  );
+}
+
+describe("cupom do balcão — a fala se repete quando a frase se repete", () => {
+  it("'+', bipe da mesma peça e '−' de volta: o '−' fala de novo '2 unidades'", async () => {
+    await act(async () =>
+      root.render(<CupomComBipe inicial={comItens([item({})])} />),
+    );
+    act(() => botao("Aumentar quantidade de Caneca").click());
+    expect(regiaoFalada().textContent).toBe("Caneca: 2 unidades, R$ 40,00");
+    bipar({});
+    expect(host.querySelector("li")?.textContent).toContain("3");
+    const ouvido = observarFala();
+    act(() => botao("Diminuir quantidade de Caneca").click());
+    expect(ouvido.falas()).toContain("Caneca: 2 unidades, R$ 40,00");
+    expect(regiaoFalada().textContent).toBe("Caneca: 2 unidades, R$ 40,00");
+  });
+
+  it("remover, bipar de novo e remover outra vez: a segunda remoção também fala", async () => {
+    await act(async () =>
+      root.render(<CupomComBipe inicial={comItens([item({})])} />),
+    );
+    act(() => botao("Remover Caneca da venda").click());
+    expect(regiaoFalada().textContent).toBe("Caneca removido da venda");
+    bipar({});
+    const ouvido = observarFala();
+    act(() => botao("Remover Caneca da venda").click());
+    expect(ouvido.falas()).toContain("Caneca removido da venda");
+    expect(regiaoFalada().textContent).toBe("Caneca removido da venda");
+  });
+
+  it("toque que a venda recusa não fala depois, quando a lista muda por outro motivo", async () => {
+    // A venda recusa o "+" sem mexer na lista (o botão estava ligado). A
+    // lista só muda no bipe seguinte, de OUTRA peça: a Caneca ficou com a
+    // mesma quantidade e não pode ser anunciada como se tivesse mudado.
+    const recusaQuantidade = (estado: EstadoDaVenda, acao: AcaoDaVenda) =>
+      acao.tipo === "quantidade_alterada"
+        ? estado
+        : reducerDaVenda(estado, acao);
+    await act(async () =>
+      root.render(
+        <CupomComBipe
+          inicial={comItens([item({})])}
+          reducer={recusaQuantidade}
+        />,
+      ),
+    );
+    const ouvido = observarFala();
+    act(() => botao("Aumentar quantidade de Caneca").click());
+    bipar({ chave: "p2::", productId: "p2", nome: "Camiseta" });
+    expect(host.querySelectorAll("li")).toHaveLength(2);
+    expect(ouvido.falas()).toEqual([]);
+    expect(regiaoFalada().textContent).toBe("");
   });
 });
