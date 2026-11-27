@@ -52,8 +52,9 @@ function exigirIkcousESavy(lista: string[], onde: string) {
     assert(lista.includes(p), `${onde}: ${p} sumiu (${lista.join(", ")})`);
 }
 
-// O 8º (login-da-loja.yml, 26/11/2026) nasceu já gerado do cadastro.
-const OITO_WORKFLOWS = [
+// O 8º (login-da-loja.yml, 26/11/2026) e o 9º (objetos-da-frota.yml, 27/11/2026)
+// nasceram já gerados do cadastro.
+const WORKFLOWS_POR_LOJA = [
   "aplicar-migrations.yml",
   "conferir-banco-da-loja.yml",
   "publicar-functions.yml",
@@ -62,6 +63,7 @@ const OITO_WORKFLOWS = [
   "ativar-email-do-login.yml",
   "ativar-google-do-login.yml",
   "login-da-loja.yml",
+  "objetos-da-frota.yml",
 ];
 
 // A loja INVENTADA da fixture: ref, segredo e nome que não existem em lugar nenhum.
@@ -304,6 +306,93 @@ Deno.test("validarCadastro recusa cadastro torto (fecha em falha, nunca vira lis
   Deno.removeSync(dir, { recursive: true });
 });
 
+// ---------------------------------------------------------------------------
+// O segredo da ORG CENTRAL (scripts/frota/org-central.json) é o único que pode
+// se repetir entre lojas assinantes: no modelo de 01/12/2026 toda loja nova da
+// org "IKCOUS Lojas" usa o mesmo token com escopo na org.
+// ---------------------------------------------------------------------------
+const SEGREDO_DA_ORG = require(
+  join(RAIZ, "scripts/frota/org-central.cjs"),
+).carregarOrgCentral().segredoDoGitHub;
+const OUTRA_NOVA = "loja-teste-abc";
+function jsonComDuasNovas(segredo: string) {
+  const j = jsonComLojaNova();
+  j.lojas[NOVA].segredoDoToken = segredo;
+  j.lojas[OUTRA_NOVA] = {
+    ref: "bcdefghijklmnopqrstu",
+    classe: "assinante",
+    apelido: "Outra Teste",
+    segredoDoToken: segredo,
+    functionsNomeadas: true,
+  };
+  return j;
+}
+const recusaDe = (j: any): string => {
+  try {
+    lojasMod.validarCadastro(j);
+  } catch (e) {
+    return e.message;
+  }
+  return "";
+};
+
+Deno.test("segredo da org central: duas (ou três) assinantes com ele passam; qualquer outro segredo repetido continua recusado", () => {
+  assertEquals(SEGREDO_DA_ORG, "SUPABASE_ACCESS_TOKEN_LOJAS");
+  const cad = lojasMod.validarCadastro(jsonComDuasNovas(SEGREDO_DA_ORG));
+  assertEquals(cad.lojas[NOVA].segredoDoToken, SEGREDO_DA_ORG);
+  assertEquals(cad.lojas[OUTRA_NOVA].segredoDoToken, SEGREDO_DA_ORG);
+  // uma terceira no mesmo segredo também (o segredo é da org, não de um par)
+  const tres = jsonComDuasNovas(SEGREDO_DA_ORG);
+  tres.lojas["loja-teste-def"] = {
+    ...tres.lojas[OUTRA_NOVA],
+    ref: "cdefghijklmnopqrstuv",
+  };
+  assertEquals(
+    Object.keys(lojasMod.validarCadastro(tres).lojas).length,
+    AS_QUATRO_DE_SEMPRE.length + 3,
+  );
+  // qualquer OUTRO nome repetido: "um segredo por loja", como sempre
+  for (const outro of [
+    SEGREDO_NOVO,
+    "SUPABASE_ACCESS_TOKEN_LOJAS2",
+    "SUPABASE_ACCESS_TOKEN_LOJA",
+    "SUPABASE_ACCESS_TOKEN_ORG",
+  ]) {
+    const msg = recusaDe(jsonComDuasNovas(outro));
+    assertStringIncludes(msg, "um segredo por loja", outro);
+    assertStringIncludes(msg, `já é de ${NOVA}`, outro);
+  }
+  // as lojas de hoje continuam com o segredo próprio delas exclusivo
+  const comIkcous = jsonComLojaNova();
+  comIkcous.lojas[NOVA].segredoDoToken = "SUPABASE_ACCESS_TOKEN_IKCOUS";
+  assertStringIncludes(recusaDe(comIkcous), "já é de ikcous-publicada");
+  // o segredo da org não abre o banco: dois cadastros no mesmo ref continuam recusados
+  const mesmoRef = jsonComDuasNovas(SEGREDO_DA_ORG);
+  mesmoRef.lojas[OUTRA_NOVA].ref = REF_NOVA;
+  assertStringIncludes(recusaDe(mesmoRef), "um banco, uma loja");
+});
+
+Deno.test("segredo da org central: loja legado com ele é recusada, e o lojas.json de hoje continua válido", () => {
+  const leg = jsonDeHoje();
+  leg.lojas.sandbox.segredoDoToken = SEGREDO_DA_ORG;
+  assertStringIncludes(recusaDe(leg), "classe legado usa só o segredo");
+  // legado novo com o segredo da org, ao lado de uma assinante com ele
+  const j = jsonComDuasNovas(SEGREDO_DA_ORG);
+  j.lojas[OUTRA_NOVA] = {
+    ref: "bcdefghijklmnopqrstu",
+    classe: "legado",
+    apelido: "Outra Teste",
+    segredoDoToken: SEGREDO_DA_ORG,
+  };
+  assertStringIncludes(recusaDe(j), "classe legado usa só o segredo");
+  // o cadastro de hoje (sem nenhuma loja no segredo da org) passa igual
+  assertEquals(recusaDe(jsonDeHoje()), "");
+  assertEquals(
+    Object.keys(lojasMod.carregarLojas().lojas),
+    AS_QUATRO_DE_SEMPRE,
+  );
+});
+
 Deno.test("lojaDoProjeto: só chaves do cadastro (nada de __proto__, constructor, maiúsculas, espaço, vazio, não texto)", () => {
   for (const ok of ["loja", "sandbox", "ikcous-publicada", "savy"])
     assert(lojasMod.lojaDoProjeto(ok, CADASTRO_REAL), ok);
@@ -389,6 +478,143 @@ Deno.test("CLI: validar aceita só o cadastro, recusa com 'loja desconhecida' e 
   assertEquals(cli(["campo", "savy", "__proto__"]).codigo, 1);
 });
 
+// O passo "Confere a loja no cadastro" (id: loja) deixa para os passos seguintes
+// do MESMO job o NOME do segredo da loja escolhida (`steps.loja.outputs.segredo`),
+// lido do cadastro — nunca o valor. É o que deixa a linha do segredo da org
+// central ser UMA, de tamanho fixo, em vez de uma guarda que cresce com loja.
+Deno.test("CLI validar --saida-do-passo: escreve segredo=<NOME do segredo da loja> no GITHUB_OUTPUT; recusa, outro comando ou validar SEM a opção não escrevem nada", () => {
+  const dir = Deno.makeTempDirSync({ prefix: "saida-do-passo-" });
+  try {
+    const arq = join(dir, "out.txt");
+    const rodar = (args: string[], cad = CADASTRO_REAL, opcao = true) => {
+      Deno.writeTextFileSync(arq, "");
+      const comOpcao =
+        opcao && args[0] === "validar" ? [...args, "--saida-do-passo"] : args;
+      const r = cli(comOpcao, { GITHUB_OUTPUT: arq }, cad);
+      return { ...r, saida: Deno.readTextFileSync(arq) };
+    };
+    assertEquals(
+      rodar(["validar", "savy"]).saida,
+      "segredo=SUPABASE_ACCESS_TOKEN_SAVY\n",
+    );
+    assertEquals(
+      rodar(["validar", "ikcous-publicada", "--assinante"]).saida,
+      "segredo=SUPABASE_ACCESS_TOKEN_IKCOUS\n",
+    );
+    assertEquals(
+      rodar(["validar", "loja"]).saida,
+      "segredo=SUPABASE_ACCESS_TOKEN\n",
+    );
+    assertEquals(
+      rodar(["validar", NOVA], cadastroComLojaNova()).saida,
+      `segredo=${SEGREDO_NOVO}\n`,
+    );
+    // recusa (desconhecida, não assinante, forja) não escreve NADA
+    for (const args of [
+      ["validar", "almeida"],
+      ["validar", "loja", "--assinante"],
+      ["validar", "x\nsegredo=SUPABASE_ACCESS_TOKEN_SAVY"],
+    ]) {
+      const r = rodar(args);
+      assertEquals(r.codigo, 1, args.join(" "));
+      assertEquals(r.saida, "", args.join(" "));
+    }
+    // sem a opção, validar não escreve (publicar-functions chama validar no
+    // meio do passo `alvo`, que tem as saídas dele)
+    const semOpcao = rodar(["validar", "savy"], CADASTRO_REAL, false);
+    assertEquals(semOpcao.codigo, 0);
+    assertEquals(semOpcao.saida, "");
+    // os outros comandos não escrevem no GITHUB_OUTPUT
+    assertEquals(rodar(["ref", "savy"]).saida, "");
+    assertEquals(rodar(["campo", "savy", "classe"]).saida, "");
+    // sem GITHUB_OUTPUT (fora do Actions): valida igual e não escreve em lugar nenhum
+    assertEquals(cli(["validar", "savy", "--saida-do-passo"], {}).codigo, 0);
+    assertEquals(
+      cli(["validar", "savy", "--saida-do-passo"], { GITHUB_OUTPUT: "" })
+        .codigo,
+      0,
+    );
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
+/** Os jobs (dos workflows por loja) que têm o bloco LOJAS-SEGREDOS. */
+function jobsComBlocoDeSegredos(nome: string): string[] {
+  const texto = Deno.readTextFileSync(join(DIR_WF, nome));
+  const ids: string[] = [];
+  let job = "";
+  for (const linha of texto.split(/\r?\n/)) {
+    const m = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(linha);
+    if (m) job = m[1];
+    if (/# LOJAS-SEGREDOS-INICIO/.test(linha) && !ids.includes(job))
+      ids.push(job);
+  }
+  return ids;
+}
+
+Deno.test("todo job com o bloco LOJAS-SEGREDOS tem o passo `id: loja` que roda lojas.cjs validar ANTES do primeiro passo com segredo", () => {
+  let jobs = 0;
+  for (const nome of WORKFLOWS_POR_LOJA) {
+    const doc = docDe(nome);
+    for (const idJob of jobsComBlocoDeSegredos(nome)) {
+      jobs++;
+      const passos = doc.jobs[idJob].steps;
+      const iLoja = passos.findIndex((p) => p.id === "loja");
+      assert(iLoja >= 0, `${nome} / ${idJob}: falta o passo id: loja`);
+      assertEquals(
+        passos.filter((p) => p.id === "loja").length,
+        1,
+        `${nome} / ${idJob}: id: loja repetido`,
+      );
+      const passo = passos[iLoja];
+      assert(
+        String(passo.name).startsWith("Confere a loja no cadastro"),
+        `${nome} / ${idJob}: id: loja no passo errado`,
+      );
+      assertStringIncludes(passo.run, "node scripts/frota/lojas.cjs validar");
+      assertStringIncludes(passo.run, "--saida-do-passo");
+      assert(!/secrets\./.test(JSON.stringify(passo)), `${nome}: vê segredo`);
+      const iSegredo = passos.findIndex((p) =>
+        /secrets\.SUPABASE_ACCESS_TOKEN/.test(JSON.stringify(p)),
+      );
+      assert(
+        iLoja < iSegredo,
+        `${nome} / ${idJob}: o id: loja vem depois do segredo`,
+      );
+    }
+  }
+  // aplicar (1) + conferir-banco (conferir e ledger) + os 6 de assinante
+  assertEquals(jobs, 9);
+});
+
+Deno.test("o passo `id: loja` de verdade (bash), com GITHUB_OUTPUT, deixa o nome do segredo da loja e nada mais", async () => {
+  const dir = Deno.makeTempDirSync({ prefix: "passo-loja-" });
+  try {
+    const arq = join(dir, "out.txt");
+    for (const nome of WORKFLOWS_POR_LOJA) {
+      const doc = docDe(nome);
+      for (const idJob of jobsComBlocoDeSegredos(nome)) {
+        const passo = doc.jobs[idJob].steps.find((p) => p.id === "loja");
+        assert(passo, `${nome} / ${idJob}: sem id: loja`);
+        Deno.writeTextFileSync(arq, "");
+        const r = await bash(passo.run, {
+          PROJETO: "savy",
+          GITHUB_OUTPUT: arq,
+        });
+        assertEquals(r.codigo, 0, `${nome}: ${r.saida}`);
+        assertEquals(
+          Deno.readTextFileSync(arq),
+          "segredo=SUPABASE_ACCESS_TOKEN_SAVY\n",
+          nome,
+        );
+      }
+    }
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
 Deno.test("CLI exigir-segredo: só o token DA LOJA conta, a mensagem de parada é a de sempre e o valor nunca é impresso", () => {
   const tk = "tk-segredo-que-nao-pode-vazar";
   const ok = cli(["exigir-segredo", "savy"], {
@@ -439,7 +665,7 @@ Deno.test("os workflows estão em sincronia com o cadastro: o gerador, rodado de
   const comBlocos = gerador
     .workflowsComBlocos()
     .map((p) => p.split(/[\\/]/).pop());
-  for (const nome of OITO_WORKFLOWS)
+  for (const nome of WORKFLOWS_POR_LOJA)
     assert(comBlocos.includes(nome), `${nome} não tem blocos LOJAS-SEGREDO*`);
   for (const caminho of gerador.workflowsComBlocos()) {
     const atual = Deno.readTextFileSync(caminho);
@@ -482,6 +708,44 @@ function guardaImediata(antes: string): string[] | null {
 const mesmoConjunto = (a: string[], b: string[]) =>
   a.length === b.length && a.every((x) => b.includes(x));
 
+/** A guarda do segredo da ORG CENTRAL, imediatamente antes do `secrets.X`:
+ * `steps.<id>.outputs.segredo == '<NOME>' && ` — devolve `{ passo, nome }` ou null. */
+function guardaPorSaidaDePasso(
+  antes: string,
+): { passo: string; nome: string } | null {
+  const m = antes.match(
+    /steps\.([a-z_]+)\.outputs\.segredo == '(SUPABASE_ACCESS_TOKEN\w*)' && $/,
+  );
+  return m ? { passo: m[1], nome: m[2] } : null;
+}
+
+/**
+ * A guarda por saída de passo só vale se: é o segredo DA ORG, compara com o
+ * MESMO nome que lê, e o passo `<id>` existe ANTES no MESMO job e é o que valida
+ * a loja no cadastro e grava `segredo=` a partir dele (o `id: loja` com
+ * --saida-do-passo, ou o `alvo` de publicar-functions, que grava o
+ * `campo segredoDoToken` depois do `validar`).
+ */
+function guardaDaOrgValida(
+  passos: any[],
+  iPasso: number,
+  antes: string,
+  segredo: string,
+): boolean {
+  const g = guardaPorSaidaDePasso(antes);
+  if (!g || g.nome !== segredo || segredo !== SEGREDO_DA_ORG) return false;
+  const iFonte = passos.findIndex((p) => p.id === g.passo);
+  if (iFonte < 0 || iFonte >= iPasso) return false;
+  const run = String(passos[iFonte].run ?? "");
+  if (!run.includes("node scripts/frota/lojas.cjs validar")) return false;
+  return (
+    (g.passo === "loja" && run.includes("--saida-do-passo")) ||
+    (g.passo === "alvo" &&
+      run.includes('campo "$PROJETO" segredoDoToken') &&
+      run.includes('echo "segredo=$SEGREDO" >> "$GITHUB_OUTPUT"'))
+  );
+}
+
 /** Os jobs que usam o segredo sem guarda de projeto, por `if` de JOB sobre outros
  * inputs (pagamentos IKCOUS: um só segredo fixo, nada a ver com `projeto`). */
 const JOBS_COM_SEGREDO_FIXO = new Set([
@@ -495,10 +759,11 @@ Deno.test("REGRA DA CASA: todo segredo de loja de cada workflow tem a guarda da 
       .filter((l) => l.segredoDoToken === segredo)
       .map((l) => l.projeto);
   let referencias = 0;
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const doc = docDe(nome);
     for (const [idJob, job] of Object.entries(doc.jobs) as any) {
-      for (const passo of job.steps ?? []) {
+      const passos = job.steps ?? [];
+      for (const [iPasso, passo] of passos.entries()) {
         const textoDoPasso = JSON.stringify(passo);
         for (const m of textoDoPasso.matchAll(
           /secrets\.(SUPABASE_ACCESS_TOKEN\w*)/g,
@@ -525,8 +790,9 @@ Deno.test("REGRA DA CASA: todo segredo de loja de cada workflow tem a guarda da 
               ),
             );
           const jobFixo = JOBS_COM_SEGREDO_FIXO.has(idJob);
+          const guardaDaOrg = guardaDaOrgValida(passos, iPasso, antes, segredo);
           assert(
-            guardaInline || guardaNoIf || jobFixo,
+            guardaInline || guardaNoIf || jobFixo || guardaDaOrg,
             `${nome} / ${idJob} / ${passo.name}: ${segredo} sem a guarda da loja (${donos.join(",")})`,
           );
         }
@@ -539,9 +805,179 @@ Deno.test("REGRA DA CASA: todo segredo de loja de cada workflow tem a guarda da 
   );
 });
 
+// ---------------------------------------------------------------------------
+// O GERADOR com lojas no segredo da ORG CENTRAL (A4 do plano da org central,
+// desenho (b) do coordenador, 26/11/2026): UMA linha do segredo da org, com a
+// guarda `steps.loja.outputs.segredo == '<NOME>'`, de tamanho FIXO (nunca uma
+// lista de lojas que cresce: C2), e nunca chave repetida no mesmo `env`.
+// ---------------------------------------------------------------------------
+const LINHA_DA_ORG = `${SEGREDO_DA_ORG}: \${{ steps.loja.outputs.segredo == '${SEGREDO_DA_ORG}' && secrets.${SEGREDO_DA_ORG} || '' }}`;
+const ELO_DA_ORG_NA_CADEIA = `steps.alvo.outputs.segredo == '${SEGREDO_DA_ORG}' && secrets.${SEGREDO_DA_ORG}`;
+
+/** O cadastro de hoje + `n` lojas novas no segredo da org. */
+function cadastroComLojasNaOrg(n: number) {
+  const j = jsonDeHoje();
+  const letras = "abcdefghijklmnopqrstuvwxyz";
+  for (let i = 0; i < n; i++) {
+    // "yz" + `i` em base 26 com letras (a = 0) em 18 posições: único por `i`,
+    // e nenhum ref real começa assim
+    const ref = `yz${[...i.toString(26)]
+      .map((c) => letras[Number.parseInt(c, 26)])
+      .join("")
+      .padStart(18, "a")}`;
+    j.lojas[`loja-org-${String(i).padStart(3, "0")}`] = {
+      ref,
+      classe: "assinante",
+      apelido: `Org ${i}`,
+      segredoDoToken: SEGREDO_DA_ORG,
+      functionsNomeadas: true,
+    };
+  }
+  return lojasMod.validarCadastro(j);
+}
+
+/** As chaves (antes do `:`) das linhas de CADA `env:` de passo do texto YAML. */
+function chavesRepetidasNosEnvs(texto: string): string[] {
+  const repetidas: string[] = [];
+  const linhas = texto.split(/\r?\n/);
+  for (let i = 0; i < linhas.length; i++) {
+    const m = /^(\s*)env:\s*$/.exec(linhas[i]);
+    if (!m) continue;
+    const recuo = m[1].length;
+    const vistas = new Set<string>();
+    for (let j = i + 1; j < linhas.length; j++) {
+      const l = linhas[j];
+      if (/^\s*(#|$)/.test(l)) continue;
+      const r = /^(\s*)([A-Za-z_][A-Za-z0-9_]*):/.exec(l);
+      if (!r || r[1].length <= recuo) break;
+      if (vistas.has(r[2])) repetidas.push(`${r[2]} (linha ${j + 1})`);
+      vistas.add(r[2]);
+    }
+  }
+  return repetidas;
+}
+
+Deno.test("gerador, org central: 2 lojas no segredo da org dão UMA linha dele em LOJAS-SEGREDOS e UM elo na cadeia única; as linhas de hoje não mudam", () => {
+  const cad = cadastroComLojasNaOrg(2);
+  const hoje = gerador.BLOCOS["LOJAS-SEGREDOS"](CADASTRO_REAL);
+  const comOrg = gerador.BLOCOS["LOJAS-SEGREDOS"](cad);
+  assertEquals(comOrg, [...hoje, LINHA_DA_ORG]);
+  assertEquals(
+    comOrg.filter((l) => l.startsWith(`${SEGREDO_DA_ORG}:`)).length,
+    1,
+  );
+  // a guarda da org não cita loja nenhuma
+  assert(!LINHA_DA_ORG.includes("inputs.projeto"));
+  const [cadeia] = gerador.BLOCOS["LOJAS-SEGREDO-UNICO"](cad);
+  const [cadeiaDeHoje] = gerador.BLOCOS["LOJAS-SEGREDO-UNICO"](CADASTRO_REAL);
+  assertEquals(cadeia.split(ELO_DA_ORG_NA_CADEIA).length - 1, 1);
+  assertEquals(
+    cadeia,
+    cadeiaDeHoje.replace(" || '' }}", ` || ${ELO_DA_ORG_NA_CADEIA} || '' }}`),
+  );
+  assert(!cadeia.includes("loja-org-"), "a cadeia cresceu com loja da org");
+  // o LEGADO não muda
+  assertEquals(
+    gerador.BLOCOS["LOJAS-SEGREDO-LEGADO"](cad),
+    gerador.BLOCOS["LOJAS-SEGREDO-LEGADO"](CADASTRO_REAL),
+  );
+});
+
+Deno.test("gerador, org central: a linha da org é a MESMA com 1, 2 e 300 lojas (tamanho fixo), e não existe sem loja na org", () => {
+  assert(
+    !gerador.BLOCOS["LOJAS-SEGREDOS"](CADASTRO_REAL).some((l) =>
+      l.startsWith(`${SEGREDO_DA_ORG}:`),
+    ),
+    "linha da org sem nenhuma loja na org",
+  );
+  assert(
+    !gerador.BLOCOS["LOJAS-SEGREDO-UNICO"](CADASTRO_REAL)[0].includes(
+      SEGREDO_DA_ORG,
+    ),
+  );
+  for (const n of [1, 2, 300]) {
+    const cad = cadastroComLojasNaOrg(n);
+    assertEquals(Object.keys(cad.lojas).length, 4 + n);
+    const linhas = gerador.BLOCOS["LOJAS-SEGREDOS"](cad);
+    assertEquals(linhas.length, 3, `${n} lojas: IKCOUS, Savy e a da org`);
+    assertEquals(linhas[2], LINHA_DA_ORG, `${n} lojas`);
+    assertEquals(
+      gerador.BLOCOS["LOJAS-SEGREDO-UNICO"](cad),
+      gerador.BLOCOS["LOJAS-SEGREDO-UNICO"](cadastroComLojasNaOrg(1)),
+      `${n} lojas`,
+    );
+  }
+});
+
+Deno.test("gerador, org central: os 8 workflows regerados com 2 lojas na org não têm chave repetida em nenhum env (o YAML parseia), voltam idênticos sem elas, e cada uso do segredo da org tem a guarda do passo que validou a loja", () => {
+  // CONTROLE: o leitor de YAML do teste recusa chave repetida, e a varredura acha
+  let recusou = false;
+  try {
+    parse("env:\n  A: 1\n  A: 2\n");
+  } catch {
+    recusou = true;
+  }
+  assert(recusou, "o parse aceitou chave repetida: o teste não provaria nada");
+  assertEquals(chavesRepetidasNosEnvs("x:\n  env:\n    A: 1\n    A: 2\n"), [
+    "A (linha 4)",
+  ]);
+
+  const cad = cadastroComLojasNaOrg(2);
+  let usosDaOrg = 0;
+  for (const nome of WORKFLOWS_POR_LOJA) {
+    const atual = Deno.readTextFileSync(join(DIR_WF, nome));
+    const novo = gerador.sincronizar(atual, cad);
+    assertEquals(chavesRepetidasNosEnvs(novo), [], nome);
+    const doc = parse(novo); // lança em chave repetida
+    for (const [idJob, job] of Object.entries(doc.jobs) as any) {
+      if (JOBS_COM_SEGREDO_FIXO.has(idJob)) continue;
+      const passos = job.steps ?? [];
+      for (const [iPasso, passo] of passos.entries()) {
+        const t = JSON.stringify(passo);
+        for (const m of t.matchAll(/secrets\.(SUPABASE_ACCESS_TOKEN\w*)/g)) {
+          if (m[1] !== SEGREDO_DA_ORG) continue;
+          usosDaOrg++;
+          assert(
+            guardaDaOrgValida(passos, iPasso, t.slice(0, m.index), m[1]),
+            `${nome} / ${idJob} / ${passo.name}: segredo da org sem a guarda do passo que validou a loja`,
+          );
+        }
+      }
+    }
+    // idempotente, e sem as lojas da org volta ao arquivo de hoje byte a byte
+    assertEquals(gerador.sincronizar(novo, cad), novo, nome);
+    assertEquals(gerador.sincronizar(novo, CADASTRO_REAL), atual, nome);
+  }
+  // 8 jobs com LOJAS-SEGREDOS (2 blocos no conferir) + os 4 da cadeia única
+  assert(usosDaOrg >= 13, `poucos usos do segredo da org: ${usosDaOrg}`);
+});
+
+Deno.test("gerador: segredo repetido que NÃO é o da org (cadastro montado fora do validador) falha fechado", () => {
+  const torto = {
+    lojas: {
+      ...CADASTRO_REAL.lojas,
+      "loja-x": {
+        ...CADASTRO_REAL.lojas.savy,
+        projeto: "loja-x",
+        ref: "abcdefghijklmnopqrst",
+      },
+    },
+  };
+  for (const bloco of ["LOJAS-SEGREDOS", "LOJAS-SEGREDO-UNICO"]) {
+    let msg = "";
+    try {
+      gerador.BLOCOS[bloco](torto);
+    } catch (e) {
+      msg = e.message;
+    }
+    assertStringIncludes(msg, "SUPABASE_ACCESS_TOKEN_SAVY", bloco);
+    assertStringIncludes(msg, "não é o da org central", bloco);
+  }
+});
+
 Deno.test("cada passo com segredo de loja só vê o da loja pedida: as linhas geradas para uma loja nova NUNCA citam o segredo de outra", () => {
   const cad = cadastroComLojaNova();
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const novo = gerador.sincronizar(
       Deno.readTextFileSync(join(DIR_WF, nome)),
       cad,
@@ -601,8 +1037,9 @@ Deno.test("todo workflow por loja tem `projeto` como menu FECHADO (choice) gerad
     "ativar-email-do-login.yml": "ikcous-publicada",
     "ativar-google-do-login.yml": "ikcous-publicada",
     "login-da-loja.yml": "ikcous-publicada",
+    "objetos-da-frota.yml": "savy",
   };
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const p = inputsDe(docDe(nome)).projeto;
     assertEquals(p.type, "choice", `${nome}: projeto voltou a ser texto livre`);
     assertEquals(p.options, menuEsperado(nome), nome);
@@ -628,7 +1065,7 @@ Deno.test("todo workflow por loja tem `projeto` como menu FECHADO (choice) gerad
 });
 
 Deno.test("todo workflow por loja confere a loja no cadastro ANTES do primeiro passo que vê segredo", () => {
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const doc = docDe(nome);
     const passos = Object.values(doc.jobs).flatMap((j: any) =>
       (j.steps ?? []).map((p) => [j, p]),
@@ -720,7 +1157,7 @@ Deno.test("o sha: toda loja fora de loja|sandbox (as do cadastro e as que ainda 
 // ---------------------------------------------------------------------------
 Deno.test("loja nova só por dado (workflows): o gerador acrescenta SÓ a linha de segredo da loja, e sem a loja o arquivo volta idêntico", () => {
   const nova = cadastroComLojaNova();
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const atual = Deno.readTextFileSync(join(DIR_WF, nome));
     const comNova = gerador.sincronizar(atual, nova);
     assert(comNova !== atual, `${nome}: a loja nova devia gerar uma linha`);

@@ -1305,6 +1305,27 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261630000000: a loja ja suspensa tambem pausa. marcar_suspensa_desde (o gatilho da 20261600000000) ganha o ramo de quem SEGUE suspensa
+  // sem dia. Os marcadores sao as decisoes que, tiradas, voltam o defeito ou o pioram: o ramo novo grava SO quando o dia e' NULL (sem ele o
+  // reenvio recomecaria a contagem todo dia), os dois INSERT da marca (entrar e seguir sem dia) e o apagar ao sair. O corpo exato (md5) e da
+  // consulta 199a e do pos-voo; o comportamento e da prova viva a-loja-ja-suspensa-tambem-pausa-viva.cjs.
+  "20261630000000_a_loja_ja_suspensa_tambem_pausa.sql": [
+    {
+      funcao: "marcar_suspensa_desde",
+      esperado: [
+        { texto: "WHERE p.suspensa_desde IS NULL;", vezes: 1 },
+        {
+          texto: "INSERT INTO public.pausa_de_vendas AS p (id, suspensa_desde)",
+          vezes: 2,
+        },
+        {
+          texto:
+            "UPDATE public.pausa_de_vendas SET suspensa_desde = NULL WHERE id = 1 AND suspensa_desde IS NOT NULL;",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261620000000: a soma das categorias fecha com o faturamento no centavo. get_category_analytics troca SO a saida: cada
   // categoria em centavos pelo maior resto e a media a partir do valor arredondado. Os marcadores sao o centavo do maior
   // resto, a media, o filtro de dinheiro reconhecido e a guarda do admin de AGORA (as duas ultimas nao podem sumir no REPLACE).

@@ -391,6 +391,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado",
       "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
       "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
+      "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
   );

@@ -21,6 +21,7 @@
  * Nenhum teste abre conexão nem fala com a rede: o processo só roda os caminhos
  * que terminam antes de qualquer conexão.
  */
+import { createRequire } from "node:module";
 import {
   fromFileUrl,
   toFileUrl,
@@ -37,6 +38,7 @@ import {
   extrairDoRepo,
   formatarDinamicas,
   lerCatalogoPelaApi,
+  lojaDosArgumentos,
 } from "../scripts/db-check-objetos-do-codigo.mjs";
 
 // Esquema montado em pedacos: a fixture e uma URL de teste (127.0.0.1:9, nunca
@@ -271,6 +273,11 @@ const resposta = (status, corpo) => ({
 globalThis.fetch = async (_url, init) => {
   const { query } = JSON.parse(init.body);
   const env = process.env;
+  // --loja (A18): prova de que NENHUM fetch aconteceu, e de para onde ele foi.
+  process.stdout.write("FETCH-CHAMADO\\n");
+  if (env.STUB_URL_ESPERADA && _url !== env.STUB_URL_ESPERADA) {
+    return resposta(599, "url inesperada");
+  }
   if (query.includes("pg_class")) {
     return resposta(Number(env.STUB_STATUS_REL ?? 200), env.STUB_REL ?? "[]");
   }
@@ -299,16 +306,32 @@ function ambienteBase() {
  * veredito, código de saída) roda sem tocar rede nem banco, e sem varrer o
  * repositório de verdade.
  */
-async function rodarNaRaizFalsa({ arquivos, ambiente }) {
+async function rodarNaRaizFalsa({
+  arquivos,
+  ambiente,
+  args = [],
+  copiar = [],
+}) {
   const raiz = arvore({ ...arquivos, "stub.mjs": STUB_FETCH });
   try {
     Deno.mkdirSync(`${raiz}/scripts`, { recursive: true });
     Deno.copyFileSync(SCRIPT, `${raiz}/scripts/db-check-objetos-do-codigo.mjs`);
+    // arquivos REAIS do repositório que o caso precisa (ex.: o leitor do cadastro)
+    for (const rel of copiar) {
+      Deno.mkdirSync(`${raiz}/${rel.slice(0, rel.lastIndexOf("/"))}`, {
+        recursive: true,
+      });
+      Deno.copyFileSync(
+        fromFileUrl(new URL(`../${rel}`, import.meta.url)),
+        `${raiz}/${rel}`,
+      );
+    }
     const saida = await new Deno.Command("node", {
       args: [
         "--import",
         toFileUrl(`${raiz}/stub.mjs`).href,
         `${raiz}/scripts/db-check-objetos-do-codigo.mjs`,
+        ...args,
       ],
       env: { ...ambienteBase(), ...ambiente },
       clearEnv: true,
@@ -554,5 +577,204 @@ Deno.test("DATABASE_URL de arquivo: sem o local cai no .env; local sem a linha t
   assertStringIncludes(
     nenhum.texto,
     "Detector de objetos INERTE: sem DATABASE_URL",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// --loja <nome> (A18 do plano da org central, 27/11/2026): a conferência de
+// objetos para QUALQUER loja assinante, com o ref vindo SÓ do cadastro
+// (scripts/frota/lojas.json). Loja legado ou desconhecida, ref cru e argumento
+// fora da forma são recusados ANTES de qualquer fetch. Sem argumento, o modo
+// de hoje (SUPABASE_PROJECT_REF do job `objetos`, ou DATABASE_URL) não muda.
+// ---------------------------------------------------------------------------
+const REF_DA_NOVA = "qwertyuiopasdfghjklz";
+/** Cadastro de FIXTURE (nenhuma loja real): uma assinante nova e um legado. */
+const LOJAS_FIXTURE = {
+  lojas: {
+    "loja-nova-x": {
+      ref: REF_DA_NOVA,
+      classe: "assinante",
+      apelido: "Nova",
+      segredoDoToken: "SUPABASE_ACCESS_TOKEN_LOJAS",
+      functionsNomeadas: false,
+    },
+    loja: {
+      ref: "zxcvbnmlkjhgfdsapoiu",
+      classe: "legado",
+      apelido: "loja",
+      segredoDoToken: "SUPABASE_ACCESS_TOKEN",
+    },
+  },
+};
+const { validarCadastro } = createRequire(import.meta.url)(
+  "../scripts/frota/lojas.cjs",
+);
+const CADASTRO_FIXTURE = validarCadastro(LOJAS_FIXTURE);
+
+Deno.test("lojaDosArgumentos: sem argumento é o modo de hoje (null); --loja de assinante devolve o ref do cadastro", () => {
+  assertEquals(lojaDosArgumentos([], CADASTRO_FIXTURE), null);
+  assertEquals(lojaDosArgumentos(["--loja", "loja-nova-x"], CADASTRO_FIXTURE), {
+    loja: "loja-nova-x",
+    ref: REF_DA_NOVA,
+    segredo: "SUPABASE_ACCESS_TOKEN_LOJAS",
+  });
+  // com o cadastro REAL, as duas lojas no ar
+  assertEquals(
+    lojaDosArgumentos(["--loja", "ikcous-publicada"]).ref,
+    "cafkrminfnokvgjqtkle",
+  );
+  assertEquals(
+    lojaDosArgumentos(["--loja", "savy"]).ref,
+    "gnjsrucsmjkajijrakzr",
+  );
+});
+
+Deno.test("lojaDosArgumentos: recusa legado, desconhecida, ref cru e qualquer forma fora de `--loja <nome>`", () => {
+  for (const args of [
+    ["--loja", "loja"],
+    ["--loja", "loja-ausente"],
+    ["--loja", REF_DA_NOVA],
+    ["--loja", "__proto__"],
+    ["--loja"],
+    ["--loja", ""],
+    ["--loja=loja-nova-x"],
+    ["--ref", REF_DA_NOVA],
+    ["--loja", "loja-nova-x", "extra"],
+    ["loja-nova-x"],
+    ["--loja", "x\n::error::forjado"],
+  ]) {
+    let erro = null;
+    try {
+      lojaDosArgumentos(args, CADASTRO_FIXTURE);
+    } catch (e) {
+      erro = e;
+    }
+    assert(erro, `devia recusar ${JSON.stringify(args)}`);
+    assert(
+      erro.message.startsWith("::error::Destino recusado: "),
+      erro.message,
+    );
+    assert(!erro.message.slice(1).includes("\n"), "quebra de linha no log");
+  }
+});
+
+/** Roda o processo com --loja numa raiz falsa com o leitor REAL do cadastro e
+ * o cadastro de FIXTURE. */
+const COM_CADASTRO = {
+  copiar: [
+    "scripts/frota/lojas.cjs",
+    "scripts/frota/org-central.cjs",
+    "scripts/frota/org-central.json",
+  ],
+};
+const arquivosComCadastro = (extra = {}) => ({
+  "scripts/frota/lojas.json": JSON.stringify(LOJAS_FIXTURE),
+  ...SRC_UMA_TABELA,
+  ...extra,
+});
+
+Deno.test("processo --loja: assinante lê o catálogo pela API NO REF DO CADASTRO e dá o veredito de sempre", async () => {
+  const r = await rodarNaRaizFalsa({
+    ...COM_CADASTRO,
+    arquivos: arquivosComCadastro(),
+    args: ["--loja", "loja-nova-x"],
+    ambiente: {
+      SUPABASE_ACCESS_TOKEN_LOJAS: "token-de-teste",
+      STUB_URL_ESPERADA: `https://api.supabase.com/v1/projects/${REF_DA_NOVA}/database/query/read-only`,
+      STUB_REL: TABELA_ALCANCAVEL,
+      STUB_BUCKETS: "[]",
+    },
+  });
+  assertEquals(r.codigo, 0, r.texto);
+  assertStringIncludes(r.texto, "FETCH-CHAMADO");
+  assertStringIncludes(r.texto, `loja loja-nova-x, projeto ${REF_DA_NOVA}`);
+  assertStringIncludes(
+    r.texto,
+    "TODAS as referências do código existem e são alcançáveis.",
+  );
+  assert(!r.texto.includes("token-de-teste"));
+  // e o veredito vermelho também chega (objeto ausente no banco da loja)
+  const ausente = await rodarNaRaizFalsa({
+    ...COM_CADASTRO,
+    arquivos: arquivosComCadastro(),
+    args: ["--loja", "loja-nova-x"],
+    ambiente: { SUPABASE_ACCESS_TOKEN_LOJAS: "token-de-teste", STUB_REL: "[]" },
+  });
+  assertEquals(ausente.codigo, 1, ausente.texto);
+  assertStringIncludes(ausente.texto, "AUSENTE");
+});
+
+Deno.test("processo --loja: legado, desconhecida e ref cru saem 1 ANTES de qualquer fetch", async () => {
+  for (const nome of ["loja", "loja-ausente", REF_DA_NOVA]) {
+    const r = await rodarNaRaizFalsa({
+      ...COM_CADASTRO,
+      arquivos: arquivosComCadastro(),
+      args: ["--loja", nome],
+      ambiente: {
+        SUPABASE_ACCESS_TOKEN: "token-de-teste",
+        SUPABASE_ACCESS_TOKEN_LOJAS: "token-de-teste",
+        STUB_REL: TABELA_ALCANCAVEL,
+      },
+    });
+    assertEquals(r.codigo, 1, `${nome}: ${r.texto}`);
+    assertStringIncludes(r.texto, "::error::Destino recusado: ");
+    assert(!r.texto.includes("FETCH-CHAMADO"), `${nome}: fez fetch`);
+  }
+});
+
+Deno.test("processo --loja: sem o segredo DA LOJA FALHA (não fica inerte; o genérico e o de outra loja não servem); com SUPABASE_PROJECT_REF junto, recusa a ambiguidade; DATABASE_URL não é usada", async () => {
+  const semToken = await rodarNaRaizFalsa({
+    ...COM_CADASTRO,
+    arquivos: arquivosComCadastro(),
+    args: ["--loja", "loja-nova-x"],
+    ambiente: {
+      DATABASE_URL: `${ESQUEMA_PG}postgres.${REF_DA_NOVA}@127.0.0.1:9/p`,
+      // o token genérico e o de outra loja presentes NÃO servem a loja nova
+      SUPABASE_ACCESS_TOKEN: "token-generico",
+      SUPABASE_ACCESS_TOKEN_SAVY: "token-de-outra",
+      STUB_REL: TABELA_ALCANCAVEL,
+    },
+  });
+  assertEquals(semToken.codigo, 1, semToken.texto);
+  assertStringIncludes(
+    semToken.texto,
+    "::error::--loja loja-nova-x: sem SUPABASE_ACCESS_TOKEN_LOJAS",
+  );
+  assert(!semToken.texto.includes("INERTE"));
+  assert(!semToken.texto.includes("Alvo:"), "caiu na DATABASE_URL");
+  assert(!semToken.texto.includes("FETCH-CHAMADO"));
+  assert(!semToken.texto.includes("token-generico"));
+
+  const comRef = await rodarNaRaizFalsa({
+    ...COM_CADASTRO,
+    arquivos: arquivosComCadastro(),
+    args: ["--loja", "loja-nova-x"],
+    ambiente: {
+      SUPABASE_ACCESS_TOKEN_LOJAS: "token-de-teste",
+      SUPABASE_PROJECT_REF: "a".repeat(20),
+      STUB_REL: TABELA_ALCANCAVEL,
+    },
+  });
+  assertEquals(comRef.codigo, 1, comRef.texto);
+  assertStringIncludes(comRef.texto, "::error::");
+  assertStringIncludes(comRef.texto, "SUPABASE_PROJECT_REF");
+  assert(!comRef.texto.includes("FETCH-CHAMADO"));
+});
+
+Deno.test("processo sem argumento: o modo SUPABASE_PROJECT_REF do job `objetos` continua igual e NÃO precisa do cadastro", async () => {
+  // raiz falsa SEM scripts/frota: o modo de hoje não carrega o leitor do cadastro
+  const r = await rodarNaRaizFalsa({
+    arquivos: SRC_UMA_TABELA,
+    ambiente: {
+      ...API,
+      STUB_URL_ESPERADA: `https://api.supabase.com/v1/projects/${REF_API}/database/query/read-only`,
+      STUB_REL: TABELA_ALCANCAVEL,
+      STUB_BUCKETS: "[]",
+    },
+  });
+  assertEquals(r.codigo, 0, r.texto);
+  assertStringIncludes(
+    r.texto,
+    "Catálogo lido pela API de gestão do Supabase, endpoint somente leitura.",
   );
 });

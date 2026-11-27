@@ -4127,6 +4127,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado",
     "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
     "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
+    "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
   ]);
