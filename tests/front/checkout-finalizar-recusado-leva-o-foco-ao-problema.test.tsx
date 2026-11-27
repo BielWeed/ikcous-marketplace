@@ -42,9 +42,10 @@ vi.mock("@/components/ui/custom/ShippingCalculator", async (importOriginal) => {
   return { ...real, ShippingCalculator: () => null };
 });
 
-const configDaLoja: Record<string, unknown> = {};
+// A config que a loja devolve AGORA: o teste troca o objeto inteiro.
+const loja: { config: Record<string, unknown> } = { config: {} };
 vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({ config: configDaLoja, isLoaded: true }),
+  useStore: () => ({ config: loja.config, isLoaded: true }),
 }));
 
 vi.mock("@/hooks/useAddresses", () => ({
@@ -210,13 +211,12 @@ describe("CheckoutView — Finalizar recusado leva o foco ao problema", () => {
     toastError.mockReset();
     liberarSessao = () => {};
     freteEscolhido = ENTREGA_PROPRIA;
-    for (const chave of Object.keys(configDaLoja)) delete configDaLoja[chave];
-    Object.assign(configDaLoja, {
+    loja.config = {
       shippingCoverage: "national",
       originCep: "38500-000",
       enableCoupons: false,
       formasPagamentoEntrega: ["pix", "card", "cash"],
-    });
+    };
     armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
@@ -339,7 +339,7 @@ describe("CheckoutView — Finalizar recusado leva o foco ao problema", () => {
 
   it("a forma de pagamento muda no meio do envio: o foco vai para a forma marcada agora", async () => {
     await iniciarEnvioPeloTeclado();
-    configDaLoja.formasPagamentoEntrega = ["card", "cash"];
+    loja.config = { ...loja.config, formasPagamentoEntrega: ["card", "cash"] };
     await renderizar();
     await terminarASessao();
 

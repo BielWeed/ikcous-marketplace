@@ -40,9 +40,10 @@ vi.mock("@/components/ui/custom/ShippingCalculator", async (importOriginal) => {
   return { ...real, ShippingCalculator: () => null };
 });
 
-const configDaLoja: Record<string, unknown> = {};
+// A config que a loja devolve AGORA: o teste troca o objeto inteiro.
+const loja: { config: Record<string, unknown> } = { config: {} };
 vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({ config: configDaLoja, isLoaded: true }),
+  useStore: () => ({ config: loja.config, isLoaded: true }),
 }));
 
 vi.mock("@/hooks/useAddresses", () => ({
@@ -189,13 +190,12 @@ describe("CheckoutView — forma de pagamento com o pedido em envio", () => {
     createOrder.mockReset();
     toastError.mockReset();
     liberarSessao = () => {};
-    for (const chave of Object.keys(configDaLoja)) delete configDaLoja[chave];
-    Object.assign(configDaLoja, {
+    loja.config = {
       shippingCoverage: "national",
       originCep: "38500-000",
       enableCoupons: false,
       formasPagamentoEntrega: ["pix", "card", "cash"],
-    });
+    };
     armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
@@ -324,7 +324,7 @@ describe("CheckoutView — forma de pagamento com o pedido em envio", () => {
 
   it("TRAVA 2: a loja desliga a forma do clique durante o envio (efeito troca a escolha) — o pedido NÃO nasce com a forma antiga", async () => {
     await montarEIniciarEnvio("Pix na Entrega");
-    configDaLoja.formasPagamentoEntrega = ["card", "cash"];
+    loja.config = { ...loja.config, formasPagamentoEntrega: ["card", "cash"] };
     await renderizar();
     // A opção do clique saiu da lista e o efeito de fallback marcou outra.
     expect(
