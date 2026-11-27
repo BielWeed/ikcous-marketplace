@@ -672,6 +672,7 @@ const AppContent = () => {
   const {
     favorites,
     toggleFavorite,
+    isFavorite,
     loading: favoritesLoading,
   } = useFavorites();
   const { config, incluirProduto } = useStore();
@@ -3276,7 +3277,9 @@ const AppContent = () => {
               // anterior atravessam para a tela do novo.
               key: `product-detail-${product.id}`,
               product: product,
-              isFavorite: favorites.some((f) => f.id === product.id),
+              // Pelos ids guardados, como o toque decide: `favorites` só tem o
+              // que o catálogo já trouxe, e o produto lido sozinho ficaria vazio.
+              isFavorite: isFavorite(product.id),
               onToggleFavorite: () => handleToggleFavorite(product),
               onBack: handleBack,
               onAddToCart: (q: number, vId?: string, vNames?: string) =>

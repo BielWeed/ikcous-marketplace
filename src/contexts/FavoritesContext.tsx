@@ -249,6 +249,10 @@ interface FavoritesContextType {
   // antes disso "ausente" pode ser só atraso ou cópia velha. A tela usa para avisar em vez de
   // fingir que a pessoa nunca favoritou nada.
   favoritosIndisponiveis: number;
+  // Quantos favoritos estão guardados (ids da conta ou do aparelho), com ou
+  // sem produto à venda. Só para a tela não afirmar "você ainda não tem
+  // favoritos" quando o catálogo vazio não confirma nada; não decide limpeza.
+  favoritosSalvos: number;
 }
 
 export const FavoritesContext = createContext<FavoritesContextType | undefined>(
@@ -1073,6 +1077,7 @@ export function FavoritesProvider({
     }
     return indisponiveis;
   }, [user, catalogoConfirmado, dbFavoriteIds, localFavoriteIds, favorites]);
+  const favoritosSalvos = new Set(user ? dbFavoriteIds : localFavoriteIds).size;
 
   // 3. Actions
   const addToFavorites = useCallback(
@@ -1333,10 +1338,12 @@ export function FavoritesProvider({
       retentarPendentes,
       limparIndisponiveis,
       favoritosIndisponiveis,
+      favoritosSalvos,
     }),
     [
       favorites,
       favoritosIndisponiveis,
+      favoritosSalvos,
       toggleFavorite,
       isFavorite,
       loading,

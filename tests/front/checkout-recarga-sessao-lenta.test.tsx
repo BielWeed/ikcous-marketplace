@@ -256,7 +256,12 @@ const {
       prefetchViewPromise: () => Promise.resolve(),
     },
     REDE: { isSlow: () => false },
-    FAVORITOS: { favorites: [], toggleFavorite: semAcao, loading: false },
+    FAVORITOS: {
+      favorites: [],
+      toggleFavorite: semAcao,
+      isFavorite: () => false,
+      loading: false,
+    },
     BADGE: { setBadge: semAcao, clearBadge: semAcao },
   };
 });
