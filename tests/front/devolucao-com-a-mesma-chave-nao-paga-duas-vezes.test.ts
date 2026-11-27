@@ -414,7 +414,8 @@ describe("useEstornosDoPedido — a mesma intenção leva a mesma chave", () => 
     expect(h.chamadas.filter((c) => c.tipo === "invoke")).toEqual([]);
   });
 
-  it("a resposta tardia de OUTRA intenção (K de R$ 50) não apaga a chave da intenção em curso (K2 de R$ 30)", async () => {
+  it("a resposta tardia da devolução de R$ 50 chega no meio da de R$ 30: a de R$ 30 segue repetindo a sua chave", async () => {
+    // A checagem de chave do encerramento (só apaga se for ESTA) se prova em tests/front/chave-da-devolucao.test.ts.
     const rpc50 = pendurada();
     h.respostaRpc = () => rpc50.promessa;
     const { atual } = await montarSonda();
@@ -584,6 +585,16 @@ describe("useEstornosDoPedido — a mesma intenção leva a mesma chave", () => 
     expect(toastMock.error).not.toHaveBeenCalled();
   });
 
+  it("1,005 que DÁ CERTO encerra a intenção pelo valor em centavos (1,01): a próxima de 1,005 é intenção NOVA", async () => {
+    const { atual } = await montarSonda();
+    await devolver(atual, 1.005);
+    await devolver(atual, 1.005);
+    expect(devolucoes().map((c) => c.args?.p_amount)).toEqual([1.01, 1.01]);
+    const [a, b] = chaves();
+    expect(a).toEqual(expect.any(String));
+    expect(b).not.toBe(a);
+  });
+
   it("o aviso do 'já registrada' fala o valor da linha que o SERVIDOR devolveu e não aciona o Mercado Pago", async () => {
     h.respostaRpc = () =>
       Promise.resolve({
@@ -620,7 +631,8 @@ describe("useEstornosDoPedido — a mesma intenção leva a mesma chave", () => 
     expect(b).toBe(a);
   });
 
-  it("a linha confirmada de R$ 50 na lista não gira a chave da intenção de R$ 30 em curso", async () => {
+  it("reler a lista com a linha de R$ 50 no meio da devolução de R$ 30: a de R$ 30 segue repetindo a sua chave", async () => {
+    // A checagem de chave do encerramento (só apaga se for ESTA) se prova em tests/front/chave-da-devolucao.test.ts.
     h.respostaRpc = () => pendurada().promessa;
     const { atual } = await montarSonda();
     await devolver(atual, 50, { esperarPrazo: true });
