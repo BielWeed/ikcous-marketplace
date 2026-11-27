@@ -30,6 +30,7 @@ import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
   acoesDoCliente,
   cancelamentoDependeDaLoja,
+  centavosDeCadaLinha,
   etapasDaDevolucao,
   formatarDia,
   formatarReais,
@@ -181,6 +182,12 @@ export function DevolucaoDoPedidoCard({
   );
   const tom = tomDoStatus(atual.status);
   const valorTotal = atual.valor_itens + atual.valor_frete_ida;
+  // Com cupom, quantidade x preço (preço de uma unidade, arredondado) não soma
+  // o valor que o servidor gravou: cada linha mostra a parte dela desse valor.
+  const centavosPorLinha = centavosDeCadaLinha(
+    paraCentavos(atual.valor_itens),
+    atual.itens,
+  );
   const concluidaSemReembolso =
     atual.status === "concluida" &&
     (atual.resolucao_final === "troca" || atual.resolucao_final === "vale");
@@ -416,7 +423,7 @@ export function DevolucaoDoPedidoCard({
         )}
 
       <dl className="mt-4 space-y-1 border-t border-dashed border-zinc-200 pt-3 text-[13px]">
-        {atual.itens.map((item) => (
+        {atual.itens.map((item, indice) => (
           <div key={item.id} className="flex justify-between gap-3">
             <dt className="min-w-0 break-words text-zinc-600">
               <span className="line-clamp-2">
@@ -444,7 +451,7 @@ export function DevolucaoDoPedidoCard({
               )}
             </dt>
             <dd className="shrink-0 font-semibold tabular-nums text-zinc-900">
-              {formatarReais(item.quantidade * item.valor_unitario)}
+              {formatarReais((centavosPorLinha.at(indice) ?? 0) / 100)}
             </dd>
           </div>
         ))}

@@ -2432,6 +2432,7 @@ export function OrderDetailsView({
           onAbertoMudou={setPedindoDevolucao}
           elegibilidade={devolucaoDoProduto.elegibilidade}
           rotulosDosItens={rotulosPorLinhaDoPedido}
+          pedidoComDesconto={order.discount > 0}
           orderId={orderId}
           userId={contaDona.id}
           enderecoDaLoja={config.storeAddress ?? null}
