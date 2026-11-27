@@ -109,3 +109,31 @@ describe("aviso de cancelamento do cliente — etiqueta já paga", () => {
     }
   });
 });
+
+// `shipping_label_id` nunca é apagado: a etiqueta cancelada no Melhor Envio
+// continua no pedido. Quem sabe do cancelamento é o histórico de envio
+// (`etiquetasCanceladasNoHistorico`); o hook entrega o conjunto aqui.
+describe("aviso de cancelamento do cliente — etiqueta JÁ CANCELADA no Melhor Envio", () => {
+  it("etiqueta no conjunto das canceladas: o aviso não manda cancelar de novo", () => {
+    const l = linha({}, { shipping_label_id: "label-123" });
+    const [c] = selecionarCancelamentosDoCliente(
+      [l],
+      new Set<string>(),
+      new Set(["label-123"]),
+    );
+    expect(Object.hasOwn(c, "etiquetaPaga")).toBe(false);
+    const avisos = montarAvisos({ ...VAZIO, cancelamentosDoCliente: [c] });
+    expect(avisos.find((a) => a.tipo === "cancelamento")?.detalhe).toBe(
+      `${VALOR} — pago, o reembolso é automático`,
+    );
+  });
+
+  it("cancelada foi OUTRA etiqueta: a frase da etiqueta continua", () => {
+    const [c] = selecionarCancelamentosDoCliente(
+      [linha({}, { shipping_label_id: "label-123" })],
+      new Set<string>(),
+      new Set(["label-velha"]),
+    );
+    expect(c.etiquetaPaga).toBe(true);
+  });
+});

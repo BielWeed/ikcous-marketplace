@@ -290,6 +290,32 @@ function lerJson(nome: string, texto: string): unknown {
 /** Erro por serviço que fala EXPLICITAMENTE de token/autenticação (R1-8). */
 const ERRO_DE_TOKEN = /\btoken\b|autentica|unauthori[sz]ed|não autorizado|nao autorizado|credencia/i
 
+/**
+ * Erro POR SERVIÇO numa cotação 200 que é passageiro (27/11/2026): o serviço
+ * existe para este carrinho e este CEP, mas não respondeu agora. Ele some da
+ * lista, e a cotação precisa sair marcada `cotacaoParcial` — senão a lista sem
+ * ele vai para o cache de 2 h como completa.
+ *
+ * Nenhuma das duas docs oficiais lista os textos por serviço (Melhor Envio:
+ * docs.melhorenvio.com.br/reference/calculo-de-fretes-por-produtos; SuperFrete:
+ * superfrete.readme.io/reference/cotacao-de-frete, só `has_error`). Os textos
+ * vêm da resposta real auditada (22/09/2026: "trecho está temporariamente
+ * indisponível", "Dimensões do objeto ultrapassam o limite da transportadora"),
+ * do fórum oficial do ME ("Serviço indisponível no momento") e da doc de
+ * transportadoras do ME (recusa nomeia o trecho não atendido). Por isso a
+ * régua é estreita: só é passageiro o que SE DIZ momentâneo (no momento,
+ * temporariamente, tempo esgotado, tente mais tarde); "Serviço indisponível"
+ * seco é ambíguo e fica como recusa. Se o texto também fala de cobertura,
+ * peso, medida ou CEP, vence a recusa: repetir a consulta repetiria a recusa.
+ */
+const ERRO_PASSAGEIRO = /\bno momento\b|temporariamente|momentaneamente|\btempo (limite|esgotado|de resposta|de espera)\b|\btimed? ?out\b|tente novamente mais tarde|try again later|fora do ar|instabilidade|service (temporarily )?unavailable/i
+const RECUSA_DO_SERVICO = /n[ãa]o atend|\bpeso\b|dimens|\bmedida|\btamanho\b|\baltura\b|\blargura\b|\bcomprimento\b|acima do permitido|\bcep\b/i
+
+export function erroDeServicoPassageiro(texto: unknown): boolean {
+    if (typeof texto !== 'string') return false
+    return ERRO_PASSAGEIRO.test(texto) && !RECUSA_DO_SERVICO.test(texto)
+}
+
 // ── Tipos comuns ────────────────────────────────────────────────────────────
 
 /** Um item do carrinho com os números JÁ pela régua do banco (R1-1). */
@@ -323,6 +349,8 @@ export type ServicoRetornado = {
     pedido: boolean
     /** Texto de erro da transportadora, redigido — NUNCA vai para o log. */
     detalhe?: string
+    /** Erro passageiro (`erroDeServicoPassageiro`): o serviço pode voltar na próxima consulta. */
+    passageiro?: boolean
 }
 
 export type ResultadoDoProvedor = {
@@ -429,7 +457,7 @@ export async function cotarMelhorEnvio(credenciais: any, entrada: EntradaDaCotac
         if (servico.error) {
             const detalhe = textoSemSegredo(typeof servico.error === 'string' ? servico.error : JSON.stringify(servico.error), [token], 200)
             if (pedido && ERRO_DE_TOKEN.test(detalhe)) tokenRecusado = true
-            retornados.push({ codigo, preco: null, preco_original: null, prazo: null, erro: true, pedido, detalhe })
+            retornados.push({ codigo, preco: null, preco_original: null, prazo: null, erro: true, pedido, detalhe, passageiro: erroDeServicoPassageiro(detalhe) })
             continue
         }
         const original = precoDaApi(servico.price, { aceitaZero: true })
@@ -511,7 +539,7 @@ export async function cotarSuperFrete(credenciais: any, entrada: EntradaDaCotaca
             const texto = typeof servico.error === 'string' ? servico.error : servico.message ?? servico.error ?? 'erro do serviço'
             const detalhe = textoSemSegredo(typeof texto === 'string' ? texto : JSON.stringify(texto), [token], 200)
             if (pedido && ERRO_DE_TOKEN.test(detalhe)) tokenRecusado = true
-            retornados.push({ codigo, preco: null, preco_original: null, prazo: null, erro: true, pedido, detalhe })
+            retornados.push({ codigo, preco: null, preco_original: null, prazo: null, erro: true, pedido, detalhe, passageiro: erroDeServicoPassageiro(detalhe) })
             continue
         }
         const preco = precoDaApi(servico.price, { aceitaZero: false })

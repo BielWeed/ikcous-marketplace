@@ -37,7 +37,7 @@
 //     que a compra não fechou, não há ambiguidade de dinheiro; o pedido volta
 //     a poder etiquetar quando o lojista tentar de novo (revisor, bloqueante
 //     A da 2ª rodada, PR #423);
-//   * 5xx do checkout (um gateway pode ter DEBITADO com a resposta perdida —
+//   * 5xx/408/409/423 do checkout (um gateway pode ter DEBITADO com a resposta perdida —
 //     o ME não disse "não pagou") e exceção/timeout DEPOIS da reivindicação
 //     são INDETERMINADOS (`finalizarIndeterminado`): evento
 //     `checkout_indeterminado`, reivindicação MANTIDA, carrinho intacto e
@@ -708,6 +708,25 @@ const MENSAGEM_DE_VOLUME_RECUSADO =
  */
 function motivoEhDeVolume(motivo: string): boolean {
     return /volume|pacote|\bpeso\b|\bweight\b|\baltura\b|\blargura\b|\bheight\b|\bwidth\b|\bdimens/i.test(motivo)
+}
+
+/**
+ * HTTP de erro do checkout da etiqueta de ida que NÃO prova "não pagou".
+ * A referência oficial do checkout ("Compra de fretes",
+ * docs.melhorenvio.com.br/reference/compra-de-fretes-1) só documenta 200 e
+ * 422; o resto vem de proxy/gateway ou de estado que o ME não descreve.
+ * - 5xx: o gateway pode ter DEBITADO com a resposta perdida (A′, PR #423).
+ * - 408: quem desistiu foi um intermediário; a chamada pode ter seguido até
+ *   a compra — o mesmo critério do cartão no Mercado Pago (`criar-pagamento`).
+ * - 409/423: conflito/trava na MESMA etiqueta = outra operação em curso nela,
+ *   que pode ter pago. O ME não documenta esses códigos; o lado seguro é o
+ *   indeterminado (vínculo fica, lojista confere a conta) e não a compra dupla.
+ * - 429 fica de FORA: é o limitador de requisições (250/min por usuário, FAQ
+ *   docs.melhorenvio.com.br/reference/faq), que barra a chamada antes de ela
+ *   chegar na compra — recusa definida, o vínculo pode ser solto.
+ */
+function checkoutDeResultadoIncerto(status: number): boolean {
+    return status >= 500 || status === 408 || status === 409 || status === 423
 }
 
 /**
@@ -3098,9 +3117,9 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 const detalhe = await checkoutResponse.text()
                 // Item 1 (3ª rodada): mesma troca do `/me HTTP` acima.
                 console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, motivoDoProvedor(detalhe))
-                if (checkoutResponse.status >= 500) {
-                    // 5xx de gateway: a compra PODE ter fechado com a resposta
-                    // perdida — indeterminado, NÃO "não pagou" (A′).
+                if (checkoutDeResultadoIncerto(checkoutResponse.status)) {
+                    // 5xx de gateway, 408, 409 ou 423: a compra PODE ter fechado
+                    // com a resposta perdida — indeterminado, NÃO "não pagou" (A′).
                     return await finalizarIndeterminado(
                         `checkout respondeu HTTP ${checkoutResponse.status} — compra em estado indeterminado`,
                         false,

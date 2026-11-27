@@ -1269,7 +1269,14 @@ async function cotarUmaVez(
     })
     const falhas = resultados.filter((r) => r.falha)
     const responderam = resultados.filter((r) => r.resultado)
-    const cotacaoParcial = falhas.length > 0 && responderam.length > 0
+    // Parcial também quando o provedor respondeu 200 mas um serviço PEDIDO
+    // veio com erro passageiro (`erroDeServicoPassageiro`): sem a marca, a
+    // lista sem ele ia para o cache de 2 h como completa. Recusa legítima do
+    // serviço (trecho, peso, medida) não marca.
+    const servicoPedidoFalhouDePassagem = responderam.some((r) =>
+        (r.resultado as ResultadoDoProvedor).retornados.some((s) => s.erro && s.pedido && s.passageiro === true)
+    )
+    const cotacaoParcial = (falhas.length > 0 && responderam.length > 0) || servicoPedidoFalhouDePassagem
 
     let shippingOptions: any[] = responderam.flatMap((r) => (r.resultado as ResultadoDoProvedor).opcoes).map((opcao) => ({
         ...opcao,
