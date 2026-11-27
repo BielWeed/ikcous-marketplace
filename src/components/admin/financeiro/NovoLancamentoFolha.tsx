@@ -15,11 +15,13 @@ import {
   type FormularioDoLancamento,
   MAXIMO_DE_PARCELAS,
   TAMANHO_MAXIMO_DA_DESCRICAO,
+  comMesQueAcompanhaODinheiro,
   ehDataIso,
   formatarBRL,
   formatarData,
   formularioInicialDoLancamento,
   mensagemDeErroFinanceiro,
+  mesDeReferenciaVeioPronto,
   parseValorBR,
   rotuloDaForma,
   validarLancamento,
@@ -119,12 +121,15 @@ export function NovoLancamentoFolha({
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
   const contasAtivas = useMemo(() => contas.filter((c) => c.ativa), [contas]);
-  const [formInicial] = useState<FormularioDoLancamento>(() =>
-    formularioInicialDoLancamento(hoje, {
+  // Tocado = a lojista escolheu o mês (ou ele veio pronto): daí ele não se mexe sozinho.
+  const mesTocado = useRef(mesDeReferenciaVeioPronto(inicial));
+  const [formInicial] = useState<FormularioDoLancamento>(() => {
+    const base = formularioInicialDoLancamento(hoje, {
       contaId: contaSugerida(contasAtivas),
       ...inicial,
-    }),
-  );
+    });
+    return mesTocado.current ? base : comMesQueAcompanhaODinheiro(base);
+  });
   const [form, setForm] = useState<FormularioDoLancamento>(formInicial);
   // O campo do formulário mantém o nome do contrato; a tela só fala "mês de referência".
   const { dataCompetencia: mesDeReferencia } = form;
@@ -214,7 +219,10 @@ export function NovoLancamentoFolha({
   );
 
   function atualizar(parcial: Partial<FormularioDoLancamento>) {
-    const proximo = { ...formRef.current, ...parcial };
+    const juntado = { ...formRef.current, ...parcial };
+    const proximo = mesTocado.current
+      ? juntado
+      : comMesQueAcompanhaODinheiro(juntado);
     // Blur/debounce sem mudança não cria outra tentativa. A ref muda no evento,
     // antes de um submit no mesmo tique; nenhum efeito/updater regenera a chave.
     if (JSON.stringify(proximo) !== JSON.stringify(formRef.current)) {
@@ -558,7 +566,10 @@ export function NovoLancamentoFolha({
               disabled={enviando}
               type="date"
               value={mesDeReferencia}
-              onChange={(e) => atualizar({ dataCompetencia: e.target.value })}
+              onChange={(e) => {
+                mesTocado.current = true;
+                atualizar({ dataCompetencia: e.target.value });
+              }}
               className={CLASSE_CAMPO}
             />
           </Campo>

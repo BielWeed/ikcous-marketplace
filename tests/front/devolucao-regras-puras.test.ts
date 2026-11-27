@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   acoesDoCliente,
   acoesDoLojista,
+  avisoDasCategoriasSemTroca,
   caminhoDaFoto,
   centavosDosItensQueNaoVieram,
   contagemDe,
@@ -30,6 +31,7 @@ import {
   lerResultadoSolicitacao,
   mensagemDoErro,
   mensagemDoErroDaEdge,
+  notaDoEventoParaLoja,
   podeLiberarVinculoReverso,
   porqueMotivoIndisponivel,
   resolucoesDaConclusao,
@@ -1259,5 +1261,83 @@ describe("centavosDosItensQueNaoVieram — a parte do que não veio no valor do 
       2000,
     );
     expect(centavosDosItensQueNaoVieram(99, [a], [a])).toBe(99);
+  });
+});
+
+describe("avisoDasCategoriasSemTroca — só a troca de política recusa a categoria", () => {
+  it("troca: uma categoria, várias, e espaços/vazias fora", () => {
+    expect(
+      avisoDasCategoriasSemTroca("troca", {
+        categorias_sem_troca: ["Brincos"],
+      }),
+    ).toBe(
+      "A loja não troca por tamanho ou gosto produtos da categoria Brincos. Se algum item escolhido for dela, o pedido será recusado.",
+    );
+    expect(
+      avisoDasCategoriasSemTroca("troca", {
+        categorias_sem_troca: [" A ", "", "B", "C"],
+      }),
+    ).toContain("das categorias A, B e C.");
+    expect(
+      avisoDasCategoriasSemTroca("troca", { categorias_sem_troca: [" ", ""] }),
+    ).toBeNull();
+  });
+
+  it("desistência, defeito e motivo ainda não escolhido: o banco não confere a categoria", () => {
+    const politica = { categorias_sem_troca: ["Brincos"] };
+    expect(avisoDasCategoriasSemTroca("arrependimento", politica)).toBeNull();
+    expect(avisoDasCategoriasSemTroca("vicio", politica)).toBeNull();
+    expect(avisoDasCategoriasSemTroca(null, politica)).toBeNull();
+  });
+});
+
+describe("notaDoEventoParaLoja — o histórico do painel não diz que o app emitiu vale", () => {
+  const concluidaPelaLoja = {
+    para_status: "concluida" as const,
+    ator: "loja" as const,
+  };
+
+  it("concluída pela loja com o texto do banco: diz que a loja cria o vale", () => {
+    const texto = notaDoEventoParaLoja({
+      ...concluidaPelaLoja,
+      nota: "Vale-troca emitido",
+    });
+    expect(texto).toBe(
+      "Resolvida com vale-troca (o vale é criado pela loja, fora do app)",
+    );
+    expect(texto).not.toContain("emitido");
+  });
+
+  it("o mesmo texto em outro status fica como veio", () => {
+    expect(
+      notaDoEventoParaLoja({
+        para_status: "aprovada",
+        ator: "loja",
+        nota: "Vale-troca emitido",
+      }),
+    ).toBe("Vale-troca emitido");
+  });
+
+  it("o reembolso sai em reais brasileiros", () => {
+    // formatCurrency põe espaço inseparável depois do "R$".
+    expect(
+      notaDoEventoParaLoja({
+        ...concluidaPelaLoja,
+        nota: "Reembolso de R$ 1,234.50 pelo Mercado Pago",
+      })?.replace(/\s/g, " "),
+    ).toBe("Reembolso de R$ 1.234,50 pelo Mercado Pago");
+  });
+
+  it("a troca e a nota vazia", () => {
+    expect(
+      notaDoEventoParaLoja({
+        ...concluidaPelaLoja,
+        nota: "Troca combinada com a loja",
+      }),
+    ).toBe("Troca combinada com a loja");
+    expect(notaDoEventoParaLoja({ ...concluidaPelaLoja, nota: null })).toBe(
+      null,
+    );
+    expect(notaDoEventoParaLoja({ ...concluidaPelaLoja, nota: "" })).toBe(null);
   });
 });

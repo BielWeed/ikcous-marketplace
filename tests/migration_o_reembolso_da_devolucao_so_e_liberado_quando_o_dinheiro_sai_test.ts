@@ -366,7 +366,11 @@ Deno.test("a lista L8 de portas do visitante NAO muda: as funcoes novas nascem f
 // A SUCESSORA conhecida: a 20261241000000 (o reembolso em duvida prende o saldo) troca o texto do aviso da
 // devolucao em processamento; o rollback dela devolve o corpo DESTA migration byte a byte.
 const SUCESSORA = "20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql";
-Deno.test("so a 20261175000000, esta migration e a sucessora 20261241000000 (e seus rollbacks) definem devolucao_avisa_o_cliente", () => {
+// A sucessora DELA: a 20261645000000 (o aviso do vale-troca diz que a loja combina) troca so a frase do vale; o rollback
+// dela devolve o corpo da 20261241000000 byte a byte (tests/migration_o_aviso_do_vale_troca_diz_que_a_loja_combina_test.ts).
+const SUCESSORA_DA_SUCESSORA =
+  "20261645000000_o_aviso_do_vale_troca_diz_que_a_loja_combina.sql";
+Deno.test("so a 20261175000000, esta migration, a sucessora 20261241000000 e a 20261645000000 (e seus rollbacks) definem devolucao_avisa_o_cliente", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -386,6 +390,8 @@ Deno.test("so a 20261175000000, esta migration e a sucessora 20261241000000 (e s
       `rollback-manual-${NOME}`,
       SUCESSORA,
       `rollback-manual-${SUCESSORA}`,
+      SUCESSORA_DA_SUCESSORA,
+      `rollback-manual-${SUCESSORA_DA_SUCESSORA}`,
     ].sort(),
   );
   // e o rollback da sucessora devolve o corpo DESTA (o mesmo md5 que a conferencia daqui declara)

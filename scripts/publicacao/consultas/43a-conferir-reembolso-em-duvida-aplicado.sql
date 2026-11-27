@@ -51,7 +51,10 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
          -- A 343 preserva a regra da 241 e a estende ao reembolso manual; a 20261395200000 (a conclusao tranca o estoque na mesma ordem da
          -- compra) e' a sucessora da 343 e tambem a preserva (so acrescenta o bloco das travas antes do laco); a 20261642000000 (a peca que
          -- volta sem tamanho) e' a sucessora da 395 e tambem (so acrescenta o ramo da peca sem tamanho no reestoque).
+         -- A 20261645000000 (o aviso do vale-troca diz que a loja combina) sucede o aviso da 241 trocando so a frase do vale.
          CASE WHEN t.chave = 'concluir' AND md5(replace(p.prosrc, chr(13), '')) IN ('ea651d52157521c0fe7ffccc948b4b1a', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '1a548896acb8248f1b1771d765c92fcb')
+           THEN t.hash_desta
+           WHEN t.chave = 'avisa' AND md5(replace(p.prosrc, chr(13), '')) = '68792e520aa47e6e62330718430d82a8'
            THEN t.hash_desta ELSE md5(replace(p.prosrc, chr(13), '')) END AS m,
          (p.prosecdef AND l.lanname = t.lingua AND p.provolatile = t.volatilidade AND NOT p.proretset
             AND p.proconfig = ARRAY['search_path=public']::text[]) AS atributos_ok,

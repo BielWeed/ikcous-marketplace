@@ -434,6 +434,29 @@ export function tipoPrevisto(
 }
 
 /**
+ * O aviso das categorias "sem troca", ANTES do envio. O banco
+ * (`solicitar_devolucao`, corpo da 20261405400000) só confere
+ * `categorias_sem_troca` quando o pedido é TROCA de política (fora da
+ * desistência e sem defeito) e então recusa o envio inteiro se algum item é de
+ * uma delas. Na desistência e no defeito a categoria não conta: sem aviso.
+ */
+export function avisoDasCategoriasSemTroca(
+  tipo: TipoDevolucao | null,
+  politica: Pick<PoliticaDevolucao, "categorias_sem_troca">,
+): string | null {
+  if (tipo !== "troca") return null;
+  const categorias = politica.categorias_sem_troca
+    .map((c) => c.trim())
+    .filter((c) => c.length > 0);
+  if (categorias.length === 0) return null;
+  if (categorias.length === 1) {
+    return `A loja não troca por tamanho ou gosto produtos da categoria ${categorias[0]}. Se algum item escolhido for dela, o pedido será recusado.`;
+  }
+  const lista = `${categorias.slice(0, -1).join(", ")} e ${categorias[categorias.length - 1]}`;
+  return `A loja não troca por tamanho ou gosto produtos das categorias ${lista}. Se algum item escolhido for de uma delas, o pedido será recusado.`;
+}
+
+/**
  * Por que um motivo está indisponível (texto curto para a opção). O servidor
  * só calcula `troca_ate` quando a loja faz troca por gosto, e abre o
  * arrependimento (`arrependimento_ate`) em toda compra online: sem
@@ -858,6 +881,29 @@ export function etapasDaDevolucao(d: {
 export const NOTA_CODIGO_DE_POSTAGEM_GERADO =
   "Código de postagem dos Correios gerado (válido por 7 dias)";
 const VALIDADE_DO_CODIGO_DE_POSTAGEM_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Texto que admin_devolucao_concluir grava ao concluir com vale desde a
+// 20261175000000. O app não emite vale: a loja cria o vale fora do app.
+// Preso por tests/front/devolucao-nota-do-vale-contrato.test.ts.
+export const NOTA_VALE_GRAVADA_PELO_BANCO = "Vale-troca emitido";
+export const NOTA_VALE_PARA_A_LOJA =
+  "Resolvida com vale-troca (o vale é criado pela loja, fora do app)";
+
+/** Nota do evento como o histórico do painel mostra: o "Vale-troca emitido"
+ *  do banco vira o que de fato aconteceu, e valores saem em reais. */
+export function notaDoEventoParaLoja(
+  evento: Pick<EventoDevolucao, "para_status" | "ator" | "nota">,
+): string | null {
+  if (!evento.nota) return null;
+  if (
+    evento.ator === "loja" &&
+    evento.para_status === "concluida" &&
+    evento.nota.trim() === NOTA_VALE_GRAVADA_PELO_BANCO
+  ) {
+    return NOTA_VALE_PARA_A_LOJA;
+  }
+  return reaisComVirgula(evento.nota);
+}
 
 function fimDaValidadeDoCodigo(
   eventos: readonly EventoDevolucao[] = [],

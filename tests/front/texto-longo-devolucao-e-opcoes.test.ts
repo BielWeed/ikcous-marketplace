@@ -34,7 +34,7 @@ describe("texto longo sem corte silencioso", () => {
     [
       "nota do histórico",
       "/src/components/admin/devolucoes/DetalheDaDevolucao.tsx",
-      "{reaisComVirgula(evento.nota)}",
+      "{nota}",
     ],
   ])("%s quebra links e palavras sem espaços", (_nome, caminho, conteudo) => {
     const paragrafos = [

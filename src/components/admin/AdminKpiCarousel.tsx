@@ -3,7 +3,7 @@ import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type React from "react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export interface KpiCardConfig {
   id?: string;
@@ -163,6 +163,17 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
+  // Mesmo filtro do BannerCarousel/PremiumOffers: o navegador emula
+  // `mouseenter` logo depois do toque e só manda o `mouseleave` no próximo
+  // toque fora, então sem ele um toque deixava a faixa parada para sempre.
+  const ultimoToqueEm = useRef(0);
+  const registrarToque = useCallback(() => {
+    ultimoToqueEm.current = Date.now();
+  }, []);
+  const handleMouseEnter = useCallback(() => {
+    if (Date.now() - ultimoToqueEm.current < 1000) return;
+    setIsHovered(true);
+  }, []);
   const [scrollSnaps, setScrollSnaps] = useState<number[]>([]);
   const [canScrollPrev, setCanScrollPrev] = useState(false);
   const [canScrollNext, setCanScrollNext] = useState(true);
@@ -449,7 +460,9 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
       ) : (
         <div
           className="group/carousel relative w-full max-w-full overflow-x-hidden"
-          onMouseEnter={() => setIsHovered(true)}
+          onTouchStart={registrarToque}
+          onTouchEnd={registrarToque}
+          onMouseEnter={handleMouseEnter}
           onMouseLeave={() => setIsHovered(false)}
         >
           <div className="overflow-hidden" ref={emblaRef}>

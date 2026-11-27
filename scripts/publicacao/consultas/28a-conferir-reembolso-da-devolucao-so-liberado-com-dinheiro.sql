@@ -70,8 +70,10 @@ WITH alvo(chave, assinatura) AS (
   UNION ALL
   SELECT 'devolucao_avisa_o_cliente: corpo e o da 20261225000000, com o aviso pelo estado real do reembolso (md5)',
          '2cd21f47021cafc15cae4ccd0c8c67e5',
+         -- aceita tambem o corpo da 20261645000000 (o aviso do vale-troca diz que a loja combina; so a frase do vale muda).
          COALESCE((SELECT CASE WHEN f.m IN ('2cd21f47021cafc15cae4ccd0c8c67e5',
-                                            '56502b960dcf3e136c1d0d5c41091c20')
+                                            '56502b960dcf3e136c1d0d5c41091c20',
+                                            '68792e520aa47e6e62330718430d82a8')
                                THEN '2cd21f47021cafc15cae4ccd0c8c67e5' ELSE f.m END
                      FROM fn f WHERE f.chave = 'avisa'), 'AUSENTE')
   UNION ALL

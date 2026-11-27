@@ -30,6 +30,11 @@ const REEMBOLSO_EM_DUVIDA = Object.freeze({
 
 /** Desfaz a 20261241000000 na transação aberta do cliente, se ela estiver no ar. Devolve true se desfez. */
 async function desfazerReembolsoEmDuvidaNaTransacao(cliente) {
+  // A 20261645000000 (o aviso do vale-troca) sucede o devolucao_avisa_o_cliente DESTA: com ela no ar o pré-voo do
+  // rollback abaixo recusa. Sai antes (só se no ar).
+  await require("./o-aviso-do-vale-troca-posterior.cjs").desfazerAvisoDoValeTrocaNaTransacao(
+    cliente,
+  );
   await require("./reembolso-manual-reserva-posterior.cjs").desfazerReembolsoManualReservaNaTransacao(
     cliente,
   );

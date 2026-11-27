@@ -440,6 +440,8 @@ on:
           - 202b-antes-a-peca-que-volta-sem-tamanho-base-vigente
           - 203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado
           - 203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente
+          - 205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado
+          - 205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

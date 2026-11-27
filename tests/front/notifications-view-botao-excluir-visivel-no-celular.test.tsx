@@ -111,6 +111,25 @@ describe("NotificationsView — botão 'Excluir notificação' visível em telas
     ).toBe(true);
   });
 
+  it("escondido não recebe toque: pointer-events-none junto do opacity-0, e volta quando aparece", async () => {
+    const botao = await renderizarEEncontrarBotao();
+
+    // Invisível mas tocável apagava o aviso sem desfazer: o mesmo estado que
+    // some com a opacidade tem de sumir com o toque (área ampliada inclusa,
+    // o `::after` herda o pointer-events do botão).
+    expect(botao.classList.contains("hover-hover:pointer-events-none")).toBe(
+      true,
+    );
+    expect(
+      botao.classList.contains("hover-hover:group-hover:pointer-events-auto"),
+    ).toBe(true);
+    expect(
+      botao.classList.contains("hover-hover:focus-visible:pointer-events-auto"),
+    ).toBe(true);
+    // Sem o prefixo seria o bug ao contrário: no celular nunca tocável.
+    expect(botao.classList.contains("pointer-events-none")).toBe(false);
+  });
+
   it("ganha alvo de toque ampliado (pseudo-elemento after) para chegar a 44px sem alterar o ícone visível", async () => {
     const botao = await renderizarEEncontrarBotao();
 
