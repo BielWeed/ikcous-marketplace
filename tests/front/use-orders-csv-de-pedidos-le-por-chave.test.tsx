@@ -216,6 +216,31 @@ describe("CSV de pedidos lê por chave, não por posição", () => {
     expect(chamadas[1].p_end_date).toMatch(/\.\d{6}\+00:00$/);
   });
 
+  it("conta que bate no fim de uma página CHEIA não fecha o arquivo: pedido que entrou no meio não esconde o mais antigo", async () => {
+    // 199 no filtro; o #150 ainda está fora (pending) na 1ª página.
+    banco = Array.from({ length: 200 }, (_, i) => pedidoDoBanco(i + 1));
+    banco[149].status = "pending";
+    depoisDaChamada = (n) => {
+      // Depois da 1ª página o #150 entra no filtro: a 2ª página volta cheia
+      // (#100 repetido + 99 novos) e a conta fecha em 199 sem o #200.
+      if (n === 1) banco[149].status = "processing";
+    };
+    const leitura = exportar({ statusFilter: "processing" });
+    // Revisão Opus 27/11: o arquivo saía com 199 linhas, sem o #200.
+    await expect(leitura).rejects.toThrow(/incompleta/i);
+  });
+
+  it("total igual ao tamanho da página confere a página seguinte e fecha", async () => {
+    banco = Array.from({ length: 100 }, (_, i) => pedidoDoBanco(i + 1));
+
+    const lista = await exportar({ statusFilter: "processing" });
+
+    expect(numeros(lista)).toEqual(
+      Array.from({ length: 100 }, (_, i) => i + 1),
+    );
+    expect(chamadas).toHaveLength(2);
+  });
+
   it("empate maior que a página (importação no mesmo instante) anda pela posição dentro do empate e lê todos", async () => {
     banco = Array.from({ length: 250 }, (_, i) => pedidoDoBanco(i + 1));
     const mesmoInstante = banco[49].created_at;

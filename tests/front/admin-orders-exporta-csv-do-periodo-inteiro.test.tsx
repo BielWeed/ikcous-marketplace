@@ -550,9 +550,12 @@ describe("CSV de todos os pedidos do filtro", () => {
   it("aceita exatamente 5000 pedidos", async () => {
     exportacao = async (args) =>
       resposta(
+        // Como o banco: depois do 5000º a página vem vazia.
         Array.from({ length: 100 }, (_, i) =>
-          pedido(Number(args.p_page) * 100 + i + 1),
-        ),
+          Number(args.p_page) * 100 + i + 1,
+        )
+          .filter((n) => n <= 5000)
+          .map((n) => pedido(n)),
         5000,
       );
     await act(async () => {
@@ -563,8 +566,9 @@ describe("CSV de todos os pedidos do filtro", () => {
     ).resolves.toHaveLength(5000);
     // 5000 pedidos no MESMO instante: a 1ª leitura da chave relê a página
     // que já veio (o empate inteiro) e só então anda pela posição dentro
-    // do empate — uma chamada a mais que a leitura por posição.
-    expect(chamadasExportacao()).toHaveLength(51);
+    // do empate — uma chamada a mais que a leitura por posição — e a última
+    // página cheia ainda pede a seguinte (vazia) para conferir o fim.
+    expect(chamadasExportacao()).toHaveLength(52);
   });
 
   it("interrompe no teto de páginas quando a RPC nunca completa a contagem", async () => {
@@ -580,8 +584,9 @@ describe("CSV de todos os pedidos do filtro", () => {
     await expect(hook.buscarPedidosDoFiltroParaExportar({})).rejects.toThrow(
       /incompleta/i,
     );
-    // Teto: ceil(5000 / 99) + 1 — a chave inclusiva relê o último de cada
-    // página, então cada página depois da 1ª rende no máximo 99 novos.
-    expect(chamadasExportacao()).toHaveLength(52);
+    // Teto: ceil(5000 / 99) + 2 — a chave inclusiva relê o último de cada
+    // página (cada página depois da 1ª rende no máximo 99 novos) e a última
+    // página cheia pede mais uma para conferir o fim.
+    expect(chamadasExportacao()).toHaveLength(53);
   });
 });

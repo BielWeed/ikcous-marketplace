@@ -2897,8 +2897,9 @@ export function useOrders(
       // milissegundos. A posição (`p_page`) só anda DENTRO de um mesmo
       // instante maior que a página (importação, lote), ordenado pelo id.
       // Como a chave é inclusiva, toda página depois da primeira relê pelo
-      // menos o último pedido: rende no máximo PAGE_SIZE - 1 novos.
-      const MAX_PAGES = Math.ceil(MAX_ORDERS / (PAGE_SIZE - 1)) + 1;
+      // menos o último pedido: rende no máximo PAGE_SIZE - 1 novos. O + 2:
+      // a 1ª página e a que confere o fim depois de uma página cheia.
+      const MAX_PAGES = Math.ceil(MAX_ORDERS / (PAGE_SIZE - 1)) + 2;
       const pedidos: Order[] = [];
       const ids = new Set<string>();
       let totalEsperado: number | undefined;
@@ -2967,7 +2968,13 @@ export function useOrders(
           pedidos.push(pedido);
           novos += 1;
         }
-        if (pedidos.length === totalEsperado) return pedidos;
+        // A conta só fecha o arquivo quando a página veio INCOMPLETA (acabou
+        // o filtro). Página cheia com a conta batendo pode ser um pedido que
+        // entrou no trecho já percorrido escondendo o mais antigo: lê a
+        // seguinte, que confere (revisão 27/11; custa no máximo 1 chamada).
+        if (pedidos.length === totalEsperado && linhas.length < PAGE_SIZE) {
+          return pedidos;
+        }
         if (linhas.length === 0 || pedidos.length > totalEsperado) break;
         const ultimaData = linhas[linhas.length - 1]?.created_at;
         if (typeof ultimaData !== "string" || ultimaData === "") break;
