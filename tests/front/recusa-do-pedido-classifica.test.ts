@@ -105,6 +105,19 @@ describe("classificarRecusaDoPedido", () => {
     expect(r.acao).toBe("remover_cupom");
   });
 
+  // O banco formata `valid_until` na sessão em UTC: o cupom que "vale até
+  // 25/11" (fim do dia em Brasília) chega como "expirou em 26/11/2026 02:59",
+  // dia errado e hora que ainda nem chegou. A cliente não pode ler essa data.
+  it("cupom expirado NAO repassa a data em UTC do banco, e diz que venceu", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("O cupom NATAL expirou em 26/11/2026 02:59."),
+    );
+    expect(r.acao).toBe("remover_cupom");
+    expect(r.mensagem).not.toContain("26/11/2026");
+    expect(r.mensagem).not.toContain("02:59");
+    expect(r.mensagem).toBe("O cupom NATAL venceu.");
+  });
+
   it("cupom com limite de usos atingido -> remover o cupom", () => {
     const r = classificarRecusaDoPedido(
       p0001("O cupom PRIMEIRA já atingiu o limite de usos."),

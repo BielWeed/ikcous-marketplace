@@ -26,6 +26,7 @@ import { useQuestions } from "@/hooks/useQuestions";
 import type { Question } from "@/hooks/useQuestions";
 import { useRevalidarAoVoltar } from "@/hooks/useRevalidarAoVoltar";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { taxaDeResposta } from "@/lib/taxa-de-resposta";
@@ -718,7 +719,7 @@ export const AdminQAView = memo(function AdminQAView({
             </div>
             <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-sm text-zinc-300">
               <span className="shrink-0 tabular-nums">
-                {new Date(q.createdAt).toLocaleDateString("pt-BR")}
+                {dataNoFusoDaLoja(new Date(q.createdAt))}
               </span>
               {q.productName && (
                 <>
@@ -752,7 +753,7 @@ export const AdminQAView = memo(function AdminQAView({
                     Resposta da loja
                   </span>
                   <span className="text-sm tabular-nums text-zinc-400">
-                    {new Date(ans.createdAt).toLocaleDateString("pt-BR")}
+                    {dataNoFusoDaLoja(new Date(ans.createdAt))}
                   </span>
                 </div>
                 <p className="mt-1.5 whitespace-pre-wrap break-words text-base text-zinc-100">

@@ -140,7 +140,12 @@ const CODIGOS_POSTGREST_REVERTIDO_COMPROVADO = new Set([
  * em vez de `+` porque nome vazio também é possível: com `+`, um produto sem
  * nome tirava a ação junto.
  */
-const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
+const REGRAS: ReadonlyArray<{
+  padrao: RegExp;
+  acao: AcaoDeRecusa;
+  /** Troca a frase do banco quando ela não pode chegar crua à cliente. */
+  reescrever?: (casou: RegExpExecArray) => string;
+}> = [
   {
     padrao:
       /^Estoque insuficiente para o produto ([\s\S]*) \(Disponível: (\d+), Solicitado: \d+\)$/,
@@ -169,9 +174,16 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
     padrao: /^O cupom ([\s\S]+) está desativado pela loja\.$/,
     acao: "remover_cupom",
   },
+  // A DATA do banco não chega à cliente: a RPC formata `valid_until` com
+  // `to_char` na sessão em UTC, e a validade é o fim do dia em Brasília — o
+  // cupom que "vale até 25/11" chegava como "expirou em 26/11/2026 02:59",
+  // dia errado e hora que ainda nem chegou. Dizer só que venceu, em vez de
+  // converter de UTC para Brasília, porque converter supõe o fuso da sessão
+  // do banco: se ele um dia mudar, a conversão vira o erro ao contrário.
   {
     padrao: /^O cupom ([\s\S]+) expirou em \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}\.$/,
     acao: "remover_cupom",
+    reescrever: (casou) => `O cupom ${casou[1]} venceu.`,
   },
   {
     padrao: /^O cupom ([\s\S]+) já atingiu o limite de usos\.$/,
@@ -396,10 +408,11 @@ export const classificarRecusaDoPedido = (error: unknown): RecusaDoPedido => {
           "Um item ou uma opção do seu carrinho não está mais disponível. Confira seu carrinho.",
       };
     }
-    for (const { padrao, acao } of REGRAS) {
+    for (const { padrao, acao, reescrever } of REGRAS) {
       const casou = padrao.exec(texto);
       if (!casou) continue;
-      const resultado: RecusaDoPedido = { acao, mensagem: texto };
+      const mensagem = reescrever ? reescrever(casou) : texto;
+      const resultado: RecusaDoPedido = { acao, mensagem };
       if (casou[1] !== undefined) resultado.produto = casou[1];
       if (casou[2] !== undefined) resultado.disponivel = Number(casou[2]);
       return resultado;
