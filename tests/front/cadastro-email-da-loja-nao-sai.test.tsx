@@ -130,6 +130,13 @@ const FRASE_RECUPERACAO_SEM_ENVIO =
   "Esta loja não está conseguindo enviar e-mails de recuperação de senha agora. Avise a loja para ela resolver.";
 const FRASE_LIMITE_DA_LOJA =
   "A loja atingiu o limite de envio de e-mails por agora. Tente de novo daqui a alguns minutos.";
+// O gancho de e-mail da loja (Gmail da loja) falhou: pode ser passageiro.
+const FRASE_CADASTRO_ENVIO_DA_LOJA_FALHOU =
+  "A loja não conseguiu enviar o e-mail de confirmação agora, então o cadastro por e-mail não foi concluído. Tente de novo em alguns minutos; se continuar, avise a loja.";
+const FRASE_REENVIO_ENVIO_DA_LOJA_FALHOU =
+  "A loja não conseguiu enviar o e-mail de confirmação agora. Tente de novo em alguns minutos; se continuar, avise a loja.";
+const FRASE_RECUPERACAO_ENVIO_DA_LOJA_FALHOU =
+  "A loja não conseguiu enviar o e-mail de recuperação de senha agora. Tente de novo em alguns minutos; se continuar, avise a loja.";
 
 // Frases de ANTES, que continuam valendo para as outras causas.
 const FRASE_MUITAS_TENTATIVAS_CADASTRO =
@@ -176,6 +183,18 @@ const INTERVALO_DO_ENDERECO = {
   status: 429,
   code: "over_email_send_rate_limit",
   message: "For security purposes, you can only request this after 42 seconds.",
+};
+// Gancho de e-mail da loja (Send Email Hook): o Auth não repassa o corpo da
+// edge; ver tests/front/falha-de-envio-de-email-gancho-da-loja.test.ts.
+const GANCHO_500 = {
+  status: 500,
+  code: "unexpected_failure",
+  message: "Unexpected status code returned from hook: 500",
+};
+const GANCHO_ESTOUROU_O_TEMPO = {
+  status: 422,
+  code: "hook_timeout",
+  message: "Failed to reach hook within maximum time of 5.000000 seconds",
 };
 const LIMITE_DO_IP = {
   status: 429,
@@ -302,6 +321,26 @@ describe("loja que não consegue mandar e-mail: a cliente lê a causa certa", ()
       },
     );
 
+    it.each([
+      ["500 do gancho", GANCHO_500],
+      ["gancho estourou o tempo", GANCHO_ESTOUROU_O_TEMPO],
+    ])(
+      "Gmail da loja falhou (%s): manda tentar daqui a pouco e, se continuar, avisar a loja",
+      async (_sinal, erro) => {
+        const { resultado, frase } = await cadastrar(erro);
+        expect(resultado).toBe(false);
+        expect(frase).toBe(FRASE_CADASTRO_ENVIO_DA_LOJA_FALHOU);
+        consoleNaoViuOEmail();
+      },
+    );
+
+    it("Gmail da loja falhou com o Google ligado: a frase aponta o botão do Google", async () => {
+      const { frase } = await cadastrar(GANCHO_500, { google: true });
+      expect(frase).toBe(
+        FRASE_CADASTRO_ENVIO_DA_LOJA_FALHOU + DICA_GOOGLE_NO_CADASTRO,
+      );
+    });
+
     it("com o Google ligado nesta loja, a frase aponta o botão que está na tela", async () => {
       const { frase } = await cadastrar(NAO_AUTORIZADO_PELO_CODIGO, {
         google: true,
@@ -385,6 +424,19 @@ describe("loja que não consegue mandar e-mail: a cliente lê a causa certa", ()
       },
     );
 
+    it.each([
+      ["500 do gancho", GANCHO_500],
+      ["gancho estourou o tempo", GANCHO_ESTOUROU_O_TEMPO],
+    ])(
+      "Gmail da loja falhou (%s): frase própria, sem Google",
+      async (_sinal, erro) => {
+        const { resultado, frase } = await reenviar(erro);
+        expect(resultado).toBe(false);
+        expect(frase).toBe(FRASE_REENVIO_ENVIO_DA_LOJA_FALHOU);
+        consoleNaoViuOEmail();
+      },
+    );
+
     it("limite de e-mails da loja: não culpa a cliente", async () => {
       const { frase } = await reenviar(LIMITE_DA_LOJA);
       expect(frase).toBe(FRASE_LIMITE_DA_LOJA);
@@ -426,6 +478,17 @@ describe("loja que não consegue mandar e-mail: a cliente lê a causa certa", ()
       expect(resultado.success).toBe(false);
       expect(resultado.status).toBe("error");
       expect(resultado.message).toBe(FRASE_RECUPERACAO_SEM_ENVIO);
+      consoleNaoViuOEmail();
+    });
+
+    it.each([
+      ["500 do gancho", GANCHO_500],
+      ["gancho estourou o tempo", GANCHO_ESTOUROU_O_TEMPO],
+    ])("Gmail da loja falhou (%s): frase própria", async (_sinal, erro) => {
+      const resultado = await recuperar(erro);
+      expect(resultado.success).toBe(false);
+      expect(resultado.status).toBe("error");
+      expect(resultado.message).toBe(FRASE_RECUPERACAO_ENVIO_DA_LOJA_FALHOU);
       consoleNaoViuOEmail();
     });
 
