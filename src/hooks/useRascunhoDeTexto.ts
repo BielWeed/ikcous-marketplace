@@ -7,7 +7,13 @@
 // - Ao abrir a tela (já com o salvo de verdade na tela), oferece restaurar.
 //   O aviso fica até ela decidir (Restaurar ou Descartar) e, enquanto espera,
 //   nada grava por cima do rascunho antigo — mesmo cuidado do rascunho do
-//   produto. Sair da tela sem decidir tira o aviso e o rascunho fica.
+//   produto. Sair da tela sem decidir tira o aviso e o rascunho fica. Tela
+//   montada mas escondida (a aba Ajustes por baixo de Pedidos, `ativo`
+//   falso) também tira o aviso, sem dar o rascunho por decidido: ao voltar,
+//   o aviso volta.
+// - O salvo pode mudar com o aviso aberto (o tempo real traz o que outro
+//   aparelho gravou). "Restaurar" confere de novo: se mudou e ela ainda não
+//   foi avisada, o aviso fica aberto com o recado e só o segundo toque troca.
 // - Quem chama apaga o rascunho ao SALVAR com sucesso (`apagarRascunho`).
 //   Desmontar a tela NÃO apaga nem grava: o "Descartar e Sair" do aviso de
 //   saída apaga em App.tsx (`descartarRascunhoDeTexto`).
@@ -31,6 +37,7 @@ export function useRascunhoDeTexto({
   texto,
   salvo,
   pronto,
+  ativo = true,
   aoRestaurar,
 }: {
   readonly nome: NomeDoRascunhoDeTexto;
@@ -41,6 +48,8 @@ export function useRascunhoDeTexto({
   readonly salvo: string;
   /** A tela já mostra o salvo de verdade (leitura concluída). */
   readonly pronto: boolean;
+  /** A tela está à vista (montada e escondida: `false`). */
+  readonly ativo?: boolean;
   readonly aoRestaurar: (texto: string) => void;
 }): { readonly apagarRascunho: () => void } {
   const chave = chaveDoRascunhoDeTexto(nome, userId);
@@ -50,10 +59,14 @@ export function useRascunhoDeTexto({
   useEffect(() => {
     atual.current = { texto, salvo, pronto, aoRestaurar };
   });
+  // Há rascunho antigo esperando a decisão dela (o aviso pode estar fora da
+  // tela enquanto ela está em outra aba: continua esperando).
   const ofertaPendenteRef = useRef(false);
 
   useEffect(() => {
-    if (!chave || !pronto) return;
+    // Escondida: a pendência (se houver) segue de pé até ela voltar.
+    if (!chave || !pronto || !ativo) return;
+    ofertaPendenteRef.current = false;
     const lido = lerRascunhoDeTexto(chave);
     if (!lido) return;
     if (lido.texto === atual.current.texto) {
@@ -64,37 +77,47 @@ export function useRascunhoDeTexto({
     const decidiu = () => {
       ofertaPendenteRef.current = false;
     };
-    const mudouDepois = lido.base !== atual.current.salvo;
-    toast.info("Rascunho não salvo encontrado", {
-      id: idDoAviso,
-      description: `Deseja restaurar o texto que você digitou e não salvou?${
-        mudouDepois ? ` ${AVISO_TEXTO_ALTERADO_DEPOIS}` : ""
-      }`,
-      action: {
-        label: "Restaurar",
-        onClick: () => {
-          decidiu();
-          atual.current.aoRestaurar(lido.texto);
+    const mudouDepois = () => lido.base !== atual.current.salvo;
+    const oferecer = (avisouQueMudou: boolean) => {
+      toast.info("Rascunho não salvo encontrado", {
+        id: idDoAviso,
+        description: `Deseja restaurar o texto que você digitou e não salvou?${
+          avisouQueMudou ? ` ${AVISO_TEXTO_ALTERADO_DEPOIS}` : ""
+        }`,
+        action: {
+          label: "Restaurar",
+          onClick: (evento) => {
+            // O salvo mudou depois de o aviso abrir: restaurar agora apagaria
+            // o texto do outro aparelho sem ela saber. Avisa antes.
+            if (!avisouQueMudou && mudouDepois()) {
+              evento.preventDefault();
+              oferecer(true);
+              return;
+            }
+            decidiu();
+            atual.current.aoRestaurar(lido.texto);
+          },
         },
-      },
-      cancel: {
-        label: "Descartar",
-        onClick: () => {
-          decidiu();
-          apagarRascunhoDeTexto(chave);
-          toast.info("Rascunho descartado.");
+        cancel: {
+          label: "Descartar",
+          onClick: () => {
+            decidiu();
+            apagarRascunhoDeTexto(chave);
+            toast.info("Rascunho descartado.");
+          },
         },
-      },
-      // Fica até a decisão: sumir sozinho deixaria o rascunho sem dono.
-      duration: Number.POSITIVE_INFINITY,
-      dismissible: false,
-    });
-    return () => {
-      if (!ofertaPendenteRef.current) return;
-      ofertaPendenteRef.current = false;
-      toast.dismiss(idDoAviso);
+        // Fica até a decisão: sumir sozinho deixaria o rascunho sem dono.
+        duration: Number.POSITIVE_INFINITY,
+        dismissible: false,
+      });
     };
-  }, [chave, pronto, idDoAviso]);
+    oferecer(mudouDepois());
+    return () => {
+      // Sai da tela (ou da vista) sem decidir: o aviso sai, a pendência fica
+      // (a próxima rodada deste efeito a refaz a partir do aparelho).
+      if (ofertaPendenteRef.current) toast.dismiss(idDoAviso);
+    };
+  }, [chave, pronto, ativo, idDoAviso]);
 
   useEffect(() => {
     if (!chave) return;

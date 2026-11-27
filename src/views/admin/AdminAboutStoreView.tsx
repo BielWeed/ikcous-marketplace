@@ -268,6 +268,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
     texto: descricao,
     salvo: baselineDescricao,
     pronto: isLoaded && !configFalhou,
+    ativo: active,
     aoRestaurar: (texto) => {
       usuarioEditou.current = texto !== baselineDescricao;
       setDescricao(texto);

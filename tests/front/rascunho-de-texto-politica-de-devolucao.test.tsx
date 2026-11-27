@@ -100,12 +100,12 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
-async function montar() {
+async function montar(ativa = true) {
   const { PoliticaDeDevolucaoSection } = await import(
     "@/components/admin/settings/PoliticaDeDevolucaoSection"
   );
   await act(async () => {
-    raiz.render(<PoliticaDeDevolucaoSection />);
+    raiz.render(<PoliticaDeDevolucaoSection ativa={ativa} />);
   });
   await act(async () => {
     for (let i = 0; i < 6; i++) await Promise.resolve();
@@ -237,5 +237,42 @@ describe("Política de devolução — rascunho do texto sobrevive à aba descar
     await montar();
     expect(ofertaDeRascunho()).toBeUndefined();
     expect(localStorage.getItem(chave("admin-1"))).toBeNull();
+  });
+
+  it("Ajustes escondida (outra aba): o aviso sai e o rascunho fica; ao voltar, volta o aviso", async () => {
+    const rascunho = JSON.stringify({
+      texto: "Rascunho guardado",
+      base: "Política salva",
+      salvoEm: Date.now(),
+    });
+    localStorage.setItem(chave("admin-1"), rascunho);
+    await montar();
+    expect(ofertaDeRascunho()).toBeDefined();
+
+    // Ela foi para Pedidos: a aba Ajustes segue montada, escondida.
+    await montar(false);
+    expect(toast.dismiss).toHaveBeenCalledWith(
+      "rascunho-de-texto-politica-de-devolucao",
+    );
+    // Sem decidir, a aba do navegador oculta não apaga nem troca o rascunho.
+    await ocultarAAba();
+    expect(localStorage.getItem(chave("admin-1"))).toBe(rascunho);
+
+    toast.info.mockClear();
+    await montar(true);
+    expect(ofertaDeRascunho()).toBeDefined();
+  });
+
+  it("controle: escondida desde o começo, o aviso não aparece", async () => {
+    localStorage.setItem(
+      chave("admin-1"),
+      JSON.stringify({
+        texto: "Rascunho guardado",
+        base: "Política salva",
+        salvoEm: Date.now(),
+      }),
+    );
+    await montar(false);
+    expect(ofertaDeRascunho()).toBeUndefined();
   });
 });

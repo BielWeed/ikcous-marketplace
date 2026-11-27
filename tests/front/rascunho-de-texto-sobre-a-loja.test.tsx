@@ -130,14 +130,26 @@ async function ocultarAAba() {
   visibilidade = "visible";
 }
 
+type Clique = { preventDefault: () => void };
 type OpcoesDoAviso = {
-  action: { onClick: () => void };
+  description: string;
+  action: { onClick: (evento?: Clique) => void };
   cancel: { onClick: () => void };
 };
-const ofertaDeRascunho = () =>
-  toast.info.mock.calls.find(([titulo]) =>
-    String(titulo).includes("Rascunho"),
-  ) as [string, OpcoesDoAviso] | undefined;
+const ofertasDeRascunho = () =>
+  toast.info.mock.calls.filter(([titulo]) =>
+    String(titulo).includes("Rascunho não salvo"),
+  ) as [string, OpcoesDoAviso][];
+const ofertaDeRascunho = () => ofertasDeRascunho()[0];
+const ultimaOferta = () => ofertasDeRascunho().at(-1);
+const RECADO_MUDOU = "O texto salvo mudou depois deste rascunho";
+
+function guardarRascunho(texto: string, base: string) {
+  localStorage.setItem(
+    chave("admin-1"),
+    JSON.stringify({ texto, base, salvoEm: Date.now() }),
+  );
+}
 
 describe("Minha loja — rascunho da descrição sobrevive à aba descartada", () => {
   it("aba oculta guarda o texto e, ao voltar, Restaurar o devolve", async () => {
@@ -235,5 +247,57 @@ describe("Minha loja — rascunho da descrição sobrevive à aba descartada", (
     );
     await montar();
     expect(ofertaDeRascunho()).toBeDefined();
+  });
+
+  it("rascunho feito sobre outro texto salvo: o aviso já abre com o recado", async () => {
+    guardarRascunho("Meu rascunho", "Texto antigo de antes");
+    await montar();
+    expect(ofertaDeRascunho()?.[1].description).toContain(RECADO_MUDOU);
+  });
+
+  it("controle: rascunho sobre o MESMO texto salvo abre sem o recado", async () => {
+    guardarRascunho("Meu rascunho", "Texto salvo");
+    await montar();
+    expect(ofertaDeRascunho()?.[1].description).not.toContain(RECADO_MUDOU);
+  });
+
+  it("salvo muda por fora com o aviso aberto: Restaurar avisa antes e só o segundo troca", async () => {
+    guardarRascunho("Meu rascunho", "Texto salvo");
+    await montar();
+    const primeira = ofertaDeRascunho();
+    expect(primeira?.[1].description).not.toContain(RECADO_MUDOU);
+
+    // Outro aparelho salvou; o tempo real troca a descrição na tela.
+    configAtual = {
+      ...configAtual,
+      storeDescription: "<p>Texto do outro aparelho</p>",
+    };
+    await montar();
+    expect(campo().value).toBe("Texto do outro aparelho");
+
+    const clique = { preventDefault: vi.fn() };
+    await act(async () => primeira?.[1].action.onClick(clique));
+    // Não restaurou: o aviso continua aberto, agora com o recado.
+    expect(clique.preventDefault).toHaveBeenCalled();
+    expect(campo().value).toBe("Texto do outro aparelho");
+    const segunda = ultimaOferta();
+    expect(segunda).not.toBe(primeira);
+    expect(segunda?.[1].description).toContain(RECADO_MUDOU);
+
+    // Avisada, ela decide restaurar: agora troca.
+    await act(async () =>
+      segunda?.[1].action.onClick({ preventDefault: vi.fn() }),
+    );
+    expect(campo().value).toBe("Meu rascunho");
+  });
+
+  it("com o aviso esperando, ela digita e esconde a aba: o rascunho antigo fica", async () => {
+    guardarRascunho("Rascunho antigo", "Texto salvo");
+    await montar();
+    expect(ofertaDeRascunho()).toBeDefined();
+    await digitar("Outra coisa digitada agora");
+    await ocultarAAba();
+    const guardado = JSON.parse(localStorage.getItem(chave("admin-1")) ?? "{}");
+    expect(guardado.texto).toBe("Rascunho antigo");
   });
 });

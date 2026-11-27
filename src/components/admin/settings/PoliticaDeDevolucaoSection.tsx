@@ -409,6 +409,7 @@ export function PoliticaDeDevolucaoSection({
     texto: form?.texto_politica ?? "",
     salvo: salva?.texto_politica ?? "",
     pronto: form !== null && salva !== null,
+    ativo: ativa,
     aoRestaurar: (texto) => mudar("texto_politica", texto),
   });
 
