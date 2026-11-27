@@ -3610,7 +3610,16 @@ const ROL_DA_196B = [
   "premissa: o cartao com as 14 colunas da 20261590000000 (com pausa_em) e a tabela da chave da 20261399998000",
   "store_config: nenhuma linha com manutencao = true hoje (se houver, a loja passa a recusar pedido online no apply: avisar o dono antes)",
 ];
+// O rol das consultas do lote da 20261620000000 (a soma das categorias fecha com o faturamento no centavo): as MESMAS 2 linhas da 164 (so
+// get_category_analytics muda de corpo). Somente catalogo: nenhuma linha de pedido e lida e a funcao nao e chamada. A 198a espera o corpo
+// desta (md5); a 198b, o da 20261409000000 ou o desta (reaplicacao idempotente).
+const ROL_DA_198 = [
+  "get_category_analytics: corpo exato (md5)",
+  "get_category_analytics: assinatura e atributos conhecidos",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado": ROL_DA_198,
+  "198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente": ROL_DA_198,
   "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado": ROL_DA_196A,
   "196b-antes-a-loja-pausa-o-pedido-novo-ausente": ROL_DA_196B,
   "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado": ROL_DA_195A,
