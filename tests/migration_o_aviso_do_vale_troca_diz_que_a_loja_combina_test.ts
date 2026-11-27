@@ -108,7 +108,10 @@ Deno.test("3645: o corpo novo so troca a frase do vale (e o comentario dela); ti
       '"A devolução foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja.',
     ),
   );
-  assert.ok(!front.includes("vale-troca foi emitido"), "a ficha nao promete vale emitido");
+  assert.ok(
+    !front.includes("vale-troca foi emitido"),
+    "a ficha nao promete vale emitido",
+  );
 });
 
 Deno.test("3645: pre-voo antes da troca, conferencia depois; nenhum DROP, UPDATE, DELETE, GRANT nem REVOKE; nenhuma linha reescrita", () => {
