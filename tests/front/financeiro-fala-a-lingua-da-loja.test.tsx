@@ -287,6 +287,7 @@ describe("Financeiro fala a língua da loja", () => {
     rpcFalso.mockResolvedValue({ data: { ids: ["x"] }, error: null });
     await montar(
       <NovoLancamentoFolha
+        autorId="dona-da-loja"
         hoje={HOJE}
         contas={CONTAS}
         categorias={CATEGORIAS}

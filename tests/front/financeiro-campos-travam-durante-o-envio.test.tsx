@@ -194,6 +194,7 @@ const CASOS: Caso[] = [
       listas,
       montar: (aoSalvar) => (
         <NovoLancamentoFolha
+          autorId="dona-da-loja"
           hoje={HOJE}
           contas={CONTAS}
           categorias={[CATEGORIA]}

@@ -171,6 +171,7 @@ describe("Financeiro — Novo lançamento", () => {
     await act(async () => {
       raiz.render(
         <NovoLancamentoFolha
+          autorId="dona-da-loja"
           hoje={HOJE}
           contas={CONTAS}
           categorias={CATEGORIAS}
@@ -534,6 +535,7 @@ describe.each([
       await act(async () => {
         raiz.render(
           <NovoLancamentoFolha
+            autorId="dona-da-loja"
             hoje={HOJE}
             contas={CONTAS}
             categorias={CATEGORIAS}

@@ -24,6 +24,7 @@ const AGORA = 1_800_000_000_000;
 const ARMAZEM = "fin-lancamento-tentativas-em-aberto";
 const A = JSON.stringify({ descricao: "Aluguel", valor: 120 });
 const B = JSON.stringify({ descricao: "Internet", valor: 99 });
+const DONO = "8a1f0c2e-2222-4222-8222-000000000002";
 
 describe("tentativas em aberto do lançamento: prazo e renovação", () => {
   beforeEach(() => {
@@ -36,62 +37,62 @@ describe("tentativas em aberto do lançamento: prazo e renovação", () => {
   });
 
   it("no minuto 10 exato a chave ainda vale; um milissegundo depois, não", () => {
-    guardarChaveEmAberto(A, "chave-1");
+    guardarChaveEmAberto(DONO, A, "chave-1");
     vi.setSystemTime(AGORA + DEZ_MINUTOS);
-    expect(chaveEmAbertoDoConteudo(A)).toBe("chave-1");
+    expect(chaveEmAbertoDoConteudo(DONO, A)).toBe("chave-1");
     vi.setSystemTime(AGORA + DEZ_MINUTOS + 1);
-    expect(chaveEmAbertoDoConteudo(A)).toBeNull();
+    expect(chaveEmAbertoDoConteudo(DONO, A)).toBeNull();
   });
 
   it("guardar de novo a mesma tentativa renova o prazo de 10 minutos", () => {
-    guardarChaveEmAberto(A, "chave-1");
+    guardarChaveEmAberto(DONO, A, "chave-1");
     vi.setSystemTime(AGORA + 9 * 60_000);
-    guardarChaveEmAberto(A, "chave-1");
+    guardarChaveEmAberto(DONO, A, "chave-1");
     // 18 minutos depois do primeiro registro, 9 depois do segundo: vale.
     vi.setSystemTime(AGORA + 18 * 60_000);
-    expect(chaveEmAbertoDoConteudo(A)).toBe("chave-1");
+    expect(chaveEmAbertoDoConteudo(DONO, A)).toBe("chave-1");
     // 10 min e 1 ms depois do segundo registro: venceu.
     vi.setSystemTime(AGORA + 9 * 60_000 + DEZ_MINUTOS + 1);
-    expect(chaveEmAbertoDoConteudo(A)).toBeNull();
+    expect(chaveEmAbertoDoConteudo(DONO, A)).toBeNull();
   });
 
   it("guardar outra chave para o mesmo conteúdo troca a chave guardada", () => {
-    guardarChaveEmAberto(A, "chave-1");
-    guardarChaveEmAberto(A, "chave-2");
-    expect(chaveEmAbertoDoConteudo(A)).toBe("chave-2");
+    guardarChaveEmAberto(DONO, A, "chave-1");
+    guardarChaveEmAberto(DONO, A, "chave-2");
+    expect(chaveEmAbertoDoConteudo(DONO, A)).toBe("chave-2");
   });
 
   it("conteúdo vencido já guardado volta a valer se for guardado de novo", () => {
-    guardarChaveEmAberto(A, "chave-1");
+    guardarChaveEmAberto(DONO, A, "chave-1");
     vi.setSystemTime(AGORA + DEZ_MINUTOS + 1);
-    expect(chaveEmAbertoDoConteudo(A)).toBeNull();
-    guardarChaveEmAberto(A, "chave-3");
-    expect(chaveEmAbertoDoConteudo(A)).toBe("chave-3");
+    expect(chaveEmAbertoDoConteudo(DONO, A)).toBeNull();
+    guardarChaveEmAberto(DONO, A, "chave-3");
+    expect(chaveEmAbertoDoConteudo(DONO, A)).toBe("chave-3");
   });
 
   it("esquecer um conteúdo não apaga a chave de outro", () => {
-    guardarChaveEmAberto(A, "chave-a");
-    guardarChaveEmAberto(B, "chave-b");
-    esquecerChaveEmAberto(A);
-    expect(chaveEmAbertoDoConteudo(A)).toBeNull();
-    expect(chaveEmAbertoDoConteudo(B)).toBe("chave-b");
+    guardarChaveEmAberto(DONO, A, "chave-a");
+    guardarChaveEmAberto(DONO, B, "chave-b");
+    esquecerChaveEmAberto(DONO, A);
+    expect(chaveEmAbertoDoConteudo(DONO, A)).toBeNull();
+    expect(chaveEmAbertoDoConteudo(DONO, B)).toBe("chave-b");
   });
 
   it("esquecer um conteúdo que nunca foi guardado não quebra nem apaga os outros", () => {
-    guardarChaveEmAberto(B, "chave-b");
-    expect(() => esquecerChaveEmAberto(A)).not.toThrow();
-    expect(chaveEmAbertoDoConteudo(B)).toBe("chave-b");
+    guardarChaveEmAberto(DONO, B, "chave-b");
+    expect(() => esquecerChaveEmAberto(DONO, A)).not.toThrow();
+    expect(chaveEmAbertoDoConteudo(DONO, B)).toBe("chave-b");
   });
 
   it("esquecer todas limpa todos os conteúdos de uma vez, e guardar de novo depois funciona", () => {
-    guardarChaveEmAberto(A, "chave-a");
-    guardarChaveEmAberto(B, "chave-b");
+    guardarChaveEmAberto(DONO, A, "chave-a");
+    guardarChaveEmAberto(DONO, B, "chave-b");
     esquecerTodasAsChavesEmAberto();
-    expect(chaveEmAbertoDoConteudo(A)).toBeNull();
-    expect(chaveEmAbertoDoConteudo(B)).toBeNull();
+    expect(chaveEmAbertoDoConteudo(DONO, A)).toBeNull();
+    expect(chaveEmAbertoDoConteudo(DONO, B)).toBeNull();
     expect(JSON.parse(sessionStorage.getItem(ARMAZEM) ?? "null")).toEqual({});
-    guardarChaveEmAberto(A, "chave-nova");
-    expect(chaveEmAbertoDoConteudo(A)).toBe("chave-nova");
+    guardarChaveEmAberto(DONO, A, "chave-nova");
+    expect(chaveEmAbertoDoConteudo(DONO, A)).toBe("chave-nova");
   });
 
   it("esquecer todas sem nada guardado não quebra", () => {

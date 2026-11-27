@@ -78,6 +78,7 @@ it.each(["0,00", "-10,00"])(
       await act(async () => {
         raiz.render(
           <NovoLancamentoFolha
+            autorId="dona-da-loja"
             hoje={hoje}
             contas={[conta]}
             categorias={[categoria]}

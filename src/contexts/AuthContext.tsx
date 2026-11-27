@@ -3,6 +3,7 @@ import {
   localStorageSeguro,
   sessionStorageSeguro,
 } from "@/lib/armazenamento-seguro";
+import { esquecerTodasAsChavesEmAberto } from "@/components/admin/financeiro/tentativasEmAberto";
 import { pedirAoSwPurgarArquivosPrivados } from "@/lib/arquivo-publico-do-storage";
 import { esquecerAdiamentoDosAvisos } from "@/lib/avisos-do-aparelho";
 import {
@@ -353,6 +354,15 @@ function clearLocalUserData() {
   // aba lia o que a anterior digitou. `sessionStorageSeguro` nunca lança.
   limparRascunhoDoCheckout(sessionStorageSeguro());
   limparPedidoSemResposta();
+  // As chaves anti-repetição de lançamentos do Financeiro que ficaram "pode
+  // ter sido salvo" são de quem saiu (o dono gravado nelas já impede outra
+  // conta de usá-las; isto só tira o resto da aba). Nunca lança, mas o Sair não
+  // pode depender disso.
+  try {
+    esquecerTodasAsChavesEmAberto();
+  } catch {
+    // Sem armazenamento: não há chave alcançável para esquecer.
+  }
   esquecerRastreioDeConvidado();
   esquecerDadosLocaisDaConta();
 }

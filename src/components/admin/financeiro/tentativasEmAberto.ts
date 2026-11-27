@@ -7,10 +7,13 @@
 // vence em 10 minutos para um segundo lançamento igual de propósito não ser
 // tomado por repetição. Sem armazenamento disponível (bloqueio, aba privada) a
 // proteção entre aberturas simplesmente não existe; a da mesma abertura segue.
+// A chave é de QUEM lançou (id da conta): no mesmo aparelho, a dona que entra
+// depois da funcionária nunca herda a chave dela — o banco devolveria o
+// lançamento antigo e o dela não gravaria. Sem conta conhecida, nada se guarda.
 const VALIDADE_MS = 10 * 60_000;
 const ARMAZEM = "fin-lancamento-tentativas-em-aberto";
 
-type Registro = { chave: string; em: number };
+type Registro = { chave: string; em: number; dono: string };
 
 // FNV-1a de 32 bits: resumo curto e estável, não é segredo nem prova de nada.
 function resumo(conteudo: string): string {
@@ -38,26 +41,48 @@ function gravar(todos: Map<string, Registro>): void {
   }
 }
 
-export function chaveEmAbertoDoConteudo(conteudo: string): string | null {
-  const achada = ler().get(resumo(conteudo));
+function endereco(dono: string, conteudo: string): string {
+  return `${dono}:${resumo(conteudo)}`;
+}
+
+export function chaveEmAbertoDoConteudo(
+  dono: string | null,
+  conteudo: string,
+): string | null {
+  if (!dono) return null;
+  const achada = ler().get(endereco(dono, conteudo));
+  // Registro de antes do dono (sem `dono`) não vale nem para a mesma conta: sem
+  // prova de quem era, chave nova arrisca um duplicado visível no extrato;
+  // reaproveitar arriscaria sumir em silêncio o lançamento de outra pessoa.
   return typeof achada?.chave === "string" &&
+    achada.dono === dono &&
     Date.now() - achada.em <= VALIDADE_MS
     ? achada.chave
     : null;
 }
 
-export function guardarChaveEmAberto(conteudo: string, chave: string): void {
+export function guardarChaveEmAberto(
+  dono: string | null,
+  conteudo: string,
+  chave: string,
+): void {
+  if (!dono) return;
   const todos = ler();
-  todos.set(resumo(conteudo), { chave, em: Date.now() });
+  todos.set(endereco(dono, conteudo), { chave, em: Date.now(), dono });
   gravar(todos);
 }
 
-export function esquecerChaveEmAberto(conteudo: string): void {
+export function esquecerChaveEmAberto(
+  dono: string | null,
+  conteudo: string,
+): void {
+  if (!dono) return;
   const todos = ler();
-  todos.delete(resumo(conteudo));
+  todos.delete(endereco(dono, conteudo));
   gravar(todos);
 }
 
+// Chamada pelo "Sair" (AuthContext). Nunca lança: `gravar` engole o erro.
 export function esquecerTodasAsChavesEmAberto(): void {
   gravar(new Map());
 }
