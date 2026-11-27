@@ -227,9 +227,14 @@ export function CartaoDaAssinatura({
       ? (todasAsDatas.find((l) => l.rotulo === "Próxima cobrança")?.data ??
         null)
       : null;
-  const linhasDeDatas = dataDaCobranca
-    ? todasAsDatas.filter((l) => l.rotulo !== "Próxima cobrança")
-    : todasAsDatas;
+  // Com conta vencida a linha "Próxima cobrança" também sai: em pendente e
+  // suspensa a gestão não diz que essa data é o vencimento do valor em aberto,
+  // e "Valor em aberto" com "Próxima cobrança" embaixo diz duas coisas. A
+  // atrasada segue com "Em aberto desde", que fala do mesmo valor.
+  const linhasDeDatas =
+    dataDaCobranca || temContaVencida
+      ? todasAsDatas.filter((l) => l.rotulo !== "Próxima cobrança")
+      : todasAsDatas;
 
   return (
     <section
