@@ -33,9 +33,13 @@ export function ListaDeEscolha<V extends string>(
   const { id, rotulo, opcoes, tituloDaLista, desabilitado, gatilho } = props;
   const computador = useTelaDeComputador();
   const [aberta, setAberta] = useState(false);
+  // Aberta pelo teclado (↓↑ no campo, ou Enter/Espaço): o anel ouro já nasce
+  // na opção que o Enter escolheria. Pelo dedo ou mouse, só na primeira tecla.
+  const [peloTeclado, setPeloTeclado] = useState(false);
   const botaoRef = useRef<HTMLButtonElement | null>(null);
   const listaRef = useRef<HTMLDivElement | null>(null);
   const buscaRef = useRef<HTMLInputElement | null>(null);
+  const teclaNoCampoRef = useRef(false);
 
   const valorAtual = props.modo === "acao" ? null : props.valor;
   const escolhida =
@@ -49,7 +53,14 @@ export function ListaDeEscolha<V extends string>(
 
   const fechar = useCallback(() => setAberta(false), []);
 
+  // O campo travou com a lista aberta (o envio começou): a lista fecha já
+  // neste render e não volta sozinha quando o campo destravar.
+  if (desabilitado && aberta) setAberta(false);
+
   function escolher(valor: V) {
+    // Travado, nenhuma escolha passa (nem a do toque que chegou durante a
+    // animação de saída).
+    if (desabilitado) return;
     setAberta(false);
     if (props.modo === "acao") {
       // Ação: reaplicar a mesma combinação é de propósito.
@@ -70,9 +81,17 @@ export function ListaDeEscolha<V extends string>(
 
   function aoTeclarNoGatilho(evento: EventoDeTecla<HTMLButtonElement>) {
     if (evento.altKey || evento.ctrlKey || evento.metaKey) return;
+    // Enter e Espaço no botão viram o `click` (o do Espaço, ao soltar): fica
+    // anotado que esse clique veio do teclado.
+    if (evento.key === "Enter" || evento.key === " ") {
+      teclaNoCampoRef.current = true;
+      return;
+    }
     if (evento.key !== "ArrowDown" && evento.key !== "ArrowUp") return;
     evento.preventDefault();
-    if (!desabilitado) setAberta(true);
+    if (desabilitado) return;
+    setPeloTeclado(true);
+    setAberta(true);
   }
 
   const corpo = (
@@ -83,6 +102,7 @@ export function ListaDeEscolha<V extends string>(
       valorEscolhido={valorAtual}
       comBusca={comBusca}
       variante={computador ? "popover" : "folha"}
+      anelAoAbrir={peloTeclado}
       aoEscolher={escolher}
       listaRef={listaRef}
       buscaRef={buscaRef}
@@ -113,7 +133,11 @@ export function ListaDeEscolha<V extends string>(
           "data-valor": escolhida?.valor ?? "",
           disabled: desabilitado,
           onClick: () => {
-            if (!desabilitado) setAberta((antes) => !antes);
+            const doTeclado = teclaNoCampoRef.current;
+            teclaNoCampoRef.current = false;
+            if (desabilitado) return;
+            if (!aberta) setPeloTeclado(doTeclado);
+            setAberta((antes) => !antes);
           },
           onKeyDown: aoTeclarNoGatilho,
         },
@@ -126,20 +150,25 @@ export function ListaDeEscolha<V extends string>(
           titulo={titulo}
           botaoRef={botaoRef}
           aoFocarAoAbrir={focarAoAbrir}
+          aoFechar={fechar}
         >
           {corpo}
         </PopoverDaLista>
-      ) : (
-        <FolhaDaLista
-          aberta={aberta}
-          aoFechar={fechar}
-          titulo={titulo}
-          botaoRef={botaoRef}
-          aoFocarAoAbrir={focarAoAbrir}
-        >
-          {corpo}
-        </FolhaDaLista>
-      )}
+      ) : null}
+      {/* A folha fica montada também no computador, só fechada: girar o
+          aparelho (ou cruzar 1024px) com a lista aberta FECHA a folha em vez
+          de desmontá-la, e fechar devolve a entrada que ela empurrou no
+          histórico — desmontada, a entrada sobraria e o Voltar seguinte
+          pareceria "sem efeito". */}
+      <FolhaDaLista
+        aberta={aberta && !computador}
+        aoFechar={fechar}
+        titulo={titulo}
+        botaoRef={botaoRef}
+        aoFocarAoAbrir={focarAoAbrir}
+      >
+        {computador ? null : corpo}
+      </FolhaDaLista>
     </PopoverPrimitive.Root>
   );
 }

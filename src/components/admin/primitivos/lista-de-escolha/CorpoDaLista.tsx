@@ -45,6 +45,7 @@ export function CorpoDaLista<V extends string>({
   valorEscolhido,
   comBusca,
   variante,
+  anelAoAbrir = false,
   aoEscolher,
   listaRef,
   buscaRef,
@@ -58,6 +59,8 @@ export function CorpoDaLista<V extends string>({
   readonly comBusca: boolean;
   /** Folha do celular (linhas de 50px) ou popover do computador (44px). */
   readonly variante: "folha" | "popover";
+  /** Aberta pelo teclado: o anel já nasce na ativa (a que o Enter escolhe). */
+  readonly anelAoAbrir?: boolean;
   readonly aoEscolher: (valor: V) => void;
   readonly listaRef?: Ref<HTMLDivElement>;
   readonly buscaRef?: Ref<HTMLInputElement>;
@@ -66,8 +69,10 @@ export function CorpoDaLista<V extends string>({
   const idDaContagem = `${useId()}-contagem`;
   const [termo, setTermo] = useState("");
   // `teclado`: só depois da primeira tecla o anel da opção ativa aparece —
-  // abrir com o dedo ou o mouse não pinta anel em ninguém.
-  const [teclado, setTeclado] = useState(false);
+  // abrir com o dedo ou o mouse não pinta anel em ninguém. Aberta pelo
+  // teclado, ou com algo digitado na busca, o anel já está na opção que o
+  // Enter vai escolher: nunca se escolhe uma opção sem anel à vista.
+  const [teclado, setTeclado] = useState(anelAoAbrir);
 
   // O índice original de cada opção segue junto: é ele que dá o id estável.
   const indexadas = useMemo(
@@ -193,7 +198,10 @@ export function CorpoDaLista<V extends string>({
               enterKeyHint="search"
               placeholder={`Buscar ${rotulo.toLowerCase()}…`}
               value={termo}
-              onChange={(e) => setTermo(e.target.value)}
+              onChange={(e) => {
+                setTeclado(true);
+                setTermo(e.target.value);
+              }}
               onKeyDown={(e) => aoTeclar(e, true)}
               // 16px: menos que isso e o iPhone dá zoom ao focar.
               className="lista-de-escolha-anel lista-de-escolha-texto min-h-12 w-full rounded-2xl border border-admin-border-strong bg-admin-raised px-11 py-2.5 text-base outline-none placeholder:text-muted-foreground focus:border-transparent"
