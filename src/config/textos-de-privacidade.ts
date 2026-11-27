@@ -47,7 +47,7 @@ export const TEXTOS_DA_CLIENTE = {
   botaoCorrigirEmail: "Corrigir meu e-mail",
 
   confirmaExcluirTitulo: "Pedir a exclusão da sua conta?",
-  confirmaExcluirTexto: `A loja vai analisar o seu pedido e responder em até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias. Quando a exclusão for feita, você deixa de entrar na conta. A loja envia a confirmação para o e-mail da conta com que você fez o pedido. Seus pedidos e notas ficam guardados por lei, sem os seus dados pessoais. Vale-troca e cupom só seu não passam para outra conta: use antes ou combine com a loja.`,
+  confirmaExcluirTexto: `A loja vai analisar o seu pedido e responder em até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias. Quando a exclusão for feita, você deixa de entrar na conta. A loja envia a confirmação para o e-mail da conta com que você fez o pedido. Seus pedidos e notas ficam guardados por lei, sem os seus dados pessoais. Cupom só seu não passa para outra conta: use antes ou combine com a loja. Vale-troca com código continua valendo.`,
   confirmaExcluirAcao: "Sim, pedir exclusão",
   confirmaVoltar: "Voltar",
 

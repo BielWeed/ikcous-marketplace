@@ -954,7 +954,11 @@ PROVAS.push({
           [ALVO, role],
         );
       // Administrador pelo perfil (o gatilho de sincronia leva o papel ao login também).
+      // O login volta a "customer" logo depois: assim só o perfil diz admin e a
+      // trava que olha profiles.role é provada sozinha (sem isso, apagar essa parte
+      // do bloco deixaria o ensaio verde pela outra fonte).
       await papel("admin");
+      await papelNoLogin("customer");
       await recusa(
         anonimizar(ALVO, true),
         /^PARADO:.*ADMINISTRADOR/,

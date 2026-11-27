@@ -84,9 +84,9 @@ describe("a tela da cliente e o roteiro da loja dizem a mesma coisa", () => {
     );
   });
 
-  it("o aviso antes de pedir a exclusão diz que vale-troca e cupom só dela não passam para outra conta", () => {
+  it("o aviso antes de pedir a exclusão diz que o cupom só dela não passa para outra conta e que o vale com código continua valendo", () => {
     expect(TEXTOS_DA_CLIENTE.confirmaExcluirTexto).toContain(
-      "Vale-troca e cupom só seu não passam para outra conta: use antes ou combine com a loja.",
+      "Cupom só seu não passa para outra conta: use antes ou combine com a loja. Vale-troca com código continua valendo.",
     );
   });
 
