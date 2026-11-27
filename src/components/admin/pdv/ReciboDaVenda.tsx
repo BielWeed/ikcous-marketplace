@@ -176,6 +176,15 @@ export function ReciboDaVenda({
       novaVendaRef.current?.focus();
     }
   }, [confirmandoNovaVenda]);
+  // Leitor de tela: o "Registrar venda" some junto com a cobrança e o foco
+  // cairia no body — calado, a lojista acharia que falhou e registraria de
+  // novo. O recibo que aparece leva o foco ao título. Com a pergunta "Nova
+  // venda" aberta (o "Voltar" dela existe), o foco fica onde está.
+  const tituloRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (voltarDaNovaVendaRef.current) return;
+    tituloRef.current?.focus();
+  }, [recibo.orderId]);
   const divergencia = recibo.divergenciaComATela;
   // Venda diferente da que estava na tela e ainda não anulada: o total do
   // comprovante não é o que a cliente vai pagar. WhatsApp enviado não se desfaz
@@ -204,7 +213,9 @@ export function ReciboDaVenda({
   return (
     <div className="pdv-receipt">
       <div className="pdv-layer-heading">
-        <h2>{anulada ? "Venda anulada" : "Venda registrada"}</h2>
+        <h2 ref={tituloRef} tabIndex={-1}>
+          {anulada ? "Venda anulada" : "Venda registrada"}
+        </h2>
         <p className="pdv-muted">Recibo</p>
       </div>
       <div className="pdv-card pdv-stack">

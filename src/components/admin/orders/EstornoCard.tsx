@@ -257,7 +257,10 @@ export function EstornoCard({
     enviando,
   } = useEstornosDoPedido(order.id, order.status, order.paymentStatus);
 
-  const { confirmar, dialogo } = useConfirmarAcao();
+  // Depois do "sim" o "Devolver" vira "Devolvendo…" desligado: o foco que o
+  // Radix devolveria a ele cairia no body. Vai ao título do cartão.
+  const tituloRef = useRef<HTMLHeadingElement>(null);
+  const { confirmar, dialogo } = useConfirmarAcao({ alvoDoFoco: tituloRef });
   const [campoAberto, setCampoAberto] = useState(false);
   const [valorCampo, setValorCampo] = useState("");
   const inputValorRef = useRef<HTMLInputElement>(null);
@@ -298,7 +301,11 @@ export function EstornoCard({
   if (!pedidoCarregado) {
     return (
       <div className="space-y-4 rounded-2xl border border-admin-border bg-admin-surface p-5 text-white">
-        <h3 className="text-sm font-medium text-zinc-200">
+        <h3
+          ref={tituloRef}
+          tabIndex={-1}
+          className="text-sm font-medium text-zinc-200"
+        >
           Devolução de dinheiro
         </h3>
         <p className="text-xs text-zinc-400">Carregando…</p>
@@ -362,7 +369,11 @@ export function EstornoCard({
 
   return (
     <div className="space-y-4 rounded-2xl border border-admin-border bg-admin-surface p-5 text-white">
-      <h3 className="text-sm font-medium text-zinc-200">
+      <h3
+        ref={tituloRef}
+        tabIndex={-1}
+        className="text-sm font-medium text-zinc-200"
+      >
         Devolução de dinheiro
       </h3>
 
