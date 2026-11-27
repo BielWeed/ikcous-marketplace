@@ -18,6 +18,7 @@ import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
+  ehConexaoCaiuSemResposta,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
@@ -657,13 +658,22 @@ export function useQuestions() {
         return data;
       } catch (error: any) {
         console.error("Error adding question:", error);
-        const semResposta = ehConsultaSemResposta(error);
+        // A conexão que CAI no meio (iPhone trocando de app) é tão incerta
+        // quanto o prazo esgotado: o servidor pode ter gravado. Sem guardar o
+        // id, o reenvio saía com id novo e a pergunta entrava duas vezes.
+        const conexaoCaiu = ehConexaoCaiuSemResposta(error);
+        const semResposta = ehConsultaSemResposta(error) || conexaoCaiu;
         const repetiuId =
           error?.code === "23505" &&
           error?.message?.includes('"questions_pkey"');
         const avisoDeDemora =
           "A conexão está lenta. Sua pergunta pode ter sido recebida. Confira antes de tentar de novo.";
-        if (semResposta) toast.error(avisoDeDemora);
+        if (semResposta)
+          toast.error(
+            conexaoCaiu
+              ? "A conexão caiu. Sua pergunta pode ter sido recebida. Confira antes de tentar de novo."
+              : avisoDeDemora,
+          );
         if (idDaPergunta && (semResposta || repetiuId)) {
           pendentes.set(chave, idDaPergunta);
           await getQuestionsByProduct(question.productId, { silencioso: true });

@@ -28,6 +28,7 @@ import {
   PRAZO_DA_CONSULTA_DO_RASTREIO_MS,
   PRAZO_DE_LER_O_CORPO_DO_ERRO_MS,
   aguardarComPrazo,
+  ehConexaoCaiuSemResposta,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
@@ -573,7 +574,10 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       }
     } catch (err) {
       if (orderIdAtualRef.current !== orderIdDoClique) return;
-      if (ehConsultaSemResposta(err)) {
+      // A conexão que CAI no meio (FunctionsFetchError: iPhone trocando de
+      // app) é tão incerta quanto o prazo: a edge pode ter comprado.
+      const estourou = ehConsultaSemResposta(err);
+      if (estourou || ehConexaoCaiuSemResposta(err)) {
         // REGRA DE OURO DA COMPRA: estourou o prazo, a etiqueta PODE ter sido
         // comprada (e o saldo gasto). A tela NÃO diz que deu certo nem que
         // falhou. Solta o que era só da tela (a confirmação e a trava, no
@@ -585,7 +589,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         // A resposta TARDIA da chamada abandonada nunca é aplicada (nem
         // "gerada!", nem rastreio, nem erro): ela só dispara outra releitura,
         // e quem mostra o estado é o servidor.
-        console.error("[EtiquetaDoPedido] Compra sem resposta no prazo:", err);
+        console.error("[EtiquetaDoPedido] Compra sem resposta:", err);
         setMensagemResultado({
           tipo: "sem_resposta",
           texto: MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA,
@@ -596,12 +600,15 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           duration: 15_000,
         });
         void fetchPedido({ silencioso: true });
-        const reler = () => {
-          if (orderIdAtualRef.current === orderIdDoClique) {
-            void fetchPedido({ silencioso: true });
-          }
-        };
-        void invocacao?.then(reler, reler);
+        // Só o estouro deixa uma chamada em voo; a que caiu já terminou.
+        if (estourou) {
+          const reler = () => {
+            if (orderIdAtualRef.current === orderIdDoClique) {
+              void fetchPedido({ silencioso: true });
+            }
+          };
+          void invocacao?.then(reler, reler);
+        }
         return;
       }
       console.error("[EtiquetaDoPedido] Erro na geração:", err);
@@ -716,21 +723,24 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       await fetchPedido();
     } catch (err) {
       if (orderIdAtualRef.current !== orderIdDoClique) return;
-      if (ehConsultaSemResposta(err)) {
-        // Estourou: a edge PODE ter gravado (a resposta é que não chegou).
+      const estourou = ehConsultaSemResposta(err);
+      if (estourou || ehConexaoCaiuSemResposta(err)) {
+        // Estourou (ou a conexão caiu no meio): a edge PODE ter gravado.
         // Solta a trava (repetir grava o mesmo CPF), relê o pedido COM prazo
         // e diz o que o servidor mostra — nunca "salvo" nem "falhou" no chute.
-        console.error("[EtiquetaDoPedido] CPF sem resposta no prazo:", err);
+        console.error("[EtiquetaDoPedido] CPF sem resposta:", err);
         soltarTrava();
         const relido = await fetchPedido({ silencioso: true });
         if (orderIdAtualRef.current !== orderIdDoClique) return;
         // A resposta tardia da chamada abandonada nunca é aplicada: só relê.
-        const reler = () => {
-          if (orderIdAtualRef.current === orderIdDoClique) {
-            void fetchPedido({ silencioso: true });
-          }
-        };
-        void invocacao?.then(reler, reler);
+        if (estourou) {
+          const reler = () => {
+            if (orderIdAtualRef.current === orderIdDoClique) {
+              void fetchPedido({ silencioso: true });
+            }
+          };
+          void invocacao?.then(reler, reler);
+        }
         if (relido && somenteDigitos(relido.cpf ?? "") === digitos) {
           setCpfInput("");
           haptic.success();
@@ -863,7 +873,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         }
       } catch (err) {
         if (orderIdAtualRef.current !== orderIdDoClique) return;
-        if (ehConsultaSemResposta(err)) {
+        if (ehConsultaSemResposta(err) || ehConexaoCaiuSemResposta(err)) {
           toast.error(
             modo === "conferencia"
               ? "Não deu para conferir a etiqueta agora: a rede não respondeu. Toque em Conferir de novo daqui a pouco."
