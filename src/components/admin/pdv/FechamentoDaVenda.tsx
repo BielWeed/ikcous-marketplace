@@ -469,7 +469,10 @@ export function FechamentoDaVenda({
         </div>
 
         {mostraCaixaFechado && (
-          <AvisoDeCaixaFechado aoAbrirCaixa={aoAbrirCaixa} />
+          <AvisoDeCaixaFechado
+            aoAbrirCaixa={aoAbrirCaixa}
+            desabilitado={estado.enviando}
+          />
         )}
 
         {mostraTroco && (

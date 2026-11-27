@@ -233,6 +233,7 @@ const CASOS: Caso[] = [
       <FecharCaixaFolha
         aoReconciliar={e.aoReconciliar}
         aoMudarEnviando={e.aoMudarEnviando}
+        autorId={null}
         caixa={CAIXA}
         aoFechar={vi.fn()}
         aoFechado={() => e.aoSalvar("Caixa fechado.")}
