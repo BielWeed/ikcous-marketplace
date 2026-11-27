@@ -6533,8 +6533,14 @@ export function CheckoutViewDaConta({
               />
               {/* C5 (front B2): sem order confirmada na tela, nunca "em
                   análise pelo banco". O não terminal só chega aqui em modo
-                  PIX (em modo cartão a dúvida é a verificação, acima). */}
+                  PIX (em modo cartão a dúvida é a verificação, acima).
+                  A `key` é a frase: ver a caixa vermelha, abaixo. */}
               <p
+                key={
+                  erroPagamento.categoria === "terminal"
+                    ? erroPagamento.mensagem
+                    : "cobranca-em-duvida"
+                }
                 ref={textoDoErroDoPagamentoRef}
                 role={erroFalaPeloFoco ? undefined : "alert"}
                 tabIndex={-1}
@@ -6608,7 +6614,15 @@ export function CheckoutViewDaConta({
           >
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
+              {/* Frase nova, elemento novo (27/11/2026): a verificação
+                  periódica troca o erro que JÁ tem o foco ("…o prazo para
+                  pagar acabou") sem a cliente tocar em nada. No mesmo
+                  elemento o foco não se movia e o alerta voltava junto com o
+                  texto — o leitor de tela podia calar. Com a `key`, o texto
+                  velho sai, o foco fica perdido e o efeito do foco leva-o à
+                  frase nova (um canal só, como no primeiro erro). */}
               <p
+                key={erroPagamento.mensagem}
                 ref={textoDoErroDoPagamentoRef}
                 role={
                   erroPagamento.anunciar && !erroFalaPeloFoco
