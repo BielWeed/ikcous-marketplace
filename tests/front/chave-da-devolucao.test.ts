@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 //
 // A chave da devolução (src/lib/chave-da-devolucao.ts): a mesma intenção (pedido + valor em centavos) leva a
-// mesma chave por até 30 min; cada valor guarda a sua (outro valor no meio não apaga); a linha confirmada na
-// lista ou pelo servidor encerra a intenção; encerrar só apaga a chave que ainda é a da intenção;
-// registro vencido, malformado ou com validade absurda não vale; sem localStorage a chave ainda vale na aba.
+// mesma chave por até 30 min; cada valor guarda a sua (outro valor no meio não apaga); só a confirmação do
+// SERVIDOR encerra a intenção (a lista em tela não decide); encerrar só apaga a chave que ainda é a da
+// intenção; registro vencido, malformado ou com validade absurda não vale; sem localStorage a chave ainda
+// vale na aba — com ele, ele é a ÚNICA fonte (a chave que outra aba encerrou não volta pela memória desta).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArmazenamentoComCota } from "./helpers/armazenamento-com-cota";
 
@@ -82,23 +83,64 @@ describe("chaveDaDevolucao", () => {
     expect(depois.chaveDaDevolucao("p1", 60, 5_000)).toBe(k2);
   });
 
-  it("CASO 1: a lista já mostra a linha criada com a chave → intenção confirmada, a próxima de igual valor é NOVA", async () => {
+  it("com localStorage funcionando, a chave que OUTRA ABA encerrou não volta pela memória desta aba", async () => {
     const { chaveDaDevolucao } = await carregar();
-    const k = chaveDaDevolucao("p1", 50, 1_000);
-    // a lista mostra OUTRAS chaves (outra intenção, outra porta): a de R$ 50 continua a mesma
-    expect(chaveDaDevolucao("p1", 50, 2_000, new Set(["outra"]))).toBe(k);
-    const nova = chaveDaDevolucao("p1", 50, 3_000, new Set([k]));
-    expect(nova).not.toBe(k);
-    // a nova é a que vale agora (a confirmada não volta)
-    expect(chaveDaDevolucao("p1", 50, 4_000)).toBe(nova);
-    expect(chaveDaDevolucao("p1", 50, 5_000, new Set([k]))).toBe(nova);
+    const a = chaveDaDevolucao("p1", 50, 1_000);
+    // guarda: a chave está mesmo no localStorage (é ele que a outra aba vê)
+    expect(localStorage.getItem(`${PREFIXO}p1:5000`)).toContain(a);
+    // A outra aba recebeu a confirmação do servidor e encerrou a intenção (`encerrarChaveDaDevolucao`).
+    localStorage.removeItem(`${PREFIXO}p1:5000`);
+    const nova = chaveDaDevolucao("p1", 50, 2_000);
+    expect(nova).not.toBe(a);
+    // e a nova é a que vale daqui em diante, nas duas abas
+    expect(localStorage.getItem(`${PREFIXO}p1:5000`)).toContain(nova);
+    expect(chaveDaDevolucao("p1", 50, 3_000)).toBe(nova);
   });
 
-  it("a linha confirmada de R$ 50 não mexe na intenção de R$ 30 em curso", async () => {
+  it("INVERTIDO (CASO 1 do #2003): a lista em tela NÃO gira a chave — um conjunto de 'confirmadas' passado a mais é ignorado; só o servidor encerra", async () => {
+    // Antes: `chaveDaDevolucao(p, v, agora, new Set([k]))` girava a chave quando a lista mostrava a linha de
+    // K. Depois de a rede cair, essa linha É a mesma intenção: girar ali pagava em dobro.
+    const mod = await carregar();
+    const comConfirmadas = mod.chaveDaDevolucao as unknown as (
+      ...args: unknown[]
+    ) => string;
+    const k = mod.chaveDaDevolucao("p1", 50, 1_000);
+    expect(comConfirmadas("p1", 50, 2_000, new Set([k]))).toBe(k);
+    expect(comConfirmadas("p1", 50, 3_000, new Set(["outra"]))).toBe(k);
+    // e a de R$ 30 em curso também não se mexe pela linha de R$ 50
+    const k30 = mod.chaveDaDevolucao("p1", 30, 3_000);
+    expect(comConfirmadas("p1", 30, 4_000, new Set([k]))).toBe(k30);
+    mod.encerrarChaveDaDevolucao("p1", 50, k);
+    expect(mod.chaveDaDevolucao("p1", 50, 5_000)).not.toBe(k);
+  });
+
+  it("localStorage existe mas a LEITURA falha (getItem recusa): a chave vem da memória da aba", async () => {
+    const guardado = new Map<string, string>();
+    let falharLeitura = false;
+    let leiturasQueFalharam = 0;
+    vi.stubGlobal("localStorage", {
+      get length() {
+        return guardado.size;
+      },
+      clear: () => guardado.clear(),
+      key: () => null,
+      getItem: (k: string) => {
+        if (falharLeitura) {
+          leiturasQueFalharam += 1;
+          throw new DOMException("negado", "SecurityError");
+        }
+        return guardado.get(k) ?? null;
+      },
+      removeItem: (k: string) => guardado.delete(k),
+      setItem: (k: string, v: string) => guardado.set(k, v),
+    });
     const { chaveDaDevolucao } = await carregar();
-    const k50 = chaveDaDevolucao("p1", 50, 1_000);
-    const k30 = chaveDaDevolucao("p1", 30, 1_000);
-    expect(chaveDaDevolucao("p1", 30, 2_000, new Set([k50]))).toBe(k30);
+    const a = chaveDaDevolucao("p1", 50, 1_000);
+    // guarda: a chave foi gravada no storage (ele funcionava)
+    expect(guardado.get(`${PREFIXO}p1:5000`)).toContain(a);
+    falharLeitura = true;
+    expect(chaveDaDevolucao("p1", 50, 2_000)).toBe(a);
+    expect(leiturasQueFalharam).toBeGreaterThan(0);
   });
 
   it("registro do formato ANTERIOR (um por pedido, versão 1.5.244) ainda vale para o mesmo valor", async () => {
@@ -111,11 +153,9 @@ describe("chaveDaDevolucao", () => {
     expect(chaveDaDevolucao("p1", 50, 1_000)).toBe("k-antiga");
     expect(chaveDaDevolucao("p1", 30, 1_000)).not.toBe("k-antiga");
     expect(chaveDaDevolucao("p1", 50, 2_000)).toBe("k-antiga");
-    // confirmada pela lista: some de vez (não ressurge por baixo da nova)
-    const nova = chaveDaDevolucao("p1", 50, 3_000, new Set(["k-antiga"]));
-    expect(nova).not.toBe("k-antiga");
-    expect(localStorage.getItem(`${PREFIXO}p1`)).toBeNull();
-    expect(chaveDaDevolucao("p1", 50, 4_000)).toBe(nova);
+    // INVERTIDO: a lista não a apaga (antes, "confirmada pela lista" a tirava do storage); ela fica até o
+    // servidor encerrar (teste de `encerrarChaveDaDevolucao` abaixo) ou vencer.
+    expect(localStorage.getItem(`${PREFIXO}p1`)).not.toBeNull();
   });
 
   it("vence em 30 min contados da criação (nunca estendidos pelo uso)", async () => {
@@ -182,16 +222,16 @@ describe("encerrarChaveDaDevolucao", () => {
 
   it("a chave de uma intenção ANTIGA não apaga a da intenção em curso", async () => {
     const { chaveDaDevolucao, encerrarChaveDaDevolucao } = await carregar();
-    // a de R$ 50 foi confirmada pela lista e girou; a resposta tardia da antiga chega depois
-    const antiga = chaveDaDevolucao("p1", 50, 1_000);
-    const emCurso = chaveDaDevolucao("p1", 50, 2_000, new Set([antiga]));
+    // a de R$ 50 venceu (30 min) e girou; a resposta tardia da antiga chega depois
+    const antiga = chaveDaDevolucao("p1", 50, 0);
+    const emCurso = chaveDaDevolucao("p1", 50, PRAZO_MS);
     expect(emCurso).not.toBe(antiga);
     encerrarChaveDaDevolucao("p1", 50, antiga);
-    expect(chaveDaDevolucao("p1", 50, 3_000)).toBe(emCurso);
+    expect(chaveDaDevolucao("p1", 50, PRAZO_MS + 1_000)).toBe(emCurso);
     // e encerrar a de R$ 50 não toca na de R$ 30
-    const k30 = chaveDaDevolucao("p1", 30, 3_000);
+    const k30 = chaveDaDevolucao("p1", 30, PRAZO_MS + 1_000);
     encerrarChaveDaDevolucao("p1", 50, emCurso);
-    expect(chaveDaDevolucao("p1", 30, 4_000)).toBe(k30);
+    expect(chaveDaDevolucao("p1", 30, PRAZO_MS + 2_000)).toBe(k30);
   });
 
   it("sem localStorage, encerra na memória da aba", async () => {
