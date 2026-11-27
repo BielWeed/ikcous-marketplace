@@ -163,7 +163,7 @@ describe("Avisar clientes — a conclusão só limpa a mensagem enviada", () => 
         <AdminPushView onNavigate={vi.fn()} targetUserId={targetUserId} />,
       );
     });
-    await act(async () => botao("Lembrete de Carrinho").click());
+    await act(async () => botao("Convite para voltar").click());
     expect(titulo()).toBe(MODELOS_DE_CAMPANHA.auth.mensagem.title);
     expect(botao("Enviar agora para").disabled).toBe(false);
   }

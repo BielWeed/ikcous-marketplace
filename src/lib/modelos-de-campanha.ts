@@ -45,14 +45,18 @@ export const MODELOS_DE_CAMPANHA = {
       url: "/search",
     },
   },
+  // Convite neutro: os públicos da tela (Todos, Inativos, Gastaram R$ 150+,
+  // Novos, um cliente) não conferem carrinho, então o texto não afirma que a
+  // pessoa tem carrinho e o link abre a vitrine, não um carrinho talvez vazio.
+  // O id "auth" fica: é a chave que os testes e a tela já usam.
   auth: {
     id: "auth",
-    title: "Lembrete de Carrinho",
-    desc: "Lembrar de finalizar compra",
+    title: "Convite para voltar",
+    desc: "Chamar de volta para a loja",
     mensagem: {
-      title: "Seu carrinho de compras está te esperando! 🛒",
-      body: "Finalize seu pedido agora e garanta seus produtos com rapidez. Não perca!",
-      url: "/cart",
+      title: "Ainda pensando? 🛒",
+      body: "Os produtos que você viu continuam te esperando. Toque para ver a loja.",
+      url: "/",
     },
   },
   value: {

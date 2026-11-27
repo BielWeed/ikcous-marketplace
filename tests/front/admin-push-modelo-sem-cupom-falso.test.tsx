@@ -383,7 +383,7 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
 
   it("o modelo do carrinho (sem cupom) não trava nada", async () => {
     await abrirTela();
-    await clicarModelo("Lembrete de Carrinho");
+    await clicarModelo("Convite para voltar");
 
     expect(
       hospedeiro.querySelector('[data-testid="aviso-codigo-pendente"]'),

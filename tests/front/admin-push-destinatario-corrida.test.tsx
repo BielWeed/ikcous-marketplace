@@ -149,7 +149,7 @@ describe("Avisar clientes — o nome pertence ao destinatário atual", () => {
     expect(hospedeiro.textContent).not.toContain("Cliente: Cliente A");
 
     const modelo = [...hospedeiro.querySelectorAll("button")].find((botao) =>
-      botao.textContent?.includes("Lembrete de Carrinho"),
+      botao.textContent?.includes("Convite para voltar"),
     )!;
     await act(async () => modelo.click());
     const enviar = [...hospedeiro.querySelectorAll("button")].find((botao) =>

@@ -1308,13 +1308,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       <div>
                         <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-white">
                           Carrinho do cliente
-                          <span className="relative ml-1 flex size-2">
-                            <span className="absolute inline-flex size-full animate-ping rounded-full bg-green-400 opacity-75" />
-                            <span className="relative inline-flex size-2 rounded-full bg-green-500" />
-                          </span>
                         </h2>
+                        {/* A ficha lê o carrinho só ao abrir: nada de "agora"
+                            nem bolinha pulsando, que prometiam tempo real. */}
                         <p className="mt-1 text-[11px] uppercase tracking-widest text-zinc-500">
-                          O que está no carrinho agora
+                          Itens no carrinho quando você abriu esta ficha
                         </p>
                         {cartItems.length > 0 && (
                           <div className="mt-2 flex items-center gap-2">
@@ -1745,12 +1743,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Package className="size-4 text-sky-500" />
-                  Carrinho Atual (Abandonado)
+                  Carrinho (quando a ficha abriu)
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Exibe em tempo real quais itens o cliente adicionou ao
-                  carrinho mas ainda não finalizou a compra. Útil para ações de
-                  remarketing.
+                  Mostra os itens que estavam no carrinho do cliente quando você
+                  abriu esta ficha. Se ele mexer no carrinho depois, abra a
+                  ficha de novo para ver.
                 </p>
               </div>
 

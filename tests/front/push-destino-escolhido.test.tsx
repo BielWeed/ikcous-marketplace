@@ -583,19 +583,20 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     });
 
     const modelo = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      (b.textContent ?? "").includes("Lembrete de Carrinho"),
+      (b.textContent ?? "").includes("Convite para voltar"),
     ) as HTMLButtonElement;
     await act(async () => {
       modelo.click();
     });
 
-    expect(seletorDoDestino().value).toBe("cart");
+    // O "Convite para voltar" abre a vitrine.
+    expect(seletorDoDestino().value).toBe("home");
     expect(campoManual().value).toBe("");
 
     await focarESair(campoManual());
     await enviar();
 
-    expect(urlEnviada()).toBe("/cart");
+    expect(urlEnviada()).toBe("/");
   });
 
   it("depois do envio o caminho manual some: o aviso seguinte volta limpo", async () => {
