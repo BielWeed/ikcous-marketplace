@@ -142,6 +142,20 @@ describe("SaidaDaRecusa", () => {
     expect(container.textContent).toContain(
       "Esta loja não está aceitando pedidos agora.",
     );
+    // Frase aprovada (decisão da pausa, textos 1 e 2): a tela diz que o
+    // carrinho ficou, para a pessoa não achar que perdeu a compra.
+    expect(container.textContent).toContain(
+      "Seus itens continuam no carrinho.",
+    );
+  });
+
+  it("a frase do carrinho é só da loja pausada, não das outras recusas", () => {
+    for (const acao of TODAS_AS_ACOES.filter((a) => a !== "aguardar_a_loja")) {
+      render({ acao, mensagem: "qualquer" });
+      expect(container.textContent, `ação ${acao}`).not.toContain(
+        "Seus itens continuam no carrinho.",
+      );
+    }
   });
 
   it("estoque insuficiente diz quanto ainda há", () => {

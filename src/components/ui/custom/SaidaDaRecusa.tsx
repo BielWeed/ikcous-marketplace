@@ -140,6 +140,17 @@ export function SaidaDaRecusa({
           */}
           <p className="mt-1 break-words text-sm text-amber-900">{mensagem}</p>
 
+          {/*
+            Loja em manutenção ou com as vendas pausadas: a frase aprovada na
+            decisão da pausa (26/11/2026, textos 1 e 2) diz que a compra não
+            se perdeu. O carrinho fica de fato: o botão só fecha o aviso.
+          */}
+          {acao === "aguardar_a_loja" && (
+            <p className="mt-1 text-sm text-amber-900">
+              Seus itens continuam no carrinho.
+            </p>
+          )}
+
           {detalheDoEstoque && (
             <p className="mt-1 text-sm font-medium text-amber-900">
               {detalheDoEstoque}
