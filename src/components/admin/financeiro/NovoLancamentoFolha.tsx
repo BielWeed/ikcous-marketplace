@@ -131,6 +131,9 @@ export function NovoLancamentoFolha({
   const formRef = useRef(formInicial);
   const [chaveInicial] = useState(gerarChaveDaTentativa);
   const chaveDaTentativa = useRef(chaveInicial);
+  // Conta dona da chave em memória: se a conta da aba trocar com a folha aberta
+  // (outra aba entrou), a chave da pessoa anterior não vai no próximo envio.
+  const autorDaChave = useRef(autorId);
   // "Sujo" = diferente do que abriu (desfazer à mão limpa o aviso). Tocar e
   // sair de um campo sem mudar nada não conta.
   const sujo = JSON.stringify(form) !== JSON.stringify(formInicial);
@@ -257,6 +260,10 @@ export function NovoLancamentoFolha({
     // abertura do formulário) reaproveita a chave dela: se aquela gravação ainda
     // estiver viva no servidor, esta devolve o mesmo lançamento em vez de somar.
     const conteudo = JSON.stringify(resultado.payload);
+    if (autorDaChave.current !== autorId) {
+      autorDaChave.current = autorId;
+      chaveDaTentativa.current = gerarChaveDaTentativa();
+    }
     const chave =
       chaveEmAbertoDoConteudo(autorId, conteudo) ?? chaveDaTentativa.current;
     guardarChaveEmAberto(autorId, conteudo, chave);

@@ -434,6 +434,44 @@ describe("CheckoutView — o pagamento fala com o leitor de tela", () => {
     expect(hospedeiro.querySelectorAll('[role="alert"]')).toHaveLength(0);
   });
 
+  // O erro que já levou o foco troca de frase sem a cliente tocar em nada (a
+  // verificação periódica fecha o pedido: "…e o prazo para pagar acabou"). O
+  // foco já estava no texto, então nada o movia, e o alerta voltava no MESMO
+  // elemento junto com a troca de texto — o leitor de tela pode calar. A frase
+  // nova tem de nascer num elemento novo, que recebe o foco (um canal só).
+  it("erro trocado com o foco no texto: a frase nova é outro elemento, recebe o foco e fala uma vez", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+    largarOFoco();
+
+    await act(async () => {
+      pagamentoOnlineOnErro[0](
+        "Não foi possível gerar o QR code do PIX.",
+        "recuperavel",
+      );
+    });
+    const antigo = paragrafoComTexto(
+      "Não foi possível gerar o QR code do PIX.",
+    );
+    expect(document.activeElement).toBe(antigo);
+
+    const fechou =
+      "O pagamento com cartão não foi concluído, e o prazo para pagar este pedido acabou.";
+    await act(async () => {
+      pagamentoOnlineOnErro[0](fechou, "terminal");
+    });
+
+    const novo = paragrafoComTexto(fechou);
+    expect(novo).toBeDefined();
+    expect(
+      novo,
+      "a frase nova reaproveitou o elemento que já tinha o foco",
+    ).not.toBe(antigo);
+    expect(document.activeElement).toBe(novo);
+    expect(novo?.getAttribute("role")).toBeNull();
+    expect(hospedeiro.querySelectorAll('[role="alert"]')).toHaveLength(0);
+  });
+
   it("'Tentar de novo' some ao tocar: a falha seguinte também fala e recebe o foco", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);

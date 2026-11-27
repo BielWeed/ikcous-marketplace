@@ -92,6 +92,8 @@ import {
   apagarRascunhoDoProdutoPelaChave,
   avisoDeVariacoesAlteradasEmOutroAparelho,
   chaveDoRascunhoDoProduto,
+  comABaseDoCadastro,
+  ehRascunhoPendenteDoCadastro,
   estoqueDoRascunhoDifereDoBanco,
   esvaziarEstoqueInvalidoDoRascunho,
   lerRascunhoVigenteDoProduto,
@@ -582,6 +584,13 @@ function indiceDaFoto(galeria: GaleriaLocal, alvo: AlvoDaFoto) {
 
 const AVISO_COMBINACAO_JA_CRIADA =
   "Outro aparelho já criou essa combinação; mantivemos a dele, confira o estoque.";
+
+// A grade do cadastro ficou sem resposta, mas gravou: as do rascunho eram as
+// mesmas que já estão no banco. Não foi "outro aparelho", foi o próprio cadastro.
+const AVISO_VARIACOES_JA_SALVAS =
+  "As variações que já estavam salvas na loja ficaram como estão lá, sem repetir. Confira o estoque.";
+const DESCRICAO_VARIACOES_JA_SALVAS =
+  "As variações deste produto já estão salvas na loja.";
 
 /** A linha já gravada vence a nova local: seus estoques nunca se somam. */
 function juntarVariacoesDeOutroAparelho(
@@ -1820,11 +1829,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         : null;
       if (savedDraft && draftKey) {
         try {
+          const lido = JSON.parse(savedDraft);
+          // O rascunho que o cadastro trouxe (a grade ficou sem resposta) não
+          // tem base: a dele é o produto sem variação nenhuma (ver
+          // `comABaseDoCadastro`). Sem isso, a grade que gravou mesmo sem
+          // resposta sumia da tela ao restaurar e o Salvar a inseria de novo.
+          const doCadastro = ehRascunhoPendenteDoCadastro(lido);
           // O que ela não editou fica como está no banco de hoje (ver
           // `rascunhoSobreOBancoDeHoje`): restaurar não desfaz o que outra
           // pessoa mudou depois.
           const { campos: parsed, bancoMudou } = rascunhoSobreOBancoDeHoje(
-            JSON.parse(savedDraft),
+            comABaseDoCadastro(lido),
             initialData,
           );
 
@@ -1853,16 +1868,32 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             manter: voltamDoBanco,
             alteradas: alteradasEmOutroAparelho,
           } = variacoesExcluidasNoRascunho(parsed, initialData.variants);
+          const variacoesDoRascunho = Array.isArray(parsed.variants)
+            ? variacoesDoRascunhoComEstoqueDoBanco(
+                parsed.variants,
+                initialData.variants,
+              )
+            : initialData.variants;
           const gradeRestaurada = juntarVariacoesDeOutroAparelho(
-            Array.isArray(parsed.variants)
-              ? variacoesDoRascunhoComEstoqueDoBanco(
-                  parsed.variants,
-                  initialData.variants,
-                )
-              : initialData.variants,
+            variacoesDoRascunho,
             Array.isArray(parsed.variants) ? voltamDoBanco : [],
           );
           const variacoesRestauradas = gradeRestaurada.variants;
+          // No rascunho do cadastro, a combinação repetida é a grade que o
+          // próprio cadastro gravou sem resposta (não "outro aparelho"), e só
+          // o que o banco tem FORA dela é mudança feita depois do rascunho.
+          const gradeDoCadastroJaSalva =
+            doCadastro && gradeRestaurada.repetidas;
+          const identidadesDoRascunho = new Set(
+            variacoesDoRascunho
+              .filter((v) => v.id.startsWith("temp-"))
+              .map(chaveDaIdentidade),
+          );
+          const vieramDepoisDoRascunho = doCadastro
+            ? voltamDoBanco.filter(
+                (v) => !identidadesDoRascunho.has(chaveDaIdentidade(v)),
+              )
+            : voltamDoBanco;
           const gradeMudouPelaBase =
             exclusoesDaLojista.length > 0 || voltamDoBanco.length > 0;
 
@@ -1917,8 +1948,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             alteradasEmOutroAparelho.length > 0
           ) {
             // Grade que só existe neste rascunho (o produto foi criado e as
-            // variações não gravaram): o aviso fica até ela decidir.
-            const pendente = parsed.variacoesPendentes === true;
+            // variações não gravaram): o aviso fica até ela decidir. Se todas
+            // as combinações dela já estão no banco, nada está pendente: o
+            // Salvar não pode dizer que "ainda não foram salvas".
+            const pendente =
+              parsed.variacoesPendentes === true &&
+              variacoesRestauradas.some((v) => v.id.startsWith("temp-"));
             // Decidiu (Restaurar ou Descartar): o salvamento automático volta
             // a gravar. Idempotente.
             const decidiuOfertaDeRascunho = () => {
@@ -1931,7 +1966,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               restaurarPendenteRef.current = null;
               setFormData(draftFields);
               if (gradeRestaurada.repetidas) {
-                toast.warning(AVISO_COMBINACAO_JA_CRIADA);
+                toast.warning(
+                  gradeDoCadastroJaSalva
+                    ? AVISO_VARIACOES_JA_SALVAS
+                    : AVISO_COMBINACAO_JA_CRIADA,
+                );
               }
               const avisoDasAlteradas =
                 avisoDeVariacoesAlteradasEmOutroAparelho(
@@ -1976,7 +2015,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 estoqueDoRascunhoDiferia
                   ? ` ${AVISO_ESTOQUE_NAO_RESTAURADO}`
                   : ""
-              }${bancoMudou || voltamDoBanco.length > 0 ? ` ${AVISO_PRODUTO_ALTERADO_DEPOIS}` : ""}`,
+              }${gradeDoCadastroJaSalva && !pendente ? ` ${DESCRICAO_VARIACOES_JA_SALVAS}` : ""}${
+                bancoMudou || vieramDepoisDoRascunho.length > 0
+                  ? ` ${AVISO_PRODUTO_ALTERADO_DEPOIS}`
+                  : ""
+              }`,
               action: { label: "Restaurar", onClick: restaurar },
               cancel: {
                 label: "Descartar",
@@ -3567,6 +3610,62 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // Quem tocou em Salvar. Depois de qualquer espera (a conferência dos
     // códigos abaixo), só se grava se a conta viva ainda é esta.
     const contaQueComecouOSalvar = idDaContaViva();
+
+    // A grade do rascunho do cadastro pode ter entrado no banco DEPOIS de a
+    // edição abrir (o INSERT que ficou sem resposta gravou atrasado). Inserir de
+    // novo a combinação que o banco já tem põe o dobro à venda (o banco só barra
+    // SKU e código repetidos, não combinação): antes de gravar, relê o produto.
+    // Sem conseguir reler, não grava — repetir a grade é pior que esperar.
+    if (
+      productId &&
+      gradeDoRascunhoPendenteRef.current &&
+      formData.variants.some((v) => v.id.startsWith("temp-"))
+    ) {
+      let doBanco: Product | null = null;
+      try {
+        doBanco = await fetchProduct(productId);
+      } catch (erroDaReleitura) {
+        console.warn(
+          "[AdminProductFormView] Não consegui reler a grade antes de salvar:",
+          erroDaReleitura,
+        );
+        if (!montadoRef.current) return;
+        toast.error(
+          "Não consegui conferir se as variações já estão na loja. Nada foi salvo: confira a conexão e toque em Salvar de novo.",
+        );
+        setIsSubmitting(false);
+        return;
+      }
+      if (!montadoRef.current) return;
+      const idsNaTela = new Set(formData.variants.map((v) => v.id));
+      const novasNoBanco = (doBanco?.variants ?? []).filter(
+        (v) => !idsNaTela.has(v.id) && !deletedVariantIds.includes(v.id),
+      );
+      if (
+        doBanco &&
+        juntarVariacoesDeOutroAparelho(formData.variants, novasNoBanco)
+          .repetidas
+      ) {
+        // Fica a do banco (com o estoque de lá) e a tela passa a mostrá-la;
+        // a base também, para o próximo Salvar não a tratar como mudança.
+        const { stock, variants } = camposDoFormularioDoProduto(doBanco);
+        pularOfertaDeRascunhoRef.current = true;
+        setCurrentProduct(doBanco);
+        setInitialData((base) => ({ ...base, stock, variants }));
+        // Pelo formulário de AGORA: o que ela digitou durante a releitura fica.
+        setFormData((atual) =>
+          formComVariacoes(
+            atual,
+            juntarVariacoesDeOutroAparelho(atual.variants, novasNoBanco)
+              .variants,
+          ),
+        );
+        setChaveDasVariacoes((chave) => chave + 1);
+        toast.warning(AVISO_VARIACOES_JA_SALVAS);
+        setIsSubmitting(false);
+        return;
+      }
+    }
 
     // Ressalva da revisão da C5.2: o salvar ESPERA a checagem de duplicidade.
     // Sem este trecho, um clique durante uma checagem em voo (o blur do campo

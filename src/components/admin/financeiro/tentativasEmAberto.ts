@@ -10,6 +10,8 @@
 // A chave é de QUEM lançou (id da conta): no mesmo aparelho, a dona que entra
 // depois da funcionária nunca herda a chave dela — o banco devolveria o
 // lançamento antigo e o dela não gravaria. Sem conta conhecida, nada se guarda.
+// Por isso o "Sair" NÃO apaga estas chaves: quem sai e volta na mesma aba dentro
+// do prazo reaproveita a sua, e salvar igual não lança em dobro.
 const VALIDADE_MS = 10 * 60_000;
 const ARMAZEM = "fin-lancamento-tentativas-em-aberto";
 
@@ -80,9 +82,4 @@ export function esquecerChaveEmAberto(
   const todos = ler();
   todos.delete(endereco(dono, conteudo));
   gravar(todos);
-}
-
-// Chamada pelo "Sair" (AuthContext). Nunca lança: `gravar` engole o erro.
-export function esquecerTodasAsChavesEmAberto(): void {
-  gravar(new Map());
 }
