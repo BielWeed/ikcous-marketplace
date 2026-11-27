@@ -1,5 +1,21 @@
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import type { ReactNode, RefObject } from "react";
+import { type ReactNode, type RefObject, useRef } from "react";
+
+const FOCAVEIS =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * O vizinho do campo na ordem do Tab (ordem do documento; `tabindex`
+ * positivo não é usado no painel). Escondido (`display:none`) não conta.
+ */
+function vizinhoNoTab(campo: HTMLElement, sentido: 1 | -1): HTMLElement | null {
+  const todos = [...document.querySelectorAll<HTMLElement>(FOCAVEIS)].filter(
+    (el) => el === campo || (el.checkVisibility?.() ?? true),
+  );
+  const posicao = todos.indexOf(campo);
+  if (posicao < 0) return null;
+  return todos.at(posicao + sentido) ?? null;
+}
 
 /**
  * A lista no COMPUTADOR: colada embaixo do campo, da largura dele, com cantos
@@ -11,12 +27,17 @@ import type { ReactNode, RefObject } from "react";
  * folha e a fecharia. Por isso o popover fica travado em 1.1.15
  * (`tests/front/lista-de-escolha-dependencia.test.ts`).
  *
+ * Tab e Shift+Tab saem da lista (combobox do APG): ela fecha sem escolher e
+ * o foco segue para o campo seguinte (ou o anterior) — o `modal` do Radix
+ * prenderia o Tab aqui dentro.
+ *
  * Só sintaxe do Tailwind 3.4 (`[var(--x)]`, nunca `(--x)`).
  */
 export function PopoverDaLista({
   titulo,
   botaoRef,
   aoFocarAoAbrir,
+  aoFechar,
   children,
 }: {
   readonly titulo: string;
@@ -24,8 +45,12 @@ export function PopoverDaLista({
   readonly botaoRef: RefObject<HTMLButtonElement | null>;
   /** Busca (se houver) ou o listbox. */
   readonly aoFocarAoAbrir: (conteudo: HTMLElement) => void;
+  readonly aoFechar: () => void;
   readonly children: ReactNode;
 }) {
+  // Saiu pelo Tab: para onde o foco vai quando a lista acabar de fechar.
+  const saidaPeloTabRef = useRef<1 | -1 | 0>(0);
+
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Content
@@ -41,7 +66,19 @@ export function PopoverDaLista({
         }}
         onCloseAutoFocus={(evento) => {
           evento.preventDefault();
-          botaoRef.current?.focus();
+          const sentido = saidaPeloTabRef.current;
+          saidaPeloTabRef.current = 0;
+          const campo = botaoRef.current;
+          if (!campo) return;
+          const destino = sentido ? vizinhoNoTab(campo, sentido) : null;
+          (destino ?? campo).focus();
+        }}
+        onKeyDown={(evento) => {
+          if (evento.key !== "Tab") return;
+          if (evento.altKey || evento.ctrlKey || evento.metaKey) return;
+          evento.preventDefault();
+          saidaPeloTabRef.current = evento.shiftKey ? -1 : 1;
+          aoFechar();
         }}
         // O toque no próprio campo é o "fechar" do clique dele: se contasse
         // como "fora", fecharia aqui e o clique reabriria em seguida.
