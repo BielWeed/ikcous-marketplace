@@ -378,10 +378,19 @@ function componhaShareText(
 // existe laço. Toque manual em "Tentar de novo" zera a contagem.
 const ESPERAS_DO_CATALOGO_MS: readonly number[] = [2000, 5000, 10000];
 
-// O catálogo é lido em páginas de 200 produtos (`.range()`), até acabar. Antes
-// era um corte seco em 200 (`.limit(200)`): a loja que passava disso perdia os
-// produtos mais antigos da vitrine e da busca, sem aviso. O teto de páginas é
-// só trava de segurança (10 mil produtos) -- nunca existe laço sem fim.
+// O catálogo é lido em páginas de 200 produtos, até acabar. Antes era um corte
+// seco em 200 (`.limit(200)`): a loja que passava disso perdia os produtos
+// mais antigos da vitrine e da busca, sem aviso. O teto de páginas é só trava
+// de segurança (10 mil produtos) -- nunca existe laço sem fim.
+//
+// Cada página continua POR CHAVE (27/11/2026), nunca por posição: pede só os
+// produtos que vêm DEPOIS do último (data_cadastro, id) lido, na mesma ordem
+// da consulta (data_cadastro mais nova primeiro, desempate por id crescente).
+// Por posição (`.range(200, 399)`), produto pausado/excluído entre uma página
+// e outra fazia a lista subir uma casa e o produto da fronteira (o 200º, o
+// 400º...) não era lido por nenhuma das duas -- sumia da vitrine e, gravado
+// no cofre offline, também da próxima visita. É o mesmo princípio do resumo
+// do motor de sincronização (src/lib/realtimeSyncEngine.ts) e do sitemap.
 const PRODUTOS_POR_PAGINA = 200;
 const MAXIMO_DE_PAGINAS_DO_CATALOGO = 50;
 // Prazo de CADA página (06/11/2026). Rede "pendurada" conecta e não responde:
@@ -399,9 +408,41 @@ const PRAZO_DE_SALVAR_A_CONFIG_MS = 20_000;
 
 type RespostaDaPaginaDoCatalogo = { data: any[] | null; error: any };
 
+/** De onde a próxima página continua: o último produto já lido. */
+type ChaveDoCatalogo = { dataCadastro: string; id: string };
+
+/** Valor entre aspas na sintaxe do PostgREST (`\` e `"` escapados). */
+function entreAspasDoPostgrest(valor: string): string {
+  return `"${valor.replace(/[\\"]/g, "\\$&")}"`;
+}
+
+/**
+ * Filtro do `.or()` que devolve só o que vem DEPOIS da chave na ordem
+ * `data_cadastro desc, id asc`: cadastrado antes dela, ou no MESMO instante
+ * com id maior (o desempate). A data vai como o banco a devolveu (texto com
+ * microssegundos e fuso): passar por `Date` cortaria para milissegundos e a
+ * página pularia (ou repetiria) produto cadastrado no mesmo milissegundo.
+ * Aspas porque a data tem `.` e `:`, reservados na sintaxe do PostgREST.
+ */
+function filtroDepoisDaChave(chave: ChaveDoCatalogo): string {
+  const data = entreAspasDoPostgrest(chave.dataCadastro);
+  const id = entreAspasDoPostgrest(chave.id);
+  return `data_cadastro.lt.${data},and(data_cadastro.eq.${data},id.gt.${id})`;
+}
+
+/** Chave da linha, ou `null` se o banco não mandou data e id em texto. */
+function chaveDaLinha(linha: any): ChaveDoCatalogo | null {
+  const dataCadastro = linha?.data_cadastro;
+  const id = linha?.id;
+  if (typeof dataCadastro !== "string" || dataCadastro === "") return null;
+  if (typeof id !== "string" || id === "") return null;
+  return { dataCadastro, id };
+}
+
 function semLinhasRepetidas(linhas: any[]): any[] {
-  // Produto cadastrado ENTRE duas páginas empurra a lista e repete a última
-  // linha da página anterior no começo da seguinte: a primeira ocorrência vale.
+  // Rede de segurança: a leitura por chave não repete linha, mas um produto
+  // cuja data de cadastro mudasse entre duas páginas poderia vir de novo. A
+  // primeira ocorrência vale.
   const vistos = new Set<unknown>();
   return linhas.filter((linha) => {
     const id = linha?.id;
@@ -418,21 +459,24 @@ function semLinhasRepetidas(linhas: any[]): any[] {
  * pode se passar por completo (nem na tela, nem no cofre offline). Loja com
  * menos de uma página faz uma consulta só. Quem decide ficar com a cópia que
  * já estava na tela é o chamador, que recebe o erro.
+ *
+ * `lerPagina` recebe a chave do último produto lido (`null` na primeira
+ * página) e o tamanho da página, e devolve a consulta já com o filtro
+ * `filtroDepoisDaChave`, a ordem `data_cadastro desc, id asc` e o `limit`.
  */
 async function lerCatalogoEmPaginas(
   lerPagina: (
-    de: number,
-    ate: number,
+    depoisDe: ChaveDoCatalogo | null,
+    tamanho: number,
   ) => PromiseLike<RespostaDaPaginaDoCatalogo>,
   aindaVale: () => boolean,
 ): Promise<RespostaDaPaginaDoCatalogo> {
   const lerComPrazo = async (
-    de: number,
-    ate: number,
+    depoisDe: ChaveDoCatalogo | null,
   ): Promise<RespostaDaPaginaDoCatalogo> => {
     try {
       return await aguardarComPrazo(
-        Promise.resolve(lerPagina(de, ate)),
+        Promise.resolve(lerPagina(depoisDe, PRODUTOS_POR_PAGINA)),
         PRAZO_DA_PAGINA_DO_CATALOGO_MS,
         () => erroDeConsultaSemResposta(),
       );
@@ -440,18 +484,26 @@ async function lerCatalogoEmPaginas(
       return { data: null, error: erro };
     }
   };
-  const primeira = await lerComPrazo(0, PRODUTOS_POR_PAGINA - 1);
+  // Sem a chave do último produto não há de onde continuar: ler por posição
+  // traria de volta o defeito do produto que some. Vira erro (nada de
+  // catálogo pela metade), e o chamador fica com o que já estava na tela.
+  const semChave = () => ({
+    data: null,
+    error: new Error("página do catálogo sem data de cadastro ou id no fim"),
+  });
+  const primeira = await lerComPrazo(null);
   if (primeira.error || !primeira.data) return primeira;
   if (primeira.data.length < PRODUTOS_POR_PAGINA) return primeira;
 
   const linhas = [...primeira.data];
+  let depoisDe = chaveDaLinha(primeira.data[primeira.data.length - 1]);
+  if (!depoisDe) return semChave();
   for (let pagina = 1; pagina < MAXIMO_DE_PAGINAS_DO_CATALOGO; pagina += 1) {
     // Consulta superada por outra mais nova: não gasta rede com o resto.
     if (!aindaVale()) {
       return { data: null, error: new Error("consulta de produtos superada") };
     }
-    const de = pagina * PRODUTOS_POR_PAGINA;
-    const resposta = await lerComPrazo(de, de + PRODUTOS_POR_PAGINA - 1);
+    const resposta = await lerComPrazo(depoisDe);
     if (resposta.error) return { data: null, error: resposta.error };
     if (!resposta.data) {
       return {
@@ -463,6 +515,20 @@ async function lerCatalogoEmPaginas(
     if (resposta.data.length < PRODUTOS_POR_PAGINA) {
       return { data: semLinhasRepetidas(linhas), error: null };
     }
+    const proxima = chaveDaLinha(resposta.data[resposta.data.length - 1]);
+    if (!proxima) return semChave();
+    // Chave que não anda = resposta que ignorou o filtro: seguir só repetiria
+    // a mesma página até o teto e o resto do catálogo nunca viria.
+    if (
+      proxima.dataCadastro === depoisDe.dataCadastro &&
+      proxima.id === depoisDe.id
+    ) {
+      return {
+        data: null,
+        error: new Error("página do catálogo não avançou a chave"),
+      };
+    }
+    depoisDe = proxima;
   }
   console.warn(
     `[StoreContext] catálogo passou de ${MAXIMO_DE_PAGINAS_DO_CATALOGO} páginas; o resto não foi lido`,
@@ -1235,33 +1301,35 @@ export function StoreProvider({
       if (usaFontePainel) {
         // `id` desempata produtos cadastrados no mesmo instante: sem ele a
         // ordem entre duas páginas não é garantida e linha repete ou some.
-        const res = await lerCatalogoEmPaginas(
-          (de, ate) =>
-            supabase
-              .from("vw_produtos_admin")
-              .select("*, product_variants(*)")
-              .is("deleted_at", null)
-              .order("data_cadastro", { ascending: false })
-              .order("id", { ascending: true })
-              .range(de, ate),
-          aindaVale,
-        );
+        const res = await lerCatalogoEmPaginas((depoisDe, tamanho) => {
+          const consulta = supabase
+            .from("vw_produtos_admin")
+            .select("*, product_variants(*)")
+            .is("deleted_at", null);
+          return (
+            depoisDe ? consulta.or(filtroDepoisDaChave(depoisDe)) : consulta
+          )
+            .order("data_cadastro", { ascending: false })
+            .order("id", { ascending: true })
+            .limit(tamanho);
+        }, aindaVale);
         data = res.data;
         error = res.error;
       }
 
       // Fallback to public view if not admin or if admin query failed (e.g., PGRST205 or unauthenticated)
       if (!usaFontePainel || error) {
-        const publicRes = await lerCatalogoEmPaginas(
-          (de, ate) =>
-            supabase
-              .from("vw_produtos_public")
-              .select("*, product_variants(*)")
-              .order("data_cadastro", { ascending: false })
-              .order("id", { ascending: true })
-              .range(de, ate),
-          aindaVale,
-        );
+        const publicRes = await lerCatalogoEmPaginas((depoisDe, tamanho) => {
+          const consulta = supabase
+            .from("vw_produtos_public")
+            .select("*, product_variants(*)");
+          return (
+            depoisDe ? consulta.or(filtroDepoisDaChave(depoisDe)) : consulta
+          )
+            .order("data_cadastro", { ascending: false })
+            .order("id", { ascending: true })
+            .limit(tamanho);
+        }, aindaVale);
 
         if (publicRes.error && error) {
           throw error;
