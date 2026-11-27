@@ -24,6 +24,28 @@ export const ehImagem = (f: File) =>
     ? f.type.startsWith("image/")
     : /\.(jpe?g|png|webp|gif|avif)$/i.test(f.name);
 
+const TIPO_DA_EXTENSAO: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  avif: "image/avif",
+};
+
+/**
+ * A foto com o tipo deduzido da extensão, quando chegou sem tipo (ou com tipo
+ * genérico). Compressão, redimensionamento e miniaturas só olham o tipo: sem
+ * ele, a foto subia crua. Com tipo declarado (ou extensão fora da lista, como
+ * HEIC), devolve o PRÓPRIO arquivo. Chamar só depois de `recusaDeFoto`.
+ */
+export function comTipoDaExtensao(f: File): File {
+  if (f.type && f.type !== "application/octet-stream") return f;
+  const tipo = TIPO_DA_EXTENSAO[f.name.split(".").pop()?.toLowerCase() ?? ""];
+  if (!tipo) return f;
+  return new File([f], f.name, { type: tipo, lastModified: f.lastModified });
+}
+
 /**
  * Por que o arquivo NÃO pode virar foto (produto, banner), ou `null` se pode.
  * Sem tipo (ou tipo genérico), vale a extensão; PDF, planilha e vídeo nunca passam.
