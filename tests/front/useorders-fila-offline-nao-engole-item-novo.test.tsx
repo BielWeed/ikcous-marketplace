@@ -84,6 +84,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const chave = "orders_offline_updates_queue:cliente-1";
 const toastId = "sincronizacao-fila-offline";
+const RELEITURA_DA_FILA =
+  "status, user_id, endereco_de_retirada:customer_data->pickup_address";
 const item1 = {
   orderId: "pedido-1",
   status: "cancelled",
@@ -292,8 +294,10 @@ describe("useOrders — a fila offline não engole item novo", () => {
         );
         // Uma leitura da etapa; a recarga de admin é a RPC de paginação.
         expect(fromMock).toHaveBeenCalledTimes(1);
+        // A releitura traz, junto da etapa, o dono do pedido e o retrato da
+        // retirada (o aviso à cliente quando a gravação é aceita).
         expect(fromMock.mock.results[0]?.value.select).toHaveBeenCalledWith(
-          "status",
+          RELEITURA_DA_FILA,
         );
       } else {
         expect(fromMock).toHaveBeenCalledTimes(2);
@@ -323,7 +327,7 @@ describe("useOrders — a fila offline não engole item novo", () => {
       // Só relê a etapa. Não busca a lista, nem pelo painel nem pelo cliente.
       expect(fromMock).toHaveBeenCalledTimes(1);
       expect(fromMock.mock.results[0]?.value.select).toHaveBeenCalledWith(
-        "status",
+        RELEITURA_DA_FILA,
       );
       expect(adminOrdersMock).not.toHaveBeenCalled();
     },
