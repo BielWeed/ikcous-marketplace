@@ -417,7 +417,11 @@ describe("Frete: as Transportadoras e as Consultas de frete moram aqui", () => {
     try {
       await act(async () => botaoComTexto(/^Salvar$/)!.click());
       expect(invoke).toHaveBeenLastCalledWith("calculate-shipping", {
-        body: { action: "save_active_providers", ligados: [] },
+        body: {
+          action: "save_active_providers",
+          ligados: [],
+          ligadosVistos: ["melhor_envio"],
+        },
       });
       expect(botaoComTexto(/^Salvando…$/)?.disabled).toBe(true);
 
