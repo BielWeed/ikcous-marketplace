@@ -4,8 +4,10 @@
 // o "Hoje", os quatro números do mês, o "Para fazer", a assinatura e os
 // dois botões grandes (Dashboard CRM e Financeiro). Monta a tela de verdade
 // com o Supabase dublado e prova:
-//   - as duas RPCs do contrato (`painel_inicio` e `assinatura_da_loja_ler`)
-//     são chamadas e os 4 KPIs do mês aparecem com os valores do banco;
+//   - as RPCs do contrato (`painel_inicio`, `assinatura_da_loja_ler` e, desde
+//     27/11/2026, `situacao_das_vendas_da_loja`) são chamadas e os 4 KPIs do
+//     mês aparecem com os valores do banco;
+//   - o cartão da assinatura só diz "pausadas" quando o banco diz;
 //   - sem linha de assinatura, o card diz que o plano vai aparecer ali;
 //   - os botões grandes e o "Para fazer" levam às telas certas;
 //   - o tempo real escuta `marketplace_orders` e é desligado ao desmontar.
@@ -200,7 +202,7 @@ describe("Início do painel", () => {
     );
   });
 
-  it("chama as duas RPCs do contrato e mostra os 4 números do mês", async () => {
+  it("chama as RPCs do contrato e mostra os 4 números do mês", async () => {
     h.respostas.set("painel_inicio", { data: PAINEL, error: null });
     await montar();
     await esperarAte(() => texto(hospedeiro).includes("R$ 12.345,67"));
@@ -208,6 +210,7 @@ describe("Início do painel", () => {
     expect(h.rpc.mock.calls.map(([nome]) => nome).sort()).toEqual([
       "assinatura_da_loja_ler",
       "painel_inicio",
+      "situacao_das_vendas_da_loja",
     ]);
 
     const pagina = texto(hospedeiro);
@@ -285,6 +288,91 @@ describe("Início do painel", () => {
     expect(
       hospedeiro.querySelector('a[href="https://wa.me/5511987654321"]'),
     ).not.toBeNull();
+  });
+
+  // Suspensa com o dia da pausa já passado: antes de 27/11/2026 o cartão
+  // afirmava "pausadas" só por isso, mesmo com o banco aceitando pedido.
+  const SUSPENSA_COM_PAUSA_VENCIDA = {
+    plano: "Loja Pro",
+    status: "suspensa",
+    valor_mensal: 250,
+    ciclo: "mensal",
+    inicio_em: "2025-12-02",
+    proxima_cobranca_em: "2026-01-02",
+    teste_ate: null,
+    pausa_em: "2026-01-13",
+    recursos: [],
+  };
+
+  it("suspensa com a pausa vencida, mas o banco ACEITA pedido: o cartão não diz 'pausadas'", async () => {
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    h.respostas.set("assinatura_da_loja_ler", {
+      data: SUSPENSA_COM_PAUSA_VENCIDA,
+      error: null,
+    });
+    h.respostas.set("situacao_das_vendas_da_loja", {
+      data: { aceita: true, motivo: null, pausada_desde: null },
+      error: null,
+    });
+    await montar();
+    await esperarAte(() => texto(hospedeiro).includes("Mensalidade em aberto"));
+    const cartao = hospedeiro.querySelector(
+      '[aria-labelledby="inicio-assinatura-titulo"]',
+    );
+    expect(texto(cartao)).toContain("Para continuar vendendo");
+    expect(texto(cartao)).not.toContain("pausad");
+    expect(texto(cartao)).not.toContain("Seus clientes não conseguem");
+  });
+
+  it("o banco diz que as vendas estão pausadas: o cartão diz desde quando", async () => {
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    h.respostas.set("assinatura_da_loja_ler", {
+      data: SUSPENSA_COM_PAUSA_VENCIDA,
+      error: null,
+    });
+    h.respostas.set("situacao_das_vendas_da_loja", {
+      data: {
+        aceita: false,
+        motivo: "vendas_pausadas",
+        pausada_desde: "2026-01-13",
+      },
+      error: null,
+    });
+    await montar();
+    await esperarAte(() =>
+      texto(hospedeiro).includes("Vendas pela loja pausadas desde 13/01"),
+    );
+    expect(texto(hospedeiro)).toContain(
+      "Seus clientes não conseguem fazer pedidos novos pela loja.",
+    );
+  });
+
+  it("a leitura da situação falha (loja sem a função): cartão de hoje, e os números e a assinatura continuam", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    h.respostas.set("assinatura_da_loja_ler", {
+      data: SUSPENSA_COM_PAUSA_VENCIDA,
+      error: null,
+    });
+    h.respostas.set("situacao_das_vendas_da_loja", {
+      data: null,
+      error: {
+        code: "PGRST202",
+        message:
+          "Could not find the function public.situacao_das_vendas_da_loja",
+      },
+    });
+    await montar();
+    await esperarAte(() => texto(hospedeiro).includes("R$ 12.345,67"));
+    await esperarAte(() => texto(hospedeiro).includes("Loja Pro"));
+    const cartao = hospedeiro.querySelector(
+      '[aria-labelledby="inicio-assinatura-titulo"]',
+    );
+    expect(texto(cartao)).toContain("Suspensa");
+    expect(texto(cartao)).toContain("Regularize a assinatura");
+    expect(texto(cartao)).not.toContain("pausad");
+    // A falha desta leitura não vira erro do cartão nem dos números.
+    expect(texto(cartao)).not.toContain("Tentar de novo");
   });
 
   it("os botões grandes levam aos Relatórios e ao Financeiro", async () => {
@@ -670,6 +758,7 @@ describe("Início do painel", () => {
     expect(h.rpc.mock.calls.map(([nome]) => nome).sort()).toEqual([
       "assinatura_da_loja_ler",
       "painel_inicio",
+      "situacao_das_vendas_da_loja",
     ]);
     const mes = hospedeiro.querySelector(
       '[aria-labelledby="inicio-mes-titulo"]',

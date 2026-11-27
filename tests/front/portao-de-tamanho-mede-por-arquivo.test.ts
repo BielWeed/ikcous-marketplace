@@ -74,7 +74,7 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os fixados: cliente 704 kB, painel 592 kB", () => {
+  it("os tetos de JS são os fixados: cliente 708 kB, painel 592 kB", () => {
     // cliente 696 -> 700 em 21/11/2026 (1.5.230; o CI mediu 697,13 kB, 1,13 kB acima; regra do dono: o teto sobe).
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito. cliente 652 -> 656 e painel 530 -> 534 em 12/11/2026 (1.5.173; a base ficou sem folga e cada PR novo reprovava; regra do dono: o teto sobe).
@@ -149,7 +149,9 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // cliente 690 -> 693 em 20/11/2026 (1.5.225; medido 690,84 kB no build local, 839 B acima; regra do dono: o teto sobe);
     // cliente 693 -> 696 em 20/11/2026 (1.5.229; o CI mediu 693,64 kB, 641 B acima do teto; regra do dono: o teto sobe);
     // cliente 700 -> 704 em 24/11/2026 (1.5.232; medido 701,09 kB no build local, 1,09 kB acima; regra do dono: o teto sobe);
-    expect(entrada("cliente.map(")).toContain('limit: "704 kB"');
+    // cliente 704 -> 708 em 27/11/2026 (1.5.244; o CI mediu 704,08 kB com o aviso de status da fila sem internet;
+    // regra do dono: o teto sobe, nada trocado por algo mais arriscado);
+    expect(entrada("cliente.map(")).toContain('limit: "708 kB"');
     // painel 542 -> 546 em 15/11/2026 (1.5.192; medido 542,08 kB no build local, 84 B acima do teto; regra do dono: o teto sobe);
     // painel 546 -> 550 em 18/11/2026 (1.5.209; medido 546,09 kB no build local, 87 B acima do teto; regra do dono: o teto sobe);
     // painel 550 -> 554 em 20/11/2026 (1.5.228; medido 550,27 kB no build local, 274 B acima do teto; regra do dono: o teto sobe);

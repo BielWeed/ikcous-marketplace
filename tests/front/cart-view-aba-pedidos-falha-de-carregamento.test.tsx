@@ -182,7 +182,7 @@ describe("CartView — aba Meus Pedidos: falha de carregamento não é lista vaz
 
     expect(texto()).toContain("Não conseguimos carregar seus pedidos agora");
     expect(texto()).not.toContain("Nenhum pedido");
-    expect(texto()).not.toContain("Que tal começar a comprar");
+    expect(texto()).not.toContain("Comprou sem entrar na conta");
     expect(botaoTentar()).toBeDefined();
     expect(duble.chamadasFetch).toBe(1);
   });

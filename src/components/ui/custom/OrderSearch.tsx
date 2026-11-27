@@ -69,6 +69,13 @@ interface OrderSearchProps {
    * vez não quer cair de novo no convite de "Entrar".
    */
   abrirNoRastreio?: boolean;
+  /**
+   * Dentro da conta (27/11/2026): só o rastreio, sem a aba "Entrar na Conta"
+   * (ela já entrou) e sem uma segunda leitura viva dos pedidos da conta — a
+   * tela de pedidos já tem a dela; o envio e a conferência do código não
+   * dependem dessa leitura.
+   */
+  somenteRastreio?: boolean;
 }
 
 export function OrderSearch({
@@ -78,13 +85,14 @@ export function OrderSearch({
   onOrdersFound,
   whatsappDaLoja,
   abrirNoRastreio = false,
+  somenteRastreio = false,
 }: OrderSearchProps) {
   const { generateOrderOtp, fetchOrdersByOtp, idDaConta } = useOrders(
-    true,
+    !somenteRastreio,
     false,
   );
   const [tab, setTab] = useState<"login" | "guest">(
-    abrirNoRastreio ? "guest" : "login",
+    abrirNoRastreio || somenteRastreio ? "guest" : "login",
   );
 
   // Guest fields
@@ -335,38 +343,40 @@ export function OrderSearch({
       <div className="rounded-[18px] border border-border bg-background p-4 text-foreground xs:p-6">
         <div className="flex h-full flex-col">
           {/* Mode selector tab header */}
-          <div className="mb-5 flex rounded-2xl bg-muted/40 p-1">
-            <button
-              type="button"
-              onClick={() => {
-                haptic.light();
-                setTab("login");
-              }}
-              className={cn(
-                "min-h-11 flex-1 rounded-xl text-sm font-semibold transition-colors",
-                tab === "login"
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Entrar na Conta
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                haptic.light();
-                setTab("guest");
-              }}
-              className={cn(
-                "min-h-11 flex-1 rounded-xl text-sm font-semibold transition-colors",
-                tab === "guest"
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Rastrear sem Conta
-            </button>
-          </div>
+          {!somenteRastreio && (
+            <div className="mb-5 flex rounded-2xl bg-muted/40 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  haptic.light();
+                  setTab("login");
+                }}
+                className={cn(
+                  "min-h-11 flex-1 rounded-xl text-sm font-semibold transition-colors",
+                  tab === "login"
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Entrar na Conta
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  haptic.light();
+                  setTab("guest");
+                }}
+                className={cn(
+                  "min-h-11 flex-1 rounded-xl text-sm font-semibold transition-colors",
+                  tab === "guest"
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Rastrear sem Conta
+              </button>
+            </div>
+          )}
 
           {tab === "login" ? (
             <div className="space-y-4">

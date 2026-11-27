@@ -36,7 +36,7 @@ export const TEXTOS_DA_CLIENTE = {
     "O que você escreveu nas observações dos pedidos",
   ],
   ficaTitulo: "O que fica guardado por lei",
-  fica: "Os pedidos e as notas fiscais ficam guardados (valores, itens, datas e forma de pagamento), mas sem o seu nome, telefone, CPF, e-mail e endereço. Suas avaliações e perguntas públicas, se houver, também ficam, sem o seu nome.",
+  fica: "Os pedidos e as notas fiscais ficam guardados (valores, itens, datas e forma de pagamento), mas sem o seu nome, telefone, CPF, e-mail e endereço. Suas avaliações e perguntas públicas, se houver, também ficam, sem o seu nome. O registro dos seus pedidos de privacidade também fica, com o e-mail novo que você digitou se pediu para corrigir o e-mail.",
   prazo: `A loja responde em até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias.`,
   // NOVO: revisar com o dono (rótulos curtos da tela "Tinta", 23/10/2026)
   rotuloDaTela: "Conta · Privacidade",
@@ -47,7 +47,7 @@ export const TEXTOS_DA_CLIENTE = {
   botaoCorrigirEmail: "Corrigir meu e-mail",
 
   confirmaExcluirTitulo: "Pedir a exclusão da sua conta?",
-  confirmaExcluirTexto: `A loja vai analisar o seu pedido e responder em até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias. Quando a exclusão for feita, você deixa de entrar na conta. A loja envia a confirmação para o e-mail da conta com que você fez o pedido. Seus pedidos e notas ficam guardados por lei, sem os seus dados pessoais.`,
+  confirmaExcluirTexto: `A loja vai analisar o seu pedido e responder em até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias. Quando a exclusão for feita, você deixa de entrar na conta. A loja envia a confirmação para o e-mail da conta com que você fez o pedido. Seus pedidos e notas ficam guardados por lei, sem os seus dados pessoais. Cupom só seu não passa para outra conta: use antes ou combine com a loja. Vale-troca com código continua valendo.`,
   confirmaExcluirAcao: "Sim, pedir exclusão",
   confirmaVoltar: "Voltar",
 

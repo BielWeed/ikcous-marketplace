@@ -70,6 +70,7 @@ import { AddressList } from "@/components/ui/custom/AddressList";
 import { CarrinhoSalvoNaoLido } from "@/components/ui/custom/CarrinhoSalvoNaoLido";
 import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
 import { CartItemsList } from "@/components/ui/custom/CartItemsList";
+import { ConsultaSemContaNaConta } from "@/components/ui/custom/ConsultaSemContaNaConta";
 import { EmptyCart } from "@/components/ui/custom/EmptyCart";
 import {
   AvisoDeFreteGratis,
@@ -578,6 +579,22 @@ function ConteudoDoCarrinho({
   // A lista do rastreio sem conta saiu da tela porque o retrato venceu (15 min):
   // a tela explica e manda consultar de novo, em vez de sumir sem dizer nada.
   const [retratoSaiuDaTela, setRetratoSaiuDaTela] = useState(false);
+  // Conta que abriu a consulta do pedido feito sem conta (27/11/2026). Vale só
+  // para ESTA conta: sair ou trocar de conta fecha a consulta sem efeito.
+  const [consultaAbertaPara, setConsultaAbertaPara] = useState<string | null>(
+    null,
+  );
+  const consultaSemContaAberta =
+    Boolean(user) && consultaAbertaPara === user?.id;
+  // Sair da conta fecha a consulta de vez: entrar de novo, mesmo na mesma
+  // conta, começa com a lista e não com a busca da visita anterior.
+  if (!user && consultaAbertaPara !== null) setConsultaAbertaPara(null);
+  // Convidado sem pedidos: quem avisa e oferece "Entrar" é o OrderSearch de
+  // cima. Conta sem pedidos com a consulta aberta: a consulta ocupa o lugar
+  // da lista vazia.
+  const mostrarListaDePedidos =
+    (Boolean(user) || orders.length > 0) &&
+    !(consultaSemContaAberta && orders.length === 0);
 
   // Directional Orders Sub-tab Transitions
   const [ordersTabDirection, setOrdersTabDirection] = useState<number>(0);
@@ -1786,6 +1803,18 @@ function ConteudoDoCarrinho({
                 </div>
               )}
 
+              {user && consultaSemContaAberta && (
+                <ConsultaSemContaNaConta
+                  key={user.id}
+                  onNavigate={onNavigate}
+                  whatsappDaLoja={config.whatsappNumber}
+                  onFechar={() => {
+                    setConsultaAbertaPara(null);
+                    document.getElementById("painel-orders")?.focus();
+                  }}
+                />
+              )}
+
               {orderViewMode === "guest" && (
                 <OrderSearch
                   key={buscaDoRastreio}
@@ -1907,7 +1936,7 @@ function ConteudoDoCarrinho({
                         é o bloco de cima (OrderSearch). O "Histórico
                         Protegido ... Acesse" da lista repetia o aviso sem
                         botão nenhum. */}
-                    {(user || orders.length > 0) && (
+                    {mostrarListaDePedidos && (
                       <OrderList
                         orders={filteredOrders}
                         isLoadingOrders={
@@ -1918,6 +1947,14 @@ function ConteudoDoCarrinho({
                         loadError={user ? (erroDosPedidos ?? null) : null}
                         onRetry={tentarCarregarPedidosDeNovo}
                         hasAnyOrders={orders.length > 0}
+                        onConsultarSemConta={
+                          user
+                            ? () => {
+                                haptic.light();
+                                setConsultaAbertaPara(user.id);
+                              }
+                            : undefined
+                        }
                         emptyTitle={
                           orders.length > 0
                             ? ordersTab === "active"

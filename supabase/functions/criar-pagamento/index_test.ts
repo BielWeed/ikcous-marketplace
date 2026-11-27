@@ -13156,19 +13156,90 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (R-a, PIX pedido): cartão PAGO na vaga COM pr
   assertEquals(mp.posts, []);
 });
 
-Deno.test("CONFIRMAÇÃO IMEDIATA (R-e): reconsulta de PIX com PIX PAGO na vaga e prova -> RPC 1x, efeitos 1x, a MESMA resposta com o QR", async () => {
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-e): reconsulta de PIX com PIX PAGO na vaga e prova -> RPC 1x, efeitos 1x, 'pago' SEM o QR", async () => {
   const { db, contado } = bancoContandoEscritas(pedidoCI({ metodo_online: "pix" }));
   const mp = mpDaConsulta({ orders: [pixPagoCI()] });
   const ef = efeitosCI();
   const r = await reconsultarCI(contado, mp, { orderId: UUID, metodo: "pix" }, ef.deps);
 
   assertEquals(r.status, 200, JSON.stringify(r.corpo));
-  assertEquals(r.corpo.paymentId, VAGA_CI);
-  assertEquals(r.corpo.statusPagamento, "pago");
-  assertEquals(r.corpo.qrCode, "00020126580014br.gov.bcb.pix-exemplo-da-doc");
+  // Caça de 27/11/2026: o QR de um PIX já pago não sai mais. O app antigo
+  // guardado pelo service worker desenhava "Copiar código Pix" com ele, e a
+  // cliente podia pagar de novo. Corpo inteiro: nenhum campo a mais.
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
   assertEquals(confirmacoesCI(db).length, 1);
   assertEquals(ef.pushes, [PUSH_PAGO_CI]);
   assertEquals(mp.posts, []);
+});
+
+Deno.test("QR SÓ ENQUANTO PAGÁVEL: PIX PAGO na vaga com prova e pedido de CARTÃO -> 'pago' SEM o QR, ZERO POST", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ metodo_online: "pix" }));
+  const mp = mpDaConsulta({ orders: [pixPagoCI()] });
+  const r = await reconsultarCI(contado, mp, corpoCartao(), efeitosCI().deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(mp.posts, []);
+});
+
+// Estados FINAIS da cobrança na vaga (o banco ainda 'aguardando', ou a
+// reconsulta nem chegaria aqui): o QR morreu ou já foi usado. Nenhum deles
+// pode levar o código copiável — a tela antiga desenha o QR antes de olhar o
+// status em algumas versões, e pagar de novo é o defeito.
+for (
+  const caso of [
+    { nome: "recusado (failed)", status: "failed", detalhe: "failed", esperado: "recusado" },
+    { nome: "cancelado", status: "canceled", detalhe: "canceled", esperado: "recusado" },
+    { nome: "expirado", status: "expired", detalhe: "expired", esperado: "expirado" },
+    { nome: "estornado", status: "refunded", detalhe: "refunded", esperado: "estornado" },
+    { nome: "contestado", status: "charged_back", detalhe: "settled", esperado: "estornado" },
+  ]
+) {
+  Deno.test(`QR SÓ ENQUANTO PAGÁVEL: PIX ${caso.nome} na vaga + pedido de PIX -> '${caso.esperado}' SEM QR, sem ticket, ZERO RPC e ZERO POST`, async () => {
+    const { db, contado, escritas } = bancoContandoEscritas(pedidoCI({ metodo_online: "pix" }));
+    const mp = mpDaConsulta({ orders: [pixPagoCI({ status: caso.status, status_detail: caso.detalhe })] });
+    const r = await reconsultarCI(contado, mp, { orderId: UUID, metodo: "pix" }, efeitosCI().deps);
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: caso.esperado, expiraEm: PRAZO_BASE });
+    assertEquals(confirmacoesCI(db), []);
+    assertEquals(escritas.length, 0);
+    assertEquals(mp.posts, []);
+  });
+}
+
+Deno.test("QR SÓ ENQUANTO PAGÁVEL: par DESCONHECIDO do MP na vaga + pedido de PIX -> o par cru, SEM QR (o front já trata como terminal)", async () => {
+  const { contado } = bancoContandoEscritas(pedidoCI({ metodo_online: "pix" }));
+  const mp = mpDaConsulta({
+    orders: [pixPagoCI({ status: "action_required", status_detail: "detalhe_que_o_mp_inventou" })],
+  });
+  const r = await reconsultarCI(contado, mp, { orderId: UUID, metodo: "pix" }, efeitosCI().deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, {
+    paymentId: VAGA_CI,
+    statusPagamento: "action_required:detalhe_que_o_mp_inventou",
+    expiraEm: PRAZO_BASE,
+  });
+});
+
+Deno.test("QR SÓ ENQUANTO PAGÁVEL — CONTROLE: PIX ABERTO na vaga + pedido de PIX -> 'aguardando' com QR, imagem e ticket de sempre", async () => {
+  const { contado } = bancoContandoEscritas(pedidoCI({ metodo_online: "pix" }));
+  const mp = mpDaConsulta({
+    orders: [pixPagoCI({ status: "action_required", status_detail: "waiting_transfer" })],
+  });
+  const r = await reconsultarCI(contado, mp, { orderId: UUID, metodo: "pix" }, efeitosCI().deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, {
+    paymentId: VAGA_CI,
+    statusPagamento: "aguardando",
+    expiraEm: PRAZO_BASE,
+    qrCode: "00020126580014br.gov.bcb.pix-exemplo-da-doc",
+    qrCodeBase64: "iVBORw0KGgoAAAANSUhEUgAABWQAAAVkAQAAAAB79i",
+    ticketUrl: "https://www.mercadopago.com.br/sandbox/payments/00000000000/ticket",
+  });
 });
 
 Deno.test("CONFIRMAÇÃO IMEDIATA (R-convidado): reconsulta de PIX pago num pedido de CONVIDADO -> ZERO RPC (dono autenticado é condição); sem confirmar, a resposta é 'aguardando' (nunca 'pago' só pela order)", async () => {

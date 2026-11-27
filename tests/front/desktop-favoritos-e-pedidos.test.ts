@@ -47,8 +47,11 @@ describe("Favoritos e pedidos no computador", () => {
     expect(classes(arquivos.carrinho)).toBe(
       "1dc0eeae81190e2946f2b062e7036424fc24e369d31fb97fecb039bd2be421c2",
     );
+    // 27/11/2026: conta sem pedidos ganha o botão "Consultar pedido feito sem
+    // conta" ("mt-3 block" e o botão de texto sublinhado); nenhuma classe
+    // existente mudou.
     expect(classes(arquivos.pedidos)).toBe(
-      "25517ee6c392becb26e96a3c560aca5915539e126275ac1a930ad739be209bb6",
+      "8088cfbdbf0369bacede8cc4260fa712284630ba1e2f0caf6a30a1007bfba0fe",
     );
     // 1.5.218: aviso novo junto ao campo do código ("text-sm text-destructive") e a
     // borda de erro só quando inválido ("aria-invalid:border-destructive"); nenhuma
