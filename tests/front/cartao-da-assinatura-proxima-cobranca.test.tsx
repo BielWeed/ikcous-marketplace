@@ -140,6 +140,44 @@ describe("CartaoDaAssinatura: o valor é a próxima cobrança", () => {
     }
   });
 
+  // Caça do PR #2020: "Valor em aberto" em cima e "Próxima cobrança 05/12" logo
+  // abaixo. Para pendente e suspensa a gestão não diz que essa data é o
+  // vencimento do valor em aberto, então a linha some (nada se promete).
+  it("pendente e suspensa com data futura: a linha 'Próxima cobrança' some", () => {
+    for (const status of ["pendente", "suspensa"] as const) {
+      desenhar({ status, proximaCobrancaEm: "2026-12-05" });
+      expect(rotuloDoValor("Valor em aberto")).toBeDefined();
+      expect(tela.textContent).not.toContain("Próxima cobrança");
+      expect(tela.textContent).not.toContain("05/12/2026");
+      // As outras datas continuam.
+      expect(tela.textContent).toContain("Cliente desde");
+    }
+  });
+
+  it("suspensa com a data já passada também não mostra 'Próxima cobrança'", () => {
+    desenhar({ status: "suspensa", proximaCobrancaEm: "2026-11-10" });
+    expect(tela.textContent).not.toContain("Próxima cobrança");
+    expect(tela.textContent).not.toContain("10/11/2026");
+  });
+
+  it("suspensa sem valor no payload também não promete próxima cobrança", () => {
+    desenhar({
+      status: "suspensa",
+      valorMensal: null,
+      proximaCobrancaEm: "2026-12-05",
+    });
+    expect(tela.textContent).not.toContain("Próxima cobrança");
+    expect(tela.textContent).toContain("Regularize a assinatura");
+  });
+
+  // Controle: em dia, a data da próxima cobrança continua junto do valor.
+  it("ativa com data futura continua com 'Próxima cobrança' e a data", () => {
+    desenhar({ status: "ativa", proximaCobrancaEm: "2026-12-05" });
+    expect(rotuloDoValor()?.parentElement?.textContent).toMatch(
+      /^Próxima cobrançaR\$\s175,00em 05\/12\/2026$/,
+    );
+  });
+
   // Revisão 27/11/2026: assinatura cancelada não tem próxima cobrança.
   it("cancelada: nenhum valor nem 'Próxima cobrança'", () => {
     desenhar({ status: "cancelada", proximaCobrancaEm: null });
