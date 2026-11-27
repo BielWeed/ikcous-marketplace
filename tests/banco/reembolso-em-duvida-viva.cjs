@@ -418,7 +418,11 @@ async function semDuvidaSaldoIgual() {
   // ANTES: o rollback na MESMA transação (nenhuma marca: ele pode desfazer). A 20261343000000 redefine
   // admin_devolucao_concluir depois da 241 e o pré-voo do rollback recusa com o corpo dela no ar: desfaz-se
   // a 343 (a mais nova) primeiro, como nas demais provas que desfazem uma ancestral (o saldo medido acima
-  // já foi com a 343 no ar; as funções de saldo não são as dela).
+  // já foi com a 343 no ar; as funções de saldo não são as dela). A 20261645000000 (o aviso do vale-troca) sucede o
+  // devolucao_avisa_o_cliente desta: sai antes também.
+  await require("./o-aviso-do-vale-troca-posterior.cjs").desfazerAvisoDoValeTrocaNaTransacao(
+    C,
+  );
   await require("./reembolso-manual-reserva-posterior.cjs").desfazerReembolsoManualReservaNaTransacao(
     C,
   );
@@ -1453,7 +1457,11 @@ prova(
   "MIGRATION: reaplicar 2x e em CRLF = mesmos corpos; rollback devolve os de antes e é idempotente; recusa com marca; pré-voo recusa corpo divergente SEM escrever",
   () =>
     emTransacao(async () => {
-      // Só esta prova reaplica a 241; as demais medem o corpo de produção.
+      // Só esta prova reaplica a 241; as demais medem o corpo de produção. A 20261645000000 (o aviso do vale-troca)
+      // sucede o devolucao_avisa_o_cliente desta e o pré-voo dela recusa o corpo novo: sai antes.
+      await require("./o-aviso-do-vale-troca-posterior.cjs").desfazerAvisoDoValeTrocaNaTransacao(
+        C,
+      );
       await require("./reembolso-manual-reserva-posterior.cjs").desfazerReembolsoManualReservaNaTransacao(
         C,
       );

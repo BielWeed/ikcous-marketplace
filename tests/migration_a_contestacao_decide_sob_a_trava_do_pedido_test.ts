@@ -755,6 +755,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261643000000: as listas dos ajustes nao somem entre aparelhos (upsert_store_config e salvar_politica_de_devolucao conferem a lista
     // vista e recusam com LST01; igual grava, diferente recusa, duas conexoes reais, ACL, rollback byte a byte, reaplicar e consultas 203a/203b).
     "tests/banco/as-listas-dos-ajustes-viva.cjs",
+    // 20261645000000: o aviso do vale-troca diz que a loja combina (so a frase do ramo vale de devolucao_avisa_o_cliente).
+    "tests/banco/o-aviso-do-vale-troca-diz-que-a-loja-combina-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
     // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;

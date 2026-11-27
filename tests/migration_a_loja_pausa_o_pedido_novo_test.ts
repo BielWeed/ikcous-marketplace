@@ -588,6 +588,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
     // 20261643000000: as listas dos ajustes nao somem entre aparelhos.
     "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado",
+    // 20261645000000: o aviso do vale-troca diz que a loja combina.
+    "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(
