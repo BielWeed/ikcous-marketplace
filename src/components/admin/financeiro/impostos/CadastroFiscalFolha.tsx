@@ -21,6 +21,8 @@
 import { Landmark } from "lucide-react";
 import { useId, useMemo, useRef, useState } from "react";
 
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
+import type { OpcaoDaLista } from "@/components/admin/primitivos/lista-de-escolha/tipos";
 import {
   ErroDoCadastroFiscal,
   salvarCadastroFiscal,
@@ -55,6 +57,16 @@ import {
 // O banco recusa antes disto (22023). Mesmas datas da migration do cadastro.
 const PRIMEIRA_ABERTURA: DataIso = "1900-01-01";
 const PRIMEIRO_MES_DAS_VENDAS: DataIso = "2020-01-01";
+
+// Regime e atividade: as opções que a lojista lê. Sem cadastro o campo mostra
+// "Escolha…" (o placeholder), que não é opção: não dá para "desescolher".
+const OPCOES_DO_REGIME: readonly OpcaoDaLista[] = REGIMES_FISCAIS.map(
+  (regime) => ({ valor: regime, rotulo: rotuloDoRegime(regime) }),
+);
+const OPCOES_DA_ATIVIDADE: readonly OpcaoDaLista[] = ATIVIDADES_FISCAIS.map(
+  (atividade) => ({ valor: atividade, rotulo: rotuloDaAtividade(atividade) }),
+);
+const CONVITE_DA_LISTA = "Escolha…";
 
 const FRASE_ABERTURA_ANTIGA = "A data de abertura não pode ser antes de 1900.";
 const FRASE_VENDAS_ANTIGAS =
@@ -307,47 +319,27 @@ export function CadastroFiscalFolha({
           }}
           className="flex flex-col gap-4"
         >
-          <Campo id={ID_REGIME} rotulo="Regime da empresa" erro={erros.regime}>
-            <select
-              id={ID_REGIME}
-              value={form.regime}
-              disabled={parado}
-              aria-invalid={erros.regime ? true : undefined}
-              aria-describedby={ligacaoDoErro(ID_REGIME, erros.regime)}
-              onChange={(e) => atualizar({ regime: e.target.value })}
-              className={CLASSE_CAMPO}
-            >
-              <option value="">Escolha…</option>
-              {REGIMES_FISCAIS.map((regime) => (
-                <option key={regime} value={regime}>
-                  {rotuloDoRegime(regime)}
-                </option>
-              ))}
-            </select>
-          </Campo>
-          <Campo
+          <CampoDeEscolha
+            id={ID_REGIME}
+            rotulo="Regime da empresa"
+            opcoes={OPCOES_DO_REGIME}
+            valor={form.regime}
+            aoMudar={(regime) => atualizar({ regime })}
+            placeholder={CONVITE_DA_LISTA}
+            desabilitado={parado}
+            erro={erros.regime}
+          />
+          <CampoDeEscolha
             id={ID_ATIVIDADE}
             rotulo="O que a empresa faz"
+            opcoes={OPCOES_DA_ATIVIDADE}
+            valor={form.atividade}
+            aoMudar={(atividade) => atualizar({ atividade })}
+            placeholder={CONVITE_DA_LISTA}
+            desabilitado={parado}
             erro={erros.atividade}
             ajuda="Só comércio: vende apenas produtos. Tem serviço: também presta algum serviço."
-          >
-            <select
-              id={ID_ATIVIDADE}
-              value={form.atividade}
-              disabled={parado}
-              aria-invalid={erros.atividade ? true : undefined}
-              aria-describedby={ligacaoDoErro(ID_ATIVIDADE, erros.atividade)}
-              onChange={(e) => atualizar({ atividade: e.target.value })}
-              className={CLASSE_CAMPO}
-            >
-              <option value="">Escolha…</option>
-              {ATIVIDADES_FISCAIS.map((atividade) => (
-                <option key={atividade} value={atividade}>
-                  {rotuloDaAtividade(atividade)}
-                </option>
-              ))}
-            </select>
-          </Campo>
+          />
           <Campo
             id={ID_ABERTA_EM}
             rotulo="Data de abertura da empresa (opcional)"
