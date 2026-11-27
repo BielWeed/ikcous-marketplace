@@ -583,16 +583,9 @@ describe("AdminFornecedoresView (E1)", () => {
       await act(async () => digitar(campo(/Cidade/), "Campinas"));
       await clicar(botao("Salvar fornecedor"));
       expect(criar).not.toHaveBeenCalled();
-      expect(editar).toHaveBeenCalledWith(
-        "a",
-        expect.objectContaining({
-          nome: "Atacado Fixture",
-          cidade: "Campinas",
-        }),
-      );
-      // A estrela NÃO foi tocada na folha: a edição não a manda (a folha guarda o valor de quando
-      // abriu, que pode já estar velho se a estrela da lista mudou nesse meio tempo).
-      expect(editar.mock.calls[0][1]).not.toHaveProperty("favorito");
+      // Só a cidade foi mexida: a edição manda só ela. Nem a estrela nem o resto (a folha guarda os
+      // valores de quando abriu, que podem já estar velhos se outro aparelho mudou nesse meio tempo).
+      expect(editar).toHaveBeenCalledWith("a", { cidade: "Campinas" });
     });
 
     it("estrela mexida DENTRO da folha é uma escolha do lojista: vai na edição", async () => {

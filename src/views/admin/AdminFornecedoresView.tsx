@@ -26,6 +26,7 @@ import {
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import {
+  ErroDosFornecedores,
   mensagemDeErroDosFornecedores,
   useFornecedores,
 } from "@/hooks/useFornecedores";
@@ -39,7 +40,7 @@ import { cn } from "@/lib/utils";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type { View } from "@/types";
 import { CloudOff, Factory, Plus, RefreshCw, Search, Star } from "lucide-react";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface AdminFornecedoresViewProps {
@@ -81,6 +82,8 @@ export const AdminFornecedoresView = memo(function AdminFornecedoresView({
   const [soFavoritos, setSoFavoritos] = useState(false);
   const [folha, setFolha] = useState<Folha | null>(null);
   const [paraExcluir, setParaExcluir] = useState<Fornecedor | null>(null);
+  // Uma gravação desta folha estourou o prazo (pode ter sido salva): fechar relê a lista.
+  const releAoFechar = useRef(false);
 
   const visiveis = useMemo(
     () => filtrarFornecedores(fornecedores ?? [], busca, soFavoritos),
@@ -96,21 +99,47 @@ export const AdminFornecedoresView = memo(function AdminFornecedoresView({
   const abrirNovo = () => {
     if (offline) return;
     // O id nasce ANTES de gravar: repetir o Salvar regrava a mesma linha (nunca duplica).
+    releAoFechar.current = false;
     setFolha({ tipo: "novo", id: gerarUuidV4() });
   };
 
-  const salvar = async (dados: DadosDoFornecedor) => {
+  const fecharFolha = () => {
+    if (releAoFechar.current) {
+      releAoFechar.current = false;
+      recarregar();
+    }
+    setFolha(null);
+  };
+
+  const salvar = async (
+    dados: DadosDoFornecedor,
+    mexidos: ReadonlyArray<keyof DadosDoFornecedor>,
+  ) => {
     if (!folha) return;
-    if (folha.tipo === "novo") await criar(folha.id, dados);
-    else {
-      // A folha guarda a estrela de QUANDO ABRIU. Se o lojista não mexeu nela, a edição não a
-      // manda: assim uma estrela que mudou nesse meio tempo (toque na lista, outro aparelho)
-      // não é desfeita sem aviso por um valor velho.
-      const { favorito, ...semEstrela } = dados;
-      await editar(
-        folha.fornecedor.id,
-        favorito === folha.fornecedor.favorito ? semEstrela : dados,
-      );
+    try {
+      if (folha.tipo === "novo") await criar(folha.id, dados);
+      else {
+        // A folha guarda o fornecedor de QUANDO ABRIU, e a lista não se relê sozinha. A edição
+        // manda só o que a lojista mexeu nela: um WhatsApp (ou estrela) que mudou nesse meio
+        // tempo em outro aparelho não é desfeito sem aviso por um valor velho. Nada mexido:
+        // fecha sem gravar.
+        if (mexidos.length === 0) {
+          setFolha(null);
+          return;
+        }
+        const mudanca: Partial<DadosDoFornecedor> = Object.fromEntries(
+          Object.entries(dados).filter(([campo]) =>
+            mexidos.includes(campo as keyof DadosDoFornecedor),
+          ),
+        );
+        await editar(folha.fornecedor.id, mudanca);
+      }
+    } catch (e) {
+      // Estourou o prazo: o banco pode ter gravado. Fechar a folha relê a lista.
+      if (e instanceof ErroDosFornecedores && e.semResposta) {
+        releAoFechar.current = true;
+      }
+      throw e;
     }
     toast.success(
       folha.tipo === "novo"
@@ -131,7 +160,9 @@ export const AdminFornecedoresView = memo(function AdminFornecedoresView({
   );
   const aoEditar = useCallback(
     (f: Fornecedor) => {
-      if (!offline) setFolha({ tipo: "editar", fornecedor: f });
+      if (offline) return;
+      releAoFechar.current = false;
+      setFolha({ tipo: "editar", fornecedor: f });
     },
     [offline],
   );
@@ -325,7 +356,7 @@ export const AdminFornecedoresView = memo(function AdminFornecedoresView({
         aberta={folha !== null}
         fornecedor={folha?.tipo === "editar" ? folha.fornecedor : null}
         offline={offline}
-        aoFechar={() => setFolha(null)}
+        aoFechar={fecharFolha}
         aoSalvar={salvar}
         aoMudarSujo={avisarSujo}
       />
