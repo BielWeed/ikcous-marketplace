@@ -51,7 +51,7 @@ const TETO_DE_SEGURANCA_DE_PRODUTOS = 2000;
 const TETO_DE_AVALIACOES = 100;
 
 /**
- * Quantos cancelamentos das ultimas 24 h a leitura traz (os MAIS NOVOS). Conta
+ * Quantos cancelamentos da janela do sino (36 h) a leitura traz (os MAIS NOVOS). Conta
  * clientes E admin: o admin so sai depois, na selecao. Passando disto a leitura
  * devolve `truncou` e a tela avisa que a lista esta cortada.
  */

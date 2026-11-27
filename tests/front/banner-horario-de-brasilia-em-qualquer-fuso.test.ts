@@ -74,6 +74,18 @@ describe.each(FUSOS_DO_APARELHO)("banner, aparelho em %s", (fuso) => {
     }
   });
 
+  it("ano curto enquanto a lojista digita o ano (0002, 0020, 0202) não apaga o campo", () => {
+    // O Chrome de computador emite o valor a cada tecla do ano: "0002-…",
+    // "0020-…", "0202-…", "2027-…". Se algum virar null, o campo controlado
+    // se apaga e os dígitos seguintes caem num campo vazio (revisão 27/11).
+    for (const ano of ["0002", "0020", "0202", "2027"]) {
+      const valor = `${ano}-11-28T00:00`;
+      const instante = instanteDoCampoDoBanner(valor);
+      expect(instante).not.toBeNull();
+      expect(campoDoBannerDoInstante(instante)).toBe(valor);
+    }
+  });
+
   it("campo vazio ou impossível não vira data", () => {
     expect(instanteDoCampoDoBanner("")).toBeNull();
     expect(instanteDoCampoDoBanner("2026-13-01T10:00")).toBeNull();

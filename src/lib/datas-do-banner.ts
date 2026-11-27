@@ -63,9 +63,13 @@ function daLoja(
   minuto = 0,
   segundo = 0,
 ): Date {
-  return new Date(
-    Date.UTC(ano, mes, dia, hora, minuto, segundo) + DESLOCAMENTO_DA_LOJA_EM_MS,
-  );
+  // `setUTCFullYear`, não `Date.UTC`: este troca os anos 0-99 por 1900-1999,
+  // e o Chrome emite "0002-…", "0020-…" enquanto a lojista digita o ano —
+  // virava null e o campo se apagava no primeiro dígito (revisão 27/11).
+  const instante = new Date(0);
+  instante.setUTCFullYear(ano, mes, dia);
+  instante.setUTCHours(hora, minuto, segundo, 0);
+  return new Date(instante.getTime() + DESLOCAMENTO_DA_LOJA_EM_MS);
 }
 
 function mesmoDia(a: Date, b: Date): boolean {
