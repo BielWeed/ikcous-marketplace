@@ -16,6 +16,7 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ArmazenamentoComCota } from "./helpers/armazenamento-com-cota";
 
 const SALDO_PADRAO = {
   total: 100,
@@ -153,6 +154,15 @@ const linhaSolicitada = {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // A chave da devolução (src/lib/chave-da-devolucao.ts) mora no localStorage.
+  // Dublê simples, o mesmo em todo Node: o `Storage` do jsdom (o global no
+  // Node 24) agenda um temporizador por setItem/removeItem (o evento "storage"
+  // para as outras abas), e o "sem temporizador sobrando" abaixo contaria os
+  // do jsdom em vez dos prazos do hook.
+  vi.stubGlobal(
+    "localStorage",
+    new ArmazenamentoComCota(Number.POSITIVE_INFINITY),
+  );
   vi.clearAllMocks();
   h.linhas = [];
   h.saldo = SALDO_PADRAO;
@@ -170,8 +180,7 @@ afterEach(() => {
     });
   }
   document.body.innerHTML = "";
-  // A chave da devolução (src/lib/chave-da-devolucao.ts) mora no localStorage.
-  localStorage.clear();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 

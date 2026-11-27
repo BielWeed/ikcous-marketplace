@@ -4,6 +4,7 @@
 // mesma chave por até 30 min; outra intenção, chave nova; encerrar só apaga a chave que ainda é a da intenção;
 // registro vencido, malformado ou com validade absurda não vale; sem localStorage a chave ainda vale na aba.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ArmazenamentoComCota } from "./helpers/armazenamento-com-cota";
 
 const PRAZO_MS = 30 * 60_000;
 const PREFIXO = "ikcous-chave-da-devolucao:";
@@ -13,29 +14,42 @@ async function carregar() {
   return import("@/lib/chave-da-devolucao");
 }
 
-// Navegador que recusa o storage (cota cheia, modo privado). O espião vai no
-// PRÓPRIO objeto `localStorage`, não em `Storage.prototype`: no Node 25 o setup
-// (tests/front/setup-build-identity.ts) troca o global por um storage de
-// reserva que não herda de `Storage`, e o espião no protótipo não pegaria nada.
+// O `localStorage` de cada teste é um dublê INSTALADO no global (vi.stubGlobal),
+// nunca um espião: o global muda de natureza com o Node. No Node 24 é o
+// `Storage` do jsdom, em que `vi.spyOn(localStorage, "getItem")` vira um ITEM
+// guardado (o método nem é trocado); no Node 25 é o storage de reserva do setup
+// (tests/front/setup-build-identity.ts), que não herda de `Storage.prototype`.
+// Trocar o objeto inteiro vale nos dois.
 let recusas = 0;
 function storageQueRecusa(): void {
   const recusar = () => {
     recusas += 1;
     throw new DOMException("cota", "QuotaExceededError");
   };
-  vi.spyOn(localStorage, "getItem").mockImplementation(recusar);
-  vi.spyOn(localStorage, "setItem").mockImplementation(recusar);
-  vi.spyOn(localStorage, "removeItem").mockImplementation(recusar);
+  vi.stubGlobal("localStorage", {
+    length: 0,
+    clear: recusar,
+    getItem: recusar,
+    key: recusar,
+    removeItem: recusar,
+    setItem: recusar,
+  });
 }
 
 beforeEach(() => {
   recusas = 0;
-  localStorage.clear();
+  vi.stubGlobal(
+    "localStorage",
+    new ArmazenamentoComCota(Number.POSITIVE_INFINITY),
+  );
 });
 
 afterEach(() => {
+  // Sem `localStorage.clear()` aqui: depois de desfazer os stubs, o global do
+  // Node 25 é o experimental quebrado até o `beforeEach` do setup reinstalar a
+  // reserva. Cada teste ganha um dublê novo no `beforeEach` acima.
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  localStorage.clear();
 });
 
 describe("chaveDaDevolucao", () => {
