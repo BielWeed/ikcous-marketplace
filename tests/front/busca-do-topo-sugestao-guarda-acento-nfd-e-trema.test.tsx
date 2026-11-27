@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 //
-// Busca do topo: a sugestão de termo limpava a palavra com `[^\wÀ-ú]`. Dois
-// defeitos dali: (1) nome cadastrado com acento SEPARADO (NFD, comum em texto
-// colado) perdia o acento — "Café" virava "Cafe"; (2) "ü" (U+00FC) fica FORA da
-// faixa À-ú, então "Lingüiça" virava "Lingiça" (e o termo cortado nem acha o
-// produto). Agora a palavra vira NFC e só letra/número de qualquer alfabeto
-// fica; pontuação continua saindo.
+// Busca do topo: a sugestão de termo limpava a palavra com `[^\wÀ-ú]`. Nome
+// cadastrado com acento SEPARADO (NFD, comum em texto colado) perdia o acento —
+// "Café" virava "Cafe". Agora a palavra vira NFC e só letra/número de qualquer
+// alfabeto fica; pontuação continua saindo. O caso "Lingüiça" não reprovava no
+// regex antigo (com a flag `i`, o "ü" casa como "Ü", dentro da faixa): ele só
+// guarda que o regex NOVO não passe a cortar o trema.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
