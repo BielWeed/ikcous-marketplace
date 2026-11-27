@@ -149,6 +149,11 @@ import {
   motivoDoBloqueioDoProduto,
   motivoDoEnvioDeFotos,
 } from "@/utils/motivo-do-bloqueio-do-produto";
+import {
+  avisoDoEstoqueDigitadoTrocado,
+  comOEstoqueDaVariacao,
+  soMudouOEstoqueDaVariacao,
+} from "@/utils/peca-somada-no-formulario";
 import { precoProprioDaVariacao } from "@/utils/preco-da-variacao";
 import { avisarProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
 import {
@@ -1277,6 +1282,91 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // na tela, por cima do aviso do conflito. Ligado, a PRÓXIMA rodada dele sai
   // sem oferecer (e desliga).
   const pularOfertaDeRascunhoRef = useRef(false);
+  // A peça que voltou sem tamanho foi somada a um tamanho pelo aviso do topo
+  // (20261642000000): o banco somou 1 nele e avançou a versão do produto. A
+  // tela relê o produto e, se a ÚNICA mudança é o estoque desse tamanho, passa
+  // a mostrar o estoque novo e a usar a versão nova — o Salvar seguinte não é
+  // recusado e o resto do que a lojista digitou fica. Qualquer outra mudança
+  // (outro aparelho no meio), releitura que falhou ou salvar em curso: nada
+  // muda aqui, e a conferência de versão do Salvar segue recusando como antes
+  // (ver `soMudouOEstoqueDaVariacao`). Os estados vêm por ref: a releitura
+  // termina depois do clique, e a lojista pode ter digitado nesse meio-tempo.
+  const estadoParaAPecaRef = useRef({
+    currentProduct,
+    formData,
+    initialData,
+    deletedVariantIds,
+    salvando: isSubmitting || showSuccess,
+  });
+  useLayoutEffect(() => {
+    estadoParaAPecaRef.current = {
+      currentProduct,
+      formData,
+      initialData,
+      deletedVariantIds,
+      salvando: isSubmitting || showSuccess,
+    };
+  });
+  const releituraDaPecaRef = useRef(0);
+  const aoSomarAPeca = useCallback(
+    async (variantId: string) => {
+      if (!productId) return;
+      const minha = ++releituraDaPecaRef.current;
+      let atual: Product | null = null;
+      try {
+        atual = await fetchProduct(productId);
+      } catch {
+        atual = null;
+      }
+      if (!montadoRef.current || minha !== releituraDaPecaRef.current) return;
+      const estado = estadoParaAPecaRef.current;
+      const base: Product | null = estado.currentProduct;
+      if (
+        !atual ||
+        !base ||
+        base.id !== atual.id ||
+        estado.salvando ||
+        estado.deletedVariantIds.includes(variantId)
+      )
+        return;
+      const camposDaBase = camposDoFormularioDoProduto(base);
+      const camposDoBanco = camposDoFormularioDoProduto(atual);
+      if (!soMudouOEstoqueDaVariacao(camposDaBase, camposDoBanco, variantId))
+        return;
+      const noBanco = camposDoBanco.variants.find((v) => v.id === variantId);
+      const naAbertura = estado.initialData.variants.find(
+        (v) => v.id === variantId,
+      );
+      const naTela = estado.formData.variants.find((v) => v.id === variantId);
+      if (!noBanco || !naAbertura || !naTela) return;
+      const estoque = noBanco.stockIncrement;
+      // A conferência do preço usa a sua própria versão: os preços do banco
+      // são os mesmos da base (conferido acima), então ela avança junto — a
+      // não ser que esteja esperando a confirmação de um conflito de preço.
+      if (versaoDosPrecosRef.current === base.updatedAt)
+        versaoDosPrecosRef.current = atual.updatedAt;
+      pularOfertaDeRascunhoRef.current = true;
+      setCurrentProduct(atual);
+      setInitialData((abertura) =>
+        comOEstoqueDaVariacao(abertura, variantId, estoque),
+      );
+      setFormData((tela) => comOEstoqueDaVariacao(tela, variantId, estoque));
+      if (
+        (naTela.stockIncrement || 0) !== (naAbertura.stockIncrement || 0) &&
+        (naTela.stockIncrement || 0) !== estoque
+      ) {
+        toast.warning(
+          avisoDoEstoqueDigitadoTrocado(
+            naTela.value || naTela.name,
+            naTela.stockIncrement || 0,
+            estoque,
+          ),
+          { duration: 15000 },
+        );
+      }
+    },
+    [productId, fetchProduct],
+  );
   const [imageUploadStep, setImageUploadStep] = useState<
     "compressing" | "uploading" | "idle"
   >("idle");
@@ -5357,6 +5447,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <AvisoDePecaSemTamanho
               produtoId={productId}
               tamanhos={tamanhosDaPeca}
+              aoSomarAPeca={aoSomarAPeca}
             />
           )}
           {isOffline && (

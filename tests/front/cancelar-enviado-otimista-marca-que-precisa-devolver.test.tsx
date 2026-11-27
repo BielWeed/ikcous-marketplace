@@ -331,6 +331,102 @@ describe("confirmarRetornoDoProduto — o toast diz a verdade do que ESTE clique
     );
   });
 
+  // 20261642000000: produto vendido sem tamanho que depois ganhou a grade. A
+  // peça que volta NÃO vai ao estoque (a compra exige tamanho): espera a lojista
+  // escolher o tamanho na tela do produto. "Estoque atualizado" seria mentira.
+  it("peça deste pedido foi para a fila do tamanho: o aviso diz isso, não 'Estoque atualizado'", async () => {
+    rpc.mockImplementation((nome: string) => {
+      if (nome === "confirmar_retorno_do_produto") {
+        return Promise.resolve({
+          data: { ok: true, ja_confirmado: false },
+          error: null,
+        });
+      }
+      if (nome === "pecas_sem_tamanho_pendentes") {
+        return Promise.resolve({
+          data: [
+            {
+              id: "peca-1",
+              produto_id: "p-1",
+              order_id: "pedido-1",
+              origem: "pedido_desfeito",
+              criada_em: "2026-11-27T12:00:00+00:00",
+            },
+            {
+              id: "peca-2",
+              produto_id: "p-1",
+              order_id: "pedido-1",
+              origem: "pedido_desfeito",
+              criada_em: "2026-11-27T12:00:00+00:00",
+            },
+          ],
+          error: null,
+        });
+      }
+      return Promise.resolve({ error: null });
+    });
+
+    const { confirmarRetornoDoProduto } = await montarSondaComCache(
+      pedidoFake("cancelled"),
+    );
+
+    await act(async () => {
+      await confirmarRetornoDoProduto("pedido-1");
+    });
+
+    expect(toast.success).toHaveBeenCalledWith(
+      "Retorno do produto confirmado. 2 peças voltaram sem tamanho: escolha o tamanho delas na tela do produto para elas voltarem à venda.",
+    );
+    expect(toast.success).not.toHaveBeenCalledWith(
+      "Retorno do produto confirmado. Estoque atualizado.",
+    );
+  });
+
+  it("peça na fila é de OUTRO pedido (ou de devolução): este retorno foi ao estoque", async () => {
+    rpc.mockImplementation((nome: string) => {
+      if (nome === "confirmar_retorno_do_produto") {
+        return Promise.resolve({
+          data: { ok: true, ja_confirmado: false },
+          error: null,
+        });
+      }
+      if (nome === "pecas_sem_tamanho_pendentes") {
+        return Promise.resolve({
+          data: [
+            {
+              id: "peca-9",
+              produto_id: "p-1",
+              order_id: "pedido-9",
+              origem: "pedido_desfeito",
+              criada_em: "2026-11-27T12:00:00+00:00",
+            },
+            {
+              id: "peca-8",
+              produto_id: "p-1",
+              order_id: "pedido-1",
+              origem: "devolucao",
+              criada_em: "2026-11-27T12:00:00+00:00",
+            },
+          ],
+          error: null,
+        });
+      }
+      return Promise.resolve({ error: null });
+    });
+
+    const { confirmarRetornoDoProduto } = await montarSondaComCache(
+      pedidoFake("cancelled"),
+    );
+
+    await act(async () => {
+      await confirmarRetornoDoProduto("pedido-1");
+    });
+
+    expect(toast.success).toHaveBeenCalledWith(
+      "Retorno do produto confirmado. Estoque atualizado.",
+    );
+  });
+
   it("segundo clique (ja_confirmado: true): NÃO promete estoque atualizado — este clique não mexeu em nada", async () => {
     rpc.mockImplementation((nome: string) => {
       if (nome === "confirmar_retorno_do_produto") {

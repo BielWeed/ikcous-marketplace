@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 //
 // A peca que volta sem tamanho (20261642000000) na tela do produto: o aviso no
-// topo pergunta o tamanho, e o Salvar da tela que ficou aberta NAO sobrescreve
-// o estoque do tamanho que acabou de receber a peca -- a conferencia de versao
-// que ja existe (PRD01) recusa, porque a decisao avancou a versao do produto
-// (o gatilho do banco avanca `ultima_atualizacao` a cada mudanca de variacao).
+// topo pergunta o tamanho. Somar a peca avanca a versao do produto (o gatilho
+// do banco avanca `ultima_atualizacao` a cada mudanca de variacao): a tela rele
+// o produto e, se a UNICA mudanca e' o estoque do tamanho que recebeu a peca,
+// passa a mostrar o estoque novo e a usar a versao nova -- o Salvar seguinte
+// nao e' recusado e o que a lojista ja digitou nos outros campos fica. Se outro
+// aparelho mudou mais alguma coisa no meio, a tela NAO adota a versao: a
+// conferencia de versao (PRD01) continua recusando, como antes.
 // Formulario e hooks reais; so o banco e' duble. Nomes e ids inventados.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -23,6 +26,9 @@ const banco = vi.hoisted(() => ({
   recusas: [] as string[],
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
+  toastWarning: vi.fn(),
+  // Outro aparelho muda o preco no mesmo instante da decisao.
+  outroAparelhoMudaOPreco: false,
   refresh: vi.fn(),
 }));
 vi.mock("@/hooks/useAuth", () => ({
@@ -49,7 +55,7 @@ vi.mock("sonner", () => ({
     error: banco.toastError,
     success: banco.toastSuccess,
     info: vi.fn(),
-    warning: vi.fn(),
+    warning: banco.toastWarning,
     loading: vi.fn(),
     dismiss: vi.fn(),
   },
@@ -68,10 +74,27 @@ vi.mock("@/lib/supabase", () => ({
         return { data: structuredClone(banco.pendentes), error: null };
       if (nome === "resolver_peca_sem_tamanho") {
         banco.decisoes.push(structuredClone(parametros));
+        if (parametros.p_variant_id === null) {
+          // "Não tenho essa peça": so a linha da peca fecha; produto e
+          // variacoes nao mudam (a versao do produto nao avanca).
+          banco.pendentes = [];
+          return {
+            data: {
+              id: parametros.p_peca_id,
+              resolucao: "descartada",
+              variant_id: null,
+              ja_resolvida: false,
+              estoque_da_variacao: null,
+              pendentes: 0,
+            },
+            error: null,
+          };
+        }
         const v = banco.variacoes.find((x) => x.id === parametros.p_variant_id);
         v!.stock_increment += 1;
         // o gatilho sync_produto_ultima_atualizacao
         banco.produto.ultima_atualizacao = VERSAO_DA_DECISAO;
+        if (banco.outroAparelhoMudaOPreco) banco.produto.preco_venda = 60;
         banco.pendentes = [];
         return {
           data: {
@@ -241,6 +264,7 @@ beforeEach(() => {
   banco.salvamentos = [];
   banco.decisoes = [];
   banco.recusas = [];
+  banco.outroAparelhoMudaOPreco = false;
   banco.refresh.mockResolvedValue(undefined);
   vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -274,7 +298,7 @@ describe("a peca que voltou sem tamanho, na tela do produto", () => {
       expect(b.getAttribute("type")).toBe("button");
   });
 
-  it("depois de somar ao M, o Salvar com o estoque velho do M e' recusado (PRD01) e o M fica com a peca", async () => {
+  it("depois de somar ao M, a tela mostra o M com a peca e o Salvar seguinte usa a versao nova", async () => {
     await montar();
     await clicar("Somar ao tamanho M");
     expect(banco.decisoes).toEqual([
@@ -285,7 +309,76 @@ describe("a peca que voltou sem tamanho, na tela do produto", () => {
       "Peça somada ao tamanho M. Já está à venda.",
     );
 
-    // A tela continua com o numero de antes da peca (3) e a lojista muda para 5.
+    // A tela agora mostra 4 no M (antes ficava com o 3 de antes da peca).
+    await act(async () => {
+      const linha = host.querySelector('[data-testid="variante-cadastrada"]');
+      (
+        linha
+          ?.closest("div.group")
+          ?.querySelector("button") as HTMLButtonElement
+      ).click();
+    });
+    expect(
+      (document.getElementById("variant-stock") as HTMLInputElement).value,
+    ).toBe("4");
+    await digitar("variant-stock", "5");
+    await clicar("Salvar variação");
+    await clicar("Salvar alterações");
+
+    expect(banco.recusas).toEqual([]);
+    expect(banco.salvamentos).toHaveLength(1);
+    expect(banco.salvamentos[0].p_base_atualizado_em).toBe(VERSAO_DA_DECISAO);
+    expect(banco.variacoes[0].stock_increment).toBe(5);
+    expect(banco.toastError).not.toHaveBeenCalled();
+    expect(banco.toastWarning).not.toHaveBeenCalled();
+  });
+
+  it("o que a lojista ja tinha digitado em outro campo fica depois de somar a peca", async () => {
+    await montar();
+    await digitar("product-name", "Blusa de teste azul");
+    await clicar("Somar ao tamanho M");
+    expect(
+      (document.getElementById("product-name") as HTMLInputElement).value,
+    ).toBe("Blusa de teste azul");
+    await editarEstoqueDaVariacao("6");
+    await clicar("Salvar alterações");
+
+    expect(banco.recusas).toEqual([]);
+    expect(banco.produto.nome).toBe("Blusa de teste azul");
+    expect(banco.variacoes[0].stock_increment).toBe(6);
+  });
+
+  it("preco mexido depois de somar a peca: a conferencia do preco usa a versao nova", async () => {
+    await montar();
+    await clicar("Somar ao tamanho M");
+    await digitar("product-sale-price", "55,00");
+    await clicar("Salvar alterações");
+
+    expect(banco.recusas).toEqual([]);
+    expect(banco.salvamentos).toHaveLength(1);
+    expect(banco.salvamentos[0].p_base_atualizado_em).toBe(VERSAO_DA_DECISAO);
+    expect(banco.produto.preco_venda).toBe(55);
+  });
+
+  it("o M ja tinha sido mudado na tela antes de somar: vale o do banco (com a peca), e a tela avisa o numero que saiu", async () => {
+    await montar();
+    await editarEstoqueDaVariacao("7");
+    await clicar("Somar ao tamanho M");
+
+    expect(banco.toastWarning).toHaveBeenCalledWith(
+      "O tamanho M recebeu a peça e agora tem 4 no estoque. O número que você tinha digitado nele (7) não foi salvo: confira e digite de novo se precisar.",
+      expect.anything(),
+    );
+    await clicar("Salvar alterações");
+    // Nada de estoque para gravar: o 4 do banco ja e' o da tela.
+    expect(banco.recusas).toEqual([]);
+    expect(banco.variacoes[0].stock_increment).toBe(4);
+  });
+
+  it("outro aparelho mudou o preco no meio: a tela NAO adota a versao nova e o Salvar do estoque continua recusado (PRD01)", async () => {
+    banco.outroAparelhoMudaOPreco = true;
+    await montar();
+    await clicar("Somar ao tamanho M");
     await editarEstoqueDaVariacao("5");
     await clicar("Salvar alterações");
 
@@ -293,10 +386,17 @@ describe("a peca que voltou sem tamanho, na tela do produto", () => {
     expect(banco.salvamentos[0].p_base_atualizado_em).toBe(VERSAO_DA_ABERTURA);
     expect(banco.recusas).toEqual(["PRD01"]);
     expect(banco.variacoes[0].stock_increment).toBe(4);
-    expect(banco.toastError).toHaveBeenCalledWith(
-      "O produto mudou enquanto você editava. Recarregue a página e confira antes de salvar de novo.",
-    );
-    expect(banco.toastSuccess).not.toHaveBeenCalledWith("Produto atualizado!");
+    expect(banco.produto.preco_venda).toBe(60);
+  });
+
+  it("'Não tenho essa peça' nao rele nem troca nada na tela", async () => {
+    await montar();
+    await digitar("product-name", "Blusa de teste azul");
+    await clicar("Não tenho essa peça");
+    expect(
+      (document.getElementById("product-name") as HTMLInputElement).value,
+    ).toBe("Blusa de teste azul");
+    expect(banco.variacoes[0].stock_increment).toBe(3);
   });
 
   it("depois de somar ao M, salvar so o nome nao reenvia o estoque do M", async () => {

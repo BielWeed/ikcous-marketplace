@@ -306,9 +306,12 @@ describe("aviso da peca que voltou sem tamanho", () => {
   it('sem tamanho ligado: so o "Não tenho essa peça"', async () => {
     banco.pendentes = [peca("x-1")];
     await montar([]);
+    // O texto diz o caminho inteiro: so o tamanho LIGADO e SALVO aparece aqui,
+    // e o Salvar leva para a lista (a lojista abre o produto de novo).
     expect(host.textContent).toContain(
-      "Ligue um tamanho para somar a peça a ele.",
+      "Nenhum tamanho deste produto está ligado na loja. Para a peça voltar à venda, ligue ou crie o tamanho dela em Variações, salve o produto e abra-o de novo: o tamanho aparece aqui. Se você não tem mais a peça, toque em “Não tenho essa peça”.",
     );
+    expect(host.textContent).not.toContain("Ligue um tamanho para somar");
     expect(botao("Não tenho essa peça")).toBeDefined();
     expect(host.querySelectorAll("button[aria-pressed]")).toHaveLength(0);
   });

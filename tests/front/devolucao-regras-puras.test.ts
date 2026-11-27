@@ -311,7 +311,21 @@ describe("leitores do jsonb das RPCs", () => {
       refund_id: "r-1",
       reembolso_manual: false,
       reestocados: 2,
+      // Banco sem a 20261642000000 nao manda a chave: nenhuma peca esperando.
+      sem_tamanho: 0,
     });
+    expect(
+      lerResultadoConclusao({
+        id: "d-1",
+        status: "concluida",
+        resolucao: "troca",
+        valor_reembolso: null,
+        refund_id: null,
+        reembolso_manual: false,
+        reestocados: 1,
+        sem_tamanho: 2,
+      })?.sem_tamanho,
+    ).toBe(2);
   });
 
   it("etiqueta reversa: `codigo_postagem` é a verdade; `resgate` vira aviso", () => {

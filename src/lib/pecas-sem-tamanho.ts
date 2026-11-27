@@ -115,6 +115,28 @@ export function textoDoAviso(pecas: readonly PecaSemTamanho[]): {
   };
 }
 
+/**
+ * A peça que voltou (pedido desfeito ou devolução) e espera o tamanho: o que
+ * os avisos de pedido e de devolução dizem no lugar de "voltou ao estoque".
+ */
+export function fraseDasPecasSemTamanho(quantidade: number): string {
+  return quantidade === 1
+    ? "1 peça voltou sem tamanho: escolha o tamanho dela na tela do produto para ela voltar à venda."
+    : `${quantidade} peças voltaram sem tamanho: escolha o tamanho delas na tela do produto para elas voltarem à venda.`;
+}
+
+/** O item da devolução que voltou e espera o tamanho (ficha e conferência). */
+export const TEXTO_ITEM_ESPERANDO_TAMANHO =
+  "voltou sem tamanho: escolha o tamanho na tela do produto";
+
+/**
+ * Nenhuma variação LIGADA e GRAVADA: a RPC só aceita essas, e o Salvar do
+ * produto leva para a lista (o tamanho novo só aparece ao abrir de novo).
+ */
+export function textoSemTamanhoLigado(): string {
+  return "Nenhum tamanho deste produto está ligado na loja. Para a peça voltar à venda, ligue ou crie o tamanho dela em Variações, salve o produto e abra-o de novo: o tamanho aparece aqui. Se você não tem mais a peça, toque em “Não tenho essa peça”.";
+}
+
 export function textoDoSucesso(tamanho: string): string {
   return `Peça somada ao tamanho ${tamanho}. Já está à venda.`;
 }

@@ -5,6 +5,7 @@ import {
   textoDoDescarte,
   textoDoSucesso,
   textoJaResolvida,
+  textoSemTamanhoLigado,
 } from "@/lib/pecas-sem-tamanho";
 import { cn } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
@@ -22,13 +23,17 @@ export interface TamanhoDaPeca {
  * somado sem a confirmação dela (nem quando o produto tem um tamanho só).
  *
  * `tamanhos` são as variações LIGADAS já gravadas: a RPC só aceita essas.
+ * `aoSomarAPeca` avisa a tela que um tamanho recebeu a peça (o estoque dele e
+ * a versão do produto mudaram no banco): a tela do produto relê e se acerta.
  */
 export function AvisoDePecaSemTamanho({
   produtoId,
   tamanhos,
+  aoSomarAPeca,
 }: {
   readonly produtoId: string | undefined;
   readonly tamanhos: readonly TamanhoDaPeca[];
+  readonly aoSomarAPeca?: (variantId: string) => void | Promise<void>;
 }) {
   const { pecas, resolver } = usePecasSemTamanho(produtoId);
   const primeira = pecas[0];
@@ -59,6 +64,10 @@ export function AvisoDePecaSemTamanho({
     setFeito(null);
     try {
       const r = await resolver(primeira.id, tamanho?.id ?? null);
+      // Também na já decidida em outra aba: o tamanho recebeu a peça lá, e a
+      // tela pode estar com o estoque de antes.
+      if (r.resolucao === "reposta" && r.variantId)
+        void aoSomarAPeca?.(r.variantId);
       setFeito(
         r.jaResolvida
           ? textoJaResolvida()
@@ -94,9 +103,7 @@ export function AvisoDePecaSemTamanho({
             <p>{aviso.titulo}</p>
           </div>
           {tamanhos.length === 0 ? (
-            <p className="font-bold">
-              Ligue um tamanho para somar a peça a ele.
-            </p>
+            <p className="font-bold">{textoSemTamanhoLigado()}</p>
           ) : (
             <>
               <p className="font-bold">{aviso.pergunta}</p>

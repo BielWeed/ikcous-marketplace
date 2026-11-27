@@ -95,6 +95,8 @@ const FONTES = import.meta.glob<string>(
     "/src/views/admin/AdminProductFormView.tsx",
     "/src/components/admin/orders/OrderDetail.tsx",
     "/src/lib/valor-devolver-agora.ts",
+    "/src/components/admin/products/AvisoDePecaSemTamanho.tsx",
+    "/src/lib/pecas-sem-tamanho.ts",
   ],
   { query: "?raw", import: "default", eager: true },
 );
@@ -361,6 +363,32 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     );
     expect(texto).toContain(
       "escreva em “Anotações internas” da ficha: produto enviado em [data], combinado com o cliente, não devolver.",
+    );
+  });
+
+  // 20261642000000: produto vendido sem tamanho que ganhou a grade depois. A
+  // peça do pedido cancelado NÃO voltou ao estoque (espera o tamanho no aviso
+  // da tela do produto). Tirar 1 "à mão" de um tamanho tiraria uma peça que
+  // nunca entrou nele; o certo é dizer que ela não está mais na loja.
+  it("caso 2, enviar: a peça que voltou sem tamanho sai pelo aviso do produto, não tirando estoque à mão", async () => {
+    const texto = await textoDoGuia();
+    expect(texto).toContain("mas a peça já tinha voltado para a loja.");
+    expect(texto).not.toContain("o estoque já tinha voltado");
+    expect(texto).toContain(
+      "Se o produto não tinha tamanhos quando foi vendido e ganhou tamanhos depois, a peça não voltou ao estoque: ela aparece no topo da tela do produto, no aviso de peça que voltou sem tamanho, com o número deste pedido. Ali, toque em “Não tenho essa peça” e não tire nada do estoque.",
+    );
+    expect(texto).toContain(
+      "Nos outros casos a peça já voltou ao estoque — tire as unidades enviadas à mão no cadastro do produto",
+    );
+    // A frase antiga afirmava o estoque para TODO pedido cancelado.
+    expect(texto).not.toContain(
+      "cancelado aqui, e a peça já voltou ao estoque",
+    );
+    expect(
+      lerFonte("src/components/admin/products/AvisoDePecaSemTamanho.tsx"),
+    ).toContain("Não tenho essa peça");
+    expect(lerFonte("src/lib/pecas-sem-tamanho.ts")).toContain(
+      "voltou sem tamanho (${origem})",
     );
   });
 

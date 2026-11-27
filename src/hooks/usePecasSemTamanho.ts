@@ -184,3 +184,42 @@ export function useContagemDePecasSemTamanho(
 
   return contagem;
 }
+
+/**
+ * Os produtos com peça desta devolução esperando o tamanho (origem
+ * 'devolucao', pedido `orderId`): a ficha da devolução troca "voltou ao
+ * estoque" pelo aviso da peça sem tamanho. `undefined` não pergunta nada (a
+ * ficha só pergunta quando há item sem variação que voltou). `null` = não sei
+ * (loja sem a migration, rede, forma torta): a ficha diz o que dizia antes.
+ * Peça já decidida sai da lista do banco, e o item volta a "voltou ao estoque".
+ * `releitura` muda quando os itens que voltaram mudam (a ficha relida).
+ */
+export function useProdutosComPecaSemTamanhoDaDevolucao(
+  orderId: string | undefined,
+  releitura: string,
+): ReadonlySet<string> | null {
+  const [produtos, setProdutos] = useState<{
+    chave: string;
+    ids: ReadonlySet<string>;
+  } | null>(null);
+  const chave = orderId ? `${orderId}|${releitura}` : "";
+
+  useEffect(() => {
+    if (!orderId) return;
+    let vivo = true;
+    void lerPendentes(null).then((lidas) => {
+      if (!vivo || lidas === null) return;
+      const ids = new Set(
+        lidas
+          .filter((p) => p.orderId === orderId && p.origem === "devolucao")
+          .map((p) => p.produtoId),
+      );
+      setProdutos({ chave: `${orderId}|${releitura}`, ids });
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [orderId, releitura]);
+
+  return produtos?.chave === chave ? produtos.ids : null;
+}

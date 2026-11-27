@@ -272,7 +272,14 @@ export interface ResultadoConclusao {
   valor_reembolso: number | null;
   refund_id: string | null;
   reembolso_manual: boolean;
+  /** Só o que voltou À VENDA (desde a 20261642000000 não conta a peça sem tamanho). */
   reestocados: number;
+  /**
+   * Peças sem variação de produto que hoje tem tamanho ligado: esperam a
+   * lojista escolher o tamanho na tela do produto (20261642000000). Ausente
+   * em loja sem a migration: vale 0.
+   */
+  sem_tamanho: number;
 }
 
 /**

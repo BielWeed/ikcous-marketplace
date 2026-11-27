@@ -30,6 +30,7 @@ import {
   rotuloResolucao,
 } from "@/lib/devolucao";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
+import { TEXTO_ITEM_ESPERANDO_TAMANHO } from "@/lib/pecas-sem-tamanho";
 import {
   RPC_DO_REEMBOLSO_R1,
   chamarRpcDoR1,
@@ -40,6 +41,7 @@ import { cn } from "@/lib/utils";
 import type {
   CondicaoItemDevolvido,
   DevolucaoDetalhe,
+  ItemDevolvido,
   ResolucaoDevolucao,
 } from "@/types/devolucao";
 
@@ -151,10 +153,16 @@ export function AcoesDaDevolucao({
   ficha,
   detalhe,
   onSujoMudou,
+  esperaTamanho,
 }: Readonly<{
   ficha: FichaDaDevolucao;
   detalhe: DevolucaoDetalhe;
   onSujoMudou: (sujo: boolean) => void;
+  /**
+   * O item que voltou sem variação e espera a lojista escolher o tamanho
+   * (20261642000000): a ficha sabe (lê as peças pendentes do pedido).
+   */
+  esperaTamanho?: (item: ItemDevolvido) => boolean;
 }>) {
   const acoes = acoesDoLojista(detalhe);
   const resolucoes = resolucoesDaConclusao(detalhe.tipo);
@@ -785,7 +793,11 @@ export function AcoesDaDevolucao({
                     <div className="flex min-h-11 items-center justify-between gap-3">
                       <span className="text-[11px] text-zinc-400">
                         Voltar ao estoque
-                        {item.reestocado_em ? " (já voltou)" : ""}
+                        {item.reestocado_em
+                          ? esperaTamanho?.(item)
+                            ? ` (${TEXTO_ITEM_ESPERANDO_TAMANHO})`
+                            : " (já voltou)"
+                          : ""}
                       </span>
                       <Switch
                         checked={!!i?.reestocar && i?.condicao !== "ausente"}
