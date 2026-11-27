@@ -42,6 +42,7 @@ import {
   centavosDoTextoEmReais,
   sugerirNotas,
 } from "@/lib/troco-do-balcao";
+import type { SituacaoDoCaixa } from "@/types/financeiro";
 import {
   AlertTriangle,
   Banknote,
@@ -55,6 +56,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { type ReactElement, useEffect, useRef, useState } from "react";
+import { AvisoDeCaixaFechado } from "./AvisoDeCaixaFechado";
 import "./pdv.css";
 
 const AVISO_DE_RECUPERACAO_DO_RECIBO =
@@ -70,6 +72,11 @@ export interface PropsDoFechamentoDaVenda {
    * (chave já queimada em 23505, ou 42501), reenviar a MESMA chave só repete
    * a mesma recusa — a única saída é uma venda nova, com chave nova. */
   readonly limparCupom: () => void;
+  /** Lê AGORA se o caixa está aberto (aviso de caixa fechado no Dinheiro).
+   * Sem ela, não há aviso. Injetada pela VIEW: esta seção não chama Supabase. */
+  readonly consultarCaixa?: () => Promise<SituacaoDoCaixa>;
+  /** O botão "Abrir caixa" do aviso. */
+  readonly aoAbrirCaixa?: () => void;
 }
 
 function reais(valor: number): string {
@@ -103,6 +110,8 @@ export function FechamentoDaVenda({
   despachar,
   aoRegistrarVenda,
   limparCupom,
+  consultarCaixa,
+  aoAbrirCaixa,
 }: PropsDoFechamentoDaVenda): ReactElement {
   // ⚠️ ARMADILHA DE NOME medida na tarefa: `useOnlineStatus` devolve `true`
   // quando está OFFLINE (`return isOffline`) — a variável se chama
@@ -183,6 +192,30 @@ export function FechamentoDaVenda({
     centavosDoTextoEmReais(recebidoTexto),
   );
   const faltaReceber = mostraTroco && troco?.tipo === "faltam";
+
+  // CAIXA FECHADO NO DINHEIRO (decisão do sócio, 27/11/2026): a consulta roda
+  // a cada escolha de Dinheiro, nunca só na montagem — outro aparelho pode ter
+  // aberto o caixa nesse meio-tempo. Só `fechado` acende o aviso: `aberto`,
+  // `nunca_aberto` (loja que não usa caixa) e falha ficam calados, porque o
+  // aviso não bloqueia nada e um aviso falso é pior que nenhum. Resposta de uma
+  // escolha antiga (trocou para Pix antes de chegar) é descartada.
+  const [caixaFechado, setCaixaFechado] = useState(false);
+  useEffect(() => {
+    if (estado.pagamento !== "cash" || !consultarCaixa) return;
+    let valendo = true;
+    consultarCaixa().then(
+      (situacao) => {
+        if (valendo) setCaixaFechado(situacao === "fechado");
+      },
+      () => {},
+    );
+    return () => {
+      valendo = false;
+      setCaixaFechado(false);
+    };
+  }, [estado.pagamento, consultarCaixa]);
+  const mostraCaixaFechado =
+    caixaFechado && estado.pagamento === "cash" && aoAbrirCaixa !== undefined;
   const desabilitado =
     !validacao.ok ||
     estado.enviando ||
@@ -434,6 +467,10 @@ export function FechamentoDaVenda({
             ))}
           </div>
         </div>
+
+        {mostraCaixaFechado && (
+          <AvisoDeCaixaFechado aoAbrirCaixa={aoAbrirCaixa} />
+        )}
 
         {mostraTroco && (
           <div className="pdv-card pdv-change">
