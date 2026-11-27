@@ -101,6 +101,13 @@ interface ParametrosConfirmarCancelamento {
   produtoJaVoltou?: boolean;
   /** `Order.retiradaNaLoja`: a cliente buscaria na loja, não há produto a devolver. */
   retiradaNaLoja?: boolean;
+  /**
+   * O pedido veio da cópia da consulta por código (`get_orders_by_otp_v2`), que
+   * não traz `cancelled_after_shipping` nem `returned_to_seller_at`: não dá
+   * para saber se o servidor abre a devolução automática. Opcional e aditivo
+   * (ausente = como antes); quando verdadeiro, o "volta sozinho" não se promete.
+   */
+  envioDesconhecido?: boolean;
 }
 
 /**
@@ -117,6 +124,7 @@ export function textoConfirmarCancelamento({
   cancelladoAposEnvio = false,
   produtoJaVoltou = false,
   retiradaNaLoja = false,
+  envioDesconhecido = false,
 }: ParametrosConfirmarCancelamento): string {
   if (!pagamentoJaEntrou) return TEXTO_NAO_PAGO;
   // Retirada pronta vem ANTES de `jaFoiEnviado` (e, portanto, também antes do
@@ -148,6 +156,9 @@ export function textoConfirmarCancelamento({
       ? TEXTO_PAGO_LOJA_DEVOLVE
       : TEXTO_PAGO_JA_ENVIADO;
   }
+  // Sem saber se o pedido já saiu e voltou, a frase que não promete prazo nem
+  // meio (a mesma do enviado-cancelado-reativado).
+  if (envioDesconhecido) return TEXTO_PAGO_LOJA_DEVOLVE;
   return TEXTO_PAGO_NAO_ENVIADO;
 }
 

@@ -1,4 +1,27 @@
 {
+  "1.5.245": {
+    "titulo": "Preços inteiros no celular, avaliação sem repetição e caixa que diz a verdade",
+    "novidades": [
+      "No balcão, ao escolher Dinheiro com o caixa fechado, aparece um aviso com o botão \"Abrir caixa\". A venda continua liberada."
+    ],
+    "correcoes": [
+      "Na ficha do pedido, uma segunda devolução de mesmo valor é criada de verdade, e tocar em \"Devolver\" de novo depois de a internet cair não devolve o dinheiro duas vezes.",
+      "Cada cliente avalia um mesmo produto uma vez só, e a média, o total e as taxas do topo das avaliações no painel contam só as avaliações publicadas.",
+      "Se a loja mudar o frete grátis enquanto a cliente está no pagamento, a tela atualiza os valores e o pedido fecha no próximo toque.",
+      "Uma tela do Caixa esquecida aberta não diz mais \"Caixa fechado\" quando ele já tinha sido fechado em outro aparelho: mostra quando e com quanto foi fechado.",
+      "No Financeiro, um lançamento que ficou sem resposta não é gravado em dobro nem confundido com o de outra pessoa que entrar no mesmo aparelho.",
+      "Cadastro de produto com tamanhos que perdeu a internet no meio não cria tamanhos repetidos ao salvar de novo.",
+      "Em \"Meus pedidos\", o pedido aberto pela consulta só mostra os botões que funcionam, e a consulta não promete achar pedido feito sem conta.",
+      "Os avisos de mudança de pedido no painel não anunciam mais uma situação que o pedido já passou.",
+      "No celular pequeno ou com letra grande, os preços não quebram no meio do número nem passam da tela, na vitrine, no pedido e no balcão.",
+      "O coração de favorito na tela do produto mostra o estado certo enquanto a loja carrega, e o toque não remove um favorito por engano.",
+      "A aba Impostos, o lembrete de carrinho e o cartão \"Sua assinatura\" só afirmam o que é verdade; a assinatura mostra a próxima cobrança."
+    ],
+    "melhorias": [
+      "A lista de pedidos do painel, o pagamento e o balcão funcionam só com teclado e leitor de tela, que fala cada erro uma vez.",
+      "Status de pedido mudado sem internet avisa qual pedido ficou guardado para enviar."
+    ]
+  },
   "1.5.244": {
     "titulo": "Devolução que não paga duas vezes e avisos que dizem a verdade",
     "novidades": [],

@@ -264,7 +264,15 @@ describe("ficha do pedido achado pela consulta dentro da conta", () => {
       expect(texto()).toContain("Meu pedido");
       // Continua dizendo de quando é o status: o retrato não atualiza sozinho.
       expect(texto()).toContain("pode ter mudado");
-      for (const acao of acoesDaDona) expect(texto()).toContain(acao);
+      // Menos o "Reenviar comprovante": o status da cópia pode estar velho
+      // (order-details-copia-da-consulta-nao-reenvia-nem-promete-devolucao).
+      for (const acao of acoesDaDona) {
+        if (acao === "Reenviar comprovante") {
+          expect(texto()).not.toContain(acao);
+        } else {
+          expect(texto()).toContain(acao);
+        }
+      }
       expect(texto()).not.toContain(orientacao);
     },
   );
