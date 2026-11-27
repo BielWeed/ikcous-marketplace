@@ -3629,6 +3629,12 @@ export function CheckoutViewDaConta({
     ? descontoDoCupom
     : Math.min(descontoDoCupom, subtotal);
   const finalTotal = arredondarParaCentavos(total - discount);
+  // A compra VIVA (linhas do carrinho + total em centavos), atualizada a cada
+  // render — irmã de `freteVivoRef`: o carrinho muda por baixo do checkout
+  // quando a cliente mexe nele em outra aba ou aparelho (evento `storage`,
+  // aviso ao vivo), e o envio roda na closure do clique.
+  const compraVivaRef = useRef("");
+  compraVivaRef.current = `${assinaturaDosItens(cart)}#${Math.round(finalTotal * 100)}`;
 
   // Laudo 31/08 (B2): a guarda migrou para `finalizarBloqueadoPorFrete`
   // (src/lib/guarda-de-frete.ts); o motivo e a história dela estão no
@@ -5346,6 +5352,24 @@ export function CheckoutViewDaConta({
     ) {
       toast.error(
         "A forma de entrega mudou enquanto o pedido era enviado. Confira o total e finalize.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
+    // O CARRINHO DO CLIQUE × O CARRINHO DE AGORA (27/11/2026): com o checkout
+    // aberto em duas abas (ou o carrinho mexido em outro aparelho), o contexto
+    // entrega o carrinho novo durante a espera e a tela já mostra outros itens
+    // e outro total. O servidor recalcula o preço, mas dos itens que RECEBE —
+    // os do clique. Mudou a linha, a quantidade ou o total: nada sai, e a
+    // cliente confere o que está na tela antes de finalizar de novo.
+    if (
+      compraVivaRef.current !==
+      `${assinaturaDosItens(cart)}#${Math.round(finalTotal * 100)}`
+    ) {
+      toast.error(
+        "O carrinho mudou enquanto o pedido era enviado (em outra aba ou aparelho). Confira os itens e o total e finalize de novo.",
       );
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
