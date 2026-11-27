@@ -1915,6 +1915,11 @@ export function CheckoutViewDaConta({
     paymentMethod === "online" && metodoOnline === "cartao" && cartaoDisponivel
       ? "cartao"
       : "pix";
+  // A forma de pagamento VIVA (eixo + submétodo), atualizada a cada render —
+  // irmã de `freteVivoRef`, abaixo: o envio leva a forma do clique, e um efeito
+  // (a loja desligou a forma, a sessão caiu) pode trocá-la durante a espera.
+  const formaVivaRef = useRef("");
+  formaVivaRef.current = `${paymentMethod}:${metodoOnlineEfetivo}`;
   const [notes, setNotes] = useState("");
   const valorParaTroco = troco?.valor ?? null;
   const trocoVivoRef = useRef<string | null>(null);
@@ -5347,6 +5352,21 @@ export function CheckoutViewDaConta({
       return;
     }
 
+    // A FORMA DO CLIQUE × A FORMA DE AGORA (27/11/2026): as opções ficam
+    // travadas durante o envio, mas um efeito (a loja desligou a forma na
+    // entrega, a sessão caiu) ainda pode trocar a escolha na tela. O pedido
+    // leva `paymentMethod` do clique; se a tela já mostra outra forma, nada
+    // sai. Antes do troco: trocar a forma também zera o troco, e a frase
+    // certa aqui é a da forma.
+    if (formaVivaRef.current !== `${paymentMethod}:${metodoOnlineEfetivo}`) {
+      toast.error(
+        "A forma de pagamento mudou enquanto o pedido era enviado. Confira o pagamento e finalize de novo.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
     // Se a cliente mudou o dinheiro, o total ou a forma de pagamento
     // durante as conferências, o pedido não sai com o troco do clique antigo.
     if (trocoVivoRef.current !== trocoNesteRender) {
@@ -6973,7 +6993,15 @@ export function CheckoutViewDaConta({
         aria-checked={isSelected && !bloqueadaPorFaltaDeConta}
         tabIndex={option === opcaoDePagamentoTabulavel ? 0 : -1}
         data-pagamento-bloqueado={bloqueadaPorFaltaDeConta || undefined}
+        // PEDIDO EM ENVIO (27/11/2026): o pedido já leva a forma do clique;
+        // trocar agora só mudaria a tela. `aria-disabled` (não `disabled`): a
+        // opção pode estar com o foco, e `disabled` o jogaria no vazio. As
+        // setas do grupo já pulam o que é `aria-disabled`.
+        aria-disabled={isSubmitting || undefined}
         onClick={() => {
+          // Trava síncrona, não o estado: cobre o toque que chega antes de
+          // `isSubmitting` pintar a tela (mesma régua de `envioEmCurso`).
+          if (envioEmCurso()) return;
           if (bloqueadaPorFaltaDeConta) {
             entrarParaPagarNoApp();
             return;
