@@ -129,7 +129,15 @@ describe("Perfil — campos de foto e de capa alcançáveis pelo teclado", () =>
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
       expect(document.querySelector("[role=dialog]")).toBeNull();
-      expect(document.activeElement === origem).toBe(true);
+      // O Radix devolve o foco numa tarefa seguinte ao fechar; uma volta só do relógio
+      // perdia a corrida no CI (falhou 3 vezes, 26-27/11). Espera até 1 s: se o foco
+      // nunca voltar, o teste continua reprovando.
+      await vi.waitFor(
+        () => expect(document.activeElement === origem).toBe(true),
+        {
+          timeout: 1000,
+        },
+      );
     },
   );
 
