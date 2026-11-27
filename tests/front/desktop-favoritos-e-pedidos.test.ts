@@ -45,13 +45,20 @@ describe("Favoritos e pedidos no computador", () => {
       "01c4f2611dc3321eaab592ad1e8eb651f00621e95352f0393f1c3baa9bb7e38e",
     );
     expect(classes(arquivos.carrinho)).toBe(
-      "1dc0eeae81190e2946f2b062e7036424fc24e369d31fb97fecb039bd2be421c2",
+      "4b16aa4e4b8e823a2ba66242da7a173c8fb67d3b5edd56363a59d4b206cc020e",
     );
     // 27/11/2026: conta sem pedidos ganha o botão "Consultar pedido feito sem
     // conta" ("mt-3 block" e o botão de texto sublinhado); nenhuma classe
     // existente mudou.
+    // 27/11/2026 (2): o botão ("mt-3 block" e o botão de texto sublinhado)
+    // sai da OrderList para PedidoQueNaoApareceAqui, que o chama de
+    // "Consultar pedido feito em outra conta (outro e-mail)" e ganha o "Falar
+    // com a loja no WhatsApp" com as MESMAS classes; o carrinho ganha o rodapé
+    // fixo da conta com pedidos ("mx-auto mt-6 max-w-[300px] text-center
+    // text-sm leading-relaxed text-muted-foreground"). Nenhuma classe
+    // existente mudou.
     expect(classes(arquivos.pedidos)).toBe(
-      "8088cfbdbf0369bacede8cc4260fa712284630ba1e2f0caf6a30a1007bfba0fe",
+      "25517ee6c392becb26e96a3c560aca5915539e126275ac1a930ad739be209bb6",
     );
     // 1.5.218: aviso novo junto ao campo do código ("text-sm text-destructive") e a
     // borda de erro só quando inválido ("aria-invalid:border-destructive"); nenhuma

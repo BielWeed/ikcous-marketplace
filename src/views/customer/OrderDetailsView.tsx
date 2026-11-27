@@ -522,6 +522,14 @@ export function OrderDetailsView({
   const [retratoDoConvidado, setRetratoDoConvidado] = useState<{
     consultadoEm: number | null;
   } | null>(null);
+  // A conta DONA do pedido na tela (27/11/2026). Pedido que veio do retrato
+  // não é desta conta: a consulta por e-mail + código existe também DENTRO da
+  // conta (ConsultaSemContaNaConta) e acha pedido de outra conta. Ali a tela
+  // é a do visitante — sem Cancelar, Retomar pagamento, Reenviar comprovante,
+  // Devolução nem Avaliar (o servidor recusa todos: a dona é outra), e com o
+  // "fale com a loja". Se a lista da conta traz o mesmo pedido, o retrato sai
+  // (efeito da lista viva abaixo) e as ações voltam.
+  const contaDona = retratoDoConvidado ? null : user;
   // Qual cor/tamanho cada linha do pedido mostrava na compra.
   const rotulosDasVariacoes = useRotulosDasVariacoes(order?.items);
   // O mesmo texto, por id da LINHA do pedido: é a chave que a folha de devolução
@@ -646,7 +654,7 @@ export function OrderDetailsView({
   // (24/08/2026) é se o produto SAIU, não se foi pago -- 'delivered' fica fora,
   // é devolução, outro assunto.
   const podeCancelarPedido =
-    Boolean(user) &&
+    Boolean(contaDona) &&
     order !== null &&
     ["pending", "processing", "shipping"].includes(order.status);
 
@@ -997,7 +1005,7 @@ export function OrderDetailsView({
   }, [pedidoIdAtual]);
 
   useEffect(() => {
-    if (!user || !order || order.status !== "delivered") return;
+    if (!contaDona || !order || order.status !== "delivered") return;
 
     // Resposta velha não sobrescreve a nova: se o pedido mudou (ou a tela
     // saiu) antes da consulta voltar, o efeito já foi limpo e ignora o dado.
@@ -1023,7 +1031,7 @@ export function OrderDetailsView({
             supabase
               .from("reviews" as any)
               .select("product_id")
-              .eq("user_id", user.id)
+              .eq("user_id", contaDona.id)
               .in("product_id", productIds),
           ),
           15000,
@@ -1058,7 +1066,7 @@ export function OrderDetailsView({
       cancelado = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, order, tentativaDeConferir]);
+  }, [contaDona?.id, order, tentativaDeConferir]);
 
   // Brief "o app não mente quando copia" (08/09/2026): copiava sem
   // await/catch e já comemorava mesmo quando a cópia falhava (permissão
@@ -1196,7 +1204,7 @@ export function OrderDetailsView({
   // `order_refunds`). Só pedido `delivered` e só com sessão: as RPCs
   // exigem `auth.uid()` dono do pedido, e o convidado que rastreou por OTP
   // não tem. Mesma regra do hook de cima: chamado sempre, ligado por flag.
-  const podeUsarDevolucao = order?.status === "delivered" && !!user;
+  const podeUsarDevolucao = order?.status === "delivered" && !!contaDona;
   const devolucaoDoProduto = useDevolucaoCliente(orderId, podeUsarDevolucao);
   // Abrir o pedido apaga do sino os avisos dele — depois de a devolução já
   // estar relida por causa deles (senão a pista some antes de a tela mudar).
@@ -1367,7 +1375,7 @@ export function OrderDetailsView({
   // sempre (ADMIN-090, #101): sem `enableReviews`, sem `user`, ou fora de
   // `delivered`, o cartão inteiro não existe (nada de "cartão vazio").
   const mostrarCartaoDeAvaliacao =
-    !!user && config.enableReviews && order.status === "delivered";
+    !!contaDona && config.enableReviews && order.status === "delivered";
   // Rotulos da variacao, por produto (a avaliacao e por produto: o mesmo
   // produto comprado em dois tamanhos mostra os dois, sem repetir).
   const rotulosDoProduto = (productId: string): string[] => {
@@ -1482,7 +1490,7 @@ export function OrderDetailsView({
         {podeRetomarPagamento({
           status: order.status,
           paymentStatus: order.paymentStatus,
-          logado: !!user,
+          logado: !!contaDona,
         }) &&
           onRetomarPagamento && (
             <button
@@ -2249,7 +2257,7 @@ export function OrderDetailsView({
               pedido" sem falar do cancelamento. */}
           {/* O reenvio exige sessao (a edge recusa sem ela): quem acompanha
               por codigo, sem conta, nao ve um botao que sempre falharia. */}
-          {!!user && podeReenviarComprovante(order) && (
+          {!!contaDona && podeReenviarComprovante(order) && (
             <button
               onClick={handleResendReceipt}
               disabled={isResendingReceipt}
@@ -2290,7 +2298,7 @@ export function OrderDetailsView({
               </div>
             )}
 
-          {!user && !authLoading && order.status !== "cancelled" && (
+          {!contaDona && !authLoading && order.status !== "cancelled" && (
             <p className="border-b border-zinc-100 px-5 py-3.5 text-sm text-zinc-600 last:border-b-0">
               {order.status === "delivered"
                 ? "Para devolução ou troca, fale com a loja informando o número do pedido."
@@ -2376,13 +2384,13 @@ export function OrderDetailsView({
       {/* Montada enquanto houver elegibilidade (não só enquanto `pode`): ao
           confirmar, a releitura derruba o `pode` e a folha precisa continuar
           no ar para mostrar o protocolo. */}
-      {podeUsarDevolucao && user && devolucaoDoProduto.elegibilidade && (
+      {podeUsarDevolucao && contaDona && devolucaoDoProduto.elegibilidade && (
         <SolicitarDevolucaoSheet
           aberto={pedindoDevolucao}
           onAbertoMudou={setPedindoDevolucao}
           elegibilidade={devolucaoDoProduto.elegibilidade}
           rotulosDosItens={rotulosPorLinhaDoPedido}
-          userId={user.id}
+          userId={contaDona.id}
           enderecoDaLoja={config.storeAddress ?? null}
           horarioDaLoja={config.businessHours ?? null}
           solicitar={devolucaoDoProduto.solicitar}

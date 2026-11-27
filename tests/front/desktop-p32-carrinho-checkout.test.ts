@@ -150,7 +150,10 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
     for (const [caminho, assinatura] of [
       [
         caminhos.carrinho,
-        "1dc0eeae81190e2946f2b062e7036424fc24e369d31fb97fecb039bd2be421c2",
+        // 27/11/2026: rodapé "Comprou sem entrar na conta?" na conta COM pedidos
+        // (parágrafo novo, centrado, max-w-[300px], mt-6); nenhuma classe que já
+        // existia mudou — só esse literal entrou.
+        "4b16aa4e4b8e823a2ba66242da7a173c8fb67d3b5edd56363a59d4b206cc020e",
       ],
       [
         caminhos.checkout,

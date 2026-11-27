@@ -96,6 +96,10 @@ describe("AddressForm — Enter no campo Número", () => {
     );
     expect(outro).toBeDefined();
     await act(async () => outro!.click());
+    // "Outro" foca o campo do nome num requestAnimationFrame. Se esse quadro
+    // chegar depois do Enter no Número (máquina lenta), ele rouba o foco do
+    // Complemento: espera o foco no nome assentar antes de seguir.
+    await esperarAte(() => document.activeElement?.id === "name");
     await act(async () => {
       for (const [campo, valor] of Object.entries(OBRIGATORIOS))
         digitar(campo, valor);
