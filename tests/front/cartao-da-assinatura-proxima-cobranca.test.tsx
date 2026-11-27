@@ -140,6 +140,14 @@ describe("CartaoDaAssinatura: o valor é a próxima cobrança", () => {
     }
   });
 
+  // Revisão 27/11/2026: assinatura cancelada não tem próxima cobrança.
+  it("cancelada: nenhum valor nem 'Próxima cobrança'", () => {
+    desenhar({ status: "cancelada", proximaCobrancaEm: null });
+    expect(rotuloDoValor()).toBeUndefined();
+    expect(tela.textContent).not.toContain("Próxima cobrança");
+    expect(tela.textContent).not.toMatch(/R\$\s175,00/);
+  });
+
   it("sem valor no payload não há rótulo de próxima cobrança acima do valor", () => {
     desenhar({ valorMensal: null });
     expect(rotuloDoValor()).toBeUndefined();

@@ -216,7 +216,11 @@ export function CartaoDaAssinatura({
   // vencida (prazo, pausa, regularizar) o mesmo valor é o que está em aberto,
   // nunca "próxima". Sem conta vencida, a data da próxima cobrança sai da
   // lista e vai para junto do valor: o rótulo aparece uma vez só.
-  const mostraValor = assinatura.valorMensal != null && !emTeste;
+  // Cancelada não tem próxima cobrança: o valor some (revisão 27/11/2026).
+  const mostraValor =
+    assinatura.valorMensal != null &&
+    !emTeste &&
+    assinatura.status !== "cancelada";
   const temContaVencida = Boolean(prazo || pausadas || precisaRegularizar);
   const dataDaCobranca =
     mostraValor && !temContaVencida
