@@ -279,6 +279,30 @@ describe("AdminDevolucoesView — concluir e devolver o dinheiro", () => {
     expect(texto).not.toContain("1,234.50");
   });
 
+  it("o histórico não diz que o app emitiu o vale-troca: quem cria o vale é a loja", async () => {
+    respostas.set("devolucao_detalhe", {
+      ...DETALHE,
+      eventos: [
+        {
+          id: 2,
+          de_status: "recebida",
+          para_status: "concluida",
+          ator: "loja",
+          nota: "Vale-troca emitido",
+          created_at: "2026-09-27T13:00:00Z",
+        },
+      ],
+    });
+    await montar();
+    await clicar(
+      hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'),
+    );
+    const ficha = hospedeiro.querySelector('[data-testid="detalhe-devolucao"]');
+    const texto = (ficha?.textContent ?? "").replace(/\s/g, " ");
+    expect(texto).toContain("Resolvida com vale-troca");
+    expect(texto).not.toContain("emitido");
+  });
+
   it("refund_id na resposta: chama estornar-pagamento com o refund_id, depois da RPC", async () => {
     await abrirEConcluirComoNova();
 
