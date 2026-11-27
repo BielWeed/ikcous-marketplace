@@ -163,7 +163,10 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
         // de layout): "Número do pedido"/"Pedido" zinc-400 → zinc-600 e o aviso
         // "Seus dados estão seguros" zinc-300 → zinc-600 (dark:zinc-300).
         // 26/11/2026: campo de CEP da conta sem endereço (rótulo, campo, erro, ajuda): 390 → 394, nada saiu.
-        "650d77448a076a2a197bc11d76fdc6205c7f834e996e2b22f6de7c1de4288bd4",
+        // 27/11/2026: foco depois da recusa — `outline-none` no painel da recusa
+        // e nos valores do pedido (recebem foco por programa, tabIndex -1); nenhuma
+        // classe de layout mudou.
+        "61c75a93724193ea59390d3dcc5f09eba6920040049dc0ea5ba5bc541a4ef9f2",
       ],
       [
         caminhos.favoritos,

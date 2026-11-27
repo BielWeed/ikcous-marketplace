@@ -1945,6 +1945,57 @@ export function CheckoutViewDaConta({
     );
   /** Ver `criarTravaDeEnvio`: fecha o botao no tique do clique (#27). */
   const travaDeEnvioRef = useRef(criarTravaDeEnvio());
+  // FOCO DEPOIS DA RECUSA (27/11/2026): o "Finalizar" fica `disabled` durante
+  // o envio, e o navegador devolve ao <body> o foco de um botão que apaga.
+  // Recusado DEPOIS de uma espera, o teclado e o leitor de tela ficavam sem
+  // lugar. O envio marca aqui para onde o foco vai — o que explica o problema
+  // — e o efeito abaixo o leva lá depois que `isSubmitting` desliga e a tela
+  // nova existe. Objeto novo a cada recusa: duas iguais seguidas disparam.
+  type AlvoDoFocoDaRecusa =
+    | "recusa"
+    | "valores"
+    | "pagamento"
+    | "troco"
+    | "dados";
+  const [focoAposRecusa, setFocoAposRecusa] = useState<{
+    alvo: AlvoDoFocoDaRecusa;
+  } | null>(null);
+  const levarFocoAoProblema = (alvo: AlvoDoFocoDaRecusa) =>
+    setFocoAposRecusa({ alvo });
+  useEffect(() => {
+    if (!focoAposRecusa || isSubmitting) return;
+    setFocoAposRecusa(null);
+    // Só resgata o foco PERDIDO (no <body>, ou ainda no Finalizar): quem já
+    // foi para outro campo durante a espera fica onde está.
+    const ativo = document.activeElement;
+    if (
+      ativo &&
+      ativo !== document.body &&
+      ativo.getAttribute("aria-label") !== "Finalizar pedido"
+    )
+      return;
+    const { alvo } = focoAposRecusa;
+    // A forma marcada agora (ou, sem nenhuma, a opção que o Tab alcança).
+    const formaDePagamento = () =>
+      document.querySelector<HTMLElement>(
+        '[role="radiogroup"][aria-label="Meio de pagamento"] [role="radio"][aria-checked="true"]',
+      ) ??
+      document.querySelector<HTMLElement>(
+        '[role="radiogroup"][aria-label="Meio de pagamento"] [role="radio"][tabindex="0"]',
+      );
+    const destino =
+      alvo === "recusa"
+        ? document.getElementById("checkout-saida-da-recusa")
+        : alvo === "valores"
+          ? document.getElementById("checkout-valores-do-pedido")
+          : alvo === "dados"
+            ? document.getElementById("cabecalho-dados-e-entrega")
+            : alvo === "troco"
+              ? (document.getElementById("checkout-valor-para-troco") ??
+                formaDePagamento())
+              : formaDePagamento();
+    destino?.focus();
+  }, [focoAposRecusa, isSubmitting]);
   // A CHAVE DA COMPRA (laudo 31/08, A1 — metade cliente da idempotência do
   // pedido; a metade servidor é a migration 20261038000000). Gera um uuid
   // POR COMPRA — impressão digital de itens+frete+cupom+total+CEP — repete
@@ -5132,6 +5183,7 @@ export function CheckoutViewDaConta({
           setSelectedShippingOption(null);
           setForcarNovaCotacaoEm((n) => n + 1);
         }
+        levarFocoAoProblema("valores");
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
         return;
@@ -5150,6 +5202,7 @@ export function CheckoutViewDaConta({
           );
           setSelectedShippingOption(null);
           setForcarNovaCotacaoEm((n) => n + 1);
+          levarFocoAoProblema("valores");
           setIsSubmitting(false);
           travaDeEnvioRef.current.liberar();
           return;
@@ -5287,6 +5340,7 @@ export function CheckoutViewDaConta({
           : { acao: "entrar_na_conta", mensagem: MENSAGEM_SESSAO_EXPIRADA };
         toast.error(recusa.mensagem);
         setRecusaDoUltimoClique(recusa);
+        levarFocoAoProblema("recusa");
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
         return;
@@ -5313,6 +5367,7 @@ export function CheckoutViewDaConta({
       if (!enderecosConfirmados) {
         toast.error(RECUSA_ENDERECO_NAO_CONFIRMADO.mensagem);
         setRecusaDoUltimoClique(RECUSA_ENDERECO_NAO_CONFIRMADO);
+        levarFocoAoProblema("recusa");
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
         return;
@@ -5328,6 +5383,7 @@ export function CheckoutViewDaConta({
         toast.error(
           "O endereço de entrega foi alterado em outro aparelho. Confira o novo endereço e finalize de novo.",
         );
+        levarFocoAoProblema("dados");
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
         return;
@@ -5353,6 +5409,7 @@ export function CheckoutViewDaConta({
       toast.error(
         "A forma de entrega mudou enquanto o pedido era enviado. Confira o total e finalize.",
       );
+      levarFocoAoProblema("valores");
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
       return;
@@ -5371,6 +5428,7 @@ export function CheckoutViewDaConta({
       toast.error(
         "O carrinho mudou enquanto o pedido era enviado (em outra aba ou aparelho). Confira os itens e o total e finalize de novo.",
       );
+      levarFocoAoProblema("valores");
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
       return;
@@ -5386,6 +5444,7 @@ export function CheckoutViewDaConta({
       toast.error(
         "A forma de pagamento mudou enquanto o pedido era enviado. Confira o pagamento e finalize de novo.",
       );
+      levarFocoAoProblema("pagamento");
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
       return;
@@ -5395,6 +5454,7 @@ export function CheckoutViewDaConta({
     // durante as conferências, o pedido não sai com o troco do clique antigo.
     if (trocoVivoRef.current !== trocoNesteRender) {
       toast.error("O troco mudou. Confira o pagamento e finalize de novo.");
+      levarFocoAoProblema("troco");
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
       return;
@@ -5460,6 +5520,7 @@ export function CheckoutViewDaConta({
       console.error("Falha inesperada no checkout:", error);
       const saida = decidirSaidaDoCheckout(error);
       setRecusaDoUltimoClique(saida);
+      levarFocoAoProblema("recusa");
       toast.error(mensagemDoAvisoDePedido(saida));
     });
   };
@@ -5691,6 +5752,7 @@ export function CheckoutViewDaConta({
         toast.error("O frete mudou, calcule de novo.");
         setSelectedShippingOption(null);
         setForcarNovaCotacaoEm((n) => n + 1);
+        levarFocoAoProblema("valores");
         // `setIsSubmitting`/`liberar` ficam para o `finally` logo abaixo —
         // convenção de `travaDeEnvio.ts`: "vai no finally, nunca antes".
         return;
@@ -5746,6 +5808,7 @@ export function CheckoutViewDaConta({
       // 28/08/2026 só existia o toast, ele sumia sozinho e não levava a lugar
       // nenhum, e a pessoa ficava parada no último clique com o dinheiro na mão.
       setRecusaDoUltimoClique(saida);
+      levarFocoAoProblema("recusa");
     } finally {
       if (montadoRef.current) setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -8905,7 +8968,11 @@ export function CheckoutViewDaConta({
                       <div
                         role="group"
                         aria-label="Valores do pedido"
-                        className="checkout-values"
+                        // Recebe o foco quando o envio é recusado por algo que
+                        // muda o total ("confira o total e finalize").
+                        id="checkout-valores-do-pedido"
+                        tabIndex={-1}
+                        className="checkout-values outline-none"
                       >
                         <div>
                           <div>
@@ -9295,7 +9362,13 @@ export function CheckoutViewDaConta({
                       // Fica ao lado do botão que acabou de falhar, de
                       // propósito: é onde a pessoa está olhando no instante da
                       // recusa. O toast avisa; este painel é o que dá a saída.
-                      <div className="mx-auto max-w-md">
+                      // `tabIndex={-1}`: recebe o foco quando o envio é recusado
+                      // (`levarFocoAoProblema`), sem entrar na ordem do Tab.
+                      <div
+                        id="checkout-saida-da-recusa"
+                        tabIndex={-1}
+                        className="mx-auto max-w-md outline-none"
+                      >
                         <SaidaDaRecusa
                           recusa={recusaDoUltimoClique}
                           // Só esta recusa é anterior ao envio: o novo clique
