@@ -297,7 +297,15 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     const promessa = Promise.resolve().then(async () => {
       try {
         // O toast de erro sai de dentro do `updateConfig`; não duplicar aqui.
-        const salvou = await updateConfig({ homeSections: updated });
+        // Caça 27/11 (20261643000000): `updated` sai SEMPRE de `homeSections`
+        // deste mesmo render, que é `config.homeSections` (ou a de fábrica,
+        // quando a loja nunca salvou: vai `undefined`). O banco recusa se
+        // outro aparelho já mudou as vitrines, em vez de desfazer em silêncio
+        // o que ele acabou de mudar; aviso e releitura saem do `updateConfig`.
+        const salvou = await updateConfig(
+          { homeSections: updated },
+          { vistos: { homeSections: config.homeSections } },
+        );
         if (!salvou) return false;
         onSetDirty?.(false);
         if (showToast) {

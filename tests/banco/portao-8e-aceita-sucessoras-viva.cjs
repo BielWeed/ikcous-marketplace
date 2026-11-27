@@ -124,6 +124,12 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
       "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql" &&
     s.nome !== "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql" &&
     s.nome !== "20261310000000_estilo_do_card_de_frete.sql" &&
+    // A 20261643000000 (as listas dos ajustes nao somem entre aparelhos) sai pela mesma razao da 1310: o elo de upsert_store_config
+    // dela parte do corpo da 1310, nao do da 99; o de salvar_politica_de_devolucao parte do da 99, mas a 8e ja traz o par dele e a
+    // migration tem PROVA PROPRIA (tests/banco/as-listas-dos-ajustes-viva.cjs, 203a/203b). O `noEstado` a desfaz antes de montar o
+    // estado (estilo-card-frete-posterior.cjs chama as-listas-dos-ajustes-posterior.cjs primeiro).
+    s.nome !==
+      "20261643000000_as_listas_dos_ajustes_nao_somem_entre_aparelhos.sql" &&
     // A 20261350000000 (a compra online trava o preco e espera a mesma chave) so redefine v23 e v24, em cima da 44; nenhuma
     // das duas e' funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 44 (a-compra-online-trava-posterior.cjs,
     // chamado por desfazerEntregaNaCidadeNaTransacao); aqui sai do rol pela mesma razao da 44 e da 1310.

@@ -23,6 +23,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AVISO_DA_LISTA_QUE_MUDOU,
+  useAcabouDeMexer,
+} from "@/hooks/useAcabouDeMexer";
 import { useAgoraDoPainel } from "@/hooks/useAgoraDoPainel";
 import type { ResultadoDaAnulacao } from "@/hooks/useAnularVendaDoBalcao";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
@@ -58,7 +62,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { type MouseEvent, memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface AdminOrderCardProps {
@@ -154,6 +158,8 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   const emVoo = useRef(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   const botaoQueAbriuRef = useRef<HTMLButtonElement>(null);
+  const cartaoRef = useRef<HTMLElement>(null);
+  const acabouDeMexer = useAcabouDeMexer(cartaoRef);
   const grande = viewMode === "detailed";
   const itens = order.items ?? [];
   const unidades = itens.reduce((soma, item) => soma + (item.quantity || 1), 0);
@@ -300,6 +306,19 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     );
   }
 
+  /**
+   * Pedido novo entra no topo em tempo real e a lista desce sob o dedo: o
+   * toque que mirava um pedido cai em outro. Botão de 1 toque que avisa a
+   * cliente recusa o toque se o cartão mudou de lugar há pouco
+   * (`useAcabouDeMexer`). `detail` 0 é teclado ou leitor de tela: agem no
+   * botão em foco, que não troca de pedido quando a lista se mexe.
+   */
+  function toqueEmCartaoQueMexeu(evento: MouseEvent) {
+    if (evento.detail === 0 || !acabouDeMexer()) return false;
+    toast.warning(AVISO_DA_LISTA_QUE_MUDOU, { id: AVISO_DA_LISTA_QUE_MUDOU });
+    return true;
+  }
+
   function avancar() {
     if (!proximo || bloqueado) return;
     setDestinoConfirmado({
@@ -386,6 +405,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
 
   return (
     <article
+      ref={cartaoRef}
       data-testid="pedido-card"
       className={cn(
         "relative flex h-full min-w-0 flex-col break-words rounded-[24px] border bg-admin-surface p-3 text-zinc-100",
@@ -576,7 +596,10 @@ export const AdminOrderCard = memo(function AdminOrderCard({
               : "WhatsApp indisponível: sem telefone válido"
           }
           disabled={!linkWhatsapp || isOffline}
-          onClick={() => onWhatsApp(order)}
+          onClick={(evento) => {
+            if (toqueEmCartaoQueMexeu(evento)) return;
+            onWhatsApp(order);
+          }}
           className={`${SECUNDARIO} min-h-14 w-11 shrink-0 border-emerald-300/15 bg-emerald-400/10 p-0 text-emerald-300`}
         >
           <IconeWhatsapp aria-hidden="true" className="size-5" />
@@ -606,6 +629,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             disabled={isOffline}
             aria-disabled={bloqueado && !isOffline ? true : undefined}
             onClick={(evento) => {
+              if (toqueEmCartaoQueMexeu(evento)) return;
               botaoQueAbriuRef.current = evento.currentTarget;
               avancar();
             }}

@@ -16,6 +16,10 @@ import {
   diasDaEntregaPropria,
   entregaPropriaLigada,
 } from "@/lib/guarda-de-frete";
+import {
+  avisoDaListaQueMudou,
+  ehListaQueMudou,
+} from "@/lib/listas-mudaram-em-outro-aparelho";
 import { mapProductFromDB } from "@/lib/mappers";
 import {
   mesclarProdutoNaLista,
@@ -67,6 +71,21 @@ interface UpdateConfigOptions {
    * acesso à mensagem crua da RPC, que o chamador não tem.
    */
   readonly silentSuccess?: boolean;
+  /**
+   * Caça 27/11 (migration 20261643000000): a lista que a TELA viu antes de
+   * montar a lista nova — as vitrines e as formas na entrega são gravadas
+   * INTEIRAS, e um aparelho com a tela velha apagava o que o outro acabou de
+   * mudar. Vai no pedido só para a coluna que está sendo gravada; o banco
+   * recusa (LST01) quando ela já não é a do banco, e aqui a configuração é
+   * relida e a lojista avisada. Ausente = grava como sempre.
+   */
+  readonly vistos?: ListasVistas;
+}
+
+interface ListasVistas {
+  /** `undefined` = a tela não tinha vitrine salva (vai como `null`). */
+  readonly homeSections?: unknown;
+  readonly formasPagamentoEntrega?: readonly string[];
 }
 
 interface StoreContextType {
@@ -266,6 +285,28 @@ function brandingAssetsIguais(enviado: unknown, gravado: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+// Caça 27/11 (20261643000000): a lista vista de cada coluna de lista INTEIRA
+// que este pedido grava, no nome da coluna. Vai em `config_json.vistos`, fora
+// de `dbUpdates`: não é coluna, então a conferência do que foi gravado não a
+// cobra. Cópia por valor, tirada antes do await.
+function listasVistasDoPedido(
+  vistos: ListasVistas | undefined,
+  dbUpdates: Record<string, unknown>,
+): Record<string, unknown> | null {
+  if (!vistos) return null;
+  const saida: Record<string, unknown> = {};
+  if ("home_sections" in dbUpdates && "homeSections" in vistos)
+    saida.home_sections = JSON.parse(
+      JSON.stringify(vistos.homeSections ?? null),
+    );
+  if (
+    "formas_pagamento_entrega" in dbUpdates &&
+    Array.isArray(vistos.formasPagamentoEntrega)
+  )
+    saida.formas_pagamento_entrega = [...vistos.formasPagamentoEntrega];
+  return Object.keys(saida).length > 0 ? saida : null;
 }
 
 // DECISÃO — o caso do COALESCE no ramo INSERT (linha nova) da RPC:
@@ -1485,6 +1526,7 @@ export function StoreProvider({
       const isCurrent = options?.isCurrent;
       const silent = options?.silent === true;
       const silentSuccess = options?.silentSuccess === true;
+      const vistos = options?.vistos;
       let invalidated = false;
       const current = () => {
         if (invalidated) return false;
@@ -1624,11 +1666,14 @@ export function StoreProvider({
         if (updates.formasPagamentoEntrega !== undefined)
           dbUpdates.formas_pagamento_entrega = updates.formasPagamentoEntrega;
 
+        const listasVistas = listasVistasDoPedido(vistos, dbUpdates);
         if (!current()) return false;
         const { data, error } = await aguardarComPrazo(
           Promise.resolve(
             (supabase.rpc as any)("upsert_store_config", {
-              config_json: dbUpdates,
+              config_json: listasVistas
+                ? { ...dbUpdates, vistos: listasVistas }
+                : dbUpdates,
             }),
           ) as Promise<{ data: unknown; error: unknown }>,
           PRAZO_DE_SALVAR_A_CONFIG_MS,
@@ -1736,6 +1781,16 @@ export function StoreProvider({
         if (!silent && !silentSuccess) toast.success("Configurações salvas");
         return true;
       } catch (err) {
+        // Caça 27/11 (20261643000000): a lista que a tela viu já não é a do
+        // banco — outro aparelho gravou no meio. Nada foi gravado. Relê a
+        // configuração (a tela passa a mostrar a lista nova) e avisa.
+        if (ehListaQueMudou(err)) {
+          void buscarConfigRef.current();
+          if (!current()) return false;
+          console.warn("[StoreContext] Lista mudou em outro aparelho:", err);
+          if (!silent) toast.error(avisoDaListaQueMudou(err));
+          return false;
+        }
         // Sem resposta no prazo: a gravação pode ter chegado ao servidor.
         // Relê o estado real (a resposta tardia da RPC é descartada pelo
         // prazo e nunca vira aviso de sucesso) e manda a lojista conferir.

@@ -497,6 +497,11 @@ async function desfazerPosterioresNaTransacao(cliente) {
     HASH_98_REEMITIR,
     "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
   );
+  // A 20261642000000 (a peca que volta sem tamanho) sucede os corpos da 389 e da 395 e suas RPCs usam is_admin_atual: sai ANTES de
+  // tudo (so se no ar).
+  await require("./a-peca-que-volta-sem-tamanho-posterior.cjs").desfazerPecaSemTamanhoNaTransacao(
+    cliente,
+  );
   // A 5700 usa is_admin_atual; retire 5700 → 5600 antes de desfazer a 98 abaixo.
   await desfazerCancelarRetiradaProntaNaTransacao(cliente);
   // A 20261397000000 (o desconto do cupom e' arredondado ao centavo; sucede a validate da 208 e a v23/v24) sai antes de todas (so se no ar).

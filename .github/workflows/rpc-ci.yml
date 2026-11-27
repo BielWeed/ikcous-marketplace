@@ -366,6 +366,10 @@ on:
       - "scripts/publicacao/consultas/201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado.sql"
       - "scripts/publicacao/consultas/201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente.sql"
       - "scripts/publicacao/consultas/201m-medir-avaliacoes-repetidas.sql"
+      - "scripts/publicacao/consultas/202a-conferir-a-peca-que-volta-sem-tamanho-aplicado.sql"
+      - "scripts/publicacao/consultas/202b-antes-a-peca-que-volta-sem-tamanho-base-vigente.sql"
+      - "scripts/publicacao/consultas/203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado.sql"
+      - "scripts/publicacao/consultas/203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente.sql"
       - "scripts/publicacao/consultas/205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado.sql"
       - "scripts/publicacao/consultas/205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -708,6 +712,10 @@ on:
       - "scripts/publicacao/consultas/201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado.sql"
       - "scripts/publicacao/consultas/201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente.sql"
       - "scripts/publicacao/consultas/201m-medir-avaliacoes-repetidas.sql"
+      - "scripts/publicacao/consultas/202a-conferir-a-peca-que-volta-sem-tamanho-aplicado.sql"
+      - "scripts/publicacao/consultas/202b-antes-a-peca-que-volta-sem-tamanho-base-vigente.sql"
+      - "scripts/publicacao/consultas/203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado.sql"
+      - "scripts/publicacao/consultas/203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente.sql"
       - "scripts/publicacao/consultas/205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado.sql"
       - "scripts/publicacao/consultas/205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1524,6 +1532,19 @@ jobs:
       - name: Prova viva de uma avaliacao por cliente e a media so das publicadas (20261641000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-viva.cjs
+      # Migration 20261642000000 (a peca que volta sem tamanho espera a lojista): devolver_estoque e admin_devolucao_concluir mandam a peca SEM variacao de produto
+      # com variacao ligada para pecas_sem_tamanho (o pai nao recebe); pecas_sem_tamanho_pendentes e resolver_peca_sem_tamanho (idempotente). Controle com os corpos de
+      # antes, matriz diferencial, devolucao e achado C, permissao, DUAS conexoes reais no mesmo toque, o Salvar velho recusado (PRD01), mutantes, reaplicar, pre-voo,
+      # rollback (ordem, corpos byte a byte, dado mantido) e consultas 202a/202b. CLONE proprio.
+      - name: Prova viva da peca que volta sem tamanho (20261642000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-que-volta-sem-tamanho-viva.cjs
+      # Migration 20261643000000 (as listas dos ajustes nao somem entre aparelhos): upsert_store_config e salvar_politica_de_devolucao conferem a
+      # lista VISTA (`vistos`) e recusam com LST01 sem gravar. Igual grava, diferente recusa, conjunto/jsonb, NULL aceita, malformado 22023, sem
+      # vistos como antes, DUAS conexoes ao mesmo tempo, ACL, rollback byte a byte, reaplicar (LF/CRLF), pre-voo e consultas 203a/203b. CLONE proprio.
+      - name: Prova viva das listas dos ajustes que nao somem entre aparelhos (20261643000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/as-listas-dos-ajustes-viva.cjs
       # Migration 20261645000000 (o aviso do vale-troca diz que a loja combina): devolucao_avisa_o_cliente troca SO a frase do ramo vale (o app nao emite vale).
       # Controle com o corpo da 20261241000000 ("foi emitido"), o texto novo pela conclusao real do painel, reembolso/troca/reprovada iguais, aviso de antes intacto,
       # mutante (frase antiga) vermelho, reaplicar 2x e CRLF, rollback byte a byte 2x, pre-voo que recusa sem escrever e consultas 205a/205b. CLONE proprio.

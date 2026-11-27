@@ -38,6 +38,7 @@ import { useCategories } from "@/hooks/useCategories";
 import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { useContagemDePecasSemTamanho } from "@/hooks/usePecasSemTamanho";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
@@ -54,6 +55,7 @@ import {
   imagemRedimensionada,
   usarImagemOriginal,
 } from "@/lib/imageUrl";
+import { textoDoSelo } from "@/lib/pecas-sem-tamanho";
 import { percentualComUmaCasa } from "@/lib/percentual";
 import {
   MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA,
@@ -171,6 +173,8 @@ export const AdminProductsView = memo(function AdminProductsView({
   const { stats, error: erroDoResumo, fetchExecutiveSummary } = useAnalytics();
   const { categories: dbCategories } = useCategories();
   const isOffline = useOnlineStatus();
+  // A peça que voltou sem tamanho (20261642000000): quantas esperam, por produto.
+  const pecasSemTamanho = useContagemDePecasSemTamanho(active ?? false);
   const { prefetchView } = usePrefetchOnHover();
 
   const handlePrefetchProductForm = useCallback(() => {
@@ -1783,6 +1787,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                             onDelete={handleDelete}
                             isOffline={isOffline}
                             onPrefetch={handlePrefetchProductForm}
+                            pecasSemTamanho={pecasSemTamanho.get(product.id)}
                           />
                         ))}
                   </div>
@@ -1818,6 +1823,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                             onDelete={handleDelete}
                             isOffline={isOffline}
                             onPrefetch={handlePrefetchProductForm}
+                            pecasSemTamanho={pecasSemTamanho.get(product.id)}
                           />
                         ))}
                   </div>
@@ -2631,6 +2637,8 @@ interface AdminProductCardProps {
   readonly onDelete: (id: string) => void;
   readonly isOffline?: boolean;
   readonly onPrefetch?: () => void;
+  /** Peças que voltaram sem tamanho e esperam a lojista (20261642000000). */
+  readonly pecasSemTamanho?: number;
 }
 
 // Espera (ms) antes de cada nova tentativa AUTOMÁTICA da foto do catálogo;
@@ -2757,6 +2765,23 @@ function EtiquetaDoisGrupos({
       <span className="font-semibold">Estoque de uma variação não desce</span>
       {comDica && <span className="block text-zinc-400">{dica}</span>}
     </span>
+  );
+}
+
+/** O selo da peça que voltou sem tamanho; a decisão é na tela do produto. */
+function SeloDaPecaSemTamanho({
+  quantidade,
+}: {
+  readonly quantidade: number | undefined;
+}) {
+  if (!quantidade) return null;
+  return (
+    <SeloDeStatus
+      tom="atencao"
+      className="mt-1 max-w-full py-0 text-[11px] leading-5"
+    >
+      {textoDoSelo(quantidade)}
+    </SeloDeStatus>
   );
 }
 
@@ -2901,6 +2926,7 @@ const AdminProductCard = memo(function AdminProductCard({
   onDelete,
   isOffline = false,
   onPrefetch,
+  pecasSemTamanho,
 }: AdminProductCardProps) {
   const [maisMetricas, setMaisMetricas] = useState(false);
   const acoes = {
@@ -3106,6 +3132,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 </span>
               )}
               <EtiquetaDoisGrupos product={product} comDica />
+              <SeloDaPecaSemTamanho quantidade={pecasSemTamanho} />
             </span>
           </MenuDoProduto>
           <h4 className="sr-only">{product.name}</h4>
@@ -3405,6 +3432,7 @@ const AdminProductCard = memo(function AdminProductCard({
               </p>
             )}
             <EtiquetaDoisGrupos product={product} />
+            <SeloDaPecaSemTamanho quantidade={pecasSemTamanho} />
             {botoes(false)}
           </div>
         </div>

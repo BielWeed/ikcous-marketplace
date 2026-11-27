@@ -394,6 +394,8 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",
       "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
       "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
+      "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
+      "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado",
       "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",

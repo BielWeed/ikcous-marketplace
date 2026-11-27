@@ -53,12 +53,16 @@
 --                                e, DEPOIS dela, 20261399980000 (as listas do painel desempatam por id);
 --   * `admin_devolucoes_listar` → 20261395000000 (a busca de devolução acha o número do pedido; ramo novo no filtro)
 --                                e, DEPOIS dela, 20261399910000 (a busca de devolução ignora o acento);
---   * `admin_devolucao_concluir` → ..., 20261343000000 e, DEPOIS dela, 20261395200000 (a conclusão da devolução tranca o estoque na mesma ordem da compra);
+--   * `admin_devolucao_concluir` → ..., 20261343000000 e, DEPOIS dela, 20261395200000 (a conclusão da devolução tranca o estoque na mesma ordem da compra)
+--                                e, DEPOIS dela, 20261642000000 (a peça que volta sem tamanho espera a lojista);
 --   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento)
 --                                e, DEPOIS dela, 20261392100000 (a busca do CRM acha o número com o +55);
 --   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita)
 --                                e, DEPOIS dela, 20261249000000 (o motivo do desconto fica na nota privada);
---   * `upsert_store_config`    → 20261239000000 (a loja declara razão social, CNPJ/CPF e e-mail de atendimento);
+--   * `upsert_store_config`    → 20261239000000 (a loja declara razão social, CNPJ/CPF e e-mail de atendimento)
+--                                e, DEPOIS dela, 20261244000000, 20261310000000 e 20261643000000 (as listas dos ajustes
+--                                não somem entre aparelhos: confere a lista vista);
+--   * `salvar_politica_de_devolucao` → 20261643000000 (as listas dos ajustes não somem entre aparelhos: confere a lista vista);
 --   * `pedido__saldo_a_estornar`, `solicitar_estorno`, `admin_devolucao_concluir` e
 --     `autorizar_post_do_estorno` → 20261241000000 (o reembolso em dúvida prende o saldo). Estes quatro
 --     NÃO são corpos da 99 (são da 98, da 97 e da 96): o `final` de cada um é o da última de 92..202
@@ -195,11 +199,14 @@ WITH corpos AS (
     ('registrar_venda_presencial', '79b779b98a5d6f6205a31309d5593eb9', '20261280000000'),
     ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3', '20261239000000'),
     ('upsert_store_config', 'aa4ed730ac6ad3d3c2644b4285ff39a9', '20261310000000'),
+    ('upsert_store_config', '2f772ffd1370359ba6c64540b71c35b2', '20261643000000'),
+    ('salvar_politica_de_devolucao', '976f05a67ca929ace608a62391588bcd', '20261643000000'),
     ('pedido__saldo_a_estornar', '99741b4cdbf1e8d8340f80440e6da094', '20261241000000'),
     ('solicitar_estorno', '840de50f44958fe43b55f5222691df9b', '20261241000000'),
     ('admin_devolucao_concluir', 'ebb901efff59a53082836a13e053cd1a', '20261241000000'),
     ('admin_devolucao_concluir', 'ea651d52157521c0fe7ffccc948b4b1a', '20261343000000'),
     ('admin_devolucao_concluir', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '20261395200000'),
+    ('admin_devolucao_concluir', '1a548896acb8248f1b1771d765c92fcb', '20261642000000'),
     ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000'),
     ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
     ('get_admin_analytics_v2', 'ab25e738a3101cccbb0c09450b660ee0', '20261245000000'),

@@ -197,7 +197,13 @@ describe("salvar a política envia só os campos que a lojista alterou", () => {
     });
     await salvar();
 
-    expect(pedidos()).toEqual([{ metodos_locais: ["entrega_na_loja"] }]);
+    // a lista vai com a versão que a tela VIU (`vistos`): o banco recusa se outro aparelho a mudou
+    expect(pedidos()).toEqual([
+      {
+        metodos_locais: ["entrega_na_loja"],
+        vistos: { metodos_locais: ["entrega_na_loja", "coleta"] },
+      },
+    ]);
   });
 
   it("mudar o prazo e voltar ao valor salvo: não é mudança e o botão fica parado", async () => {
@@ -241,7 +247,10 @@ describe("a lista 'sem troca' continua indo só quando a lojista mexeu nela", ()
     await salvar();
 
     expect(pedidos()).toEqual([
-      { categorias_sem_troca: ["Brinquedo", "Calçados"] },
+      {
+        categorias_sem_troca: ["Brinquedo", "Calçados"],
+        vistos: { categorias_sem_troca: ["Brinquedo"] },
+      },
     ]);
   });
 
@@ -254,7 +263,11 @@ describe("a lista 'sem troca' continua indo só quando a lojista mexeu nela", ()
     await salvar();
 
     expect(pedidos()).toEqual([
-      { prazo_troca_dias: 20, categorias_sem_troca: [] },
+      {
+        prazo_troca_dias: 20,
+        categorias_sem_troca: [],
+        vistos: { categorias_sem_troca: ["Brinquedo"] },
+      },
     ]);
   });
 });

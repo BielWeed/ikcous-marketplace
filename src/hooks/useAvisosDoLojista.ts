@@ -26,6 +26,7 @@ import {
   montarAvisos,
   selecionarCancelamentosDoCliente,
 } from "@/utils/avisos-do-lojista";
+import { etiquetasCanceladasNoHistorico } from "../../supabase/functions/_shared/etiqueta-cancelada-no-historico";
 
 /**
  * Quantos produtos COM ESTOQUE BAIXO a tela le por pagina. Quem filtra e o
@@ -51,11 +52,23 @@ const TETO_DE_SEGURANCA_DE_PRODUTOS = 2000;
 const TETO_DE_AVALIACOES = 100;
 
 /**
- * Quantos cancelamentos das ultimas 24 h a leitura traz (os MAIS NOVOS). Conta
+ * Quantos cancelamentos da janela do sino (36 h) a leitura traz (os MAIS NOVOS). Conta
  * clientes E admin: o admin so sai depois, na selecao. Passando disto a leitura
  * devolve `truncou` e a tela avisa que a lista esta cortada.
  */
 const TETO_DE_CANCELAMENTOS = 100;
+
+/**
+ * 27/11/2026: horas a mais na leitura dos cancelamentos, pelo relogio da
+ * lojista. O `desde` da janela de 24 h e calculado no APARELHO (a resposta do
+ * banco nao traz a hora do servidor): com o relogio 3 h adiantado, os
+ * cancelamentos de pedido pago feitos entre 21 h e 24 h atras sumiam do sino.
+ * 12 h cobre ate o erro de AM/PM de um relogio acertado a mao. O preco e o
+ * aviso de um cancelamento de 24 a 36 h atras continuar no sino num aparelho
+ * com o relogio certo: falso alarme custa uma linha, omissao custa um
+ * reembolso que ninguem viu (a mesma conta do `truncou` abaixo).
+ */
+const FOLGA_DO_RELOGIO_DA_LOJISTA_HORAS = 12;
 
 /**
  * Quantos pedidos esperando o lojista a lista mostra (os MAIS ANTIGOS, que
@@ -266,7 +279,10 @@ interface LeituraDeCancelamentos {
 
 async function buscarCancelamentosDoCliente(): Promise<LeituraDeCancelamentos> {
   const desde = new Date(
-    Date.now() - JANELA_DE_CANCELAMENTO_HORAS * 3600 * 1000,
+    Date.now() -
+      (JANELA_DE_CANCELAMENTO_HORAS + FOLGA_DO_RELOGIO_DA_LOJISTA_HORAS) *
+        3600 *
+        1000,
   ).toISOString();
 
   const { data, error, count } = await supabase
@@ -310,9 +326,50 @@ async function buscarCancelamentosDoCliente(): Promise<LeituraDeCancelamentos> {
       .map((perfil) => perfil.id),
   );
   return {
-    cancelamentos: selecionarCancelamentosDoCliente(linhas, admins),
+    cancelamentos: selecionarCancelamentosDoCliente(
+      linhas,
+      admins,
+      await lerEtiquetasCanceladas(linhas),
+    ),
     truncou,
   };
+}
+
+// 27/11/2026: `shipping_label_id` nunca e apagado, entao a etiqueta cancelada
+// no Melhor Envio seguia pedindo "cancele a etiqueta". Quem sabe do
+// cancelamento e o historico de envio (o "Atualizar rastreio" grava o status
+// que o ME devolveu). So le os pedidos COM etiqueta. Falha aqui nao derruba a
+// fonte: sem saber, o aviso mantem a frase (o pior caso e a loja conferir uma
+// etiqueta ja cancelada; omitir custaria o valor de uma etiqueta paga).
+// Mesma regra do push (supabase/functions/_shared/aviso-de-cancelamento-do-cliente.ts).
+async function lerEtiquetasCanceladas(
+  linhas: readonly LinhaDeCancelamento[],
+): Promise<Set<string>> {
+  const pedidosComEtiqueta = [
+    ...new Set(
+      linhas.flatMap((linha) => {
+        const bruto = linha.marketplace_orders;
+        const pedido = Array.isArray(bruto) ? bruto[0] : bruto;
+        return pedido?.shipping_label_id?.trim() ? [pedido.id] : [];
+      }),
+    ),
+  ];
+  if (pedidosComEtiqueta.length === 0) return new Set();
+  try {
+    const { data, error } = await supabase
+      .from("order_shipping_events")
+      .select("order_id, event_type, payload")
+      .in("order_id", pedidosComEtiqueta)
+      .eq("event_type", "rastreio_consultado");
+    if (error) throw error;
+    return etiquetasCanceladasNoHistorico(data);
+  } catch (erro) {
+    console.error(
+      "[useAvisosDoLojista] Historico de envio indisponivel; o aviso mantem a frase da etiqueta:",
+      erro,
+    );
+    return new Set();
+  }
 }
 
 interface LeituraDeProdutos {

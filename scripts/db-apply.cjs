@@ -426,6 +426,49 @@ const VERIFICACOES = {
       { texto: "'ja_registrada', false", vezes: 1 },
     ],
   },
+  // 20261643000000: as listas dos ajustes nao somem entre aparelhos. SO o corpo de upsert_store_config e o de salvar_politica_de_devolucao:
+  // com `vistos` (a lista que a tela VIU), trava a linha e recusa com LST01 (DETAIL = a coluna) antes de gravar. Os marcadores sao as
+  // decisoes que, tiradas, voltam o defeito: a trava, a recusa por coluna, o conjunto e o NULL aceito das vitrines. Os corpos exatos (md5)
+  // sao da consulta 203a e da conferencia da migration; o comportamento, da prova viva as-listas-dos-ajustes-viva.cjs.
+  "20261643000000_as_listas_dos_ajustes_nao_somem_entre_aparelhos.sql": [
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        { texto: "IF config_json ? 'vistos' THEN", vezes: 1 },
+        { texto: "     WHERE s.id = 1\n       FOR UPDATE;", vezes: 1 },
+        {
+          texto:
+            "USING ERRCODE = 'LST01', DETAIL = 'formas_pagamento_entrega';",
+          vezes: 1,
+        },
+        {
+          texto: "USING ERRCODE = 'LST01', DETAIL = 'home_sections';",
+          vezes: 1,
+        },
+        {
+          texto: "AND NULLIF(v_vitrines_no_banco, 'null'::jsonb) IS NOT NULL",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "salvar_politica_de_devolucao",
+      esperado: [
+        { texto: "IF p ? 'vistos' THEN", vezes: 1 },
+        {
+          texto:
+            "SELECT * INTO v_atual FROM public.politica_devolucao WHERE id = 1 FOR UPDATE;",
+          vezes: 1,
+        },
+        { texto: "USING ERRCODE = 'LST01', DETAIL = v_lista;", vezes: 1 },
+        {
+          texto:
+            "ARRAY(SELECT DISTINCT x FROM jsonb_array_elements_text(v_vistos -> v_lista) x ORDER BY 1)",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261641000000: uma avaliacao por cliente e produto, e a media do painel so das publicadas. TRES funcoes: a NOVA do gatilho
   // (trava por conta+produto ANTES de contar, recusa 23505; fora so a sessao direta e o cliente em nome de outra conta) e as duas
   // RPCs do painel com o status no bloco global (get_admin_reviews_paged) e no WHERE (get_reviews_metrics). O corpo exato (md5), os
@@ -1405,6 +1448,56 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261642000000: a peca que volta sem tamanho espera a lojista. devolver_estoque e admin_devolucao_concluir ganham o ramo do item SEM variacao
+  // de produto que tem variacao ligada (a peca vai para pecas_sem_tamanho e nao conta como creditada); resolver_peca_sem_tamanho credita a
+  // variacao escolhida uma vez so. Os marcadores sao as decisoes que, tiradas, voltam o defeito ou o pioram. Os corpos exatos (md5) sao da
+  // consulta 202a e do pos-voo; o comportamento e da prova viva a-peca-que-volta-sem-tamanho-viva.cjs.
+  "20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql": [
+    {
+      funcao: "devolver_estoque",
+      esperado: [
+        {
+          texto:
+            "WHERE v.product_id = v_item.product_id AND v.active = true) THEN",
+          vezes: 1,
+        },
+        { texto: "FROM generate_series(1, v_credito);", vezes: 1 },
+        {
+          texto:
+            "SELECT v_item.product_id, p_order_id, v_item.id, 'pedido_desfeito'",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_concluir",
+      esperado: [
+        {
+          texto:
+            "WHERE v.product_id = v_di.product_id AND v.active = true) THEN",
+          vezes: 1,
+        },
+        { texto: "FROM generate_series(1, v_di.quantidade);", vezes: 1 },
+        {
+          texto:
+            "'reestocados', v_reestocados - v_sem_tamanho, 'sem_tamanho', v_sem_tamanho",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "resolver_peca_sem_tamanho",
+      esperado: [
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "IF v_peca.resolvida_em IS NOT NULL THEN", vezes: 1 },
+        { texto: "IF v_variante.active IS NOT TRUE THEN", vezes: 1 },
+        {
+          texto: "SET stock_increment = COALESCE(stock_increment, 0) + 1",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261630000000: a loja ja suspensa tambem pausa. marcar_suspensa_desde (o gatilho da 20261600000000) ganha o ramo de quem SEGUE suspensa
   // sem dia. Os marcadores sao as decisoes que, tiradas, voltam o defeito ou o pioram: o ramo novo grava SO quando o dia e' NULL (sem ele o
   // reenvio recomecaria a contagem todo dia), os dois INSERT da marca (entrar e seguir sem dia) e o apagar ao sair. O corpo exato (md5) e da

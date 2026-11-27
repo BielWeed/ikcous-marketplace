@@ -1447,6 +1447,7 @@ export function lerResultadoConclusao(v: unknown): ResultadoConclusao | null {
     refund_id: texto(campo(v, "refund_id")),
     reembolso_manual: campo(v, "reembolso_manual") === true,
     reestocados: numero(campo(v, "reestocados")) ?? 0,
+    sem_tamanho: numero(campo(v, "sem_tamanho")) ?? 0,
   };
 }
 

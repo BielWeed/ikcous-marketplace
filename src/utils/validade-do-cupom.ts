@@ -24,7 +24,8 @@
  * Cupom já gravado não é reescrito: só a leitura passa a ser em Brasília.
  */
 
-const DESLOCAMENTO_DA_LOJA_EM_MS = 3 * 60 * 60 * 1000; // UTC-03:00
+/** UTC-03:00. Também é a régua da programação do banner (`datas-do-banner.ts`). */
+export const DESLOCAMENTO_DA_LOJA_EM_MS = 3 * 60 * 60 * 1000;
 
 /**
  * Converte a data escolhida no input no instante final daquele dia, em

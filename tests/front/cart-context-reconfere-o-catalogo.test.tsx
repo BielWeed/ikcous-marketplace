@@ -12,8 +12,10 @@
 //
 // Este arquivo trava o conserto E o que já funcionava: preço igual, rede boa,
 // nada muda (mesma referência do carrinho, nenhum aviso); releitura que falha
-// deixa o carrinho como estava; a regra de "quem escreveu por último vence"
-// entre carrinho do banco e carrinho local segue a mesma.
+// deixa o carrinho como estava; a regra que escolhe entre a quantidade do banco
+// e a local segue a mesma (desde 27/11/2026 ela não usa a hora do aparelho: a
+// linha que este aparelho não mexeu desde a última conversa com o banco segue o
+// banco; a mexida aqui, ou sem saber o que o banco confirmou, fica a local).
 import { CartProvider, useCartContext } from "@/contexts/CartContext";
 import { mapProductFromDB } from "@/lib/mappers";
 import { formatCurrency } from "@/lib/utils";
@@ -504,6 +506,13 @@ describe("CartContext — relê o catálogo ao abrir o app", () => {
       expect(mundo.avisos[0]).toContain(de(6990));
     });
 
+    // O que o banco confirmou ter, como o app guarda depois de gravar/ler.
+    const bancoConfirmou = (...entradas: string[]) =>
+      localStorage.setItem(
+        "marketplace_cart_confirmado_v1",
+        JSON.stringify({ uid: "u1", entradas }),
+      );
+
     it("carimbo LOCAL mais novo: vale a quantidade local, com o produto novo", async () => {
       mundo.itensNoBanco = [linhaDoCarrinhoNoBanco(2, T)];
       await montar([
@@ -514,18 +523,27 @@ describe("CartContext — relê o catálogo ao abrir o app", () => {
       expect(atual.cart[0].product.price).toBe(69.9);
     });
 
-    it("carimbo do BANCO mais novo: vale a quantidade do banco, com o produto novo", async () => {
-      mundo.itensNoBanco = [linhaDoCarrinhoNoBanco(2, T + 1000)];
-      await montar([itemSalvo(produtoSalvo(), 3, { lastModifiedAt: T })]);
+    it("linha que este aparelho não mexeu e banco com outra quantidade: vale a do banco, com o produto novo", async () => {
+      // A hora daqui é a mais nova e não importa: o banco confirmou o 3 daqui
+      // e depois outro aparelho gravou 2.
+      bancoConfirmou("prod-1-=3");
+      mundo.itensNoBanco = [linhaDoCarrinhoNoBanco(2, T)];
+      await montar([
+        itemSalvo(produtoSalvo(), 3, { lastModifiedAt: T + 1000 }),
+      ]);
 
       expect(atual.cart[0].quantity).toBe(2);
       expect(atual.cart[0].product.price).toBe(69.9);
     });
 
-    it("preço IGUAL e carimbos diferentes: continua resolvendo como hoje (quem escreveu por último vence), sem aviso", async () => {
+    it("preço IGUAL e quantidade diferente numa linha não mexida aqui: vale a do banco, sem aviso", async () => {
+      bancoConfirmou("prod-1-=3");
       mundo.catalogo = [linha({ preco_venda: 59.9 })];
+      // A hora daqui (T + 2000) é mais nova que a do banco: não importa.
       mundo.itensNoBanco = [linhaDoCarrinhoNoBanco(2, T + 1000)];
-      await montar([itemSalvo(produtoSalvo(), 3, { lastModifiedAt: T })]);
+      await montar([
+        itemSalvo(produtoSalvo(), 3, { lastModifiedAt: T + 2000 }),
+      ]);
       expect(atual.cart[0].quantity).toBe(2);
       expect(mundo.avisos).toEqual([]);
     });

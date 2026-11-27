@@ -15,6 +15,10 @@ async function main() {
   await c.connect();
   await c.query("BEGIN");
   try {
+    // A sucessora 20261643000000 (as listas dos ajustes) redefine o upsert: esta prova mede a 310 isolada.
+    await require("./as-listas-dos-ajustes-posterior.cjs").desfazerAsListasDosAjustesNaTransacao(
+      c,
+    );
     const [a, b] = [
       "60a-conferir-estilo-card-frete-aplicado",
       "60b-antes-estilo-card-frete-base-vigente",

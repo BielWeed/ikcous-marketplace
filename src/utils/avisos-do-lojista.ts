@@ -193,10 +193,16 @@ function ehRetirada(pedido: PedidoDoCancelamento): boolean {
  *
  * Autor ausente de `admins` conta como nao-admin: so admin tem papel para
  * cancelar pedido de OUTRA pessoa, e o dono so cancela o que e dele.
+ *
+ * `etiquetasCanceladas`: ids de etiqueta que o historico de envio ja viu
+ * cancelados no Melhor Envio (`etiquetasCanceladasNoHistorico`). O
+ * `shipping_label_id` nunca e apagado do pedido; sem este conjunto a etiqueta
+ * cancelada seguia pedindo "cancele a etiqueta para recuperar o valor".
  */
 export function selecionarCancelamentosDoCliente(
   linhas: readonly LinhaDeCancelamento[],
   admins: ReadonlySet<string>,
+  etiquetasCanceladas: ReadonlySet<string> = new Set(),
 ): CancelamentoDoCliente[] {
   const escolhidos: CancelamentoDoCliente[] = [];
   for (const linha of linhas) {
@@ -250,7 +256,9 @@ export function selecionarCancelamentosDoCliente(
         ? { devolucaoCombinada: true }
         : {}),
       // No "ja saiu" a etiqueta ja foi usada: o assunto e o transporte.
-      ...(!jaSaiu && pedido.shipping_label_id?.trim()
+      ...(!jaSaiu &&
+      pedido.shipping_label_id?.trim() &&
+      !etiquetasCanceladas.has(pedido.shipping_label_id)
         ? { etiquetaPaga: true }
         : {}),
     });
@@ -319,7 +327,7 @@ export interface EntradaDeAvisos {
    */
   devolucoesSolicitadas?: number;
   /**
-   * Pedidos que o cliente cancelou depois de pagar, nas ultimas 24 h (ja
+   * Pedidos que o cliente cancelou depois de pagar, na janela do sino (36 h) (ja
    * filtrados por `selecionarCancelamentosDoCliente`). Opcional: ausente = a
    * fonte nao entrou nesta rodada.
    */
