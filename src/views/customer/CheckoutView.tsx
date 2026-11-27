@@ -728,6 +728,50 @@ const ehErroDeCuponsDesligados = (error: unknown): boolean => {
 };
 
 /**
+ * O TOTAL DIVERGENTE (passo 6 da `create_marketplace_order_v24`, migration
+ * 20261399997000): a RPC recalcula subtotal, frete e desconto e recusa com
+ * esta frase quando o total enviado não fecha. Ela não diz QUAL parte mudou —
+ * o cálculo só vai no DETAIL. Por TEXTO e `includes`, mesma razão dos
+ * marcadores acima.
+ */
+const MARCADOR_DE_TOTAL_DIVERGENTE = "Os valores do pedido mudaram";
+
+const ehErroDeTotalDivergente = (error: unknown): boolean => {
+  const detalhes = (error ?? {}) as { message?: unknown };
+  const mensagem = typeof detalhes.message === "string" ? detalhes.message : "";
+  return mensagem.includes(MARCADOR_DE_TOTAL_DIVERGENTE);
+};
+
+/**
+ * O CUPOM MUDOU ENQUANTO A CLIENTE FINALIZAVA (caça 27/11/2026): a lojista
+ * editou o cupom com o checkout aberto e a RPC, que relê o cupom, recusou pelo
+ * total. Recebe a releitura do cupom feita DEPOIS da recusa e devolve a frase
+ * do cupom — ou `null` quando a releitura não prova que foi ele (desconto
+ * igual: o motivo foi preço ou frete; sem resposta: não se sabe), e aí fica a
+ * frase de sempre. As duas saídas levam a "Tirar o cupom": quem quiser
+ * finalizar com o desconto novo só confere o total e toca em Finalizar.
+ */
+const recusaDoCupomQueMudou = (
+  codigo: string,
+  descontoDaTela: number,
+  releitura: { valid: boolean; discount: number; networkError?: boolean },
+): RecusaDoPedido | null => {
+  if (releitura.networkError) return null;
+  if (!releitura.valid) {
+    return {
+      acao: "remover_cupom",
+      mensagem: `O cupom ${codigo} mudou enquanto você finalizava e não vale mais. Tire o cupom para finalizar sem ele.`,
+    };
+  }
+  if (Math.round(releitura.discount * 100) === Math.round(descontoDaTela * 100))
+    return null;
+  return {
+    acao: "remover_cupom",
+    mensagem: `O cupom ${codigo} mudou enquanto você finalizava. Conferimos de novo: o desconto agora é de ${reais(releitura.discount)}. Confira o total e finalize de novo, ou tire o cupom.`,
+  };
+};
+
+/**
  * Para ONDE cada ação leva. Tabela, e não cadeia de `if`, pelo mesmo motivo do
  * `ROTULO_DA_ACAO` no componente: `Record<AcaoDeRecusa, …>` **para de compilar**
  * no dia em que `AcaoDeRecusa` ganhar um caso novo, em vez de deixá-lo cair num
@@ -5889,6 +5933,61 @@ export function CheckoutViewDaConta({
       if (saida.acao === "reconferir_carrinho") {
         void relerAConfigDaLoja(refreshStoreConfig);
       }
+      // O CUPOM MUDOU ENQUANTO A CLIENTE FINALIZAVA (caça 27/11/2026): com
+      // cupom no pedido, a lojista pode ter editado o desconto — e "atualize o
+      // carrinho" mandava a cliente ao lugar errado sem dizer o que mudou. A
+      // tela relê o cupom AQUI, antes do `finally`: a trava de envio segue
+      // fechada (Finalizar, aplicar e tirar cupom esperam) até o total novo
+      // estar na tela. `validateCoupon` tem prazo e nunca lança. Só vale se
+      // nada mexeu no cupom enquanto isso (mesma conferência, mesma conta):
+      // senão quem decide é a conferência mais nova e fica a frase de sempre.
+      let saidaDaTela = saida;
+      const codigoEnviado: unknown = orderData.couponCode;
+      const conferido = cupomConferidoRef.current;
+      const cupomDaTela = cupomRef.current;
+      if (
+        saida.acao === "reconferir_carrinho" &&
+        ehErroDeTotalDivergente(error) &&
+        typeof codigoEnviado === "string" &&
+        codigoEnviado !== "" &&
+        cupomDaTela?.code === codigoEnviado &&
+        conferido?.code === codigoEnviado &&
+        conferido.conta === contaRef.current
+      ) {
+        // Defesa: o validateCoupon não lança; se um dia lançar, fica a frase
+        // de sempre (mesma regra da revalidação em segundo plano).
+        let releitura: Awaited<ReturnType<typeof validateCoupon>> | null = null;
+        try {
+          releitura = await validateCoupon(codigoEnviado, conferido.subtotal);
+        } catch {
+          releitura = null;
+        }
+        if (!montadoRef.current) return;
+        const recusaDoCupom =
+          releitura &&
+          cupomConferidoRef.current === conferido &&
+          contaRef.current === conferido.conta
+            ? recusaDoCupomQueMudou(
+                codigoEnviado,
+                cupomDaTela.discount,
+                releitura,
+              )
+            : null;
+        if (recusaDoCupom) {
+          saidaDaTela = recusaDoCupom;
+          // Desconto novo: entra na tela JÁ conferido — o total que a cliente
+          // vê é o que o próximo toque envia. Cupom que não vale mais fica
+          // até ela tocar em "Tirar o cupom" (a RPC recusaria pelo nome).
+          if (releitura?.valid) {
+            cupomConferidoRef.current = { ...conferido };
+            setAppliedCoupon({
+              code: codigoEnviado,
+              discount: releitura.discount,
+              conta: conferido.conta,
+            });
+          }
+        }
+      }
       // createOrder relança o erro sem avisar; a tradução para a cliente
       // fica aqui, no toast e no painel.
       //
@@ -5906,12 +6005,13 @@ export function CheckoutViewDaConta({
       // recusa-e-toast-nao-divergem.test.ts proíbe entre as regras do banco.
       toast.error(
         mensagemDoAvisoDePedido(
-          saida,
+          saidaDaTela,
           ehFalhaDeRedeAntesDoEnvio(error) ||
             error?.code === "PEDIDO_SEM_RESPOSTA" ||
             error?.code === "TOTAL_DO_PEDIDO_INDISPONIVEL" ||
-            saida.acao === "reenviar_mesma_compra"
-            ? saida.mensagem
+            saida.acao === "reenviar_mesma_compra" ||
+            saidaDaTela !== saida
+            ? saidaDaTela.mensagem
             : mensagemAmigavelErroPedido(error),
         ),
       );
@@ -5919,7 +6019,7 @@ export function CheckoutViewDaConta({
       // tela. O painel abaixo é a AÇÃO. Os dois convivem de propósito: até
       // 28/08/2026 só existia o toast, ele sumia sozinho e não levava a lugar
       // nenhum, e a pessoa ficava parada no último clique com o dinheiro na mão.
-      setRecusaDoUltimoClique(saida);
+      setRecusaDoUltimoClique(saidaDaTela);
       levarFocoAoProblema("recusa");
     } finally {
       if (montadoRef.current) setIsSubmitting(false);
