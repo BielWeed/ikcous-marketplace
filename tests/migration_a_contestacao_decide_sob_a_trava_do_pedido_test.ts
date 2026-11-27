@@ -752,6 +752,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261642000000: a peca que volta sem tamanho espera a lojista (devolver_estoque e admin_devolucao_concluir mandam a peca sem variacao para pecas_sem_tamanho;
     // pecas_sem_tamanho_pendentes e resolver_peca_sem_tamanho; controle, matriz diferencial, duas conexoes reais, Salvar velho recusado, mutantes, rollback e consultas 202a/202b).
     "tests/banco/a-peca-que-volta-sem-tamanho-viva.cjs",
+    // 20261643000000: as listas dos ajustes nao somem entre aparelhos (upsert_store_config e salvar_politica_de_devolucao conferem a lista
+    // vista e recusam com LST01; igual grava, diferente recusa, duas conexoes reais, ACL, rollback byte a byte, reaplicar e consultas 203a/203b).
+    "tests/banco/as-listas-dos-ajustes-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
     // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;

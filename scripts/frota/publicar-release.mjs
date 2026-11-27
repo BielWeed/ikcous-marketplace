@@ -1114,6 +1114,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente",
   "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
   "202b-antes-a-peca-que-volta-sem-tamanho-base-vigente",
+  "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado",
+  "203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

@@ -1520,6 +1520,17 @@ async function main() {
         "20261620000000_a_soma_das_categorias_fecha_com_o_faturamento_no_centavo.sql",
         "public.get_category_analytics(timestamp with time zone,timestamp with time zone)",
       ],
+      // A 1643 (as listas dos ajustes nao somem entre aparelhos) troca so o corpo de upsert_store_config (sucede a 1310) e o de
+      // salvar_politica_de_devolucao (sucede a 99); a 17a nao le nenhuma das duas. O rollback dela devolve os dois de uma vez
+      // (a primeira entrada desfaz; a segunda ja encontra o corpo anterior, e a conferencia do molde mede as duas).
+      [
+        "20261643000000_as_listas_dos_ajustes_nao_somem_entre_aparelhos.sql",
+        "public.salvar_politica_de_devolucao(jsonb)",
+      ],
+      [
+        "20261643000000_as_listas_dos_ajustes_nao_somem_entre_aparelhos.sql",
+        "public.upsert_store_config(jsonb)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

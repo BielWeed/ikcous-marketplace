@@ -4131,6 +4131,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
     "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
     "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
+    "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
   ]);

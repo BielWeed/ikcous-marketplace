@@ -74,6 +74,12 @@ const SUCESSORAS = [
     versao: "20261642000000",
     consulta: "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
   },
+  // 20261643000000: as listas dos ajustes nao somem entre aparelhos (upsert_store_config e salvar_politica_de_devolucao).
+  {
+    versao: "20261643000000",
+    consulta:
+      "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

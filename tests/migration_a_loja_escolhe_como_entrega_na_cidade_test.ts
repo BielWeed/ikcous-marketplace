@@ -601,7 +601,8 @@ Deno.test("as consultas antecessoras (8e, 9a, 31a, 37a, 40a) e as provas que fix
   );
   assert.ok(
     c40a.includes(
-      `f.m IN ('${VIGENTE.upsert_store_config}', '${NOVO.upsert_store_config}', 'aa4ed730ac6ad3d3c2644b4285ff39a9')`,
+      // (a 20261310000000 e a 20261643000000, as sucessoras desta, entram depois, nesta ordem)
+      `f.m IN ('${VIGENTE.upsert_store_config}', '${NOVO.upsert_store_config}', 'aa4ed730ac6ad3d3c2644b4285ff39a9', '2f772ffd1370359ba6c64540b71c35b2')`,
     ),
   );
   // as quatro 'b' (ausência) NÃO citam os corpos desta migration

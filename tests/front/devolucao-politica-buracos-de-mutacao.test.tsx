@@ -239,8 +239,12 @@ describe("categorias sem troca por gosto", () => {
       botao("Salvar política")?.click();
     });
     await esperar();
+    // a lista vai com a versão que a tela VIU (`vistos`): o banco recusa se outro aparelho a mudou
     expect(rpc).toHaveBeenCalledWith("salvar_politica_de_devolucao", {
-      p: { categorias_sem_troca: [] },
+      p: {
+        categorias_sem_troca: [],
+        vistos: { categorias_sem_troca: ["calçados"] },
+      },
     });
   });
 });

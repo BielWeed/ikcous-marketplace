@@ -199,7 +199,11 @@ describe("AdminSettingsView — Formas de pagamento (pix/card/cash na entrega)",
     expect(mockStore.updateConfig).toHaveBeenCalledTimes(1);
     expect(mockStore.updateConfig).toHaveBeenCalledWith(
       { formasPagamentoEntrega: ["pix", "cash"] },
-      { silentSuccess: true },
+      {
+        silentSuccess: true,
+        // A lista que a tela VIU vai junto: o banco recusa se outro aparelho mudou.
+        vistos: { formasPagamentoEntrega: ["pix", "card", "cash"] },
+      },
     );
   });
 
@@ -210,7 +214,11 @@ describe("AdminSettingsView — Formas de pagamento (pix/card/cash na entrega)",
     expect(mockStore.updateConfig).toHaveBeenCalledTimes(1);
     expect(mockStore.updateConfig).toHaveBeenCalledWith(
       { formasPagamentoEntrega: ["pix", "cash"] },
-      { silentSuccess: true },
+      {
+        silentSuccess: true,
+        // A lista que a tela VIU vai junto: o banco recusa se outro aparelho mudou.
+        vistos: { formasPagamentoEntrega: ["pix", "card", "cash"] },
+      },
     );
   });
 
@@ -242,7 +250,11 @@ describe("AdminSettingsView — Formas de pagamento (pix/card/cash na entrega)",
 
     expect(mockStore.updateConfig).toHaveBeenCalledWith(
       { formasPagamentoEntrega: ["pix", "cash"] },
-      { silentSuccess: true },
+      {
+        silentSuccess: true,
+        // A lista que a tela VIU vai junto: o banco recusa se outro aparelho mudou.
+        vistos: { formasPagamentoEntrega: ["pix", "card", "cash"] },
+      },
     );
   });
 
@@ -255,7 +267,11 @@ describe("AdminSettingsView — Formas de pagamento (pix/card/cash na entrega)",
     // posição dele, nunca no fim por ter sido clicado por último.
     expect(mockStore.updateConfig).toHaveBeenCalledWith(
       { formasPagamentoEntrega: ["pix", "cash"] },
-      { silentSuccess: true },
+      {
+        silentSuccess: true,
+        // A lista que a tela VIU vai junto: o banco recusa se outro aparelho mudou.
+        vistos: { formasPagamentoEntrega: ["cash"] },
+      },
     );
   });
 
@@ -279,7 +295,11 @@ describe("AdminSettingsView — Formas de pagamento (pix/card/cash na entrega)",
 
     expect(mockStore.updateConfig).toHaveBeenCalledWith(
       { formasPagamentoEntrega: [] },
-      { silentSuccess: true },
+      {
+        silentSuccess: true,
+        // A lista que a tela VIU vai junto: o banco recusa se outro aparelho mudou.
+        vistos: { formasPagamentoEntrega: ["pix"] },
+      },
     );
   });
 

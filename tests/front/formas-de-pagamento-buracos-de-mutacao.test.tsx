@@ -32,7 +32,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 type UpdateConfig = (
   updates: Partial<StoreConfig>,
-  options?: { readonly silentSuccess?: boolean },
+  options?: {
+    readonly silentSuccess?: boolean;
+    readonly vistos?: { readonly formasPagamentoEntrega?: readonly string[] };
+  },
 ) => Promise<boolean>;
 
 const ULTIMA_FORMA =
@@ -105,7 +108,11 @@ describe("FormasDePagamentoSection (buracos de mutação)", () => {
       expect(toastErro).not.toHaveBeenCalled();
       expect(updateConfig).toHaveBeenCalledExactlyOnceWith(
         { formasPagamentoEntrega: ["pix"] },
-        { silentSuccess: true },
+        // a lista que a tela VIU vai junto: o banco recusa se outro aparelho mudou
+        {
+          silentSuccess: true,
+          vistos: { formasPagamentoEntrega: ["pix", "card"] },
+        },
       );
       expect(toastSucesso).toHaveBeenCalledWith(
         "Cartão na entrega/retirada desligado",
@@ -126,7 +133,8 @@ describe("FormasDePagamentoSection (buracos de mutação)", () => {
       expect(toastErro).not.toHaveBeenCalled();
       expect(updateConfig).toHaveBeenCalledExactlyOnceWith(
         { formasPagamentoEntrega: [] },
-        { silentSuccess: true },
+        // a lista que a tela VIU vai junto: o banco recusa se outro aparelho mudou
+        { silentSuccess: true, vistos: { formasPagamentoEntrega: ["cash"] } },
       );
     });
 
@@ -144,7 +152,8 @@ describe("FormasDePagamentoSection (buracos de mutação)", () => {
       await clicar(interruptor(PIX));
       expect(updateConfig).toHaveBeenCalledWith(
         { formasPagamentoEntrega: ["pix", "cash"] },
-        { silentSuccess: true },
+        // a lista que a tela VIU vai junto: o banco recusa se outro aparelho mudou
+        { silentSuccess: true, vistos: { formasPagamentoEntrega: ["cash"] } },
       );
     });
 
@@ -153,7 +162,11 @@ describe("FormasDePagamentoSection (buracos de mutação)", () => {
       await clicar(interruptor(CARTAO));
       expect(updateConfig).toHaveBeenCalledWith(
         { formasPagamentoEntrega: ["pix", "card", "cash"] },
-        { silentSuccess: true },
+        // a lista que a tela VIU vai junto: o banco recusa se outro aparelho mudou
+        {
+          silentSuccess: true,
+          vistos: { formasPagamentoEntrega: ["cash", "pix"] },
+        },
       );
     });
 
@@ -162,7 +175,11 @@ describe("FormasDePagamentoSection (buracos de mutação)", () => {
       await clicar(interruptor(CARTAO));
       expect(updateConfig).toHaveBeenCalledWith(
         { formasPagamentoEntrega: ["pix", "cash"] },
-        { silentSuccess: true },
+        // a lista que a tela VIU vai junto: o banco recusa se outro aparelho mudou
+        {
+          silentSuccess: true,
+          vistos: { formasPagamentoEntrega: ["pix", "card", "cash"] },
+        },
       );
     });
   });

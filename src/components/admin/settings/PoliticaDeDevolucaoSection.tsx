@@ -36,6 +36,11 @@ import {
 } from "@/lib/devolucao";
 import { trocarNomeNaLista } from "@/lib/gestao-de-categorias";
 import {
+  AVISO_DA_POLITICA_MUDOU,
+  ehListaQueMudou,
+  reaplicarEscolha,
+} from "@/lib/listas-mudaram-em-outro-aparelho";
+import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
@@ -110,6 +115,64 @@ function formDe(p: PoliticaDevolucao): FormDaPolitica {
     texto_politica: p.texto_politica ?? "",
     endereco_devolucao: p.endereco_devolucao ?? "",
   };
+}
+
+// Caça 27/11 (20261643000000): as listas que vão INTEIRAS no pedido. Junto de
+// cada uma vai a lista que a tela VIU (`p.vistos`): a RPC recusa (LST01), sem
+// gravar nada, quando o banco já não está assim — outro aparelho salvou no meio.
+const LISTAS_DA_POLITICA = [
+  "metodos_locais",
+  "metodos_nacionais",
+  "categorias_sem_troca",
+] as const;
+
+const mesmaCategoria = (a: string, b: string) =>
+  a.toLowerCase() === b.toLowerCase();
+
+/**
+ * O formulário que a lojista editou (`escolhido`, a partir de `visto`)
+ * reaplicado por cima da política que o banco acabou de devolver
+ * (`servidor`): campo que ela não mexeu segue o banco; campo que ela mexeu
+ * fica com o valor dela; lista que ela mexeu recebe só o que ela acrescentou e
+ * tirou (merge de três vias, `reaplicarEscolha`). Sem nada mexido, devolve o
+ * do banco.
+ */
+export function reaplicarNaPolitica(
+  visto: FormDaPolitica,
+  escolhido: FormDaPolitica,
+  servidor: FormDaPolitica,
+): FormDaPolitica {
+  const vistos = new Map(Object.entries(visto));
+  const escolhidos = new Map(Object.entries(escolhido));
+  const entradas = Object.entries(servidor).map(([chave, doServidor]) => {
+    const v: unknown = vistos.get(chave);
+    const e: unknown = escolhidos.get(chave);
+    if (JSON.stringify(v) === JSON.stringify(e)) return [chave, doServidor];
+    if (chave === "metodos_locais" || chave === "metodos_nacionais") {
+      return [
+        chave,
+        reaplicarEscolha(
+          v as MetodoDevolucao[],
+          e as MetodoDevolucao[],
+          doServidor as MetodoDevolucao[],
+          {
+            ordem:
+              chave === "metodos_locais" ? METODOS_LOCAIS : METODOS_NACIONAIS,
+          },
+        ),
+      ];
+    }
+    if (chave === "categorias_sem_troca") {
+      return [
+        chave,
+        reaplicarEscolha(v as string[], e as string[], doServidor as string[], {
+          mesmo: mesmaCategoria,
+        }),
+      ];
+    }
+    return [chave, e];
+  });
+  return Object.fromEntries(entradas) as unknown as FormDaPolitica;
 }
 
 const inteiro = (v: string) =>
@@ -197,6 +260,42 @@ export function PoliticaDeDevolucaoSection({
     enderecoAntesDaCaixaRef.current = novo.endereco_devolucao;
   }, []);
 
+  // O que a tela mostra agora (último render): a releitura no meio da edição
+  // precisa do lido e do digitado para reaplicar a edição por cima do banco.
+  const salvaRef = useRef<PoliticaDevolucao | null>(null);
+  const formRef = useRef<FormDaPolitica | null>(null);
+  useEffect(() => {
+    salvaRef.current = salva;
+    formRef.current = form;
+  });
+
+  // Caça 27/11: a releitura depois da recusa LST01 (outro aparelho mudou uma
+  // lista; nada gravou) NÃO joga fora o que a lojista digitou — reaplica por
+  // cima da política nova (`reaplicarNaPolitica`). As outras releituras
+  // (abrir a tela, "Tentar de novo", resposta estranha depois de gravar)
+  // mostram o banco como está, como antes.
+  // Liga só no caminho da recusa LST01; `carregar` o consome (e desliga) ao começar.
+  const reaplicarNaLeituraRef = useRef(false);
+  const aplicarSemPerderAEdicao = useCallback(
+    (reaplicarAEdicao: boolean, p: PoliticaDevolucao) => {
+      const lidaAntes = salvaRef.current;
+      const editado = formRef.current;
+      if (!reaplicarAEdicao || !lidaAntes || !editado) {
+        aplicar(p);
+        return;
+      }
+      const visto = formDe(lidaAntes);
+      const novo = reaplicarNaPolitica(visto, editado, formDe(p));
+      setSalva(p);
+      setForm(novo);
+      if (visto.endereco_devolucao === editado.endereco_devolucao) {
+        setMesmoEndereco(novo.endereco_devolucao === "");
+        enderecoAntesDaCaixaRef.current = novo.endereco_devolucao;
+      }
+    },
+    [aplicar],
+  );
+
   // Renomeações de categoria que a lojista fez ENQUANTO a política estava sendo
   // lida: a leitura pode ter saído do banco antes da troca e chegar depois dela.
   // `null` = nenhuma leitura em andamento.
@@ -205,6 +304,8 @@ export function PoliticaDeDevolucaoSection({
   >(null);
 
   const carregar = useCallback(async () => {
+    const reaplicarAEdicao = reaplicarNaLeituraRef.current;
+    reaplicarNaLeituraRef.current = false;
     setErroDeLeitura(false);
     renomeadasNaLeituraRef.current = [];
     try {
@@ -236,7 +337,7 @@ export function PoliticaDeDevolucaoSection({
         setErroDeLeitura(true);
         return;
       }
-      aplicar({
+      aplicarSemPerderAEdicao(reaplicarAEdicao, {
         ...lida,
         categorias_sem_troca: durante.reduce(
           (lista, { de, para }) => trocarNomeNaLista(lista, de, para),
@@ -247,7 +348,7 @@ export function PoliticaDeDevolucaoSection({
       renomeadasNaLeituraRef.current = null;
       if (ativoRef.current) setErroDeLeitura(true);
     }
-  }, [aplicar]);
+  }, [aplicarSemPerderAEdicao]);
 
   // A lojista renomeou uma categoria em "Gerenciar categorias" (a aba Ajustes
   // fica montada por baixo): o banco já trocou o nome também na lista "sem
@@ -427,9 +528,19 @@ export function PoliticaDeDevolucaoSection({
       texto_politica: form.texto_politica.trim(),
       endereco_devolucao: form.endereco_devolucao,
     };
-    const p = Object.fromEntries(
+    const p: Record<string, Json> = Object.fromEntries(
       Object.entries(pedido).filter(([chave]) => mexido(chave)),
     );
+    // Caça 27/11 (20261643000000): lista que vai inteira leva junto a lista
+    // que esta tela VIU. A RPC recusa (LST01) se outro aparelho já a mudou, em
+    // vez de apagar em silêncio o que ele acabou de marcar ou desmarcar.
+    const vistos = Object.fromEntries(
+      LISTAS_DA_POLITICA.filter((lista) => mexido(lista)).map((lista) => [
+        lista,
+        lidos.get(lista) as Json,
+      ]),
+    );
+    if (Object.keys(vistos).length > 0) p.vistos = vistos;
     setSalvando(true);
     haptic.light();
     try {
@@ -438,6 +549,15 @@ export function PoliticaDeDevolucaoSection({
         PRAZO_DAS_ACOES_DO_PEDIDO_MS,
         () => erroDeConsultaSemResposta(),
       );
+      if (ehListaQueMudou(error)) {
+        // Nada gravou. Relê e reaplica a edição dela por cima da política
+        // nova: o que ela mudou continua na tela, para revisar e salvar.
+        haptic.error();
+        reaplicarNaLeituraRef.current = true;
+        await carregar();
+        toast.error(AVISO_DA_POLITICA_MUDOU);
+        return;
+      }
       if (error) {
         toast.error(
           error.code === "57014"

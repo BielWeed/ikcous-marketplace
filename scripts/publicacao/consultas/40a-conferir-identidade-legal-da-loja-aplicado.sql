@@ -145,9 +145,10 @@ WITH alvo(assinatura) AS (
   UNION ALL
   SELECT 'upsert_store_config: corpo e o da 20261239000000, com razao social, documento e e-mail (md5)',
          'b562669936df1cda31d4bdd4d075bff3',
-         -- 2 hashes aceitos: o corpo da 20261239000000 OU o da SUCESSORA dele, a 20261244000000 (a loja escolhe como
-         -- entrega na cidade: o mesmo corpo mais as duas chaves da entrega propria). O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN f.m IN ('b562669936df1cda31d4bdd4d075bff3', '391e8e1064400df5aea579f3472b203c', 'aa4ed730ac6ad3d3c2644b4285ff39a9')
+         -- Hashes aceitos: o corpo da 20261239000000 OU o de uma SUCESSORA dele: a 20261244000000 (a loja escolhe como
+         -- entrega na cidade: o mesmo corpo mais as duas chaves da entrega propria), a 20261310000000 (estilo do card de
+         -- frete) e a 20261643000000 (as listas dos ajustes nao somem entre aparelhos). O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN f.m IN ('b562669936df1cda31d4bdd4d075bff3', '391e8e1064400df5aea579f3472b203c', 'aa4ed730ac6ad3d3c2644b4285ff39a9', '2f772ffd1370359ba6c64540b71c35b2')
                                THEN 'b562669936df1cda31d4bdd4d075bff3'
                                ELSE f.m END
                      FROM fn f), 'AUSENTE')

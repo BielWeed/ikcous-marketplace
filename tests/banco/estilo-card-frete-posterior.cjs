@@ -6,6 +6,10 @@ const path = require("node:path");
 async function desfazerEstiloCardFreteNaTransacao(c) {
   if (process.env.CI_BANCO_EFEMERO !== "1")
     throw new Error("Exige banco efemero");
+  // A sucessora 20261643000000 (as listas dos ajustes) redefine o mesmo upsert: sai antes (so se no ar).
+  await require("./as-listas-dos-ajustes-posterior.cjs").desfazerAsListasDosAjustesNaTransacao(
+    c,
+  );
   const vivo = await c.query(
     "SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHERE oid = to_regprocedure('public.upsert_store_config(jsonb)')",
   );
