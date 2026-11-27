@@ -119,7 +119,7 @@ type AtualizaStatus = (
   notes?: string,
   silent?: boolean,
   statusEsperado?: OrderStatus,
-) => Promise<void>;
+) => Promise<unknown>;
 
 let linhasParaCarga: unknown[] = [];
 let chamadasUpdateOrderStatus: any[] = [];

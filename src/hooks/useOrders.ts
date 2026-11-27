@@ -4844,7 +4844,11 @@ export function useOrders(
                 "Será sincronizada com o servidor quando reestabelecer conexão.",
             });
           }
-          return;
+          // Quem chamou decide o aviso à cliente pelo que aconteceu AQUI, não
+          // por um "estou offline" capturado no render (a rede pode ter caído
+          // com a pergunta de confirmação aberta): o que foi para a fila é
+          // avisado pela própria fila, quando sincronizar.
+          return "guardado-na-fila" as const;
         }
 
         // O aviso do realtime ("Pedido #N atualizado para…") não repete o que

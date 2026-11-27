@@ -1864,6 +1864,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // se ela ainda está nela (ver o `setSelectedOrder` abaixo).
     const etapaDePartida =
       selectedOrder?.id === orderId ? selectedOrder.status : undefined;
+    // A mudança foi para a fila offline? Lido do resultado de
+    // `updateOrderStatus`, nunca do `isOffline` deste render: a internet pode
+    // cair com a pergunta "Cancelar o pedido?" aberta, e o valor capturado
+    // ainda diria "online" — o push falhava e a ficha afirmava que a cliente
+    // não seria avisada, quando a fila avisa ao sincronizar.
+    let guardadoNaFila = false;
     // A RPC VEM PRIMEIRO (PEDIDO-090, #87).
     //
     // Até aqui o push saía ANTES da gravação. Se a RPC falhasse — 401, sessão
@@ -1873,7 +1879,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     try {
       // A origem capturada pelo diálogo prevalece sobre o estado atualizado.
       // Sem diálogo, usa a ficha selecionada apenas se for do MESMO pedido.
-      await updateOrderStatus(
+      const resultado = await updateOrderStatus(
         orderId,
         newStatus,
         undefined,
@@ -1881,6 +1887,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         statusEsperado ??
           (selectedOrder?.id === orderId ? selectedOrder.status : undefined),
       );
+      guardadoNaFila = resultado === "guardado-na-fila";
       haptic.success();
 
       // Achado 1 (caça-defeitos, Task 4c) — `handleStatusChange` é função
@@ -1977,7 +1984,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       throw err;
     }
 
-    if (silent || isOffline) return;
+    if (silent || guardadoNaFila) return;
 
     // O pedido pode não estar na página carregada: quando o admin chega por
     // deep link, `orders` traz só a página atual e o `find` devolve undefined.

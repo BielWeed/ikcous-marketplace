@@ -32,9 +32,13 @@ export async function avisarOClienteDoStatus(
   // disparados sem esperar um pelo outro e podem chegar trocados. O aparelho
   // mantém na bandeja o de carimbo maior (`ordem-do-aviso-do-pedido.ts`).
   const emitidoEm = Date.now();
+  // Os avisos amarelos dizem DE QUAL pedido são: a passada da fila offline
+  // chama isto em qualquer tela do painel, um por item, e avisos iguais
+  // empilhados não diziam à lojista a quem mandar WhatsApp.
+  const numero = numeroDoPedido(orderId);
   try {
     const title = "Status do Pedido Atualizado";
-    const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${rotuloDoStatusParaACliente(newStatus, alvo.retiradaNaLoja)}`;
+    const body = `Seu pedido #${numero} agora está: ${rotuloDoStatusParaACliente(newStatus, alvo.retiradaNaLoja)}`;
 
     const {
       data: { session },
@@ -76,7 +80,7 @@ export async function avisarOClienteDoStatus(
     ) {
       if (envio.falhas?.some(falhaDePushSemConfirmacao)) {
         toast.warning(
-          "Status atualizado, mas não foi possível confirmar o envio do aviso",
+          `Status do pedido #${numero} atualizado, mas não foi possível confirmar o envio do aviso`,
           {
             description: descricaoDePushSemConfirmacao(
               envio.falhas,
@@ -92,15 +96,18 @@ export async function avisarOClienteDoStatus(
       const motivo = envio?.falhas?.[0]
         ? motivoDaFalhaEmPortugues(envio.falhas[0])
         : null;
-      toast.warning("Status atualizado, mas o push não chegou", {
-        description: motivo
-          ? motivo.charAt(0).toUpperCase() + motivo.slice(1)
-          : "Nenhum dispositivo deste cliente recebeu a notificação.",
-      });
+      toast.warning(
+        `Status do pedido #${numero} atualizado, mas o push não chegou`,
+        {
+          description: motivo
+            ? motivo.charAt(0).toUpperCase() + motivo.slice(1)
+            : "Nenhum dispositivo deste cliente recebeu a notificação.",
+        },
+      );
     }
   } catch (err) {
     console.error("Error sending status push:", err);
-    toast.warning("Status atualizado, mas o push falhou", {
+    toast.warning(`Status do pedido #${numero} atualizado, mas o push falhou`, {
       description: "O cliente não foi notificado da mudança.",
     });
   }
