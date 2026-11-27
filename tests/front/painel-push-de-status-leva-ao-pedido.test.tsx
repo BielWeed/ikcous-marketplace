@@ -96,6 +96,8 @@ vi.mock("@/hooks/useAnalytics", () => ({
 }));
 
 let mockOrders: Order[] = [];
+/** O que `updateOrderStatus` devolve (a hora que o banco gravou, lote 502). */
+let resultadoDoAvanco: unknown;
 
 vi.mock("@/hooks/useOrders", async () => {
   const { ErroPedidoMudou } =
@@ -107,7 +109,7 @@ vi.mock("@/hooks/useOrders", async () => {
     useOrders: () => ({
       orders: mockOrders,
       loadOrders: vi.fn(),
-      updateOrderStatus: vi.fn(async () => {}),
+      updateOrderStatus: vi.fn(async () => resultadoDoAvanco),
       totalOrders: mockOrders.length,
       isLoaded: true,
       loading: false,
@@ -177,6 +179,7 @@ describe("Painel — o push de 'status atualizado' abre o pedido, não a vitrine
   beforeEach(() => {
     vi.clearAllMocks();
     mockOrders = [pedido];
+    resultadoDoAvanco = undefined;
     getSession.mockResolvedValue({ data: { session: null } });
     invoke.mockResolvedValue({ data: { enviados: 1 }, error: null });
     const armazem = new Map<string, string>();
@@ -288,5 +291,50 @@ describe("Painel — o push de 'status atualizado' abre o pedido, não a vitrine
     } finally {
       relogio.mockRestore();
     }
+  });
+  it("o carimbo de ordem do aviso é a hora que o BANCO gravou, não o relógio adiantado do PC", async () => {
+    // Lote 502: PC da loja 1 min adiantado. O aviso levava o relógio dele e o
+    // service worker da cliente o mantinha por cima do aviso mais novo dado
+    // de um celular de relógio certo.
+    resultadoDoAvanco = {
+      gravadoNoBancoEm: "2026-11-27T12:00:00.123456+00:00",
+    };
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(
+        <AdminOrdersView
+          onNavigate={vi.fn()}
+          active={true}
+          selectedOrderId={ID_DO_PEDIDO}
+        />,
+      );
+    });
+    const botaoAvancar = () =>
+      [...hospedeiro.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes("Avançar"),
+      );
+    await vi.waitFor(() => expect(botaoAvancar()?.disabled).toBe(false));
+
+    const relogio = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.parse("2026-11-27T12:01:00.000Z"));
+    try {
+      await act(async () => botaoAvancar()?.click());
+      await vi.waitFor(() =>
+        expect(
+          invoke.mock.calls.filter(([nome]) => nome === "send-push"),
+        ).toHaveLength(1),
+      );
+    } finally {
+      relogio.mockRestore();
+    }
+    const [, opcoes] = invoke.mock.calls.find(
+      ([nome]) => nome === "send-push",
+    ) as [string, { body: { data: Record<string, unknown> } }];
+    expect(opcoes.body.data).toEqual({
+      orderId: ID_DO_PEDIDO,
+      type: "order_status",
+      emitidoEm: Date.parse("2026-11-27T12:00:00.123456+00:00"),
+    });
   });
 });

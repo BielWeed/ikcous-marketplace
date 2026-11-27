@@ -27,6 +27,30 @@ function mesmoConteudo(a: unknown, b: unknown): boolean {
 }
 
 /**
+ * A versão que CHEGOU é estritamente mais velha que a que a tela já tem?
+ * Compara os `updated_at`/`updatedAt` dos dois lados. Data ausente, que não é
+ * texto, ou ilegível NÃO é "velha" (quem chama decide pelo conteúdo, como
+ * sempre), e data IGUAL também não: a atualização otimista muda o status sem
+ * mexer nela.
+ *
+ * É a régua da lista do painel (`mesclarAtualizacaoRealtime`, no useOrders) e
+ * do aviso "Pedido #N atualizado para…" (`tipoDoAvisoDoPedido`): uma regra só,
+ * para o aviso nunca anunciar o que a lista descartou como velho.
+ */
+export function versaoMaisVelhaQueAMemoria(
+  dataNaMemoria: unknown,
+  dataQueChegou: unknown,
+): boolean {
+  const tMemoria =
+    typeof dataNaMemoria === "string" ? Date.parse(dataNaMemoria) : Number.NaN;
+  const tChegou =
+    typeof dataQueChegou === "string" ? Date.parse(dataQueChegou) : Number.NaN;
+  return (
+    Number.isFinite(tMemoria) && Number.isFinite(tChegou) && tChegou < tMemoria
+  );
+}
+
+/**
  * Decide qual versão do MESMO pedido a tela deve mostrar, entre a que está nela
  * e uma que acabou de chegar (da lista que o tempo real atualiza, ou de uma
  * busca ao servidor).

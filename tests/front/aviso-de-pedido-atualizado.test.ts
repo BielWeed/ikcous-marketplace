@@ -106,3 +106,112 @@ describe("aviso de pedido atualizado — old só com a chave primária (formato 
     ).toBe(insert);
   });
 });
+
+// Lote 502: o aviso usava a memória da tela como "antes" sem olhar a DATA. Um
+// UPDATE atrasado (socket lento, rajada após a reconexão) que a lista descarta
+// por ser mais velho que o que ela já tem (`mesclarAtualizacaoRealtime`) ainda
+// virava "Pedido #N atualizado para Em preparo" com o pedido já Enviado. O
+// aviso agora segue a MESMA regra de data da lista: evento estritamente mais
+// velho que a versão da tela não avisa nada.
+describe("aviso de pedido atualizado — evento atrasado que a lista descarta", () => {
+  beforeEach(() => esquecerAcaoPropriaDoPedido("p1"));
+
+  const NA_TELA = "2026-11-27T10:05:00.000Z";
+
+  it("status velho chegando depois de a lista já ter o mais novo: NÃO avisa", () => {
+    const evento = completarOldDoEvento(
+      noAr({
+        status: "processing",
+        payment_status: "pago",
+        updated_at: "2026-11-27T10:00:00.000Z",
+      }),
+      { status: "shipping", paymentStatus: "pago", updatedAt: NA_TELA },
+    );
+    expect(tipoDoAvisoDoPedido(evento)).toBeNull();
+  });
+
+  it("pedido estornado recebendo o evento velho de 'pago': NÃO anuncia pagamento", () => {
+    const evento = completarOldDoEvento(
+      noAr({
+        status: "cancelled",
+        payment_status: "pago",
+        updated_at: "2026-11-27T10:00:00.000Z",
+      }),
+      { status: "cancelled", paymentStatus: "estornado", updatedAt: NA_TELA },
+    );
+    expect(tipoDoAvisoDoPedido(evento)).toBeNull();
+  });
+
+  it("evento um milissegundo mais velho também é descartado (estritamente anterior)", () => {
+    const evento = completarOldDoEvento(
+      noAr({
+        status: "processing",
+        payment_status: "pago",
+        updated_at: "2026-11-27T10:04:59.999Z",
+      }),
+      { status: "pending", paymentStatus: "pago", updatedAt: NA_TELA },
+    );
+    expect(tipoDoAvisoDoPedido(evento)).toBeNull();
+  });
+
+  it("evento mais novo que a tela: avisa normalmente", () => {
+    const evento = completarOldDoEvento(
+      noAr({
+        status: "shipping",
+        payment_status: "pago",
+        updated_at: "2026-11-27T10:06:00.000Z",
+      }),
+      { status: "processing", paymentStatus: "pago", updatedAt: NA_TELA },
+    );
+    expect(tipoDoAvisoDoPedido(evento)).toBe("status");
+  });
+
+  it("data IGUAL à da tela continua avisando (a lista também aplica)", () => {
+    const evento = completarOldDoEvento(
+      noAr({ status: "shipping", payment_status: "pago", updated_at: NA_TELA }),
+      { status: "processing", paymentStatus: "pago", updatedAt: NA_TELA },
+    );
+    expect(tipoDoAvisoDoPedido(evento)).toBe("status");
+  });
+
+  it("data ausente ou ilegível de um dos lados não é 'velha': avisa como antes", () => {
+    const semDataNoEvento = completarOldDoEvento(
+      noAr({ status: "shipping", payment_status: "pago" }),
+      { status: "processing", paymentStatus: "pago", updatedAt: NA_TELA },
+    );
+    expect(tipoDoAvisoDoPedido(semDataNoEvento)).toBe("status");
+    const telaIlegivel = completarOldDoEvento(
+      noAr({
+        status: "shipping",
+        payment_status: "pago",
+        updated_at: "2026-11-27T10:00:00.000Z",
+      }),
+      { status: "processing", paymentStatus: "pago", updatedAt: "" },
+    );
+    expect(tipoDoAvisoDoPedido(telaIlegivel)).toBe("status");
+  });
+
+  it("a data que vale é a da TELA, mesmo se o servidor mandou a dele no old", () => {
+    // O old do servidor (se um dia vier completo) é a versão anterior NO
+    // BANCO, sempre mais velha que o evento; a lista compara com a memória.
+    const evento = completarOldDoEvento(
+      {
+        eventType: "UPDATE",
+        old: {
+          id: "p1",
+          status: "pending",
+          payment_status: "pago",
+          updated_at: "2026-11-27T09:00:00.000Z",
+        },
+        new: {
+          id: "p1",
+          status: "processing",
+          payment_status: "pago",
+          updated_at: "2026-11-27T10:00:00.000Z",
+        },
+      },
+      { status: "shipping", paymentStatus: "pago", updatedAt: NA_TELA },
+    );
+    expect(tipoDoAvisoDoPedido(evento)).toBeNull();
+  });
+});
