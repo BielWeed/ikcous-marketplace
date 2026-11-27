@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const MODULO = "@/components/admin/financeiro/tentativasEmAberto";
 const CONTEUDO = JSON.stringify({ descricao: "Aluguel segredo", valor: 120 });
+const DONO = "8a1f0c2e-2222-4222-8222-000000000002";
 
 describe("tentativas em aberto do lançamento", () => {
   beforeEach(() => {
@@ -18,11 +19,11 @@ describe("tentativas em aberto do lançamento", () => {
 
   it("recarregar a página (módulo novo) devolve a mesma chave para o mesmo conteúdo", async () => {
     const antes = await import(MODULO);
-    antes.guardarChaveEmAberto(CONTEUDO, "chave-1");
+    antes.guardarChaveEmAberto(DONO, CONTEUDO, "chave-1");
     vi.resetModules(); // equivale a recarregar: a memória do módulo some
     const depois = await import(MODULO);
-    expect(depois.chaveEmAbertoDoConteudo(CONTEUDO)).toBe("chave-1");
-    expect(depois.chaveEmAbertoDoConteudo(`${CONTEUDO} `)).toBeNull();
+    expect(depois.chaveEmAbertoDoConteudo(DONO, CONTEUDO)).toBe("chave-1");
+    expect(depois.chaveEmAbertoDoConteudo(DONO, `${CONTEUDO} `)).toBeNull();
   });
 
   it("não grava descrição nem valor em texto puro", async () => {
@@ -31,7 +32,7 @@ describe("tentativas em aberto do lançamento", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_700_000_000_000);
     const m = await import(MODULO);
-    m.guardarChaveEmAberto(CONTEUDO, "chave-1");
+    m.guardarChaveEmAberto(DONO, CONTEUDO, "chave-1");
     const bruto = JSON.stringify({ ...sessionStorage });
     expect(bruto).not.toContain("Aluguel");
     expect(bruto).not.toContain("120");
@@ -39,21 +40,21 @@ describe("tentativas em aberto do lançamento", () => {
 
   it("sucesso esquece a chave, inclusive depois de recarregar", async () => {
     const m = await import(MODULO);
-    m.guardarChaveEmAberto(CONTEUDO, "chave-1");
-    m.esquecerChaveEmAberto(CONTEUDO);
+    m.guardarChaveEmAberto(DONO, CONTEUDO, "chave-1");
+    m.esquecerChaveEmAberto(DONO, CONTEUDO);
     vi.resetModules();
     const depois = await import(MODULO);
-    expect(depois.chaveEmAbertoDoConteudo(CONTEUDO)).toBeNull();
+    expect(depois.chaveEmAbertoDoConteudo(DONO, CONTEUDO)).toBeNull();
   });
 
   it("vence em 10 minutos", async () => {
     vi.useFakeTimers();
     const m = await import(MODULO);
-    m.guardarChaveEmAberto(CONTEUDO, "chave-1");
+    m.guardarChaveEmAberto(DONO, CONTEUDO, "chave-1");
     vi.advanceTimersByTime(10 * 60_000 - 1);
-    expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBe("chave-1");
+    expect(m.chaveEmAbertoDoConteudo(DONO, CONTEUDO)).toBe("chave-1");
     vi.advanceTimersByTime(2);
-    expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBeNull();
+    expect(m.chaveEmAbertoDoConteudo(DONO, CONTEUDO)).toBeNull();
   });
 
   it("sem sessionStorage não quebra: só perde a proteção entre aberturas", async () => {
@@ -67,15 +68,17 @@ describe("tentativas em aberto do lançamento", () => {
     };
     vi.stubGlobal("sessionStorage", bloqueado);
     const m = await import(MODULO);
-    expect(() => m.guardarChaveEmAberto(CONTEUDO, "chave-1")).not.toThrow();
-    expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBeNull();
-    expect(() => m.esquecerChaveEmAberto(CONTEUDO)).not.toThrow();
+    expect(() =>
+      m.guardarChaveEmAberto(DONO, CONTEUDO, "chave-1"),
+    ).not.toThrow();
+    expect(m.chaveEmAbertoDoConteudo(DONO, CONTEUDO)).toBeNull();
+    expect(() => m.esquecerChaveEmAberto(DONO, CONTEUDO)).not.toThrow();
     vi.unstubAllGlobals();
   });
 
   it("registro do próprio conteúdo com formato errado é ignorado", async () => {
     const primeiro = await import(MODULO);
-    primeiro.guardarChaveEmAberto(CONTEUDO, "chave-1");
+    primeiro.guardarChaveEmAberto(DONO, CONTEUDO, "chave-1");
     const armazem = "fin-lancamento-tentativas-em-aberto";
     const chaveDoResumo = Object.keys(
       JSON.parse(sessionStorage.getItem(armazem) ?? "{}"),
@@ -86,14 +89,14 @@ describe("tentativas em aberto do lançamento", () => {
     );
     vi.resetModules();
     const m = await import(MODULO);
-    expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBeNull();
+    expect(m.chaveEmAbertoDoConteudo(DONO, CONTEUDO)).toBeNull();
     sessionStorage.setItem(armazem, JSON.stringify({ [chaveDoResumo]: null }));
-    expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBeNull();
+    expect(m.chaveEmAbertoDoConteudo(DONO, CONTEUDO)).toBeNull();
   });
 
   it("registro corrompido no armazenamento é ignorado", async () => {
     sessionStorage.setItem("fin-lancamento-tentativas-em-aberto", "{nao-json");
     const m = await import(MODULO);
-    expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBeNull();
+    expect(m.chaveEmAbertoDoConteudo(DONO, CONTEUDO)).toBeNull();
   });
 });
