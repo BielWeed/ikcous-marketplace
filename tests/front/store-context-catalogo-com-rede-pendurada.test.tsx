@@ -104,7 +104,15 @@ type Retrato = {
 const DEPOIS_DO_PRAZO_MS = 26_000;
 
 function produtoDoBanco(id: string) {
-  return { id, nome: `Produto ${id}`, preco_venda: 10, estoque: 5 };
+  // 27/11/2026 (#2026): o catálogo passou a ser lido por chave (data_cadastro, id);
+  // página cheia sem a chave vira erro. O banco real sempre manda data_cadastro (NOT NULL).
+  return {
+    id,
+    nome: `Produto ${id}`,
+    preco_venda: 10,
+    estoque: 5,
+    data_cadastro: "2026-11-01T12:00:00.123456+00:00",
+  };
 }
 
 describe("StoreContext — rede pendurada na leitura do catálogo", () => {
