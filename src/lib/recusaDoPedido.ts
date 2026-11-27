@@ -70,6 +70,11 @@ export type AcaoDeRecusa =
   | "entrar_na_conta"
   | "tentar_de_novo"
   | "conferir_antes"
+  // A loja não aceita pedido novo AGORA (manutenção ou vendas pausadas, gatilho
+  // da migration 20261600000000): nenhum pedido nasceu e não há nada a trocar
+  // nem a conferir. A saída é fechar o aviso; o carrinho fica e a pessoa tenta
+  // depois.
+  | "aguardar_a_loja"
   // Só a tela decide (`decidirSaidaDoCheckout`, quem compra SEM CONTA): é o
   // `conferir_antes` de quem não tem onde conferir. Reenvia a MESMA compra que
   // ficou sem resposta (mesma chave de idempotência, payload congelado) — o
@@ -383,6 +388,25 @@ const REGRAS: ReadonlyArray<{
     padrao:
       /^O pagamento pelo app é feito em outra etapa\. Para este pedido, escolha pagar na retirada ou na entrega\.$/,
     acao: "trocar_pagamento",
+  },
+  // A PAUSA DE VENDAS (26/11/2026 — migration 20261600000000): o gatilho BEFORE
+  // INSERT `a_loja_aceita_pedido_novo` em marketplace_orders recusa o pedido NOVO
+  // da vitrine com a loja em manutenção ou com as vendas pausadas pela
+  // assinatura. O RAISE vem ANTES de o INSERT acontecer: nenhum pedido nasceu.
+  // Sem regra, as duas frases caíam em `conferir_antes` — "Ver meus pedidos"
+  // sobre um pedido que não existe e o Finalizar travado à espera de uma
+  // conferência sem objeto (o mesmo beco das regras de entrega acima).
+  // `tentar_de_novo` não serve (a regra do cabeçalho: texto do banco nunca vira
+  // "tente de novo"), nem `trocar_pagamento`/`trocar_entrega` (nada a trocar).
+  // `aguardar_a_loja` só fecha o painel: o carrinho continua e o Finalizar fica
+  // livre para quando a loja voltar a vender.
+  {
+    padrao: /^A loja está em manutenção\. Tente de novo mais tarde\.$/,
+    acao: "aguardar_a_loja",
+  },
+  {
+    padrao: /^Esta loja não está aceitando pedidos agora\.$/,
+    acao: "aguardar_a_loja",
   },
   {
     padrao: /^Endereço inválido ou não pertence ao usuário\.$/,

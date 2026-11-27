@@ -8,6 +8,9 @@
 //   ler(slug)          -> texto | null  (null = nada gravado para a loja)
 //   gravar(slug, txt)  -> substitui de forma atômica (arquivo novo + rename)
 //   apagar(slug)       -> some com o valor; idempotente
+//   listar()           -> slugs com valor gravado, em ordem; sem decifrar
+//                         nada, sem trava, sem nome fora do padrão; cofre
+//                         vazio ou pasta inexistente = []
 //   travar(slug)       -> função liberar(); a SEGUNDA trava da mesma loja é
 //                         recusada (CofreTravado), mesmo vinda de outro processo
 //
@@ -35,7 +38,14 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
-import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  rename,
+  unlink,
+} from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -114,6 +124,13 @@ export function pastaPadraoDoCofre(env = process.env) {
   return path.join(base, "ikcous", "frota", "acesso");
 }
 
+/** %LOCALAPPDATA%\ikcous\frota\banco: o cofre da senha do banco de cada loja
+ * (nova-loja.mjs grava, backup-do-cofre.mjs copia). Uma função só, para os
+ * dois nunca divergirem. */
+export function pastaPadraoDoCofreDoBanco(env = process.env) {
+  return path.join(path.dirname(pastaPadraoDoCofre(env)), "banco");
+}
+
 // ------------------------------------------------------------------ memória --
 
 export function criarCofreMemoria() {
@@ -132,6 +149,9 @@ export function criarCofreMemoria() {
     async apagar(slug) {
       exigirSlug(slug);
       valores.delete(slug);
+    },
+    async listar() {
+      return [...valores.keys()].sort();
     },
     async travar(slug) {
       exigirSlug(slug);
@@ -174,7 +194,9 @@ function caminhoReal(p) {
   };
 }
 
-function exigirPastaSegura(pasta) {
+/** Pasta absoluta, fora deste repositório e de qualquer árvore git; devolve o
+ * caminho resolvido. Exportada para o estado do nova-loja.mjs (mesma regra). */
+export function exigirPastaSegura(pasta) {
   if (typeof pasta !== "string" || pasta === "" || !path.isAbsolute(pasta)) {
     throw new ErroDoCofre(
       "Cofre: a pasta do cofre tem de ser um caminho absoluto.",
@@ -375,6 +397,27 @@ export function criarCofreDpapi({
           );
         }
       }
+    },
+
+    async listar() {
+      let entradas;
+      try {
+        entradas = await readdir(raiz, { withFileTypes: true });
+      } catch (e) {
+        if (e?.code === "ENOENT") return [];
+        throw new ErroDoCofre(
+          "Cofre DPAPI: não consegui listar a pasta do cofre.",
+        );
+      }
+      // só o nome do arquivo decide: nada é aberto nem decifrado; .trava,
+      // .tmp de gravação interrompida, pasta e slug fora do padrão ficam fora
+      const slugs = [];
+      for (const e of entradas) {
+        if (!e.isFile() || !e.name.endsWith(".dpapi")) continue;
+        const slug = e.name.slice(0, -".dpapi".length);
+        if (RE_PROJETO.test(slug)) slugs.push(slug);
+      }
+      return slugs.sort();
     },
 
     async travar(slug) {

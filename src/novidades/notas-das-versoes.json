@@ -1,4 +1,21 @@
 {
+  "1.5.243": {
+    "titulo": "Listas de escolha novas no painel e uma compra mais firme",
+    "novidades": [
+      "No painel, as listas de escolha ganharam um seletor próprio, mais fácil de usar no celular."
+    ],
+    "correcoes": [
+      "Na retirada, o pedido pede só o CEP, sem endereço de casa.",
+      "O carrinho não soma mais o frete de uma quantidade antiga, e o PIX pago aparece como confirmado.",
+      "Com a loja em manutenção, o pedido novo não entra: a cliente é avisada e o carrinho fica guardado para quando a loja voltar.",
+      "Fornecedores e cadastro fiscal editados em dois aparelhos não desfazem a mudança do outro.",
+      "Vendas por categoria somam exatamente o faturamento, centavo por centavo."
+    ],
+    "melhorias": [
+      "Mudanças de produto, banner e configuração aparecem ao vivo no outro aparelho em todas as lojas.",
+      "Foto de produto que chega sem tipo agora é reduzida como as outras, e textos com acento ou emoji aparecem certos."
+    ]
+  },
   "1.5.242": {
     "titulo": "Teste de pagamento explicado, retirada mais clara e valores mais seguros",
     "novidades": [],

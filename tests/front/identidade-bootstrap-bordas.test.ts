@@ -649,6 +649,39 @@ describe("alvo novo: o que vai pela rede", () => {
     );
   });
 
+  // A loja nova antes do passo `dominio` do nova-loja: a ficha existe com o
+  // domínio vazio (ou a view não devolve a linha). Falha FECHADA: recusa por
+  // ESTADO e nada sai para o Storage nem para a save_store_identity.
+  for (const [nome, dominioRows] of [
+    ["sem a linha (dominioRows: [])", []],
+    ["com o domínio NULL", [{ dominio_publico: null }]],
+  ] as const) {
+    it(`ficha pública ${nome}: recusa (ESTADO) e nada é gravado`, async () => {
+      const { r, reqs } = await alvoNovo({ dominioRows: [...dominioRows] });
+      expect(r.exit).toBe(CODIGOS_DE_SAIDA.recusa);
+      expect(r.texto).toContain(
+        "a ficha publica store_config.id=1 falta, nao pode ser lida ou nao bate com --dominio",
+      );
+      const escritas = reqs.filter(
+        (q) =>
+          q.metodo !== "GET" &&
+          q.metodo !== "HEAD" &&
+          !(
+            q.url.pathname === "/rest/v1/v_store_config" &&
+            q.url.searchParams.get("select") === "dominio_publico"
+          ),
+      );
+      expect(escritas).toEqual([]);
+      expect(
+        reqs.some(
+          (q) =>
+            q.url.pathname.startsWith("/storage/") ||
+            q.url.pathname.startsWith("/rest/v1/rpc/"),
+        ),
+      ).toBe(false);
+    });
+  }
+
   it("gravação que responde vazio (null) NÃO é confirmação", async () => {
     const { r } = await alvoNovo({ saveBody: null });
     expect(r.exit).toBe(CODIGOS_DE_SAIDA.inesperado);

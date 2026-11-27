@@ -93,9 +93,10 @@ jobs:
       # A loja existe no cadastro (scripts/frota/lojas.json) e e ASSINANTE? Recusa
       # ("loja desconhecida") ANTES do passo que ve segredo. Nao le segredo.
       - name: Confere a loja no cadastro (lojas.json) antes de qualquer segredo
+        id: loja
         env:
           PROJETO: ${{ inputs.projeto }}
-        run: node scripts/frota/lojas.cjs validar "$PROJETO" --assinante
+        run: node scripts/frota/lojas.cjs validar "$PROJETO" --assinante --saida-do-passo
 
       # Cada alvo enxerga SÓ o seu segredo: segredo vazio dá '', nunca o do
       # vizinho. É o ÚNICO passo com segredo; o script PARA sem o do próprio alvo.

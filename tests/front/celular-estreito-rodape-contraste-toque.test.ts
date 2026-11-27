@@ -135,7 +135,9 @@ describe("checkout: texto pequeno sem zinc-400 / red-500", () => {
   it("linha do Subtotal usa zinc-600 pelo CSS do resumo", () => {
     const i = CHECKOUT.lastIndexOf("<span>Subtotal</span>");
     expect(i).toBeGreaterThan(-1);
-    const grupo = CHECKOUT.lastIndexOf('className="checkout-values"', i);
+    // Prefixo, sem a aspa final: o grupo leva também `outline-none` (recebe o
+    // foco quando o Finalizar é recusado, 27/11/2026).
+    const grupo = CHECKOUT.lastIndexOf('className="checkout-values', i);
     expect(grupo).toBeGreaterThan(-1);
     const linha = CHECKOUT.slice(grupo, i);
     expect(linha).not.toMatch(/text-zinc-400/);

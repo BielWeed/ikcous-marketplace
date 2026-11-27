@@ -22,11 +22,14 @@
  * Blocos (o recuo da linha do marcador é o recuo das linhas geradas):
  *   LOJAS-SEGREDOS-INICIO/FIM       uma linha de env por loja assinante:
  *                                   NOME: ${{ inputs.projeto == 'x' && secrets.NOME || '' }}
+ *                                   e UMA linha só para o segredo da org central
+ *                                   (ver abaixo), se alguma loja o usa
  *   LOJAS-SEGREDO-LEGADO-INICIO/FIM uma linha, o segredo legado, só para os alvos
  *                                   legado (loja, sandbox) — forma positiva: um
  *                                   projeto fora do cadastro nunca o recebe
  *   LOJAS-SEGREDO-UNICO-INICIO/FIM  uma linha SUPABASE_ACCESS_TOKEN com a cadeia
- *                                   `a && s1 || b && s2 || ''` (publicar-functions)
+ *                                   `a && s1 || b && s2 || ''` (publicar-functions);
+ *                                   o segredo da org central entra como UM elo
  *   LOJAS-OPCOES-INICIO/FIM         as `options:` do input `projeto` (choice):
  *                                   todas as lojas, na ordem do cadastro
  *   LOJAS-OPCOES-ASSINANTES-INICIO/FIM          só as assinantes
@@ -57,6 +60,19 @@
  * com o próprio nome, que nunca é o de um banco real (o menu e o 1º passo já o
  * recusam de qualquer forma).
  *
+ * O SEGREDO DA ORG CENTRAL (scripts/frota/org-central.json, modelo de
+ * 01/12/2026): toda loja assinante da org usa o MESMO segredo. A guarda
+ * `(inputs.projeto == 'a' || … ) && secrets.X` cresceria ~40-64 caracteres por
+ * loja e quebraria a C2 acima (8.000 entre ~125 e ~220 lojas). Por isso a
+ * linha dele é UMA, de tamanho fixo, e a guarda é POSITIVA pelo cadastro:
+ *   NOME: ${{ steps.loja.outputs.segredo == 'NOME' && secrets.NOME || '' }}
+ * `steps.loja.outputs.segredo` é o NOME do segredo da loja escolhida, gravado
+ * pelo passo `id: loja` (`lojas.cjs validar "$PROJETO" … --saida-do-passo`),
+ * que roda ANTES, no mesmo job, e recusa loja fora do cadastro; na cadeia de
+ * publicar-functions o passo é o `alvo`, que grava o mesmo `segredo=`. Uma loja
+ * com segredo próprio, legado ou fora do cadastro nunca casa o nome da org.
+ * Segredo repetido que NÃO é o da org falha fechado (seria chave repetida).
+ *
  * POR QUE O MENU CONTINUA `choice` (e não texto livre): o GitHub recusa no
  * disparo um valor fora de `options` ("Provided value ... not in the list of
  * allowed values"), antes de existir runner — a trava que a rodada 2 da revisão
@@ -71,6 +87,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { carregarLojas, assinantes, legados } = require("./lojas.cjs");
+const { carregarOrgCentral } = require("./org-central.cjs");
 
 const DIR_WORKFLOWS = path.resolve(
   __dirname,
@@ -125,11 +142,38 @@ function mapaDoGrupoDoBanco(cad) {
   return mapa;
 }
 
+/**
+ * As assinantes agrupadas pelo NOME do segredo, na ordem da 1ª loja de cada
+ * nome. Só o segredo da org central pode ter mais de uma loja; outro nome
+ * repetido LANÇA (o validador já o recusa; isto pega cadastro montado à mão).
+ */
+function segredosDasAssinantes(cad) {
+  const segredoDaOrg = carregarOrgCentral().segredoDoGitHub;
+  const grupos = new Map();
+  for (const l of assinantes(cad)) {
+    if (!grupos.has(l.segredoDoToken)) grupos.set(l.segredoDoToken, []);
+    grupos.get(l.segredoDoToken).push(l);
+  }
+  return [...grupos].map(([nome, lojas]) => {
+    if (lojas.length > 1 && nome !== segredoDaOrg)
+      throw new Error(
+        `segredo ${nome} repetido em ${lojas.map((l) => l.projeto).join(", ")} e não é o da org central (${segredoDaOrg})`,
+      );
+    return { nome, lojas, daOrg: nome === segredoDaOrg };
+  });
+}
+
+/** A guarda de tamanho fixo do segredo da org: o nome que o passo `passo`
+ * (o que validou a loja no cadastro) gravou é este? */
+const guardaDaOrg = (passo, nome) =>
+  `steps.${passo}.outputs.segredo == '${nome}'`;
+
 const BLOCOS = Object.freeze({
   "LOJAS-SEGREDOS": (cad) =>
-    assinantes(cad).map(
-      (l) =>
-        `${l.segredoDoToken}: \${{ inputs.projeto == '${l.projeto}' && secrets.${l.segredoDoToken} || '' }}`,
+    segredosDasAssinantes(cad).map(({ nome, lojas, daOrg }) =>
+      daOrg
+        ? `${nome}: \${{ ${guardaDaOrg("loja", nome)} && secrets.${nome} || '' }}`
+        : `${nome}: \${{ inputs.projeto == '${lojas[0].projeto}' && secrets.${nome} || '' }}`,
     ),
   "LOJAS-SEGREDO-LEGADO": (cad) => {
     const ls = legados(cad);
@@ -140,10 +184,11 @@ const BLOCOS = Object.freeze({
     return [`${nome}: \${{ (${cond}) && secrets.${nome} || '' }}`];
   },
   "LOJAS-SEGREDO-UNICO": (cad) => {
-    const cadeia = assinantes(cad)
-      .map(
-        (l) =>
-          `inputs.projeto == '${l.projeto}' && secrets.${l.segredoDoToken}`,
+    const cadeia = segredosDasAssinantes(cad)
+      .map(({ nome, lojas, daOrg }) =>
+        daOrg
+          ? `${guardaDaOrg("alvo", nome)} && secrets.${nome}`
+          : `inputs.projeto == '${lojas[0].projeto}' && secrets.${nome}`,
       )
       .join(" || ");
     return [`SUPABASE_ACCESS_TOKEN: \${{ ${cadeia} || '' }}`];

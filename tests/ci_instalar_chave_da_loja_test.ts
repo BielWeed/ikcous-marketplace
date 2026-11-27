@@ -388,7 +388,7 @@ async function verificarWorkflow(yamlCru: string) {
   assert(iCadastro < passos.length - 1, "e antes do passo do segredo");
   assertEquals(
     passos[iCadastro].run,
-    'node scripts/frota/lojas.cjs validar "$PROJETO" --assinante',
+    'node scripts/frota/lojas.cjs validar "$PROJETO" --assinante --saida-do-passo',
   );
   assert(
     !JSON.stringify(passos[iCadastro]).includes("secrets."),
