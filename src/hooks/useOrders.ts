@@ -29,6 +29,10 @@ import {
   mapOrderFromDB,
 } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import {
+  fraseDasPecasSemTamanho,
+  lerPecasSemTamanho,
+} from "@/lib/pecas-sem-tamanho";
 import { pluralizar } from "@/lib/pluralizar";
 import {
   MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
@@ -295,6 +299,29 @@ export const MENSAGEM_CANCELAMENTO_SEM_RESPOSTA =
   "A conexão está lenta e não conseguimos confirmar se o pedido foi cancelado. Confira o pedido antes de tentar de novo.";
 export const MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA =
   "A conexão está lenta e não conseguimos confirmar se o status mudou. Confira o pedido antes de tentar de novo.";
+
+/**
+ * Quantas peças DESTE pedido o retorno pôs na fila do tamanho (20261642000000):
+ * produto vendido sem tamanho que depois ganhou a grade não recebe a peça de
+ * volta no estoque; ela espera a lojista escolher o tamanho. A RPC do retorno
+ * não conta isso, a lista das pendentes conta. Sem resposta, loja sem a
+ * migration ou forma torta: 0 (o aviso de sempre). Só leitura, 5 s.
+ */
+async function pecasDoPedidoSemTamanho(orderId: string): Promise<number> {
+  try {
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(supabase.rpc("pecas_sem_tamanho_pendentes", {})),
+      PRAZO_DA_CONFERENCIA_DO_AVANCO_MS,
+      () => erroDeConsultaSemResposta(),
+    );
+    if (error) return 0;
+    return (lerPecasSemTamanho(data) ?? []).filter(
+      (p) => p.orderId === orderId && p.origem === "pedido_desfeito",
+    ).length;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Depois de um avanço sem resposta: o banco está na etapa pedida? Só `true`
@@ -5156,7 +5183,13 @@ export function useOrders(
             "Este retorno já tinha sido confirmado antes. Nada mudou no estoque.",
           );
         } else {
-          toast.success("Retorno do produto confirmado. Estoque atualizado.");
+          // A peça que foi para a fila do tamanho NÃO está no estoque.
+          const semTamanho = await pecasDoPedidoSemTamanho(orderId);
+          toast.success(
+            semTamanho > 0
+              ? `Retorno do produto confirmado. ${fraseDasPecasSemTamanho(semTamanho)}`
+              : "Retorno do produto confirmado. Estoque atualizado.",
+          );
         }
         return data;
       } catch (err: any) {

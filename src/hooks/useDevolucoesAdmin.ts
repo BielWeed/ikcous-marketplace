@@ -16,6 +16,7 @@ import {
   reaisComVirgula,
   totalAbertas,
 } from "@/lib/devolucao";
+import { fraseDasPecasSemTamanho } from "@/lib/pecas-sem-tamanho";
 import {
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
@@ -785,10 +786,12 @@ export function useDevolucaoAdmin(
       );
       if (!r) return null;
 
+      // A peça sem tamanho (20261642000000) não está à venda: conta à parte.
       const estoque =
-        r.reestocados > 0
+        (r.reestocados > 0
           ? ` ${r.reestocados} ${r.reestocados === 1 ? "unidade voltou" : "unidades voltaram"} ao estoque.`
-          : "";
+          : "") +
+        (r.sem_tamanho > 0 ? ` ${fraseDasPecasSemTamanho(r.sem_tamanho)}` : "");
       const valor = formatarReais(r.valor_reembolso ?? 0);
 
       if (r.refund_id) {

@@ -361,6 +361,11 @@ async function main() {
     // Dois pontos de partida, a prova vale nos dois: no clone de base a migration ainda não veio (corpo da 175); no CI ("Migrations do
     // zero") ela já veio no apply, e o estado de ANTES se obtém desfazendo com o rollback-manual, que devolve o corpo da 175 byte a byte.
     // Qualquer outro corpo (nem o da 175 nem o desta migration) NÃO é desfeito: a asserção abaixo reprova, sem afrouxar.
+    // A 20261642000000 (a peca que volta sem tamanho) sucede o corpo desta: no CI ela veio no apply e sai ANTES (pelo rollback dela, que
+    // devolve o corpo desta byte a byte; o pre-voo do rollback desta recusa o corpo dela).
+    await require("./a-peca-que-volta-sem-tamanho-posterior.cjs").desfazerPecaSemTamanhoNaTransacao(
+      c,
+    );
     if ((await corpoVivo(c)) === H_NOVO) {
       assert.equal(
         await aplicar(c, rollback),

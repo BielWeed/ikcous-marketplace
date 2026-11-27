@@ -1382,6 +1382,56 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261642000000: a peca que volta sem tamanho espera a lojista. devolver_estoque e admin_devolucao_concluir ganham o ramo do item SEM variacao
+  // de produto que tem variacao ligada (a peca vai para pecas_sem_tamanho e nao conta como creditada); resolver_peca_sem_tamanho credita a
+  // variacao escolhida uma vez so. Os marcadores sao as decisoes que, tiradas, voltam o defeito ou o pioram. Os corpos exatos (md5) sao da
+  // consulta 202a e do pos-voo; o comportamento e da prova viva a-peca-que-volta-sem-tamanho-viva.cjs.
+  "20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql": [
+    {
+      funcao: "devolver_estoque",
+      esperado: [
+        {
+          texto:
+            "WHERE v.product_id = v_item.product_id AND v.active = true) THEN",
+          vezes: 1,
+        },
+        { texto: "FROM generate_series(1, v_credito);", vezes: 1 },
+        {
+          texto:
+            "SELECT v_item.product_id, p_order_id, v_item.id, 'pedido_desfeito'",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_concluir",
+      esperado: [
+        {
+          texto:
+            "WHERE v.product_id = v_di.product_id AND v.active = true) THEN",
+          vezes: 1,
+        },
+        { texto: "FROM generate_series(1, v_di.quantidade);", vezes: 1 },
+        {
+          texto:
+            "'reestocados', v_reestocados - v_sem_tamanho, 'sem_tamanho', v_sem_tamanho",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "resolver_peca_sem_tamanho",
+      esperado: [
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "IF v_peca.resolvida_em IS NOT NULL THEN", vezes: 1 },
+        { texto: "IF v_variante.active IS NOT TRUE THEN", vezes: 1 },
+        {
+          texto: "SET stock_increment = COALESCE(stock_increment, 0) + 1",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261630000000: a loja ja suspensa tambem pausa. marcar_suspensa_desde (o gatilho da 20261600000000) ganha o ramo de quem SEGUE suspensa
   // sem dia. Os marcadores sao as decisoes que, tiradas, voltam o defeito ou o pioram: o ramo novo grava SO quando o dia e' NULL (sem ele o
   // reenvio recomecaria a contagem todo dia), os dois INSERT da marca (entrar e seguir sem dia) e o apagar ao sair. O corpo exato (md5) e da

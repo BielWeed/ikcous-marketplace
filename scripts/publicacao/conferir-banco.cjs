@@ -3675,11 +3675,32 @@ const ROL_DA_201 = [
   "get_reviews_metrics: corpo exato (md5), so as publicadas",
   "get_admin_reviews_paged e get_reviews_metrics: uma assinatura cada, SECURITY DEFINER plpgsql VOLATILE, EXECUTE de authenticated e service_role (nem anon nem PUBLIC)",
 ];
+// Lote 202 (20261642000000, a peca que volta sem tamanho espera a lojista: devolver_estoque e admin_devolucao_concluir com o ramo da peca sem
+// tamanho, a tabela NOVA pecas_sem_tamanho e as RPCs NOVAS pecas_sem_tamanho_pendentes e resolver_peca_sem_tamanho). Somente catalogo: nenhuma
+// le pedido, devolucao, produto nem peca e nenhuma chama funcao. A 202a prova os quatro corpos (md5), o EXECUTE so do authenticated das RPCs novas e
+// a tabela fechada (6); antes do apply responde AUSENTE/nao, nunca erro. A 202b prova a base vigente (389 e 395, ou os desta), a tabela ausente ou
+// com a forma desta (o rollback a mantem) e as premissas do pre-voo (4).
+const ROL_DA_202A = [
+  "devolver_estoque: corpo exato (md5)",
+  "admin_devolucao_concluir: corpo exato (md5)",
+  "pecas_sem_tamanho_pendentes: corpo exato (md5)",
+  "resolver_peca_sem_tamanho: corpo exato (md5)",
+  "as duas RPCs novas: uma so cada, SECURITY DEFINER, search_path=public e EXECUTE so do authenticated (nem PUBLIC, anon ou service_role)",
+  "pecas_sem_tamanho: a tabela da 20261642000000 (11 colunas), RLS ligada, sem politica e sem privilegio de aplicacao",
+];
+const ROL_DA_202B = [
+  "devolver_estoque: corpo da 20261389100000 ou desta (md5)",
+  "admin_devolucao_concluir: corpo da 20261395200000 ou desta (md5)",
+  "pecas_sem_tamanho: ausente ou com a forma desta (11 colunas)",
+  "is_admin() e is_admin_atual() existem; produtos, pedidos, variacoes e itens da devolucao tem as colunas que os corpos leem",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado":
     ROL_DA_201,
   "201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente":
     ROL_DA_201,
+  "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado": ROL_DA_202A,
+  "202b-antes-a-peca-que-volta-sem-tamanho-base-vigente": ROL_DA_202B,
   "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado":
     ROL_DA_200A,
   "200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente":

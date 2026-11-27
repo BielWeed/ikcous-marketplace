@@ -1908,6 +1908,11 @@ const POSTERIORES_A_97 = [
 ];
 
 async function desfazerPosterioresNaTransacao(c) {
+  // A 20261642000000 (a peca que volta sem tamanho) sucede os corpos da 389 e da 395 (CONCLUSAO_TRANCA, na lista abaixo) e suas RPCs
+  // usam is_admin_atual: sai ANTES de tudo (so se no ar).
+  await require("./a-peca-que-volta-sem-tamanho-posterior.cjs").desfazerPecaSemTamanhoNaTransacao(
+    c,
+  );
   // A 5700 usa is_admin_atual; retire 5700 → 5600 antes de desfazer a 98 abaixo.
   await desfazerCancelarRetiradaProntaNaTransacao(c);
   // A 20261399400000 (o aviso da avaliacao respondida) sucede os corpos de reply_review_atomic da 1360: sai ANTES dela (o rollback da 1360 exige o corpo da 1360).

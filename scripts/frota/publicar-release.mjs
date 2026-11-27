@@ -1112,6 +1112,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente",
   "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
   "201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente",
+  "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
+  "202b-antes-a-peca-que-volta-sem-tamanho-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

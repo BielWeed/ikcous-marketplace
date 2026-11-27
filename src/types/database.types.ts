@@ -4015,6 +4015,16 @@ export type Database = {
         Args: never;
         Returns: Json;
       };
+      pecas_sem_tamanho_pendentes: {
+        Args: { p_produto_id?: string };
+        Returns: {
+          criada_em: string;
+          id: string;
+          order_id: string | null;
+          origem: string;
+          produto_id: string;
+        }[];
+      };
       pedido__mudar_status: {
         Args: {
           p_ator: string;
@@ -4161,6 +4171,10 @@ export type Database = {
         Returns: Json;
       };
       reservar_aviso_ao_lojista: { Args: { p_chave: string }; Returns: string };
+      resolver_peca_sem_tamanho: {
+        Args: { p_peca_id: string; p_variant_id: string | null };
+        Returns: Json;
+      };
       rls_admin_atual: { Args: never; Returns: boolean };
       salvar_config_pagamento_cartao: {
         Args: { p_credito: boolean; p_debito: boolean; p_parcelas_max: number };
