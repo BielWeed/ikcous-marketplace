@@ -6,13 +6,20 @@ import {
   mensagemDeErroDoPainel,
 } from "@/lib/crm";
 import { hojeEmSaoPaulo } from "@/lib/financeiro";
+import { lerSituacaoDasVendas } from "@/lib/situacao-das-vendas";
 import { supabase } from "@/lib/supabase";
-import type { AssinaturaDaLoja, PainelInicio } from "@/types/painel";
+import type {
+  AssinaturaDaLoja,
+  PainelInicio,
+  SituacaoDasVendas,
+} from "@/types/painel";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * Números do Início do painel: `painel_inicio()` + `assinatura_da_loja_ler()`.
+ * Números do Início do painel: `painel_inicio()` + `assinatura_da_loja_ler()`
+ * + `situacao_das_vendas_da_loja()` (se a loja aceita pedido novo: só com ela o
+ * cartão da assinatura diz "pausadas").
  *
  * - Cache de MÓDULO (stale-while-revalidate): voltar ao Início mostra na hora
  *   o último retrato e revalida em segundo plano; o hover da barra
@@ -37,6 +44,11 @@ interface RetratoDoPainel {
   /** A leitura da assinatura terminou sem erro (mesmo que tenha vindo `null`). */
   readonly assinaturaLida: boolean;
   readonly erroAssinatura: string | null;
+  /**
+   * Resposta da última busca, ou `null` ("não sei": loja sem a função, rede,
+   * forma torta). Não herda a anterior: na dúvida o cartão não afirma pausa.
+   */
+  readonly situacaoDasVendas: SituacaoDasVendas | null;
   readonly lidoEm: number;
   /** `geracaoDoPainel` quando a busca SAIU: se mudou, o retrato não é fresco. */
   readonly geracao: number;
@@ -111,10 +123,12 @@ async function buscarRetrato(
   iniciadaEm: number,
   geracao: number,
 ): Promise<RetratoDoPainel> {
-  const [respostaPainel, respostaAssinatura] = await Promise.all([
-    comPrazoDaLeitura(supabase.rpc("painel_inicio")),
-    comPrazoDaLeitura(supabase.rpc("assinatura_da_loja_ler")),
-  ]);
+  const [respostaPainel, respostaAssinatura, respostaSituacao] =
+    await Promise.all([
+      comPrazoDaLeitura(supabase.rpc("painel_inicio")),
+      comPrazoDaLeitura(supabase.rpc("assinatura_da_loja_ler")),
+      comPrazoDaLeitura(supabase.rpc("situacao_das_vendas_da_loja")),
+    ]);
 
   let painel: PainelInicio | null = null;
   let erroPainel: string | null = null;
@@ -150,12 +164,26 @@ async function buscarRetrato(
     assinatura = lerAssinaturaDaLoja(respostaAssinatura.data);
   }
 
+  // A falha aqui não é erro de ninguém na tela: loja que ainda não tem a função
+  // (migration 20261600000000) cai sempre aqui, e o cartão só deixa de afirmar
+  // pausa.
+  let situacaoDasVendas: SituacaoDasVendas | null = null;
+  if (respostaSituacao.error) {
+    console.warn(
+      "[usePainelInicio] situacao_das_vendas_da_loja falhou:",
+      respostaSituacao.error,
+    );
+  } else {
+    situacaoDasVendas = lerSituacaoDasVendas(respostaSituacao.data);
+  }
+
   return {
     painel,
     erroPainel,
     assinatura,
     assinaturaLida: erroAssinatura === null,
     erroAssinatura,
+    situacaoDasVendas,
     lidoEm: iniciadaEm,
     geracao,
   };
@@ -204,6 +232,7 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
         assinatura: null,
         assinaturaLida: false,
         erroAssinatura: mensagem,
+        situacaoDasVendas: null,
         lidoEm: iniciadaEm,
         geracao,
       };
@@ -226,6 +255,7 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
         assinaturaLida:
           retrato.assinaturaLida || (retratoEmCache?.assinaturaLida ?? false),
         erroAssinatura: retrato.erroAssinatura,
+        situacaoDasVendas: retrato.situacaoDasVendas,
         lidoEm: retrato.lidoEm,
         geracao: retrato.geracao,
       };
@@ -259,6 +289,7 @@ interface EstadoDoPainelInicio {
   readonly painel: PainelInicio | null;
   readonly assinatura: AssinaturaDaLoja | null;
   readonly assinaturaLida: boolean;
+  readonly situacaoDasVendas: SituacaoDasVendas | null;
   readonly carregando: boolean;
   readonly erro: string | null;
   readonly erroAssinatura: string | null;
@@ -505,6 +536,7 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     painel: retratoDeHoje?.painel ?? null,
     assinatura: retrato?.assinatura ?? null,
     assinaturaLida: retrato?.assinaturaLida ?? false,
+    situacaoDasVendas: retrato?.situacaoDasVendas ?? null,
     // "Carregando" de verdade é não ter número nenhum ainda: com retrato em
     // mãos, a revalidação acontece por baixo sem esqueleto.
     carregando: carregando || (retratoDeHoje === null && active && temSessao),
