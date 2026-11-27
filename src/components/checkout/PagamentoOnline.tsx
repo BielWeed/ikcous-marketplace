@@ -720,6 +720,8 @@ function VerificarPix({
   );
   const [verificando, setVerificando] = useState(false);
   const [semConfirmacao, setSemConfirmacao] = useState(false);
+  const idAviso = useId();
+  const idEspera = useId();
   const montadoRef = useRef(false);
   useEffect(() => {
     montadoRef.current = true;
@@ -782,27 +784,44 @@ function VerificarPix({
   };
 
   const esgotou = total >= LIMITE_VERIFICACOES_PIX;
+  const avisoEsgotado = esgotou && !verificando;
+  const esperandoIntervalo = !verificando && !esgotou && liberaEm !== 0;
+  // Leitor de tela (27/11/2026): o botão desabilitado aponta para o motivo.
+  // "Verificando…" já é o próprio motivo; esgotado aponta para o aviso; no
+  // intervalo, um texto só para o leitor diz quando libera. O motivo do
+  // intervalo fica FORA da região viva: é lido ao chegar no botão, sem
+  // anúncio a cada consulta.
+  const motivoDesabilitado = avisoEsgotado
+    ? idAviso
+    : esperandoIntervalo
+      ? idEspera
+      : undefined;
   return (
     <div className="lg:col-start-1">
       <button
         type="button"
         onClick={verificar}
         disabled={verificando || liberaEm !== 0 || esgotou}
+        aria-describedby={motivoDesabilitado}
         className="min-h-11 w-full rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
       >
         {verificando ? "Verificando…" : "Já paguei — verificar"}
       </button>
-      <p aria-live="polite" className="text-sm text-zinc-600">
+      {esperandoIntervalo && (
+        <span id={idEspera} className="sr-only">
+          {`Aguarde até ${INTERVALO_VERIFICAR_PIX_MS / 1000} segundos para verificar de novo.`}
+        </span>
+      )}
+      {/* O aviso de esgotado mora na MESMA região viva, já montada: antes ele
+        entrava num parágrafo à parte, fora dela, e a última consulta
+        terminava em silêncio para o leitor de tela. */}
+      <p id={idAviso} aria-live="polite" className="text-sm text-zinc-600">
         {semConfirmacao &&
           !esgotou &&
           "Ainda não confirmado. Se você já pagou no banco, não pague de novo: aguarde aqui ou confira em Meus pedidos, na aba Em andamento ou no Histórico."}
+        {avisoEsgotado &&
+          "As verificações manuais deste Pix acabaram. Acompanhe a confirmação nesta tela ou em Meus pedidos."}
       </p>
-      {esgotou && !verificando && (
-        <p className="text-sm text-zinc-600">
-          As verificações manuais deste Pix acabaram. Acompanhe a confirmação
-          nesta tela ou em Meus pedidos.
-        </p>
-      )}
     </div>
   );
 }
