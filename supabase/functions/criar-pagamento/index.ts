@@ -2674,28 +2674,37 @@ async function handler(
       // 'aguardando' e a resposta é `aguardando`, com o QR de sempre.
       const pagoNoBanco = statusNaVaga === "pago" ? await confirmarNaReconsulta(orderNaVaga) : false;
       const extraido = extrairQrCode(orderNaVaga);
+      // CHECKOUT-080 (#213): traduzido para o conjunto fechado que este
+      // banco já usa ('aguardando'/'pago'/'recusado'/'expirado'/
+      // 'estornado' — mapearStatusOrder, `_shared/mercadopago.ts`), não
+      // mais para o vocabulário clássico do MP. Igual ao ramo de criação,
+      // abaixo. Se a cobrança existente foi recusada, o cliente vê
+      // 'recusado' e PagamentoOnline.tsx decide o que mostrar. Par
+      // desconhecido devolve o par CRU "status:status_detail" por
+      // padrão — igual a hoje — o que NÃO bate em nenhum valor do
+      // conjunto fechado, e o front trata como terminal: é o desfecho
+      // certo para um status que o MP inventou depois desta migração.
+      const statusDaResposta = statusNaVaga === "pago" && !pagoNoBanco ? "aguardando" : (statusNaVaga ?? statusCruNaVaga);
+      // Caça de 27/11/2026: o código copiável só sai enquanto a cobrança
+      // ainda é PAGÁVEL ('aguardando'). Pago, recusado, expirado, estornado
+      // ou par desconhecido (que o front já trata como terminal): sem QR,
+      // sem imagem, sem ticket. O app antigo guardado pelo service worker
+      // desenhava "Copiar código Pix" de um PIX já pago, e a cliente podia
+      // pagar de novo. O front atual já ignora o QR nesses casos; isto
+      // fecha a porta no servidor para qualquer versão da tela.
+      const qrPagavel = statusDaResposta === "aguardando";
       return json(
         {
           paymentId: extraido?.orderId ?? idGatewayReconsulta,
-          // CHECKOUT-080 (#213): traduzido para o conjunto fechado que este
-          // banco já usa ('aguardando'/'pago'/'recusado'/'expirado'/
-          // 'estornado' — mapearStatusOrder, `_shared/mercadopago.ts`), não
-          // mais para o vocabulário clássico do MP. Igual ao ramo de criação,
-          // abaixo. Se a cobrança existente foi recusada, o cliente vê
-          // 'recusado' e PagamentoOnline.tsx decide o que mostrar. Par
-          // desconhecido devolve o par CRU "status:status_detail" por
-          // padrão — igual a hoje — o que NÃO bate em nenhum valor do
-          // conjunto fechado, e o front trata como terminal: é o desfecho
-          // certo para um status que o MP inventou depois desta migração.
-          statusPagamento: statusNaVaga === "pago" && !pagoNoBanco ? "aguardando" : (statusNaVaga ?? statusCruNaVaga),
+          statusPagamento: statusDaResposta,
           // O prazo sai da LINHA DO BANCO, igual ao ramo de criação.
           expiraEm: pedido.expires_at,
           // AUSÊNCIA (order legível, sem QR ainda) não é ERRO — extrairQrCode
           // distingue os dois; aqui só se converte null em undefined para não
           // serializar `null` explícito onde o front espera campo ausente.
-          qrCode: extraido?.qrCode ?? undefined,
-          qrCodeBase64: extraido?.qrCodeBase64 ?? undefined,
-          ticketUrl: extraido?.ticketUrl ?? undefined,
+          qrCode: qrPagavel ? (extraido?.qrCode ?? undefined) : undefined,
+          qrCodeBase64: qrPagavel ? (extraido?.qrCodeBase64 ?? undefined) : undefined,
+          ticketUrl: qrPagavel ? (extraido?.ticketUrl ?? undefined) : undefined,
         },
         200,
       );
