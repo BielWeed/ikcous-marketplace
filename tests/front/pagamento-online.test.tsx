@@ -397,24 +397,26 @@ describe("dispararPagamentoPix", () => {
     },
   );
 
-  it("statusPagamento 'pago' com QR ainda entrega o QR (a confirmação vem do CheckoutView)", async () => {
+  // Caça de 26/11/2026: até aqui 'pago' COM QR entregava o QR, e a tela
+  // mostrava "Copiar código Pix" de um PIX já pago até o CheckoutView trocar
+  // de tela — tempo de sobra para pagar de novo.
+  it("statusPagamento 'pago' COM QR chama onConfirmado, não onPix nem onErro", async () => {
     const { dispararPagamentoPix } = await importarLimpo();
     const onPix = vi.fn();
+    const onErro = vi.fn();
+    const onConfirmado = vi.fn();
     const criarPagamento = vi
       .fn()
       .mockResolvedValue(respostaPixOk({ statusPagamento: "pago" }));
 
-    dispararPagamentoPix(opcoesPadrao({ criarPagamento, onPix }));
+    dispararPagamentoPix(
+      opcoesPadrao({ criarPagamento, onPix, onErro, onConfirmado }),
+    );
     await esperarMicrotarefas();
 
-    expect(onPix).toHaveBeenCalledTimes(1);
-    expect(onPix).toHaveBeenCalledWith({
-      paymentId: "pay-1",
-      aguardando: false,
-      qrCodeBase64: "abc123",
-      qrCode: "000201...",
-      expiraEm: "2026-09-25T12:00:00.000Z",
-    });
+    expect(onConfirmado).toHaveBeenCalledTimes(1);
+    expect(onPix).not.toHaveBeenCalled();
+    expect(onErro).not.toHaveBeenCalled();
   });
 
   // Rede de segurança: sem QR (os dois campos ausentes) é recuperável, MESMO

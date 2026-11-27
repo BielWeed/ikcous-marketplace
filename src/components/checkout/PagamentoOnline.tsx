@@ -203,15 +203,25 @@ function classificarRespostaPagamento(
       categoria: "terminal",
     };
   }
+  // 'pago' é confirmação, com QR ou sem — o dinheiro já entrou.
+  //
+  // B4 da revisão de risco pré-publicação (26/09/2026): 'pago' SEM QR não é
+  // falha nenhuma — é o cliente pedindo PIX com um cartão que a edge já
+  // aprovou (ex.: saiu do desafio 3DS e tocou "Pagar com PIX" antes do
+  // webhook confirmar). Dizer "Não foi possível gerar o QR code" seria um
+  // erro falso sobre um pagamento que deu certo.
+  //
+  // Caça de 26/11/2026: 'pago' COM QR também. A reconsulta da edge
+  // (criar-pagamento, ramo (a)/(e)) devolve 'pago' — só com prova do banco —
+  // JUNTO com o QR da mesma cobrança: a cliente pagou, a confirmação atrasou
+  // e ela voltou por "Retomar pagamento". Desenhar o PIX ali mostrava
+  // "Copiar código Pix" e o passo a passo de um PIX já pago, até o
+  // CheckoutView trocar a tela — tempo de sobra para pagar de novo.
+  //
+  // Quem confirma de vez continua sendo o webhook/CheckoutView — aqui só se
+  // evita o susto (sem QR) e o pagamento em dobro (com QR).
+  if (r.statusPagamento === "pago") return { tipo: "confirmado" };
   if (!r.qrCode && !r.qrCodeBase64) {
-    // B4 da revisão de risco pré-publicação (26/09/2026): 'pago' SEM QR não
-    // é falha nenhuma — é o cliente pedindo PIX com um cartão que a edge já
-    // aprovou (ex.: saiu do desafio 3DS e tocou "Pagar com PIX" antes do
-    // webhook confirmar). Não existe cobrança PIX para desenhar porque o
-    // dinheiro já entrou; dizer "Não foi possível gerar o QR code" seria um
-    // erro falso sobre um pagamento que deu certo. Quem confirma de vez
-    // continua sendo o webhook/CheckoutView — aqui só se evita o susto.
-    if (r.statusPagamento === "pago") return { tipo: "confirmado" };
     // Sem isso: nunca sinaliza sucesso sem QR de verdade — sem QR o cliente
     // ficaria preso numa tela vazia, sem volta, com o pedido morrendo em 30
     // min de reserva. Recuperável: a cobrança em si não existe de forma
@@ -227,6 +237,10 @@ function classificarRespostaPagamento(
     tipo: "pix",
     pix: {
       paymentId: r.paymentId,
+      // Desde 26/11/2026 só 'aguardando' chega aqui ('pago' saiu acima como
+      // confirmação). O campo fica como segunda trava do "Já paguei —
+      // verificar": uma refatoração que volte a deixar 'pago' passar não
+      // reabre o botão de conferir um PIX já pago.
       aguardando: r.statusPagamento === "aguardando",
       qrCodeBase64: r.qrCodeBase64,
       qrCode: r.qrCode,
@@ -831,8 +845,8 @@ function PagamentoComPix({
   const [pix, setPix] = useState<(DadosDoPix & { orderId: string }) | null>(
     null,
   );
-  // B4: PIX pedido com o cartão já aprovado — a edge devolve 'pago' sem QR
-  // (ver `classificarRespostaPagamento`, acima). Estado final e exclusivo
+  // B4: a edge devolveu 'pago' — sem QR (cartão já aprovado) ou com o QR de
+  // um PIX já pago (ver `classificarRespostaPagamento`, acima). Estado final e exclusivo
   // com `pix`: quem confirma de vez continua sendo o webhook/CheckoutView,
   // esta tela só troca o erro falso de QR por um aviso honesto.
   const [confirmado, setConfirmado] = useState(false);

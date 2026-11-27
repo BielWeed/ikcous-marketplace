@@ -79,11 +79,13 @@ describe("PagamentoOnline — botão 'Já paguei — verificar' só onde faz sen
       respostaDoPix({ statusPagamento: "pago" }),
     );
     await mostrar("ped-1");
-    // O QR segue na tela (quem troca pela confirmação é o checkout), mas não
-    // há o que verificar: o pedido já está pago.
-    expect(
-      hospedeiro.querySelector("img[alt='QR code do Pix']"),
-    ).not.toBeNull();
+    // Desde 26/11/2026 o PIX pago nem chega a ser desenhado: vira a
+    // confirmação (pix-pago-com-qr-mostra-confirmado.test.tsx). Não há o que
+    // verificar — o pedido já está pago.
+    expect(hospedeiro.querySelector("img[alt='QR code do Pix']")).toBeNull();
+    expect(hospedeiro.textContent).toContain(
+      "Pagamento confirmado! Finalizando seu pedido…",
+    );
     expect(temBotao()).toBe(false);
   });
 
