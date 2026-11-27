@@ -15,6 +15,7 @@ import {
 import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
 import {
   abrirCaixa,
+  conferirCaixaDepoisDoReplay,
   fecharCaixa,
   movimentarCaixa,
 } from "@/hooks/useFinanceiro";
@@ -23,6 +24,7 @@ import {
   diferencaDoFechamento,
   ehCaixaJaAberto,
   ehDivergenciaDoCaixa,
+  fechamentoFoiDeAgora,
   mensagemDeErroFinanceiro,
   parseValorBR,
 } from "@/lib/financeiro";
@@ -45,6 +47,7 @@ import {
   EstadoDeErro,
   useConfirmacaoFinanceira,
 } from "./partes";
+import { quandoPorExtenso } from "./partesDoCaixa";
 import {
   chaveDaTentativaDoCaixa,
   esquecerTentativaDoCaixa,
@@ -574,11 +577,48 @@ export function MovimentarCaixaFolha({
   );
 }
 
+/** O que a folha mostra depois da resposta do banco. */
+interface ResultadoDoFechamento {
+  readonly fechamento: FechamentoDeCaixa;
+  /** `null` = fechou agora. Senão, o caixa já estava fechado antes. */
+  readonly jaEstavaFechado: {
+    readonly fechadoEm: string | null;
+    /** `undefined` = não deu para conferir o caixa de agora. */
+    readonly caixaAbertoAgora: string | null | undefined;
+    /**
+     * Esta folha já tinha pedido antes (a 1ª resposta pode ter se perdido).
+     * Sem conferir o caixa de agora, aí não dá para dizer se foi ela mesma.
+     */
+    readonly estaFolhaJaPediu: boolean;
+  } | null;
+}
+
+/**
+ * Como o fechamento terminou, para o aviso da tela: `agora`, `antes` (o caixa
+ * já estava fechado) ou `sem-confirmar` (está fechado, mas não deu para saber
+ * se foi este pedido ou um de antes).
+ */
+type ComoFechou = "agora" | "antes" | "sem-confirmar";
+
+function semConfirmarQuando(
+  jaEstavaFechado: ResultadoDoFechamento["jaEstavaFechado"],
+): boolean {
+  return (
+    jaEstavaFechado !== null &&
+    jaEstavaFechado.caixaAbertoAgora === undefined &&
+    jaEstavaFechado.estaFolhaJaPediu
+  );
+}
+
 /**
  * "Fechar caixa": a lojista conta a gaveta, a tela compara com o esperado
  * na hora e explica o que acontece com a diferença. Depois de fechado, a
  * folha mostra o resultado que o SERVIDOR calculou (pode ter entrado venda
  * em dinheiro enquanto ela contava).
+ *
+ * Tela velha (o caixa já fechou em outro aparelho, mesmo valor): o banco
+ * devolve aquele fechamento antigo com `replay`. A folha diz a verdade (nada
+ * fechou agora) e a tela relê o caixa, para aparecer o que está aberto hoje.
  */
 export function FecharCaixaFolha({
   aoReconciliar,
@@ -592,14 +632,23 @@ export function FecharCaixaFolha({
   readonly aoMudarEnviando: (enviando: boolean) => void;
   readonly caixa: CaixaAtual;
   readonly aoFechar: () => void;
-  /** Chamado assim que o servidor confirma (a tela atualiza por baixo). */
-  readonly aoFechado: () => void;
+  /**
+   * Chamado assim que o servidor responde (a tela atualiza por baixo).
+   * `antes`: o caixa já estava fechado, nada fechou agora. `sem-confirmar`:
+   * está fechado, mas não deu para saber se foi agora ou antes.
+   */
+  readonly aoFechado: (como: ComoFechou) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const [valor, setValor] = useState("");
   const [observacao, setObservacao] = useState("");
   const [tentou, setTentou] = useState(false);
-  const [resultado, setResultado] = useState<FechamentoDeCaixa | null>(null);
+  const [resultado, setResultado] = useState<ResultadoDoFechamento | null>(
+    null,
+  );
+  // Esta folha já mandou um fechamento (a resposta pode ter se perdido): só
+  // então um `replay` pode ser a repetição legítima do pedido dela.
+  const jaPediu = useRef(false);
   const { enviando, erro, enviar } = useEnvio(
     aoMudarEnviando,
     async (falha) => {
@@ -629,18 +678,130 @@ export function FecharCaixaFolha({
     setTentou(true);
     if (contado === null || contado < 0 || contado > VALOR_MAXIMO) return;
     void enviar(async () => {
+      const estaFolhaJaPediu = jaPediu.current;
+      jaPediu.current = true;
       const fechamento = await fecharCaixa({
         sessaoId: caixa.id,
         valorContado: contado,
         observacao: observacao.trim() || null,
       });
-      setResultado(fechamento);
-      aoFechado();
+      let conferido: Awaited<
+        ReturnType<typeof conferirCaixaDepoisDoReplay>
+      > | null = null;
+      if (fechamento.replay) {
+        try {
+          conferido = await conferirCaixaDepoisDoReplay(fechamento.id);
+        } catch {
+          // Sem conferir, a folha não afirma que fechou agora: manda conferir.
+          conferido = null;
+        }
+      }
+      const caixaAbertoAgora = conferido ? conferido.caixaAbertoId : undefined;
+      const deAgora = fechamentoFoiDeAgora({
+        fechamento,
+        estaFolhaJaPediu,
+        caixaAbertoAgora,
+      });
+      const jaEstavaFechado = deAgora
+        ? null
+        : {
+            fechadoEm: conferido?.fechadoEm ?? null,
+            caixaAbertoAgora,
+            estaFolhaJaPediu,
+          };
+      setResultado({ fechamento, jaEstavaFechado });
+      aoFechado(
+        deAgora
+          ? "agora"
+          : semConfirmarQuando(jaEstavaFechado)
+            ? "sem-confirmar"
+            : "antes",
+      );
     });
   }
 
+  // Conferência falhou e esta folha já tinha pedido: pode ter sido ela mesma,
+  // segundos antes (resposta perdida), ou outro aparelho. Não afirma nenhum.
+  if (resultado && semConfirmarQuando(resultado.jaEstavaFechado)) {
+    const { fechamento } = resultado;
+    return (
+      <FolhaFinanceira
+        titulo="Caixa fechado"
+        icone={AlertTriangle}
+        matiz="#FF9F5A"
+        aoFechar={aoFechar}
+        rodape={
+          <button
+            type="button"
+            onClick={aoFechar}
+            className={CLASSE_BOTAO_PRIMARIO}
+          >
+            Concluir
+          </button>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm leading-relaxed text-zinc-300">
+            {"O caixa está fechado ("}
+            <Dinheiro valor={fechamento.contado} />
+            {
+              " contados). Não deu para confirmar se foi agora ou antes. Confira o histórico."
+            }
+          </p>
+        </div>
+      </FolhaFinanceira>
+    );
+  }
+
+  if (resultado?.jaEstavaFechado) {
+    const { fechamento } = resultado;
+    const { fechadoEm, caixaAbertoAgora } = resultado.jaEstavaFechado;
+    const quando = quandoPorExtenso(fechadoEm);
+    return (
+      <FolhaFinanceira
+        titulo="Caixa já estava fechado"
+        icone={AlertTriangle}
+        matiz="#FF9F5A"
+        aoFechar={aoFechar}
+        rodape={
+          <button
+            type="button"
+            onClick={aoFechar}
+            className={CLASSE_BOTAO_PRIMARIO}
+          >
+            Concluir
+          </button>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2 text-amber-300">
+            <AlertTriangle aria-hidden="true" className="size-5" />
+            <p className="text-sm font-bold">Nada foi fechado agora.</p>
+          </div>
+          <p className="text-sm leading-relaxed text-zinc-300">
+            {`Esse caixa já tinha sido fechado${quando ? ` ${quando}` : ""} (`}
+            <Dinheiro valor={fechamento.contado} />
+            {" contados). A tela estava desatualizada."}
+          </p>
+          <p className="text-sm leading-relaxed text-zinc-300">
+            {caixaAbertoAgora === null
+              ? "Nenhum caixa está aberto agora."
+              : caixaAbertoAgora !== undefined &&
+                  caixaAbertoAgora !== fechamento.id
+                ? "Há outro caixa aberto agora, e ele continua aberto. Toque em Concluir para ver o caixa de agora."
+                : "Não deu para conferir o caixa de agora. Toque em Concluir e confira o caixa antes de fechar de novo."}
+          </p>
+        </div>
+      </FolhaFinanceira>
+    );
+  }
+
   if (resultado) {
-    const final = diferencaDoFechamento(resultado.esperado, resultado.contado);
+    const { fechamento } = resultado;
+    const final = diferencaDoFechamento(
+      fechamento.esperado,
+      fechamento.contado,
+    );
     return (
       <FolhaFinanceira
         titulo="Caixa fechado"
@@ -663,9 +824,9 @@ export function FecharCaixaFolha({
             <p className="text-sm font-bold">Fechamento registrado.</p>
           </div>
           <ComparativoDoFechamento
-            esperado={resultado.esperado}
-            contado={resultado.contado}
-            diferenca={resultado.diferenca}
+            esperado={fechamento.esperado}
+            contado={fechamento.contado}
+            diferenca={fechamento.diferenca}
             situacao={final.situacao}
           />
         </div>

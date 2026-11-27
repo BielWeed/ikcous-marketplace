@@ -10,6 +10,7 @@ import {
   cascataDaDre,
   diferencaDoFechamento,
   efeitoNoSaldo,
+  fechamentoFoiDeAgora,
   formatarBRL,
   formatarBRLComSinal,
   formatarPercentual,
@@ -1318,7 +1319,7 @@ describe("formulários", () => {
 });
 
 describe("caixa e erros", () => {
-  it("aceita replay extra no resultado do fechamento", () => {
+  it("lê o replay do fechamento (o banco diz que NADA foi fechado agora)", () => {
     expect(
       parseFechamento({
         id: "sessao-1",
@@ -1332,6 +1333,86 @@ describe("caixa e erros", () => {
       esperado: 100,
       contado: 90,
       diferenca: -10,
+      replay: true,
+    });
+    expect(
+      parseFechamento({
+        id: "sessao-1",
+        esperado: 100,
+        contado: 90,
+        diferenca: -10,
+        replay: false,
+      }).replay,
+    ).toBe(false);
+  });
+
+  // Banco de loja ainda sem a migration da intenção não manda `replay`: o
+  // fechamento dele é sempre de agora, e a tela não pode virar erro por isso.
+  it.each([undefined, null, "true", 1])(
+    "replay ausente ou fora do formato (%s) conta como fechamento de agora",
+    (replay) => {
+      expect(
+        parseFechamento({
+          id: "sessao-1",
+          esperado: 100,
+          contado: 90,
+          diferenca: -10,
+          ...(replay === undefined ? {} : { replay }),
+        }).replay,
+      ).toBe(false);
+    },
+  );
+
+  describe("fechamentoFoiDeAgora", () => {
+    const fechamento = (replay: boolean) => ({
+      id: "sessao-1",
+      esperado: 100,
+      contado: 90,
+      diferenca: -10,
+      replay,
+    });
+
+    it("sem replay o fechamento é de agora, sem precisar conferir nada", () => {
+      expect(
+        fechamentoFoiDeAgora({
+          fechamento: fechamento(false),
+          estaFolhaJaPediu: false,
+          caixaAbertoAgora: undefined,
+        }),
+      ).toBe(true);
+    });
+
+    it.each([null, "sessao-1"])(
+      "replay da MESMA folha, sem OUTRO caixa aberto (%s), é a repetição legítima",
+      (aberto) => {
+        expect(
+          fechamentoFoiDeAgora({
+            fechamento: fechamento(true),
+            estaFolhaJaPediu: true,
+            caixaAbertoAgora: aberto,
+          }),
+        ).toBe(true);
+      },
+    );
+
+    it.each([
+      // Tela velha: o caixa de hoje (S2) está aberto.
+      ["outro caixa aberto, folha já tinha pedido", true, "sessao-2"],
+      ["outro caixa aberto, primeiro pedido", false, "sessao-2"],
+      // Fechado em outro aparelho e nada aberto depois: o primeiro pedido
+      // desta folha não fechou nada.
+      ["nenhum caixa aberto, primeiro pedido", false, null],
+      // Não deu para conferir: na dúvida, a frase literal do banco.
+      ["conferência falhou, folha já tinha pedido", true, undefined],
+      ["conferência falhou, primeiro pedido", false, undefined],
+    ] as const)("%s: já estava fechado", (_, jaPediu, aberto) => {
+      expect(
+        fechamentoFoiDeAgora({
+          fechamento: fechamento(true),
+          estaFolhaJaPediu: jaPediu,
+          caixaAbertoAgora: aberto,
+        }),
+      ).toBe(false);
     });
   });
 
