@@ -411,6 +411,18 @@ function confirmarLapides(
   if (mudou) saveTombstones(uid, lapides);
 }
 
+/** Alguma lápide da conta ainda pendente cuja linha não está no carrinho? */
+function temLapidePendenteFora(
+  uid: string,
+  itens: readonly CartItem[],
+): boolean {
+  const chaves = new Set(itens.map((item) => chaveDoItem(item)));
+  for (const lapide of loadTombstones(uid).values()) {
+    if (lapide.confirmada === false && !chaves.has(lapide.key)) return true;
+  }
+  return false;
+}
+
 /** Lápide nova. A da conta nasce pendente (a remoção ainda não foi gravada);
  *  a do visitante não vai ao banco e fica no formato de sempre. */
 function novaLapide(
@@ -1626,7 +1638,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (!remotoMescladoRef.current) return;
 
       const cartHash = JSON.stringify(currentCart);
-      if (cartHash === lastSyncedCart.current && !immediate) return;
+      // Lápide pendente cuja linha não está no carrinho obriga a gravar mesmo
+      // com o carrinho igual ao último enviado (ex.: pôs e tirou antes da
+      // gravação de 1 s). Sem isso ela ficava pendente por até 7 dias e
+      // escondia o mesmo item posto depois por OUTRO aparelho -- a gravação
+      // seguinte daqui o apagava do banco. Só o sucesso de uma gravação a
+      // confirma; a leitura não (ela não sabe se uma gravação daqui com a
+      // linha ainda vai chegar ao banco).
+      if (
+        cartHash === lastSyncedCart.current &&
+        !immediate &&
+        !temLapidePendenteFora(user.id, currentCart)
+      ) {
+        return;
+      }
 
       syncPending.current = true;
       geracaoDaGravacao.current += 1;
@@ -1640,7 +1665,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             "[CartContext] Bypassing sync: session not active/ready in client",
           );
           syncPending.current = false;
-          pedirReenvioSeDevido();
+          // A sessão ainda não voltou: a gravação fica devendo e tenta de novo
+          // pela mesma escada de esperas da falha (antes só a PRÓXIMA mudança
+          // do carrinho a refazia, e a remoção ficava sem gravar).
+          reenvioDevido.current = true;
+          agendarReenvioAposFalha();
           return;
         }
 

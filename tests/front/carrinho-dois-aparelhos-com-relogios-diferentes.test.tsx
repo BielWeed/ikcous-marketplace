@@ -51,7 +51,7 @@ const DUAS_HORAS = 2 * 60 * 60 * 1000;
 const mundo = vi.hoisted(() => ({
   linhas: [] as Linha[],
   atual: "celular",
-  desvio: {} as Record<string, number>,
+  desvio: new Map<string, number>(),
   inscritos: [] as Inscrito[],
   gravacoes: [] as {
     aparelho: string;
@@ -65,11 +65,14 @@ const mundo = vi.hoisted(() => ({
   canalCaido: false,
   // A gravação não chega ao banco (rede caiu no meio): nada é gravado.
   gravacaoFalha: false,
+  // Quantas próximas consultas de sessão respondem "sem sessão" (o cliente do
+  // Supabase ainda não restaurou a sessão).
+  semSessao: 0,
 }));
 
 // A hora do servidor: a do relógio falso menos o desvio do aparelho da vez.
 function agoraNoServidor() {
-  return Date.now() - (mundo.desvio[mundo.atual] ?? 0);
+  return Date.now() - (mundo.desvio.get(mundo.atual) ?? 0);
 }
 function publicar(eventos: unknown[]) {
   if (mundo.canalCaido) return;
@@ -132,7 +135,13 @@ vi.mock("@/lib/supabase", () => ({
       }),
     }),
     auth: {
-      getSession: async () => ({ data: { session: { user: usuario } } }),
+      getSession: async () => {
+        if (mundo.semSessao > 0) {
+          mundo.semSessao -= 1;
+          return { data: { session: null } };
+        }
+        return { data: { session: { user: usuario } } };
+      },
     },
     // O `sync_cart_atomic` de verdade: DELETE de tudo da conta e INSERT do que
     // veio, agrupado por produto+variação, com `updated_at` =
@@ -228,7 +237,7 @@ class Memoria implements Storage {
     return this.dados.get(chave) ?? null;
   }
   key(i: number) {
-    return [...this.dados.keys()][i] ?? null;
+    return [...this.dados.keys()].at(i) ?? null;
   }
   removeItem(chave: string) {
     this.dados.delete(chave);
@@ -237,11 +246,19 @@ class Memoria implements Storage {
     this.dados.set(chave, String(valor));
   }
 }
-const armazens: Record<string, { local: Memoria; sessao: Memoria }> = {};
+const armazens = new Map<string, { local: Memoria; sessao: Memoria }>();
+function armazemDo(aparelho: string) {
+  let armazem = armazens.get(aparelho);
+  if (!armazem) {
+    armazem = { local: new Memoria(), sessao: new Memoria() };
+    armazens.set(aparelho, armazem);
+  }
+  return armazem;
+}
 function doAparelho(qual: "local" | "sessao"): Storage {
   const alvo = () => {
-    armazens[mundo.atual] ??= { local: new Memoria(), sessao: new Memoria() };
-    return armazens[mundo.atual][qual];
+    const armazem = armazemDo(mundo.atual);
+    return qual === "local" ? armazem.local : armazem.sessao;
   };
   return {
     get length() {
@@ -255,11 +272,11 @@ function doAparelho(qual: "local" | "sessao"): Storage {
   };
 }
 
-const contextos: Record<string, ReturnType<typeof useCartContext>> = {};
+const contextos = new Map<string, ReturnType<typeof useCartContext>>();
 function Sonda({ nome }: { nome: string }) {
   const contexto = useCartContext();
   useEffect(() => {
-    contextos[nome] = contexto;
+    contextos.set(nome, contexto);
   }, [contexto, nome]);
   return null;
 }
@@ -270,14 +287,15 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-11-27T12:00:00Z"));
   mundo.linhas = [];
   mundo.atual = "celular";
-  mundo.desvio = {};
+  mundo.desvio = new Map();
   mundo.inscritos = [];
   mundo.gravacoes = [];
   mundo.atrasoDaLeitura = 0;
   mundo.canalCaido = false;
   mundo.gravacaoFalha = false;
-  for (const k of Object.keys(armazens)) delete armazens[k];
-  for (const k of Object.keys(contextos)) delete contextos[k];
+  mundo.semSessao = 0;
+  armazens.clear();
+  contextos.clear();
   vi.stubGlobal("localStorage", doAparelho("local"));
   vi.stubGlobal("sessionStorage", doAparelho("sessao"));
   // Aparelhos diferentes não conversam pelo canal entre abas.
@@ -304,7 +322,7 @@ afterEach(() => {
 async function vez(aparelho: string, servidor = agoraNoServidor()) {
   expect(vi.getTimerCount()).toBe(0);
   mundo.atual = aparelho;
-  vi.setSystemTime(servidor + (mundo.desvio[aparelho] ?? 0));
+  vi.setSystemTime(servidor + (mundo.desvio.get(aparelho) ?? 0));
   await act(async () => {
     for (const inscrito of mundo.inscritos) {
       if (inscrito.aparelho !== aparelho || !inscrito.ativo) continue;
@@ -328,7 +346,7 @@ async function assentar() {
 }
 async function ligar(aparelho: string, desvio: number) {
   const servidor = agoraNoServidor();
-  mundo.desvio[aparelho] = desvio;
+  mundo.desvio.set(aparelho, desvio);
   await vez(aparelho, servidor);
   const hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
@@ -353,20 +371,25 @@ async function noAparelho(
   fazer: (c: ReturnType<typeof useCartContext>) => void,
 ) {
   expect(mundo.atual).toBe(aparelho);
-  await act(async () => fazer(contextos[aparelho]));
+  await act(async () => fazer(contextoDo(aparelho)));
   await assentar();
 }
 
+function contextoDo(aparelho: string) {
+  const contexto = contextos.get(aparelho);
+  if (!contexto) throw new Error(`aparelho ${aparelho} não montado`);
+  return contexto;
+}
 const produto = (id: string) =>
   mapProductFromDB({
     ...produtos.find((p) => p.id === id),
     product_variants: [],
   });
 const carrinhoDo = (aparelho: string) =>
-  contextos[aparelho].cart.map((i) => [i.product.id, i.quantity]);
+  contextoDo(aparelho).cart.map((i) => [i.product.id, i.quantity]);
 const LAPIDES_DA_CONTA = "marketplace_cart_account_tombstones_v1";
 const lapidesDo = (aparelho: string) => {
-  const texto = armazens[aparelho]?.local.getItem(LAPIDES_DA_CONTA);
+  const texto = armazens.get(aparelho)?.local.getItem(LAPIDES_DA_CONTA);
   return texto ? (JSON.parse(texto).marcas as Record<string, unknown>[]) : [];
 };
 const banco = () =>
@@ -488,7 +511,9 @@ describe("carrinho em dois aparelhos com relógios diferentes", () => {
     // o eco da gravação não chega, e nenhuma leitura mais nova a supera.
     mundo.atrasoDaLeitura = 60;
     mundo.canalCaido = true;
-    await act(async () => contextos.computador.updateQuantity("vestido", 2));
+    await act(async () =>
+      contextoDo("computador").updateQuantity("vestido", 2),
+    );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(990);
       window.dispatchEvent(new Event("online"));
@@ -535,8 +560,7 @@ describe("carrinho em dois aparelhos com relógios diferentes", () => {
     // O computador (2 h adiantado) já tinha, da versão antiga do app, a lápide
     // do brinco gravada com a hora dele: mais nova que qualquer hora do banco.
     const servidor = agoraNoServidor();
-    armazens.computador = { local: new Memoria(), sessao: new Memoria() };
-    armazens.computador.local.setItem(
+    armazemDo("computador").local.setItem(
       LAPIDES_DA_CONTA,
       JSON.stringify({
         uid: "u1",
@@ -558,5 +582,109 @@ describe("carrinho em dois aparelhos com relógios diferentes", () => {
       ["brinco", 1],
     ]);
     expect(lapidesDo("computador")).toEqual([]);
+  });
+  // Revisão Opus (27/11/2026, 5766a7e4b): a lápide da conta nasce pendente e só
+  // a gravação a confirmava. Três caminhos deixavam a lápide pendente sem prazo,
+  // e a lápide pendente escondia o item que o OUTRO aparelho pôs depois -- a
+  // próxima gravação "substitui tudo" o apagava do banco.
+  it("pôr e tirar antes da gravação de 1 s não deixa lápide pendente que apaga o item posto no outro aparelho", async () => {
+    await ligar("computador", 0);
+    await noAparelho("computador", (c) => c.addToCart(produto("cinto"), 1));
+    expect(banco()).toEqual([["cinto", 1]]);
+    // O carrinho volta a ser o que o banco já tem: nada a gravar, mas a
+    // remoção tem de valer como gravada (o banco nunca teve o brinco daqui).
+    await noAparelho("computador", (c) => {
+      c.addToCart(produto("brinco"), 1);
+      c.removeFromCart("brinco");
+    });
+
+    await ligar("celular", 0);
+    await noAparelho("celular", (c) => c.addToCart(produto("brinco"), 1));
+    expect(banco()).toEqual([
+      ["brinco", 1],
+      ["cinto", 1],
+    ]);
+
+    await vez("computador");
+    expect(carrinhoDo("computador")).toEqual([
+      ["cinto", 1],
+      ["brinco", 1],
+    ]);
+    await noAparelho("computador", (c) => c.addToCart(produto("vestido"), 1));
+    expect(banco()).toEqual([
+      ["brinco", 1],
+      ["cinto", 1],
+      ["vestido", 1],
+    ]);
+  });
+
+  it("gravação pulada por sessão ainda não pronta tenta de novo e confirma a remoção", async () => {
+    await ligar("computador", 0);
+    await noAparelho("computador", (c) => c.addToCart(produto("brinco"), 1));
+    await noAparelho("computador", (c) => c.addToCart(produto("cinto"), 1));
+
+    mundo.semSessao = 1;
+    await noAparelho("computador", (c) => c.removeFromCart("brinco"));
+    expect(banco()).toEqual([["cinto", 1]]);
+    expect(lapidesDo("computador")).toEqual([
+      expect.objectContaining({ key: "brinco-", confirmada: true }),
+    ]);
+
+    await ligar("celular", 0);
+    await noAparelho("celular", (c) => c.addToCart(produto("brinco"), 1));
+    await vez("computador");
+    await noAparelho("computador", (c) => c.addToCart(produto("vestido"), 1));
+    expect(banco()).toEqual([
+      ["brinco", 1],
+      ["cinto", 1],
+      ["vestido", 1],
+    ]);
+  });
+
+  it("gravação que falha até esgotar as tentativas: a remoção fica pendente e vale quando a rede volta", async () => {
+    await ligar("computador", 0);
+    await noAparelho("computador", (c) => c.addToCart(produto("brinco"), 1));
+    await noAparelho("computador", (c) => c.addToCart(produto("cinto"), 1));
+
+    mundo.gravacaoFalha = true;
+    await noAparelho("computador", (c) => c.removeFromCart("brinco"));
+    // Passa toda a escada de esperas (5 reenvios, até 30 s cada) até não
+    // sobrar nenhum relógio: a escada tem fim (não vira laço).
+    for (let i = 0; i < 20 && vi.getTimerCount() > 0; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+    }
+    expect(vi.getTimerCount()).toBe(0);
+    // Só as duas gravações de antes da queda chegaram ao banco.
+    expect(mundo.gravacoes).toHaveLength(2);
+    expect(banco()).toEqual([
+      ["brinco", 1],
+      ["cinto", 1],
+    ]);
+    expect(lapidesDo("computador")).toEqual([
+      expect.objectContaining({ key: "brinco-", confirmada: false }),
+    ]);
+
+    // A rede volta: a gravação que ficou devendo sai e confirma a remoção.
+    mundo.gravacaoFalha = false;
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await assentar();
+    expect(banco()).toEqual([["cinto", 1]]);
+    expect(lapidesDo("computador")).toEqual([
+      expect.objectContaining({ key: "brinco-", confirmada: true }),
+    ]);
+
+    await ligar("celular", 0);
+    await noAparelho("celular", (c) => c.addToCart(produto("brinco"), 1));
+    await vez("computador");
+    await noAparelho("computador", (c) => c.addToCart(produto("vestido"), 1));
+    expect(banco()).toEqual([
+      ["brinco", 1],
+      ["cinto", 1],
+      ["vestido", 1],
+    ]);
   });
 });
