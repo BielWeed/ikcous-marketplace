@@ -190,6 +190,7 @@ describe("Fechar caixa — zero contado", () => {
         <FecharCaixaFolha
           aoReconciliar={semEfeitoAsync}
           aoMudarEnviando={semEfeito}
+          autorId={null}
           caixa={CAIXA}
           aoFechar={semEfeito}
           aoFechado={semEfeito}

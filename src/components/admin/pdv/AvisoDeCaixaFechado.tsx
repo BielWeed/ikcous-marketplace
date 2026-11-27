@@ -19,10 +19,13 @@ export const TEXTO_DO_CAIXA_FECHADO =
 export interface PropsDoAvisoDeCaixaFechado {
   /** Leva à abertura do caixa (a view navega para o Financeiro, aba Caixa). */
   readonly aoAbrirCaixa: () => void;
+  /** Venda sendo registrada: trava como os outros botões da seção. */
+  readonly desabilitado: boolean;
 }
 
 export function AvisoDeCaixaFechado({
   aoAbrirCaixa,
+  desabilitado,
 }: PropsDoAvisoDeCaixaFechado): ReactElement {
   return (
     <div role="status" className="pdv-notice">
@@ -35,6 +38,7 @@ export function AvisoDeCaixaFechado({
           type="button"
           variant="outline"
           className="pdv-secondary"
+          disabled={desabilitado}
           onClick={aoAbrirCaixa}
         >
           Abrir caixa

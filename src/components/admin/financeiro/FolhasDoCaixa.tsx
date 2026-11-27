@@ -51,6 +51,8 @@ import { quandoPorExtenso } from "./partesDoCaixa";
 import {
   chaveDaTentativaDoCaixa,
   esquecerTentativaDoCaixa,
+  lembrarPedidoDeFechamento,
+  pediuEsteFechamentoHaPouco,
 } from "./tentativasDoCaixa";
 
 function RodapeDeAcao({
@@ -586,8 +588,9 @@ interface ResultadoDoFechamento {
     /** `undefined` = não deu para conferir o caixa de agora. */
     readonly caixaAbertoAgora: string | null | undefined;
     /**
-     * Esta folha já tinha pedido antes (a 1ª resposta pode ter se perdido).
-     * Sem conferir o caixa de agora, aí não dá para dizer se foi ela mesma.
+     * Esta folha (ou uma anterior deste aparelho, há poucos minutos) já tinha
+     * pedido antes (a 1ª resposta pode ter se perdido). Sem conferir o caixa
+     * de agora, aí não dá para dizer se foi ela mesma.
      */
     readonly estaFolhaJaPediu: boolean;
   } | null;
@@ -623,6 +626,7 @@ function semConfirmarQuando(
 export function FecharCaixaFolha({
   aoReconciliar,
   aoMudarEnviando,
+  autorId,
   caixa,
   aoFechar,
   aoFechado,
@@ -630,6 +634,8 @@ export function FecharCaixaFolha({
 }: {
   readonly aoReconciliar: (mensagem: string) => Promise<void>;
   readonly aoMudarEnviando: (enviando: boolean) => void;
+  /** Conta de quem fecha: o pedido lembrado entre aberturas da folha é dela. */
+  readonly autorId: string | null;
   readonly caixa: CaixaAtual;
   readonly aoFechar: () => void;
   /**
@@ -647,7 +653,9 @@ export function FecharCaixaFolha({
     null,
   );
   // Esta folha já mandou um fechamento (a resposta pode ter se perdido): só
-  // então um `replay` pode ser a repetição legítima do pedido dela.
+  // então um `replay` pode ser a repetição legítima do pedido dela. Fechar a
+  // folha e abrir de novo não apaga isso: o pedido fica lembrado na aba
+  // (`pediuEsteFechamentoHaPouco`), da mesma conta, caixa e valor.
   const jaPediu = useRef(false);
   const { enviando, erro, enviar } = useEnvio(
     aoMudarEnviando,
@@ -678,8 +686,11 @@ export function FecharCaixaFolha({
     setTentou(true);
     if (contado === null || contado < 0 || contado > VALOR_MAXIMO) return;
     void enviar(async () => {
-      const estaFolhaJaPediu = jaPediu.current;
+      const estaFolhaJaPediu =
+        jaPediu.current ||
+        pediuEsteFechamentoHaPouco(autorId, caixa.id, contado);
       jaPediu.current = true;
+      lembrarPedidoDeFechamento(autorId, caixa.id, contado);
       const fechamento = await fecharCaixa({
         sessaoId: caixa.id,
         valorContado: contado,

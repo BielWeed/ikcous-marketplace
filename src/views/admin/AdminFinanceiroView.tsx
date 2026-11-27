@@ -608,6 +608,7 @@ export function AdminFinanceiroView({
           <FecharCaixaFolha
             aoMudarEnviando={aoMudarEnviando}
             aoReconciliar={aoReconciliarCaixa}
+            autorId={user?.id ?? null}
             caixa={folha.caixa}
             aoFechar={pedirParaFechar}
             aoFechado={(como) => {

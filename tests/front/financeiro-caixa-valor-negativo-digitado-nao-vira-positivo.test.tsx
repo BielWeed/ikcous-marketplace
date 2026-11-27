@@ -133,6 +133,7 @@ const CASOS: Caso[] = [
       <FecharCaixaFolha
         aoReconciliar={semEfeitoAsync}
         aoMudarEnviando={semEfeito}
+        autorId={null}
         caixa={CAIXA}
         aoFechar={semEfeito}
         aoFechado={semEfeito}
