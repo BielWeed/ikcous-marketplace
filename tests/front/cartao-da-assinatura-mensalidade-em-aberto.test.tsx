@@ -131,8 +131,10 @@ describe("CartaoDaAssinatura: mensalidade em aberto da pagante", () => {
   it("ficam o nome do plano, o valor grande, os recursos e os botões", () => {
     desenhar({});
     expect(tela.textContent).toContain("Plano Inventado");
+    // 27/11/2026: o valor grande é a próxima cobrança, sem "/mês" (o app de
+    // gestão pode mandar o restante de um pagamento parcial nesse campo).
     expect(tela.querySelector(".text-2xl")?.textContent).toBe(
-      `${formatarMoeda(250)}/mês`,
+      formatarMoeda(250),
     );
     expect(
       tela.querySelectorAll('ul[aria-label="Recursos do plano"] li'),

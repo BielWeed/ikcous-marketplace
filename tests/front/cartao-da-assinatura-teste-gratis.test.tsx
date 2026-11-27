@@ -138,38 +138,37 @@ describe("CartaoDaAssinatura em teste", () => {
     expect(tela.textContent).toContain("Faltam 7 dias");
   });
 
-  it("com valor no payload: só a linha pequena 'Depois, ... por mês', nada em destaque", () => {
+  // 27/11/2026: o valor é o da PRÓXIMA cobrança, não o de todo mês (o app de
+  // gestão manda o 1º mês negociado). A frase diz só a primeira mensalidade,
+  // e o ciclo deixa de entrar nela ("por mês", "por ano" afirmavam demais).
+  it("com valor no payload: só a linha pequena 'Depois, a primeira mensalidade...', nada em destaque", () => {
     desenhar({ valorMensal: 250, ciclo: "mensal" });
     const depois = paragrafo("Depois,");
-    expect(depois?.textContent).toMatch(/^Depois, R\$\s250,00 por mês$/);
+    expect(depois?.textContent).toMatch(
+      /^Depois, a primeira mensalidade é de R\$\s250,00\.$/,
+    );
+    expect(tela.textContent).not.toContain("por mês");
     expect(depois?.classList.contains("text-zinc-400")).toBe(true);
     expect(depois?.className).not.toMatch(/text-(xl|2xl)/);
     expect(tela.textContent).not.toContain("/mês");
     expect(tela.querySelector(".text-2xl")).toBeNull();
   });
 
-  it("o valor é POR CICLO: anual diz 'por ano', trimestral 'por trimestre'", () => {
-    desenhar({ valorMensal: 2400, ciclo: "anual" });
-    expect(paragrafo("Depois,")?.textContent).toMatch(
-      /^Depois, R\$\s2\.400,00 por ano$/,
-    );
-    desenhar({ valorMensal: 700, ciclo: "trimestral" });
-    expect(paragrafo("Depois,")?.textContent).toMatch(
-      /^Depois, R\$\s700,00 por trimestre$/,
-    );
-    desenhar({ valorMensal: 1300, ciclo: "Semestral" });
-    expect(paragrafo("Depois,")?.textContent).toMatch(
-      /^Depois, R\$\s1\.300,00 por semestre$/,
-    );
-  });
-
-  it("ciclo nulo não inventa período; ciclo desconhecido aparece como veio", () => {
-    desenhar({ valorMensal: 250, ciclo: null });
-    expect(paragrafo("Depois,")?.textContent).toMatch(/^Depois, R\$\s250,00$/);
-    desenhar({ valorMensal: 250, ciclo: "quinzenal" });
-    expect(paragrafo("Depois,")?.textContent).toMatch(
-      /^Depois, R\$\s250,00 · quinzenal$/,
-    );
+  // 27/11/2026: antes o ciclo virava "por ano"/"por trimestre" na frase; com
+  // o valor sendo a próxima cobrança, nenhum ciclo pendura período nela.
+  it("nenhum ciclo (anual, trimestral, nulo, desconhecido) muda a frase", () => {
+    for (const ciclo of [
+      "anual",
+      "trimestral",
+      "Semestral",
+      null,
+      "quinzenal",
+    ]) {
+      desenhar({ valorMensal: 700, ciclo });
+      expect(paragrafo("Depois,")?.textContent).toMatch(
+        /^Depois, a primeira mensalidade é de R\$\s700,00\.$/,
+      );
+    }
   });
 
   it("a contagem vira à meia-noite de Brasília sem recarregar a tela", () => {
@@ -200,6 +199,10 @@ describe("CartaoDaAssinatura em teste", () => {
     expect(tela.textContent).not.toContain("Faltam");
     expect(tela.textContent).not.toContain("Depois,");
     expect(tela.textContent).not.toContain("Grátis até");
-    expect(tela.textContent).toMatch(/R\$\s250,00\/mês/);
+    // 27/11/2026: em destaque como próxima cobrança, sem "/mês".
+    expect(tela.querySelector(".text-2xl")?.textContent).toMatch(
+      /^R\$\s250,00$/,
+    );
+    expect(tela.textContent).toContain("Próxima cobrança");
   });
 });

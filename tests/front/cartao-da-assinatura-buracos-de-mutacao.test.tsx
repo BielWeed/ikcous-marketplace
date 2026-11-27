@@ -159,11 +159,17 @@ describe("CartaoDaAssinatura: nome e valor", () => {
     expect(tela.textContent).toContain("Plano sem nome");
   });
 
-  it("valor mensal zero é valor (R$ 0,00 com o ciclo), nulo não mostra preço", () => {
+  // 27/11/2026: o valor é o da PRÓXIMA cobrança (o app de gestão manda o 1º
+  // mês, o restante de um pagamento parcial ou o preço de depois do contrato),
+  // então sai o "/mês" e entra o rótulo "Próxima cobrança". Zero continua
+  // sendo valor; nulo continua sem preço e sem rótulo.
+  it("valor zero é valor (R$ 0,00 como próxima cobrança), nulo não mostra preço", () => {
     desenhar({ valorMensal: 0, ciclo: "mensal" });
-    expect(tela.textContent).toMatch(/R\$\s*0,00\/mês/);
-    desenhar({ valorMensal: null, ciclo: "mensal" });
+    expect(tela.textContent).toMatch(/Próxima cobrançaR\$\s*0,00/);
     expect(tela.textContent).not.toContain("/mês");
+    desenhar({ valorMensal: null, ciclo: "mensal" });
+    expect(tela.textContent).not.toContain("Próxima cobrança");
+    expect(tela.textContent).not.toMatch(/R\$/);
   });
 });
 
