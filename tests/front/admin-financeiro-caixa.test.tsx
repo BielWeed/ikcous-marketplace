@@ -54,6 +54,11 @@ import { toast } from "sonner";
 
 import { CONTA_BANCARIA, CONTA_CAIXA_DA_LOJA } from "@/types/financeiro";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
+import {
+  escolherNaLista,
+  opcoesDaLista,
+  valorDaLista,
+} from "./helpers/lista-de-escolha";
 
 const CONTAS = [
   {
@@ -633,14 +638,9 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     await escolherConta(CONTA_BANCARIA);
   }
 
+  // A conta é a lista de escolha do painel: tocar no campo e na opção.
   async function escolherConta(id: string) {
-    const select = document.getElementById(
-      "fin-caixa-mov-conta",
-    ) as HTMLSelectElement;
-    await act(async () => {
-      select.value = id;
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await act(async () => escolherNaLista("fin-caixa-mov-conta", id));
   }
 
   function movimentos() {
@@ -683,10 +683,23 @@ describe("Financeiro — abrir e fechar o caixa", () => {
   );
 
   describe("conta de destino da sangria e do suprimento é obrigatória", () => {
-    function seletor() {
-      return document.getElementById(
-        "fin-caixa-mov-conta",
-      ) as HTMLSelectElement;
+    const CAMPO = "fin-caixa-mov-conta";
+
+    function campo() {
+      return document.getElementById(CAMPO) as HTMLButtonElement;
+    }
+
+    /** O que o campo fechado mostra (a conta escolhida ou o placeholder). */
+    function textoDoCampo() {
+      return normalizar(document.getElementById(`${CAMPO}-valor`)?.textContent);
+    }
+
+    function valores() {
+      let lidas: ReturnType<typeof opcoesDaLista> = [];
+      act(() => {
+        lidas = opcoesDaLista(CAMPO);
+      });
+      return lidas.map((o) => o.valor);
     }
 
     async function abrirMovimento(movimento: string) {
@@ -705,10 +718,10 @@ describe("Financeiro — abrir e fechar o caixa", () => {
         expect(texto).toContain(rotulo);
         expect(texto).not.toContain("opcional");
         expect(texto).not.toContain("Nenhuma conta da loja");
-        expect(seletor().value).toBe(CONTA_BANCARIA);
-        const valores = [...seletor().options].map((o) => o.value);
-        expect(valores).not.toContain("");
-        expect(valores).toEqual([CONTA_BANCARIA]);
+        expect(valorDaLista(CAMPO)).toBe(CONTA_BANCARIA);
+        expect(textoDoCampo()).toBe("Conta bancária");
+        expect(valores()).not.toContain("");
+        expect(valores()).toEqual([CONTA_BANCARIA]);
       },
     );
 
@@ -745,7 +758,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       await abrirSessao();
       onSetDirty.mockClear();
       await clicar(botaoEm(hospedeiro, "Sangria"));
-      expect(seletor().value).toBe(CONTA_BANCARIA);
+      expect(valorDaLista(CAMPO)).toBe(CONTA_BANCARIA);
       expect(onSetDirty).not.toHaveBeenCalledWith(true);
       await escolherConta(COFRE.id);
       expect(onSetDirty).toHaveBeenLastCalledWith(true);
@@ -764,7 +777,10 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       expect(normalizar(folha()?.textContent)).toContain(
         "Não há outra conta ativa",
       );
-      expect(seletor().options).toHaveLength(0);
+      // Nada para escolher: o campo diz isso e não abre uma lista vazia.
+      expect(textoDoCampo()).toBe("Nenhuma outra conta ativa");
+      expect(campo().disabled).toBe(true);
+      expect(campo().getAttribute("aria-invalid")).toBe("true");
       const registrar = botaoEm(folha() as HTMLElement, "Registrar sangria");
       expect(registrar.disabled).toBe(true);
       await clicar(registrar);
@@ -780,6 +796,8 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       const texto = normalizar(folha()?.textContent);
       expect(texto).toContain("As contas ainda não carregaram");
       expect(texto).not.toContain("Não há outra conta ativa");
+      // A lista não chegou: não afirma que falta conta.
+      expect(textoDoCampo()).toBe("Escolha uma conta");
       const registrar = botaoEm(folha() as HTMLElement, "Registrar sangria");
       expect(registrar.disabled).toBe(true);
       await clicar(registrar);
@@ -791,13 +809,23 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       await remontar();
       await abrirMovimento("Sangria");
       await digitar("fin-caixa-mov-valor", "5000");
-      expect(seletor().value).toBe("");
-      expect([...seletor().options].map((o) => o.value)).toContain(COFRE.id);
+      expect(valorDaLista(CAMPO)).toBe("");
+      expect(textoDoCampo()).toBe("Escolha uma conta");
+      // O placeholder não é opção: não dá para "escolher" o vazio.
+      expect(valores()).not.toContain("");
+      expect(valores()).toContain(COFRE.id);
+      expect(campo().getAttribute("aria-invalid")).toBeNull();
       await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
       expect(movimentos()).toHaveLength(0);
       expect(normalizar(folha()?.textContent)).toContain(
         "Escolha a conta de destino",
       );
+      // O erro é do campo: borda, `aria-invalid` e a mensagem ligada a ele.
+      expect(campo().getAttribute("aria-invalid")).toBe("true");
+      expect(campo().getAttribute("aria-describedby")).toBe(`${CAMPO}-erro`);
+      expect(
+        normalizar(document.getElementById(`${CAMPO}-erro`)?.textContent),
+      ).toBe("Escolha a conta de destino.");
       await escolherConta(COFRE.id);
       await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
       expect(movimentos()).toHaveLength(1);
