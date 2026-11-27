@@ -124,13 +124,16 @@ export function useConfirmarAcao(
             ) : null}
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {/* Botões que quebram linha (`whitespace-normal h-auto`): com a fonte
+            do celular em 130%, "Apagar e começar outra" numa linha só fazia a
+            janela rolar de lado em 320 px e cortava a pergunta. */}
         <AlertDialogFooter className="mt-2 gap-2">
-          <AlertDialogCancel className="min-h-11 rounded-xl border border-admin-border bg-white/5 px-4 text-sm font-semibold text-white hover:bg-white/10">
+          <AlertDialogCancel className="h-auto min-h-11 whitespace-normal rounded-xl border border-admin-border bg-white/5 px-4 text-center text-sm font-semibold text-white [overflow-wrap:anywhere] hover:bg-white/10">
             {pedido?.voltar ?? "Voltar"}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={() => responder(true)}
-            className="min-h-11 rounded-xl border border-red-900/60 bg-transparent px-4 text-sm font-semibold text-red-300 hover:bg-red-950/40"
+            className="h-auto min-h-11 whitespace-normal rounded-xl border border-red-900/60 bg-transparent px-4 text-center text-sm font-semibold text-red-300 [overflow-wrap:anywhere] hover:bg-red-950/40"
           >
             {pedido?.verbo}
           </AlertDialogAction>

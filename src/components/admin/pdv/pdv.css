@@ -520,10 +520,12 @@
   border-left: 1px solid hsl(var(--admin-border));
   padding-left: 12px;
 }
+/* A coluna do total não fica mais estreita que o número: em 320 px com o
+   texto do Android em 130%, "12.345,67" entrava 19 px por baixo do botão. */
 .pdv-footer {
   display: grid;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  grid-template-columns: minmax(min-content, 1fr) minmax(0, 1.4fr);
   align-items: center;
   gap: 8px;
   color: hsl(var(--admin-text, 240 10% 96.1%));
@@ -834,6 +836,16 @@
   overflow-y: auto;
   box-shadow: 0 8px 32px hsl(var(--admin-bg) / 50%);
 }
+/* "Limpar a tela da venda?": o foco cai no "Voltar", e ele rolava o aviso
+   até os botões, escondendo a pergunta. Presos embaixo (por cima do padding),
+   os botões já estão à vista e o texto rola por trás deles. */
+.pdv-flow > .pdv-notice > .pdv-annul-actions {
+  position: sticky;
+  bottom: 0;
+  margin-bottom: -16px;
+  padding-bottom: 16px;
+  background: inherit;
+}
 .pdv-conference {
   gap: 4px;
 }
@@ -1036,6 +1048,16 @@
   .pdv[data-etapa="fechamento"] {
     gap: 1px;
     padding-top: 2px;
+  }
+}
+/* Telefone baixo: a 100 px do topo, o aviso tinha 157 px em 320 x 568
+   (294 de conteúdo). Sobe para 8 px do topo e desce até onde começa a
+   reserva da barra (`--admin-tab-pb`), a mesma linha em que a tela para.
+   Só no celular: no computador não há barra embaixo nem falta altura. */
+@media (max-height: 680px) and (max-width: 1023px) {
+  .pdv-flow > .pdv-notice {
+    top: 8px;
+    max-height: calc(100% - var(--admin-tab-pb, 6.25rem) - 8px);
   }
 }
 @media (min-height: 681px) and (max-height: 900px) {
