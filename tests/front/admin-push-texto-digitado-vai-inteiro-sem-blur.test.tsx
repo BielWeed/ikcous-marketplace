@@ -183,7 +183,7 @@ describe("Avisar clientes — o que está na tela é o que sai, sem depender de 
       );
     });
     const modelo = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Lembrete de Carrinho"),
+      b.textContent?.includes("Convite para voltar"),
     );
     await act(async () => modelo!.click());
     expect(botaoEnviar().disabled).toBe(false);

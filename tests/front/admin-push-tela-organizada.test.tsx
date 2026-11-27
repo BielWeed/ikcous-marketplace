@@ -430,7 +430,7 @@ describe("AdminPushView — tela organizada e compacta", () => {
         (b) => b.textContent === nome,
       )!;
     const oferta = grupo("Oferta com cupom");
-    const carrinho = grupo("Lembrete de Carrinho");
+    const carrinho = grupo("Convite para voltar");
     const temCheck = (b: HTMLElement) =>
       b.querySelector("svg.lucide-check") !== null;
     expect(temCheck(oferta)).toBe(false);
