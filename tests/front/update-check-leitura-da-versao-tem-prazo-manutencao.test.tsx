@@ -176,9 +176,8 @@ describe("tela de manutenção — pergunta pendurada não trava as seguintes", 
       return aoAbortar(init);
     });
     buscar.mockImplementation(async () => resposta(false));
+    // A pendurada é a pergunta da abertura (sai na montagem).
     await montar();
-
-    await passar(INTERVALO_DA_CHECAGEM_MS);
     expect(buscar).toHaveBeenCalledTimes(1);
 
     // Ainda dentro do prazo a pergunta não empilha outra por cima.
