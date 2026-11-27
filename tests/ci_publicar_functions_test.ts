@@ -1585,3 +1585,178 @@ Deno.test("publicar-functions: a auth-send-email sobe na IKCOUS e na Savy, só p
     },
   );
 });
+
+// ---------------------------------------------------------------------------
+// A prova do dinheiro antes de publicar em QUALQUER loja assinante (A17 do
+// plano da org central, 27/11/2026). Até aqui só a IKCOUS rodava a prova
+// somente leitura do banco (verificar-pagamentos-ikcous.cjs) antes do deploy;
+// a Savy e as lojas novas publicavam as functions de dinheiro sem ela. O passo
+// novo fica no ramo genérico (toda assinante menos a CAF, que tem o dela), vem
+// ANTES do deploy, pula só no modo listar, usa `--loja` com a loja do input (o
+// script resolve o ref SÓ pelo cadastro) e o MESMO token do deploy, numa linha
+// GERADA do cadastro (bloco LOJAS-SEGREDO-UNICO).
+// ---------------------------------------------------------------------------
+const PROVA_DA_ASSINANTE =
+  "Prova somente leitura do banco da loja assinante antes de publicar";
+const DEPLOY_DA_ASSINANTE = "Publica loja assinante, uma function por vez";
+const ehProva = (nome: string) => nome.startsWith("Prova somente leitura");
+
+Deno.test("publicar-functions: a prova do dinheiro roda antes do deploy em toda assinante do ramo genérico (Savy e lojas novas), com --loja e o MESMO token do deploy", async () => {
+  const yaml = await Deno.readTextFile(WORKFLOW);
+  const passos = passosDoWorkflow(yaml);
+  const nomes = passos.map(([n]) => n);
+  const iProva = nomes.indexOf(PROVA_DA_ASSINANTE);
+  const iDeploy = nomes.indexOf(DEPLOY_DA_ASSINANTE);
+  assert(iProva >= 0, "passo da prova da loja assinante ausente");
+  assert(iProva < iDeploy, "a prova tem de vir ANTES do deploy da assinante");
+  const prova = passos.at(iProva)[1];
+  // a loja vem do input por env (nunca interpolada no script) e vai em --loja;
+  // o ref, nunca: quem resolve é o cadastro, dentro do script
+  assertStringIncludes(prova, "PROJETO: ${{ inputs.projeto }}");
+  assertStringIncludes(
+    prova,
+    'run: node scripts/publicacao/verificar-pagamentos-ikcous.cjs --loja "$PROJETO"',
+  );
+  assert(!prova.includes("--site-publicado-caf"));
+  assert(!prova.includes("REF:"), "a prova não recebe ref de fora");
+  assert(!prova.includes("${{ secrets.SUPABASE_ACCESS_TOKEN }}"));
+  assert(!prova.includes("continue-on-error"));
+  // o MESMO token do deploy da assinante, na linha gerada do cadastro
+  const token = linhaDoToken(prova);
+  assert(token, "a prova sem SUPABASE_ACCESS_TOKEN");
+  assertEquals(token, linhaDoToken(passos.at(iDeploy)[1]));
+  const cru = yaml.slice(yaml.indexOf(`name: ${PROVA_DA_ASSINANTE}`));
+  const doPasso = cru.slice(0, cru.indexOf("\n      - "));
+  assertStringIncludes(doPasso, "# LOJAS-SEGREDO-UNICO-INICIO");
+  assertStringIncludes(doPasso, "# LOJAS-SEGREDO-UNICO-FIM");
+
+  // quando roda: toda assinante do ramo genérico, modo publicar; nunca CAF,
+  // loja, sandbox; e nunca no modo listar
+  for (const projeto of ["savy", "loja-teste-xyz"]) {
+    assertEquals(seRoda(prova, projeto, "publicar"), true, projeto);
+    assertEquals(seRoda(prova, projeto, "listar"), false, `${projeto}/listar`);
+  }
+  for (const projeto of ["ikcous-publicada", "loja", "sandbox"])
+    for (const modo of ["publicar", "listar"])
+      assertEquals(seRoda(prova, projeto, modo), false, `${projeto}/${modo}`);
+
+  // em TODA loja que publica função de dinheiro por um ramo de assinante,
+  // exatamente UMA prova roda, antes do deploy; no legado, nenhuma
+  for (const projeto of PROJETOS_QUE_PUBLICAM) {
+    const rodam = passos
+      .map(([n, p], i) => ({ n, p, i }))
+      .filter(({ p }) => seRoda(p, projeto, "publicar"));
+    const provas = rodam.filter(({ n }) => ehProva(n));
+    const deploy = rodam.filter(({ p }) =>
+      p.includes("supabase functions deploy"),
+    );
+    assertEquals(deploy.length, 1, projeto);
+    if (projeto === "loja" || projeto === "sandbox") {
+      assertEquals(provas.length, 0, projeto);
+      continue;
+    }
+    assertEquals(provas.length, 1, projeto);
+    assert(provas[0].i < deploy[0].i, `${projeto}: prova depois do deploy`);
+    assertEquals(
+      linhaDoToken(provas[0].p),
+      linhaDoToken(deploy[0].p),
+      `${projeto}: a prova usa token diferente do deploy`,
+    );
+  }
+  // no modo listar nenhuma prova roda (nada é publicado)
+  for (const [n, p] of passos.filter(([n]) => ehProva(n)))
+    assertEquals(seRoda(p, "ikcous-publicada", "listar"), false, n);
+});
+
+Deno.test("publicar-functions: com lojas na org central, a prova e o deploy da assinante continuam com a MESMA linha de token, e o --conferir do gerador segue igual", () => {
+  const req = createRequire(import.meta.url);
+  const gerador = req(
+    fromFileUrl(
+      new URL("../scripts/frota/lojas-nos-workflows.cjs", import.meta.url),
+    ),
+  );
+  const { validarCadastro } = req(
+    fromFileUrl(new URL("../scripts/frota/lojas.cjs", import.meta.url)),
+  );
+  const segredoDaOrg = req(
+    fromFileUrl(new URL("../scripts/frota/org-central.cjs", import.meta.url)),
+  ).carregarOrgCentral().segredoDoGitHub;
+  const bruto = JSON.parse(
+    Deno.readTextFileSync(
+      fromFileUrl(new URL("../scripts/frota/lojas.json", import.meta.url)),
+    ),
+  );
+  // duas assinantes de FIXTURE no segredo da org (nenhuma loja real)
+  const naOrg = (ref: string, apelido: string) => ({
+    ref,
+    classe: "assinante",
+    apelido,
+    segredoDoToken: segredoDaOrg,
+    functionsNomeadas: false,
+  });
+  bruto.lojas = {
+    ...bruto.lojas,
+    "loja-org-a": naOrg("aaaaaaaaaaaaaaaaaaab", "Org A"),
+    "loja-org-b": naOrg("aaaaaaaaaaaaaaaaaaac", "Org B"),
+  };
+  const comOrg = gerador.sincronizar(
+    Deno.readTextFileSync(WORKFLOW),
+    validarCadastro(bruto),
+  );
+  const passos = passosDoWorkflow(comOrg);
+  const prova = passos.find(([n]) => n === PROVA_DA_ASSINANTE);
+  const deploy = passos.find(([n]) => n === DEPLOY_DA_ASSINANTE);
+  assert(prova && deploy);
+  const token = linhaDoToken(prova[1]);
+  assertEquals(token, linhaDoToken(deploy[1]));
+  // a guarda do segredo da org é a de tamanho fixo, pelo NOME que o passo
+  // `alvo` gravou (nunca uma lista de lojas)
+  assertStringIncludes(
+    token,
+    `steps.alvo.outputs.segredo == '${segredoDaOrg}' && secrets.${segredoDaOrg}`,
+  );
+  // e o arquivo de hoje já está em sincronia com o cadastro real
+  const { carregarLojas: carregar } = req(
+    fromFileUrl(new URL("../scripts/frota/lojas.cjs", import.meta.url)),
+  );
+  const hoje = Deno.readTextFileSync(WORKFLOW);
+  assertEquals(gerador.sincronizar(hoje, carregar()), hoje);
+});
+
+Deno.test({
+  name: "publicar-functions: o `run` da prova, rodado de verdade, recusa loja legado ANTES do token e para sem token (nenhuma rede)",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const passo = passosDoWorkflow(await Deno.readTextFile(WORKFLOW)).find(
+      ([n]) => n === PROVA_DA_ASSINANTE,
+    );
+    assert(passo, "passo da prova ausente");
+    const run = passo[1].match(/\n\s+run: (.+)/)?.[1];
+    assert(run, "a prova tem de ser um `run:` de uma linha");
+    const rodar = async (projeto: string) => {
+      const r = await new Deno.Command("bash", {
+        args: ["-c", run],
+        cwd: RAIZ,
+        // sem SUPABASE_ACCESS_TOKEN: nenhum caminho chega à rede
+        env: { PROJETO: projeto, PATH: Deno.env.get("PATH") ?? "" },
+        clearEnv: true,
+        stdout: "piped",
+        stderr: "piped",
+      }).output();
+      const dec = new TextDecoder();
+      return {
+        codigo: r.code,
+        saida: dec.decode(r.stdout) + dec.decode(r.stderr),
+      };
+    };
+    for (const projeto of ["loja", "sandbox", "loja-ausente"]) {
+      const r = await rodar(projeto);
+      assertEquals(r.codigo, 1, projeto);
+      assertStringIncludes(r.saida, "Destino recusado: ", projeto);
+    }
+    const savy = await rodar("savy");
+    assertEquals(savy.codigo, 1);
+    assertStringIncludes(savy.saida, "Token de Actions ausente.");
+  },
+});

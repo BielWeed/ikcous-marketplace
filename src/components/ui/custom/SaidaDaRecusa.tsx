@@ -49,6 +49,11 @@ const ROTULO_DA_ACAO: Record<AcaoDeRecusa, string> = {
   entrar_na_conta: "Entrar ou criar conta",
   tentar_de_novo: "Tentar de novo",
   conferir_antes: "Ver meus pedidos",
+  // Loja em manutenção ou com as vendas pausadas: nenhum pedido nasceu e não há
+  // nada a trocar. O botão só fecha o aviso (o carrinho fica); nem "Ver meus
+  // pedidos" (não existe pedido) nem "Tentar de novo" (a loja acabou de
+  // recusar e a frase do banco já diz quando voltar).
+  aguardar_a_loja: "Entendi",
   // Quem compra SEM CONTA não tem como achar o pedido em "Ver meus pedidos"
   // (a busca exige e-mail e o número, que ela nunca recebeu). A saída é
   // reenviar a MESMA compra — segura porque o banco devolve o pedido que já
@@ -134,6 +139,17 @@ export function SaidaDaRecusa({
             revisão de 28/08 achou entre este caminho e o toast.
           */}
           <p className="mt-1 break-words text-sm text-amber-900">{mensagem}</p>
+
+          {/*
+            Loja em manutenção ou com as vendas pausadas: a frase aprovada na
+            decisão da pausa (26/11/2026, textos 1 e 2) diz que a compra não
+            se perdeu. O carrinho fica de fato: o botão só fecha o aviso.
+          */}
+          {acao === "aguardar_a_loja" && (
+            <p className="mt-1 text-sm text-amber-900">
+              Seus itens continuam no carrinho.
+            </p>
+          )}
 
           {detalheDoEstoque && (
             <p className="mt-1 text-sm font-medium text-amber-900">

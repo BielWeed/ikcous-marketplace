@@ -3,6 +3,7 @@
 -- RLS ligada sem politica, nenhum privilegio para anon, authenticated nem service_role), as 5 funcoes com o corpo desta migration (md5), os atributos e o
 -- EXECUTE por papel (so a leitura do painel e' do authenticated), e os 2 gatilhos (o do pedido novo com o WHEN do balcao; o da marca em UPDATE OF status),
 -- ligados. Antes do apply (ou depois do rollback comum) esta consulta responde "nao" (a 196a negativa e' esperada), nunca erro.
+-- SUCESSORA: a 20261630000000 (a loja ja suspensa tambem pausa) redefine SO a marca; a linha da marca aceita o corpo dela tambem (a 199a confere qual).
 WITH fn AS (
   SELECT p.oid, p.proname, md5(replace(p.prosrc, chr(13), '')) AS h, l.lanname, p.prosecdef, p.provolatile, p.proconfig,
          pg_get_function_result(p.oid) AS resultado,
@@ -14,19 +15,19 @@ WITH fn AS (
   WHERE p.pronamespace = 'public'::regnamespace
     AND p.proname IN ('data_da_pausa_de_vendas', 'marcar_suspensa_desde', 'motivo_da_loja_nao_aceitar_pedido', 'a_loja_aceita_pedido_novo', 'situacao_das_vendas_da_loja')
 ), alvo AS (
-  SELECT f.*, e.esperado_h, e.esperado_lingua, e.esperado_definer, e.esperado_vol, e.esperado_retorno, e.esperado_logado
+  SELECT f.*, e.esperado_h, COALESCE(e.sucessor_h, e.esperado_h) AS sucessor_h, e.esperado_lingua, e.esperado_definer, e.esperado_vol, e.esperado_retorno, e.esperado_logado
   FROM (VALUES
-    ('data_da_pausa_de_vendas', 'ce4f41a99d7cdce593f07cfd42ee18ec', 'sql', false, 'i', 'date', false),
-    ('marcar_suspensa_desde', '162120d86a79c72a8b3622d2777dfa8d', 'plpgsql', true, 'v', 'trigger', false),
-    ('motivo_da_loja_nao_aceitar_pedido', 'bfe365fb64ad8d2bb9c06efca304375c', 'plpgsql', true, 's', 'text', false),
-    ('a_loja_aceita_pedido_novo', 'b53378b9838954977af9bad3af6ccbc0', 'plpgsql', true, 'v', 'trigger', false),
-    ('situacao_das_vendas_da_loja', '3757e68d6bf74e5f4428eae612e60749', 'plpgsql', true, 's', 'jsonb', true)
-  ) AS e(nome, esperado_h, esperado_lingua, esperado_definer, esperado_vol, esperado_retorno, esperado_logado)
+    ('data_da_pausa_de_vendas', 'ce4f41a99d7cdce593f07cfd42ee18ec', NULL, 'sql', false, 'i', 'date', false),
+    ('marcar_suspensa_desde', '162120d86a79c72a8b3622d2777dfa8d', '974c4efadc6876427ffe740312c7619b', 'plpgsql', true, 'v', 'trigger', false),
+    ('motivo_da_loja_nao_aceitar_pedido', 'bfe365fb64ad8d2bb9c06efca304375c', NULL, 'plpgsql', true, 's', 'text', false),
+    ('a_loja_aceita_pedido_novo', 'b53378b9838954977af9bad3af6ccbc0', NULL, 'plpgsql', true, 'v', 'trigger', false),
+    ('situacao_das_vendas_da_loja', '3757e68d6bf74e5f4428eae612e60749', NULL, 'plpgsql', true, 's', 'jsonb', true)
+  ) AS e(nome, esperado_h, sucessor_h, esperado_lingua, esperado_definer, esperado_vol, esperado_retorno, esperado_logado)
   LEFT JOIN fn f ON f.proname = e.nome
 ), certa AS (
   SELECT a.proname AS nome,
          (SELECT count(*) FROM fn x WHERE x.proname = a.proname) = 1
-         AND a.h = a.esperado_h AND a.lanname = a.esperado_lingua AND a.prosecdef = a.esperado_definer AND a.provolatile = a.esperado_vol
+         AND a.h IN (a.esperado_h, a.sucessor_h) AND a.lanname = a.esperado_lingua AND a.prosecdef = a.esperado_definer AND a.provolatile = a.esperado_vol
          AND a.resultado = a.esperado_retorno AND a.proconfig = ARRAY['search_path=public, pg_temp']::text[]
          AND NOT a.publico AND NOT a.anon AND NOT a.servico AND a.logado = a.esperado_logado AS ok
   FROM alvo a WHERE a.proname IS NOT NULL
@@ -51,7 +52,7 @@ WITH fn AS (
                         OR has_any_column_privilege(r.papel, to_regclass('public.pausa_de_vendas'), 'SELECT,INSERT,UPDATE,REFERENCES')) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'data_da_pausa_de_vendas: uma so, corpo da 20261600000000 (md5), SQL IMMUTABLE com search_path fixo, EXECUTE de ninguem', 'sim',
     CASE WHEN COALESCE((SELECT bool_and(ok) FROM certa WHERE nome = 'data_da_pausa_de_vendas'), false) THEN 'sim' ELSE 'nao' END
-  UNION ALL SELECT 'marcar_suspensa_desde: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem', 'sim',
+  UNION ALL SELECT 'marcar_suspensa_desde: uma so, corpo da 20261600000000 ou da sucessora 20261630000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem', 'sim',
     CASE WHEN COALESCE((SELECT bool_and(ok) FROM certa WHERE nome = 'marcar_suspensa_desde'), false) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'motivo_da_loja_nao_aceitar_pedido: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE de ninguem', 'sim',
     CASE WHEN COALESCE((SELECT bool_and(ok) FROM certa WHERE nome = 'motivo_da_loja_nao_aceitar_pedido'), false) THEN 'sim' ELSE 'nao' END

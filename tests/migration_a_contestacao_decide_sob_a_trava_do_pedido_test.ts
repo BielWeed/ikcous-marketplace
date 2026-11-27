@@ -775,6 +775,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/admin-atual-endurecimento-viva.cjs",
     // 20261383: so o dono da loja define cargo (dono nomeia e remove, nomeado nao nomeia, ninguem rebaixa o dono, PATCH direto barrado, log, EXECUTE, concorrencia real, mutantes, rollback, consultas 88a/88b).
     "tests/banco/definir-cargo-so-o-dono-viva.cjs",
+    // Sem migration: a escrita do definir-dono do nova-loja (SQL_DEFINIR_DONO pela consulta simples, sessao nao-superusuario, consulta 88c, IKD01..IKD06, concorrencia, mutantes).
+    "tests/banco/o-nova-loja-define-o-dono-viva.cjs",
+    // Sem migration: a escrita do trocar-dono do nova-loja (sqlTrocarDono pela consulta simples, IKT01..IKT06 byte a byte, 88c, concorrencia, sonda A1, conexao depois da recusa, mutantes).
+    "tests/banco/o-nova-loja-troca-o-dono-viva.cjs",
     // 20261440: a loja guarda o cadastro fiscal e so o dono altera (prova da migration; consultas 180a/180b abaixo).
     "tests/banco/o-cadastro-fiscal-so-o-dono-altera-viva.cjs",
     "tests/banco/o-cadastro-fiscal-portao-viva.cjs",
@@ -799,6 +803,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-livro-de-registro-desfazer-ensaio-viva.cjs",
     // 20261540: a loja nova nasce com a ficha (linha id = 1 e a marca no catalogo; porteiro, identidade e pix acham a ficha; linha de antes intacta; reaplicar; rollback so da marca; pre-voo; consultas 191a/191b).
     "tests/banco/a-loja-nova-nasce-com-a-ficha-viva.cjs",
+    // Sem migration: a escrita do passo dominio do nova-loja (sqlDoDominio pela consulta simples; trava dominio_publico_so_muda_pela_frota recusa authenticated, sessao sem JWT grava; guarda IS NULL; mutante).
+    "tests/banco/o-nova-loja-grava-o-dominio-viva.cjs",
     // 20261530: a loja grande nao trava o balcao nem os avisos (porta leve sem ler pedido, diferencial contra a antiga, guardas, indices com EXPLAIN e tempos impressos, mutantes, rollback, consultas 190a/190b).
     "tests/banco/a-loja-grande-nao-trava-o-balcao-viva.cjs",
     // 20261550: o admin copia e apaga as fotos da loja (politicas SELECT so do admin de agora em products/banners; DELETE RETURNING 1/0; cliente e visitante 0; Public Display convive; reaplicar; rollback; consultas 192a/192b).
@@ -813,6 +819,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-loja-pausa-o-pedido-novo-viva.cjs",
     // 20261610: o catalogo e a configuracao chegam ao vivo em toda loja (as 10 tabelas na publicacao do realtime, coupons fora; IKCOUS no-op; pre-voo; rollback com confirmacao; politicas de SELECT; trava; consultas 197a/197b).
     "tests/banco/o-catalogo-chega-ao-vivo-em-toda-loja-viva.cjs",
+    // 20261630000000: a loja ja suspensa tambem pausa (a marca grava o dia de quem segue suspensa sem dia; controle com a marca da 1600; mutantes; reaplicar sem tocar dados; rollback antes do da 1600; consultas 199a/199b/196a).
+    "tests/banco/a-loja-ja-suspensa-tambem-pausa-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
     "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",
