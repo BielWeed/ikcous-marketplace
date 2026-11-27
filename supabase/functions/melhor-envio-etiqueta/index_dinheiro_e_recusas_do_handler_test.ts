@@ -557,6 +557,38 @@ Deno.test("checkout com HTTP 500: estado INDETERMINADO — o vínculo fica, o ca
     assertEquals(evento.protocol, "proto-1")
 })
 
+// 408 (tempo esgotado), 409 (conflito) e 423 (travado) não são "o ME recusou a
+// compra": um proxy que desiste, ou outra operação em curso na mesma etiqueta,
+// pode vir DEPOIS de o saldo ter sido debitado. Soltar o vínculo aqui abria a
+// segunda compra no próximo clique.
+for (const status of [408, 409, 423]) {
+    Deno.test(`checkout com HTTP ${status}: estado INDETERMINADO — o vínculo fica e o carrinho não é mexido (nada de pagar de novo)`, async () => {
+        const me = melhorEnvio({ checkoutStatus: status })
+        const supa = banco()
+        const r = await gerar({ banco: supa, me })
+        assertEquals(r.status, 502)
+        assertEquals(r.corpo.resgate, true)
+        assertStringIncludes(r.corpo.error, "INDETERMINADO")
+        assertEquals(supa.registro.liberacoes, [], "liberar aqui permitiria uma segunda compra")
+        assertEquals(me.registro.remocoes, 0)
+        assertEquals(supa.registro.pedidoAtual.shipping_label_id, LABEL_ID)
+        assertEquals(supa.registro.eventos.at(-1).payload.etapa, "checkout_indeterminado")
+    })
+}
+
+// 429 é o limitador de requisições do ME (250/min por usuário, FAQ oficial):
+// barra a chamada ANTES de ela chegar na compra — nada pago, recusa definida.
+Deno.test("checkout com HTTP 429: o limitador barrou a chamada antes da compra — item removido e vínculo liberado", async () => {
+    const me = melhorEnvio({ checkoutStatus: 429 })
+    const supa = banco()
+    const r = await gerar({ banco: supa, me })
+    assertEquals(r.status, 502)
+    assertStringIncludes(r.corpo.error, "limitando as chamadas")
+    assertEquals(me.registro.remocoes, 1)
+    assertEquals(supa.registro.liberacoes.length, 1)
+    assertEquals(supa.registro.pedidoAtual.shipping_label_id, null)
+})
+
 Deno.test("checkout recusado com 422: o ME disse que não pagou — item removido, vínculo liberado e o histórico leva o protocolo", async () => {
     const me = melhorEnvio({ checkoutStatus: 422 })
     const supa = banco()

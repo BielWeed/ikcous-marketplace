@@ -12,6 +12,7 @@ import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useDevolucaoAdmin } from "@/hooks/useDevolucoesAdmin";
+import { useProdutosComPecaSemTamanhoDaDevolucao } from "@/hooks/usePecasSemTamanho";
 import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formatarDataHoraBrasilia } from "@/lib/data-da-loja";
@@ -30,8 +31,10 @@ import {
 } from "@/lib/devolucao";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { TEXTO_ITEM_ESPERANDO_TAMANHO } from "@/lib/pecas-sem-tamanho";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
+import type { ItemDevolvido } from "@/types/devolucao";
 
 import {
   AcoesDaDevolucao,
@@ -128,6 +131,25 @@ export function DetalheDaDevolucao({
     [itensDaFicha],
   );
   const rotulosDasVariacoes = useRotulosDasVariacoes(itensParaRotular, true);
+  // A peça sem variação que voltou de produto que hoje tem tamanho ligado
+  // (20261642000000) não foi ao estoque: espera a lojista escolher o tamanho.
+  // Só pergunta ao banco quando algum item pode estar nesse caso.
+  const reestocadosSemVariacao = (itensDaFicha ?? [])
+    .filter((i) => i.reestocado_em != null && !i.variant_id && i.product_id)
+    .map((i) => `${i.id}:${i.reestocado_em}`)
+    .join(",");
+  const produtosEsperandoTamanho = useProdutosComPecaSemTamanhoDaDevolucao(
+    reestocadosSemVariacao ? detalhe?.order_id : undefined,
+    reestocadosSemVariacao,
+  );
+  const esperaTamanho = useCallback(
+    (item: ItemDevolvido) =>
+      item.reestocado_em != null &&
+      !item.variant_id &&
+      item.product_id != null &&
+      produtosEsperandoTamanho?.has(item.product_id) === true,
+    [produtosEsperandoTamanho],
+  );
 
   const whatsapp = linkWhatsappDoCliente(detalhe?.pedido?.whatsapp);
   const dentroDoPrazo = detalhe?.prazo_ate
@@ -207,6 +229,7 @@ export function DetalheDaDevolucao({
               ficha={ficha}
               detalhe={detalhe}
               onSujoMudou={aoSujar}
+              esperaTamanho={esperaTamanho}
             />
 
             <ReembolsoDaDevolucao
@@ -336,7 +359,10 @@ export function DetalheDaDevolucao({
                       <p className="text-[11px] tabular-nums text-zinc-400">
                         {item.quantidade} × {formatarReais(item.valor_unitario)}
                         {item.condicao && ` · ${rotuloCondicao(item.condicao)}`}
-                        {item.reestocado_em && " · voltou ao estoque"}
+                        {item.reestocado_em &&
+                          (esperaTamanho(item)
+                            ? ` · ${TEXTO_ITEM_ESPERANDO_TAMANHO}`
+                            : " · voltou ao estoque")}
                       </p>
                       {item.ja_pedido_e_nao_veio && (
                         <p

@@ -69,6 +69,11 @@ const SUCESSORAS = [
     consulta:
       "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
   },
+  // 20261642000000: a peca que volta sem tamanho espera a lojista (devolver_estoque, admin_devolucao_concluir e as RPCs novas).
+  {
+    versao: "20261642000000",
+    consulta: "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
+  },
   // 20261643000000: as listas dos ajustes nao somem entre aparelhos (upsert_store_config e salvar_politica_de_devolucao).
   {
     versao: "20261643000000",

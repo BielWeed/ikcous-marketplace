@@ -435,9 +435,11 @@ on:
           - 200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente
           - 201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado
           - 201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente
+          - 201m-medir-avaliacoes-repetidas
+          - 202a-conferir-a-peca-que-volta-sem-tamanho-aplicado
+          - 202b-antes-a-peca-que-volta-sem-tamanho-base-vigente
           - 203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado
           - 203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente
-          - 201m-medir-avaliacoes-repetidas
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

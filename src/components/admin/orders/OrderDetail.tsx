@@ -372,6 +372,43 @@ const CODIGO_LINHA_JA_EXISTE = "23505";
 const MENSAGEM_RASTREIO_NAO_GRAVADO =
   "O código de rastreio não foi salvo. Tente de novo ou recarregue a página: sua sessão pode ter expirado.";
 
+/**
+ * 27/11/2026 (caça): o "Salvar" do rastreio aceitava, sem aviso, um código que
+ * já estava em OUTRO pedido da loja (colado do pedido errado): a cliente deste
+ * pedido passava a acompanhar o pacote de outra pessoa. Devolve o id de outro
+ * pedido (id diferente) que já tem o código JÁ LIMPO, ou `null`. Quem chama
+ * pergunta antes de gravar, sem bloquear (envio conjunto é legítimo).
+ *
+ * Falha, recusa ou falta de resposta devolvem `null`: a pergunta é ajuda, e
+ * nunca pode impedir a loja de salvar o rastreio (o que já funcionava). A
+ * leitura é a do admin atual (`marketplace_orders_select_policy`); quem não é
+ * admin só enxerga os próprios pedidos e, por isso, não vê o aviso.
+ */
+async function outroPedidoComORastreio(
+  pedidoId: string,
+  codigo: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(
+        supabase
+          .from("marketplace_orders")
+          .select("id")
+          .eq("tracking_code", codigo)
+          .neq("id", pedidoId)
+          .limit(1),
+      ),
+      PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+      () => erroDeConsultaSemResposta(),
+    );
+    if (error) return null;
+    const outro = data?.[0]?.id;
+    return typeof outro === "string" && outro !== "" ? outro : null;
+  } catch {
+    return null;
+  }
+}
+
 const lerNotaInterna = async (pedidoId: string, sinal?: AbortSignal) => {
   const consulta = supabase
     .from("marketplace_order_internal_notes")
@@ -2426,6 +2463,20 @@ export const OrderDetail = memo(function OrderDetail({
       salvamentoRastreioRef.current === salvamento;
     try {
       setIsSavingTracking(true);
+      // Código novo que já está em outro pedido: pergunta antes de gravar
+      // (ver `outroPedidoComORastreio`). "Voltar" mantém o rascunho aberto.
+      if (codigo && codigo !== localTrackingCode) {
+        const outro = await outroPedidoComORastreio(pedidoId, codigo);
+        if (!vigente()) return;
+        if (outro) {
+          const usar = await confirmar({
+            titulo: "Código de rastreio repetido",
+            texto: `Esse código já está no pedido #${numeroDoPedido(outro)}. Usar mesmo assim?`,
+            verbo: "Usar mesmo assim",
+          });
+          if (!vigente() || !usar) return;
+        }
+      }
       // A gravação só vale se o código lido ainda for o mesmo no banco.
       const gravacao = supabase
         .from("marketplace_orders")

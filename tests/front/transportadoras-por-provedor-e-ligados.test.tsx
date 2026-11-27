@@ -641,7 +641,11 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
       expect(invoke).toHaveBeenCalledWith(
         "calculate-shipping",
         expect.objectContaining({
-          body: { action: "save_active_providers", ligados: [] },
+          body: {
+            action: "save_active_providers",
+            ligados: [],
+            ligadosVistos: ["melhor_envio"],
+          },
         }),
       );
     });
@@ -671,7 +675,11 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
       expect(invoke).toHaveBeenCalledWith(
         "calculate-shipping",
         expect.objectContaining({
-          body: { action: "save_active_providers", ligados: [] },
+          body: {
+            action: "save_active_providers",
+            ligados: [],
+            ligadosVistos: ["melhor_envio"],
+          },
         }),
       );
       expect(descartarCache).toHaveBeenCalledTimes(1);

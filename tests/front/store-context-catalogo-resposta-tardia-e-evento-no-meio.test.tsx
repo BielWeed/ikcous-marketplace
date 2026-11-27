@@ -89,6 +89,10 @@ function consultaDeProdutos(): any {
     select: () => consulta,
     is: () => consulta,
     order: () => consulta,
+    // O catálogo segue página a página POR CHAVE (`.or()` + `.limit()`);
+    // aqui toda resposta é curta, então só a 1ª página é pedida.
+    or: () => consulta,
+    limit: () => consulta,
     range: (inicio: number) => {
       de = inicio;
       return consulta;

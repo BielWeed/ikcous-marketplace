@@ -464,7 +464,11 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
     await act(async () => salvar().click());
     expect(updateConfig).not.toHaveBeenCalled();
     expect(invoke).toHaveBeenLastCalledWith("calculate-shipping", {
-      body: { action: "save_active_providers", ligados: [] },
+      body: {
+        action: "save_active_providers",
+        ligados: [],
+        ligadosVistos: ["frenet"],
+      },
     });
   });
 });

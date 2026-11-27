@@ -1,6 +1,7 @@
 import { cpfValido } from "@/lib/cpf-do-destinatario";
 import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import { codigoDeRastreioTemLetraOuDigito } from "@/lib/link-de-rastreio";
+import { statusDaEtiquetaCancelada } from "../../supabase/functions/_shared/etiqueta-cancelada-no-historico";
 
 // ============================================================================
 // Elegibilidade da etiqueta de envio — extraído de `EtiquetasEnvioCard.tsx`
@@ -301,11 +302,9 @@ const STATUS_DA_ETIQUETA_PAGA = new Set([
   "undelivered",
 ]);
 
-export function statusDaEtiquetaCancelada(status: unknown): boolean {
-  if (typeof status !== "string") return false;
-  const normalizado = status.trim().toLowerCase();
-  return normalizado === "canceled" || normalizado === "cancelled";
-}
+// A regra de "cancelada" mora com a do aviso de cancelamento do cliente
+// (push da rotina e sino do painel): uma régua só.
+export { statusDaEtiquetaCancelada };
 
 export function deveAvisarCancelamentoComEtiquetaPaga(
   pedido: PedidoParaEtiqueta,

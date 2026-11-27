@@ -34,6 +34,11 @@ vi.mock("@/lib/supabase", () => ({
   },
 }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: true }) }));
+// O selo da peça sem tamanho (20261642000000) tem a própria RPC e o próprio
+// teste (produtos-selo-da-peca-sem-tamanho); aqui `h.rpc` conta só o resumo.
+vi.mock("@/hooks/usePecasSemTamanho", () => ({
+  useContagemDePecasSemTamanho: () => new Map(),
+}));
 vi.mock("@/lib/dataVault", () => ({
   DataVault: { init: async () => ({ getById: h.getById, put: h.put }) },
 }));

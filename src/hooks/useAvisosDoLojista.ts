@@ -26,6 +26,7 @@ import {
   montarAvisos,
   selecionarCancelamentosDoCliente,
 } from "@/utils/avisos-do-lojista";
+import { etiquetasCanceladasNoHistorico } from "../../supabase/functions/_shared/etiqueta-cancelada-no-historico";
 
 /**
  * Quantos produtos COM ESTOQUE BAIXO a tela le por pagina. Quem filtra e o
@@ -272,7 +273,7 @@ async function buscarCancelamentosDoCliente(): Promise<LeituraDeCancelamentos> {
   const { data, error, count } = await supabase
     .from("marketplace_order_history")
     .select(
-      "id, order_id, old_status, created_by, created_at, marketplace_orders(id, user_id, customer_name, total, payment_status, status, cancelled_after_shipping, returned_to_seller_at, customer_data->>pickup_address)",
+      "id, order_id, old_status, created_by, created_at, marketplace_orders(id, user_id, customer_name, total, payment_status, status, cancelled_after_shipping, returned_to_seller_at, shipping_label_id, customer_data->>pickup_address)",
       { count: "exact" },
     )
     .eq("new_status", "cancelled")
@@ -310,9 +311,50 @@ async function buscarCancelamentosDoCliente(): Promise<LeituraDeCancelamentos> {
       .map((perfil) => perfil.id),
   );
   return {
-    cancelamentos: selecionarCancelamentosDoCliente(linhas, admins),
+    cancelamentos: selecionarCancelamentosDoCliente(
+      linhas,
+      admins,
+      await lerEtiquetasCanceladas(linhas),
+    ),
     truncou,
   };
+}
+
+// 27/11/2026: `shipping_label_id` nunca e apagado, entao a etiqueta cancelada
+// no Melhor Envio seguia pedindo "cancele a etiqueta". Quem sabe do
+// cancelamento e o historico de envio (o "Atualizar rastreio" grava o status
+// que o ME devolveu). So le os pedidos COM etiqueta. Falha aqui nao derruba a
+// fonte: sem saber, o aviso mantem a frase (o pior caso e a loja conferir uma
+// etiqueta ja cancelada; omitir custaria o valor de uma etiqueta paga).
+// Mesma regra do push (supabase/functions/_shared/aviso-de-cancelamento-do-cliente.ts).
+async function lerEtiquetasCanceladas(
+  linhas: readonly LinhaDeCancelamento[],
+): Promise<Set<string>> {
+  const pedidosComEtiqueta = [
+    ...new Set(
+      linhas.flatMap((linha) => {
+        const bruto = linha.marketplace_orders;
+        const pedido = Array.isArray(bruto) ? bruto[0] : bruto;
+        return pedido?.shipping_label_id?.trim() ? [pedido.id] : [];
+      }),
+    ),
+  ];
+  if (pedidosComEtiqueta.length === 0) return new Set();
+  try {
+    const { data, error } = await supabase
+      .from("order_shipping_events")
+      .select("order_id, event_type, payload")
+      .in("order_id", pedidosComEtiqueta)
+      .eq("event_type", "rastreio_consultado");
+    if (error) throw error;
+    return etiquetasCanceladasNoHistorico(data);
+  } catch (erro) {
+    console.error(
+      "[useAvisosDoLojista] Historico de envio indisponivel; o aviso mantem a frase da etiqueta:",
+      erro,
+    );
+    return new Set();
+  }
 }
 
 interface LeituraDeProdutos {

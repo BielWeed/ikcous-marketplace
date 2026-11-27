@@ -20,13 +20,21 @@ const CLIENTE = "c1111111-1111-4111-8111-111111111111";
 const SEM_PAPEL = "c2222222-2222-4222-8222-222222222222";
 const ADMIN = "a1111111-1111-4111-8111-111111111111";
 
-const { historico, perfis, chamadasDoHistorico, loadProductsFalso } =
-  vi.hoisted(() => ({
-    historico: { resposta: { data: [], error: null } as unknown },
-    perfis: { resposta: { data: [], error: null } as unknown },
-    chamadasDoHistorico: [] as Array<[string, ...unknown[]]>,
-    loadProductsFalso: vi.fn(),
-  }));
+const {
+  historico,
+  perfis,
+  eventosDeEnvio,
+  chamadasDoHistorico,
+  chamadasDosEventos,
+  loadProductsFalso,
+} = vi.hoisted(() => ({
+  historico: { resposta: { data: [], error: null } as unknown },
+  perfis: { resposta: { data: [], error: null } as unknown },
+  eventosDeEnvio: { resposta: { data: [], error: null } as unknown },
+  chamadasDoHistorico: [] as Array<[string, ...unknown[]]>,
+  chamadasDosEventos: [] as Array<[string, ...unknown[]]>,
+  loadProductsFalso: vi.fn(),
+}));
 
 function construir(tabela: string) {
   const b: Record<string, unknown> = {};
@@ -34,6 +42,9 @@ function construir(tabela: string) {
     vi.fn((...args: unknown[]) => {
       if (tabela === "marketplace_order_history") {
         chamadasDoHistorico.push([nome, ...args]);
+      }
+      if (tabela === "order_shipping_events") {
+        chamadasDosEventos.push([nome, ...args]);
       }
       return b;
     });
@@ -61,7 +72,9 @@ function construir(tabela: string) {
         ? historico.resposta
         : tabela === "profiles"
           ? perfis.resposta
-          : { data: [], count: 0, error: null },
+          : tabela === "order_shipping_events"
+            ? eventosDeEnvio.resposta
+            : { data: [], count: 0, error: null },
     ).then(resolve as never, reject as never);
   return b;
 }
@@ -89,7 +102,7 @@ vi.mock("@/hooks/useProducts", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 interface Leitura {
-  avisos: Array<{ tipo: string }>;
+  avisos: Array<{ tipo: string; detalhe?: string }>;
   fontesComFalha: string[];
 }
 
@@ -136,8 +149,10 @@ function cancelamento(indice: number, autor: string) {
 
 beforeEach(() => {
   chamadasDoHistorico.length = 0;
+  chamadasDosEventos.length = 0;
   historico.resposta = { data: [], error: null };
   perfis.resposta = { data: [], error: null };
+  eventosDeEnvio.resposta = { data: [], error: null };
   loadProductsFalso.mockImplementation(() =>
     Promise.resolve({ products: [], total: 0 }),
   );
@@ -161,6 +176,18 @@ describe("useAvisosDoLojista — cancelamento do cliente: teto e quem e excluido
     ]);
     const limite = chamadasDoHistorico.find((c) => c[0] === "limit");
     expect(limite?.[1]).toBe(100);
+  });
+
+  // 27/11/2026: o aviso fala da etiqueta ja paga (`etiquetaPaga`) so se a
+  // leitura trouxer a coluna; sem ela o pedido chega sem etiqueta e o aviso
+  // volta a dizer so "o reembolso e automatico".
+  it("pede o shipping_label_id do pedido embutido (o aviso da etiqueta paga depende dele)", async () => {
+    await montar();
+
+    const selecao = chamadasDoHistorico.find((c) => c[0] === "select");
+    expect(String(selecao?.[1])).toMatch(
+      /marketplace_orders\([^)]*\bshipping_label_id\b/,
+    );
   });
 
   it("so o papel admin e excluido: cliente e perfil SEM papel continuam virando aviso", async () => {
@@ -190,5 +217,90 @@ describe("useAvisosDoLojista — cancelamento do cliente: teto e quem e excluido
     expect(
       atual().avisos.filter((a) => a.tipo === "cancelamento"),
     ).toHaveLength(2);
+  });
+});
+
+// 27/11/2026: `shipping_label_id` nunca e apagado. A etiqueta que o historico
+// de envio ja viu CANCELADA no Melhor Envio nao pode mais pedir "cancele a
+// etiqueta para recuperar o valor": o valor ja voltou.
+describe("useAvisosDoLojista — cancelamento do cliente com etiqueta ja cancelada", () => {
+  const FRASE = "cancele a etiqueta no Melhor Envio";
+  function comEtiqueta() {
+    const c = cancelamento(1, CLIENTE);
+    return {
+      ...c,
+      old_status: "processing",
+      marketplace_orders: {
+        ...c.marketplace_orders,
+        shipping_label_id: "label-123",
+      },
+    };
+  }
+  function prepararComEtiqueta() {
+    historico.resposta = { data: [comEtiqueta()], count: 1, error: null };
+    perfis.resposta = {
+      data: [{ id: CLIENTE, role: "customer" }],
+      error: null,
+    };
+  }
+  const detalhe = (l: Leitura) =>
+    l.avisos.find((a) => a.tipo === "cancelamento")?.detalhe ?? "";
+
+  it("o historico de envio diz cancelada: o aviso sai SEM a frase da etiqueta", async () => {
+    prepararComEtiqueta();
+    eventosDeEnvio.resposta = {
+      data: [
+        {
+          order_id: comEtiqueta().order_id,
+          event_type: "rastreio_consultado",
+          payload: { label_id: "label-123", status_etiqueta: "canceled" },
+        },
+      ],
+      error: null,
+    };
+
+    const atual = await montar();
+
+    expect(atual().fontesComFalha).toEqual([]);
+    expect(detalhe(atual())).toContain("o reembolso é automático");
+    expect(detalhe(atual())).not.toContain(FRASE);
+    expect(chamadasDosEventos).toContainEqual([
+      "in",
+      "order_id",
+      [comEtiqueta().order_id],
+    ]);
+    expect(chamadasDosEventos).toContainEqual([
+      "eq",
+      "event_type",
+      "rastreio_consultado",
+    ]);
+  });
+
+  it("a leitura do historico de envio falha: o aviso sai igual, COM a frase (lado seguro do dinheiro)", async () => {
+    prepararComEtiqueta();
+    eventosDeEnvio.resposta = { data: null, error: { message: "fora do ar" } };
+    const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const atual = await montar();
+
+    expect(atual().fontesComFalha).toEqual([]);
+    expect(detalhe(atual())).toContain(FRASE);
+    erro.mockRestore();
+  });
+
+  it("nenhum pedido com etiqueta: o historico de envio nem e lido", async () => {
+    historico.resposta = {
+      data: [cancelamento(1, CLIENTE)],
+      count: 1,
+      error: null,
+    };
+    perfis.resposta = {
+      data: [{ id: CLIENTE, role: "customer" }],
+      error: null,
+    };
+
+    await montar();
+
+    expect(chamadasDosEventos).toEqual([]);
   });
 });

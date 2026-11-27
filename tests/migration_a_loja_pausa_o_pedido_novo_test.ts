@@ -584,6 +584,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
     // 20261641000000: uma avaliacao por cliente e produto, e a media do painel so das publicadas.
     "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
+    // 20261642000000: a peca que volta sem tamanho espera a lojista.
+    "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
     // 20261643000000: as listas dos ajustes nao somem entre aparelhos.
     "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado",
   ];

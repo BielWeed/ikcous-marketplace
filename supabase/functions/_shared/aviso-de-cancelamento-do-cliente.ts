@@ -50,6 +50,7 @@
  * Quem chama trata a falha deste módulo em try próprio: o aviso é um efeito, e
  * uma falha aqui nunca pode atrapalhar pagamento nem estorno.
  */
+import { etiquetasCanceladasNoHistorico } from "./etiqueta-cancelada-no-historico.ts";
 import { formatarBRL, numeroDoPedido } from "./pedido.ts";
 
 export type Aviso = { title: string; body: string; url: string };
@@ -71,6 +72,18 @@ export const LIMITE_POR_RODADA = 100;
 /** `pago_apos_expirar` e `estornado` entram: ver o cabeçalho. */
 const PAGAMENTO_QUE_ENTROU = ["pago", "pago_apos_expirar", "estornado", "recebido_na_entrega"];
 const DEVOLUCAO_COMBINADA = "devolução combinada com a cliente";
+/**
+ * 27/11/2026 (caça): a cliente pode cancelar pedido em `processing` que JÁ TEM
+ * etiqueta paga no Melhor Envio (`shipping_label_id`). Cancelar o pedido não
+ * cancela a etiqueta: o saldo segue gasto, e o pacote pode já estar no correio
+ * mesmo com o pedido ainda em `processing`. Só entra quando o produto NÃO saiu
+ * pelo que o app sabe (no "já saiu" a etiqueta já foi usada). Mesma frase do
+ * sino do painel (`src/utils/avisos-do-lojista.ts`); mudou aqui, mude lá.
+ * Etiqueta que o histórico de envio já viu CANCELADA no Melhor Envio não leva
+ * a frase (`etiqueta-cancelada-no-historico.ts`): o valor já voltou.
+ */
+export const FRASE_DA_ETIQUETA_PAGA =
+  "Esse pedido já tinha etiqueta de envio: se ainda não postou, cancele a etiqueta no Melhor Envio para recuperar o valor; se já postou, fale com a cliente.";
 
 export type ResumoDosCancelamentos = {
   candidatos: number;
@@ -88,6 +101,10 @@ const SEM_RESUMO: ResumoDosCancelamentos = { candidatos: 0, avisados: 0, ignorad
  *   - recebido na entrega: devolução combinada com a cliente;
  *   - pago depois do cancelamento: não há devolução aberta por este caminho;
  *   - pago e não enviado: o banco abre a devolução e a rotina a faz sozinha.
+ * E, se o produto não saiu mas a etiqueta já tinha sido paga, a frase da
+ * etiqueta (`FRASE_DA_ETIQUETA_PAGA`) vem depois da orientação — menos quando
+ * o id dela está em `etiquetasCanceladas` (o histórico de envio já a viu
+ * cancelada no Melhor Envio). Sem o conjunto, nenhuma conta como cancelada.
  */
 export function montarAvisoDeCancelamento(
   pedido: {
@@ -99,8 +116,10 @@ export function montarAvisoDeCancelamento(
     cancelled_after_shipping?: unknown;
     pickup_address?: unknown;
     returned_to_seller_at?: string | null;
+    shipping_label_id?: unknown;
   },
   historico: { old_status?: unknown },
+  etiquetasCanceladas: ReadonlySet<string> = new Set(),
 ): Aviso {
   const valor = pedido.total ?? pedido.total_amount;
   const cliente = String(pedido.customer_name ?? "").trim() || "cliente sem nome";
@@ -133,11 +152,58 @@ export function montarAvisoDeCancelamento(
   const orientacao = recebidoNaEntrega
     ? (frase ? `${frase}; ${DEVOLUCAO_COMBINADA}` : DEVOLUCAO_COMBINADA)
     : frase;
+  const tinhaEtiquetaPaga = !jaSaiu &&
+    typeof pedido.shipping_label_id === "string" &&
+    pedido.shipping_label_id.trim() !== "" &&
+    !etiquetasCanceladas.has(pedido.shipping_label_id);
   return {
     title: "Cliente cancelou o pedido",
-    body: `${numeroDoPedido(pedido.id)} · ${formatarBRL(valor)} · ${cliente} — ${orientacao}`,
+    body: `${numeroDoPedido(pedido.id)} · ${formatarBRL(valor)} · ${cliente} — ${orientacao}${
+      tinhaEtiquetaPaga ? `. ${FRASE_DA_ETIQUETA_PAGA}` : ""
+    }`,
     url: `/admin-orders?id=${encodeURIComponent(pedido.id)}`,
   };
+}
+
+/**
+ * Etiquetas já canceladas no Melhor Envio, por pedido, lidas do histórico de
+ * envio — só dos pedidos que TÊM etiqueta (sem nenhum, nem lê). Falha aqui NÃO
+ * derruba o aviso: o cancelamento do cliente é o recado principal, e sem
+ * saber se a etiqueta foi cancelada o lado seguro é manter "cancele a
+ * etiqueta" (o pior caso é a lojista conferir uma etiqueta já cancelada).
+ */
+async function lerEtiquetasCanceladas(
+  supabase: any,
+  pedidos: Array<{ id: string; shipping_label_id?: unknown }>,
+  rotulo: string,
+): Promise<Map<string, Set<string>>> {
+  const porPedido = new Map<string, Set<string>>();
+  const comEtiqueta = pedidos
+    .filter((p) => typeof p.shipping_label_id === "string" && p.shipping_label_id.trim() !== "")
+    .map((p) => p.id);
+  if (comEtiqueta.length === 0) return porPedido;
+  try {
+    const { data, error } = await supabase
+      .from("order_shipping_events")
+      .select("order_id, event_type, payload")
+      .in("order_id", comEtiqueta)
+      .eq("event_type", "rastreio_consultado");
+    if (error) throw error;
+    const eventosPorPedido = new Map<string, unknown[]>();
+    for (const evento of data ?? []) {
+      const lista = eventosPorPedido.get(evento.order_id) ?? [];
+      lista.push(evento);
+      eventosPorPedido.set(evento.order_id, lista);
+    }
+    for (const [pedidoId, eventos] of eventosPorPedido) {
+      porPedido.set(pedidoId, etiquetasCanceladasNoHistorico(eventos));
+    }
+  } catch (erro) {
+    console.error(`${rotulo}: leitura do histórico de envio falhou; o aviso mantém a frase da etiqueta`, {
+      erro: erro?.message ?? String(erro),
+    });
+  }
+  return porPedido;
 }
 
 export async function avisarCancelamentosDoCliente(args: {
@@ -171,7 +237,7 @@ export async function avisarCancelamentosDoCliente(args: {
   const { data: pedidos, error: erroPedidos } = await supabase
     .from("marketplace_orders")
     .select(
-      "id, user_id, customer_name, total, total_amount, payment_status, status, cancelled_after_shipping, returned_to_seller_at, customer_data->>pickup_address",
+      "id, user_id, customer_name, total, total_amount, payment_status, status, cancelled_after_shipping, returned_to_seller_at, shipping_label_id, customer_data->>pickup_address",
     )
     .in("id", idsDosPedidos);
   if (erroPedidos) throw erroPedidos;
@@ -188,6 +254,8 @@ export async function avisarCancelamentosDoCliente(args: {
   // Autor sem perfil não é admin por nenhuma das fontes que a `is_admin_atual`
   // exige juntas (auth.users E profiles): só pode cancelar o que é seu.
   const admins = new Set((perfis ?? []).filter((p) => p.role === "admin").map((p) => p.id));
+
+  const canceladasPorPedido = await lerEtiquetasCanceladas(supabase, pedidos ?? [], rotulo);
 
   const resumo: ResumoDosCancelamentos = { candidatos: candidatos.length, avisados: 0, ignorados: 0, falhas: 0 };
 
@@ -210,7 +278,10 @@ export async function avisarCancelamentosDoCliente(args: {
         resumo.ignorados++;
         continue;
       }
-      await avisar(`cancelado_pelo_cliente:${linha.id}`, montarAvisoDeCancelamento(pedido, linha));
+      await avisar(
+        `cancelado_pelo_cliente:${linha.id}`,
+        montarAvisoDeCancelamento(pedido, linha, canceladasPorPedido.get(pedido.id)),
+      );
       resumo.avisados++;
     } catch (erro) {
       console.error(`${rotulo}: aviso de cancelamento do cliente falhou`, { historico: linha.id, erro });

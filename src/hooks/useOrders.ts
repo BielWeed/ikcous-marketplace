@@ -29,6 +29,10 @@ import {
   mapOrderFromDB,
 } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import {
+  fraseDasPecasSemTamanho,
+  lerPecasSemTamanho,
+} from "@/lib/pecas-sem-tamanho";
 import { pluralizar } from "@/lib/pluralizar";
 import {
   MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
@@ -295,6 +299,29 @@ export const MENSAGEM_CANCELAMENTO_SEM_RESPOSTA =
   "A conexão está lenta e não conseguimos confirmar se o pedido foi cancelado. Confira o pedido antes de tentar de novo.";
 export const MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA =
   "A conexão está lenta e não conseguimos confirmar se o status mudou. Confira o pedido antes de tentar de novo.";
+
+/**
+ * Quantas peças DESTE pedido o retorno pôs na fila do tamanho (20261642000000):
+ * produto vendido sem tamanho que depois ganhou a grade não recebe a peça de
+ * volta no estoque; ela espera a lojista escolher o tamanho. A RPC do retorno
+ * não conta isso, a lista das pendentes conta. Sem resposta, loja sem a
+ * migration ou forma torta: 0 (o aviso de sempre). Só leitura, 5 s.
+ */
+async function pecasDoPedidoSemTamanho(orderId: string): Promise<number> {
+  try {
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(supabase.rpc("pecas_sem_tamanho_pendentes", {})),
+      PRAZO_DA_CONFERENCIA_DO_AVANCO_MS,
+      () => erroDeConsultaSemResposta(),
+    );
+    if (error) return 0;
+    return (lerPecasSemTamanho(data) ?? []).filter(
+      (p) => p.orderId === orderId && p.origem === "pedido_desfeito",
+    ).length;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Depois de um avanço sem resposta: o banco está na etapa pedida? Só `true`
@@ -2886,10 +2913,25 @@ export function useOrders(
     }): Promise<Order[]> => {
       const PAGE_SIZE = 100;
       const MAX_ORDERS = 5000;
-      const MAX_PAGES = MAX_ORDERS / PAGE_SIZE;
+      // A leitura é por CHAVE, não por posição. A RPC pagina por OFFSET, e
+      // duas mudanças no meio da leitura que se anulam no total (um pedido
+      // já lido sai do filtro, outro entra mais abaixo) faziam a lista subir
+      // uma casa: o pedido da fronteira não era lido por página nenhuma e o
+      // arquivo saía com o total certo e um pedido trocado. Agora cada página
+      // pede o que vem a partir da data do último pedido lido (`p_end_date`,
+      // inclusivo, na ordem created_at desc, id da RPC) — a data como o banco
+      // devolveu, com microssegundos e fuso: passar por `Date` cortaria para
+      // milissegundos. A posição (`p_page`) só anda DENTRO de um mesmo
+      // instante maior que a página (importação, lote), ordenado pelo id.
+      // Como a chave é inclusiva, toda página depois da primeira relê pelo
+      // menos o último pedido: rende no máximo PAGE_SIZE - 1 novos. O + 2:
+      // a 1ª página e a que confere o fim depois de uma página cheia.
+      const MAX_PAGES = Math.ceil(MAX_ORDERS / (PAGE_SIZE - 1)) + 2;
       const pedidos: Order[] = [];
       const ids = new Set<string>();
       let totalEsperado: number | undefined;
+      let chave: string | undefined;
+      let paginaNaChave = 0;
 
       for (let page = 0; page < MAX_PAGES; page += 1) {
         // Prazo POR PÁGINA: rede "pendurada" conecta e não responde, e sem ele
@@ -2903,8 +2945,10 @@ export function useOrders(
               p_search: prepararTextoDeBuscaDoPainel(searchQuery || ""),
               p_status: statusFilter || "all",
               p_start_date: startDate || "",
-              p_end_date: endDate || "",
-              p_page: page,
+              // A chave nunca passa do fim do período: é a data de um pedido
+              // que já estava dentro dele.
+              p_end_date: chave ?? (endDate || ""),
+              p_page: paginaNaChave,
               p_page_size: PAGE_SIZE,
               // A RPC filtra tanto os dados quanto a contagem por pagamento.
               p_payment_status: paymentStatus || "all",
@@ -2932,29 +2976,51 @@ export function useOrders(
             { code: "CSV_PEDIDOS_DEMAIS" },
           );
         }
-        if (
-          !Number.isInteger(total) ||
-          total < 0 ||
-          !Array.isArray(linhas) ||
-          (totalEsperado !== undefined && total !== totalEsperado)
-        ) {
+        if (!Number.isInteger(total) || total < 0 || !Array.isArray(linhas)) {
           throw new Error(
             "Não foi possível consultar o filtro completo. Tente de novo.",
           );
         }
-        totalEsperado = total;
+        // O total que vale é o da PRIMEIRA página (o filtro inteiro): as
+        // seguintes contam só o que vem a partir da chave. Pedido que entrou
+        // ou saiu do filtro no trecho ainda não lido desencontra a conta no
+        // fim e vira "incompleta" — nunca um arquivo com um pedido trocado.
+        totalEsperado ??= total;
+        let novos = 0;
         for (const linha of linhas) {
           const pedido = mapOrderFromDB(linha);
-          if (ids.has(pedido.id)) {
-            throw new Error(
-              "A consulta de pedidos ficou incompleta. Tente de novo.",
-            );
-          }
+          // A chave é inclusiva: o último lido (e quem empata com ele) volta.
+          if (ids.has(pedido.id)) continue;
           ids.add(pedido.id);
           pedidos.push(pedido);
+          novos += 1;
         }
-        if (pedidos.length === total) return pedidos;
-        if (linhas.length === 0 || pedidos.length > total) break;
+        // A conta só fecha o arquivo quando a página veio INCOMPLETA (acabou
+        // o filtro). Página cheia com a conta batendo pode ser um pedido que
+        // entrou no trecho já percorrido escondendo o mais antigo: lê a
+        // seguinte, que confere (revisão 27/11; custa no máximo 1 chamada).
+        if (pedidos.length === totalEsperado && linhas.length < PAGE_SIZE) {
+          return pedidos;
+        }
+        if (linhas.length === 0 || pedidos.length > totalEsperado) break;
+        const ultimaData = linhas[linhas.length - 1]?.created_at;
+        if (typeof ultimaData !== "string" || ultimaData === "") break;
+        // Página sem nada novo só é legítima numa situação: a 1ª leitura de
+        // uma chave nova, cheia, toda no mesmo instante (o empate inteiro já
+        // tinha vindo). Fora disso a resposta não anda: para, sem laço.
+        const aindaNoEmpate = ultimaData === chave;
+        if (
+          novos === 0 &&
+          (linhas.length < PAGE_SIZE || !aindaNoEmpate || paginaNaChave > 0)
+        ) {
+          break;
+        }
+        if (aindaNoEmpate) {
+          paginaNaChave += 1;
+        } else {
+          chave = ultimaData;
+          paginaNaChave = 0;
+        }
       }
       throw new Error(
         "A consulta de pedidos ficou incompleta. Reduza o período e tente de novo.",
@@ -3202,9 +3268,14 @@ export function useOrders(
       setCarregandoPedidosCancelados(true);
       try {
         let page = 0;
-        let acumulado: Order[] = [];
+        const acumulado: Order[] = [];
+        // A RPC pagina por POSIÇÃO: um cancelamento entre duas páginas empurra
+        // a lista e o último de uma volta no começo da seguinte. Id já visto
+        // não entra de novo (o painel somava o pedido e o dinheiro em dobro).
+        const idsVistos = new Set<string>();
         let totalCount = 0;
         let foraDaJanela = 0;
+        let paginaIncompleta = false;
         do {
           const response = await supabase
             .rpc("get_admin_orders_cancelados_recentes", {
@@ -3233,11 +3304,29 @@ export function useOrders(
           const orderData = payload.data || [];
           totalCount = Number(payload.total_count) || 0;
           foraDaJanela = Number(payload.fora_da_janela) || 0;
-          acumulado = acumulado.concat(
-            orderData.map((item: any) => mapOrderFromDB(item)),
-          );
+          let novos = 0;
+          for (const item of orderData) {
+            const pedido = mapOrderFromDB(item);
+            if (idsVistos.has(pedido.id)) continue;
+            idsVistos.add(pedido.id);
+            acumulado.push(pedido);
+            novos += 1;
+          }
+          // Página CHEIA sem nenhum pedido novo é resposta que não anda:
+          // seguir só pediria cópias até o teto. Vira erro (o painel avisa
+          // que a lista pode estar incompleta) e nada desta leitura é gravado.
+          if (orderData.length >= PAGE_SIZE && novos === 0) {
+            throw new Error("Página de cancelados sem pedido novo.");
+          }
+          // Página que não vem cheia é o fim dos dados: pedir a próxima só
+          // devolveria vazio até o teto.
+          paginaIncompleta = orderData.length < PAGE_SIZE;
           page += 1;
-        } while (acumulado.length < totalCount && page < MAX_PAGES);
+        } while (
+          !paginaIncompleta &&
+          acumulado.length < totalCount &&
+          page < MAX_PAGES
+        );
 
         setPedidosCancelados(acumulado);
         // Achado D: o teto de páginas pode encerrar o laço antes de cobrir
@@ -5094,7 +5183,13 @@ export function useOrders(
             "Este retorno já tinha sido confirmado antes. Nada mudou no estoque.",
           );
         } else {
-          toast.success("Retorno do produto confirmado. Estoque atualizado.");
+          // A peça que foi para a fila do tamanho NÃO está no estoque.
+          const semTamanho = await pecasDoPedidoSemTamanho(orderId);
+          toast.success(
+            semTamanho > 0
+              ? `Retorno do produto confirmado. ${fraseDasPecasSemTamanho(semTamanho)}`
+              : "Retorno do produto confirmado. Estoque atualizado.",
+          );
         }
         return data;
       } catch (err: any) {

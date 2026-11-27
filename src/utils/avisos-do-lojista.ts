@@ -103,6 +103,12 @@ export interface CancelamentoDoCliente {
   situacao: SituacaoDoCancelamento;
   /** Combinar a devolucao ainda e necessario, alem de conferir o produto. */
   devolucaoCombinada?: true;
+  /**
+   * 27/11/2026: o pedido ja tinha etiqueta paga no Melhor Envio e o produto
+   * nao saiu pelo que o app sabe. Cancelar o pedido NAO cancela a etiqueta: o
+   * aviso manda a loja cancela-la (ou falar com a cliente, se ja postou).
+   */
+  etiquetaPaga?: true;
 }
 
 /** Quanto tempo depois do cancelamento o aviso segue na tela (e no push). */
@@ -128,6 +134,11 @@ interface PedidoDoCancelamento {
    * `enderecoDeRetiradaDoCustomerData`). Opcional: ausente/vazio = entrega.
    */
   pickup_address?: string | null;
+  /**
+   * A etiqueta de envio comprada no Melhor Envio. Opcional: ausente = lido sem
+   * o campo, tratado como "sem etiqueta".
+   */
+  shipping_label_id?: string | null;
 }
 
 /** A linha de `marketplace_order_history` como a consulta da tela a devolve. */
@@ -182,10 +193,16 @@ function ehRetirada(pedido: PedidoDoCancelamento): boolean {
  *
  * Autor ausente de `admins` conta como nao-admin: so admin tem papel para
  * cancelar pedido de OUTRA pessoa, e o dono so cancela o que e dele.
+ *
+ * `etiquetasCanceladas`: ids de etiqueta que o historico de envio ja viu
+ * cancelados no Melhor Envio (`etiquetasCanceladasNoHistorico`). O
+ * `shipping_label_id` nunca e apagado do pedido; sem este conjunto a etiqueta
+ * cancelada seguia pedindo "cancele a etiqueta para recuperar o valor".
  */
 export function selecionarCancelamentosDoCliente(
   linhas: readonly LinhaDeCancelamento[],
   admins: ReadonlySet<string>,
+  etiquetasCanceladas: ReadonlySet<string> = new Set(),
 ): CancelamentoDoCliente[] {
   const escolhidos: CancelamentoDoCliente[] = [];
   for (const linha of linhas) {
@@ -238,12 +255,22 @@ export function selecionarCancelamentosDoCliente(
       ...(recebidoNaEntrega && jaSaiu && !retornoConfirmado
         ? { devolucaoCombinada: true }
         : {}),
+      // No "ja saiu" a etiqueta ja foi usada: o assunto e o transporte.
+      ...(!jaSaiu &&
+      pedido.shipping_label_id?.trim() &&
+      !etiquetasCanceladas.has(pedido.shipping_label_id)
+        ? { etiquetaPaga: true }
+        : {}),
     });
   }
   return escolhidos;
 }
 
 const DEVOLUCAO_COMBINADA = "devolução combinada com a cliente";
+// Mesma frase do push (`FRASE_DA_ETIQUETA_PAGA` em
+// supabase/functions/_shared/aviso-de-cancelamento-do-cliente.ts).
+const FRASE_DA_ETIQUETA_PAGA =
+  "Esse pedido já tinha etiqueta de envio: se ainda não postou, cancele a etiqueta no Melhor Envio para recuperar o valor; se já postou, fale com a cliente.";
 const CONFIRMAR_RETORNO_DA_RETIRADA =
   'pago, o produto não saiu da loja: toque em "O produto voltou" para repor o estoque';
 const FRASE_DO_DINHEIRO: Record<
@@ -375,12 +402,16 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
   for (const cancelamento of entrada.cancelamentosDoCliente ?? []) {
     const nome = (cancelamento.customer_name ?? "").trim() || "Cliente";
     const numero = numeroDoPedido(cancelamento.order_id);
-    const orientacao =
+    const orientacaoBase =
       cancelamento.situacao === "sem_pagamento_online"
         ? "Não precisa separar nem enviar."
         : cancelamento.devolucaoCombinada
           ? `${cancelamento.situacao === "retirada_pronta" ? CONFIRMAR_RETORNO_DA_RETIRADA : FRASE_DO_DINHEIRO[cancelamento.situacao]}; ${DEVOLUCAO_COMBINADA}`
           : FRASE_DO_DINHEIRO[cancelamento.situacao];
+    // A frase base de "sem pagamento" ja termina em ponto.
+    const orientacao = cancelamento.etiquetaPaga
+      ? `${orientacaoBase.replace(/\.$/, "")}. ${FRASE_DA_ETIQUETA_PAGA}`
+      : orientacaoBase;
     avisos.push({
       id: `cancelamento:${cancelamento.id}`,
       tipo: "cancelamento",

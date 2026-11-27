@@ -504,6 +504,68 @@ Deno.test("save_active_providers: lista vazia = espelho 'flat_fee'; salvar DUAS 
     assertEquals(banco.credenciais.find((l: any) => l.provider === "_ligados").credentials.ligados, ["superfrete", "melhor_envio"])
 })
 
+// Dois aparelhos (caça 27/11): o celular viu só a SF; o computador ligou o ME
+// e salvou; o celular, sem reler, liga a Frenet e manda SF+Frenet. Sem a
+// conferência, o ME era DESLIGADO em silêncio.
+const ligadosNoBanco = (banco: any) => banco.credenciais.find((l: any) => l.provider === "_ligados")?.credentials?.ligados
+
+Deno.test("save_active_providers: a lista VISTA difere da atual (outro aparelho salvou) = recusa 'ligados_mudaram', nada grava nem testa", async () => {
+    const banco = bancoFalso({ credenciais: [LINHA_ME, LINHA_SF, LINHA_FRENET, linhaLigados(["superfrete", "melhor_envio"])] })
+    const r = await rodar({ action: "save_active_providers", ligados: ["superfrete", "frenet"], ligadosVistos: ["superfrete"] }, { banco })
+    assertEquals(r.resposta.status, 200)
+    assertEquals(r.corpo.success, false)
+    assertEquals(r.corpo.motivo, "ligados_mudaram")
+    assertEquals(typeof r.corpo.error, "string")
+    assertEquals(r.registro.upsertsCredencial.length, 0)
+    assertEquals(r.registro.updatesConfig.length, 0)
+    assertEquals(r.registro.deletesCache ?? 0, 0)
+    assertEquals(r.chamadas.length, 0)
+    assertEquals(ligadosNoBanco(banco), ["superfrete", "melhor_envio"])
+})
+
+Deno.test("save_active_providers: a lista VISTA igual à atual (em qualquer ordem) grava como sempre", async () => {
+    const banco = bancoFalso({ credenciais: [LINHA_ME, LINHA_SF, LINHA_FRENET, linhaLigados(["superfrete", "melhor_envio"])] })
+    const r = await rodar({
+        action: "save_active_providers",
+        ligados: ["superfrete", "melhor_envio", "frenet"],
+        ligadosVistos: ["melhor_envio", "superfrete"],
+    }, { banco })
+    assertEquals(r.corpo, { success: true, ligados: ["superfrete", "melhor_envio", "frenet"] })
+    assertEquals(r.registro.upsertsCredencial.length, 1)
+    assertEquals(ligadosNoBanco(banco), ["superfrete", "melhor_envio", "frenet"])
+})
+
+Deno.test("save_active_providers: cliente ANTIGO (sem ligadosVistos) grava como antes — inclusive por cima do outro aparelho", async () => {
+    const banco = bancoFalso({ credenciais: [LINHA_ME, LINHA_SF, LINHA_FRENET, linhaLigados(["superfrete", "melhor_envio"])] })
+    const r = await rodar({ action: "save_active_providers", ligados: ["superfrete", "frenet"] }, { banco })
+    assertEquals(r.corpo, { success: true, ligados: ["superfrete", "frenet"] })
+    assertEquals(ligadosNoBanco(banco), ["superfrete", "frenet"])
+})
+
+Deno.test("save_active_providers: ligadosVistos compara com o que ler_configuracao_frete MOSTROU (sem quem perdeu a chave) e com o espelho no legado", async () => {
+    // MULTI: o ME está na `_ligados` mas sem chave — a leitura não o mostra, então o aparelho não o "viu".
+    const multi = bancoFalso({ credenciais: [{ ...LINHA_ME, credentials: {} }, LINHA_SF, LINHA_FRENET, linhaLigados(["melhor_envio", "superfrete"])] })
+    const lido = await rodar({ action: "ler_configuracao_frete" }, { banco: multi })
+    const okMulti = await rodar({ action: "save_active_providers", ligados: ["superfrete", "frenet"], ligadosVistos: lido.corpo.ligados }, { banco: multi })
+    assertEquals(okMulti.corpo.success, true)
+    // LEGADO: o espelho é a SF; quem viu a lista vazia está desatualizado.
+    const vazio = await rodar({ action: "save_active_providers", ligados: ["frenet"], ligadosVistos: [] })
+    assertEquals(vazio.corpo.motivo, "ligados_mudaram")
+    assertEquals(vazio.registro.upsertsCredencial.length, 0)
+    const okLegado = await rodar({ action: "save_active_providers", ligados: ["frenet"], ligadosVistos: ["superfrete"] })
+    assertEquals(okLegado.corpo.success, true)
+})
+
+Deno.test("save_active_providers: ligadosVistos malformado = recusa de lista inválida, nada grava", async () => {
+    for (const ligadosVistos of [null, "superfrete", ["flat_fee"], ["_ligados"], [1]]) {
+        const r = await rodar({ action: "save_active_providers", ligados: ["superfrete"], ligadosVistos })
+        assertEquals(r.corpo.success, false, JSON.stringify(ligadosVistos))
+        assertEquals(r.corpo.motivo === "ligados_mudaram", false, JSON.stringify(ligadosVistos))
+        assertEquals(r.registro.upsertsCredencial.length, 0)
+        assertEquals(r.registro.updatesConfig.length, 0)
+    }
+})
+
 Deno.test("save_active_providers: o espelho falhou -> success com espelho:'pendente' e aviso honesto (os ligados gravaram)", async () => {
     const { corpo, registro } = await rodar({ action: "save_active_providers", ligados: ["superfrete"] }, { banco: bancoFalso({ falhas: { espelho: true } }) })
     assertEquals(corpo.success, true)

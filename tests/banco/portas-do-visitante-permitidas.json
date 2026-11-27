@@ -747,6 +747,14 @@
       "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
     },
     {
+      "funcao": "public.pecas_sem_tamanho_pendentes(p_produto_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Aviso da peca que voltou sem tamanho, na tela do produto e no selo da lista do painel do lojista (20261642000000): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL (is_admin() e is_admin_atual(); senao 42501); o visitante e o service_role nao a executam."
+    },
+    {
       "funcao": "public.pedido_reembolsos_e_saldo(p_order_id uuid)",
       "executa": ["authenticated"],
       "tipo": "leitura",
@@ -873,6 +881,14 @@
       "secdef": true,
       "situacao": "necessaria",
       "porque": "Porteiro da frota (migration 20261460000000): a mesma porta da resolver_loja, com o estado da loja (ativa, adormecida, encerrada); loja fora do ar vem sem URL e sem chave do banco; so o anon tem EXECUTE e a chave da frota e conferida antes de ler a caderneta."
+    },
+    {
+      "funcao": "public.resolver_peca_sem_tamanho(p_peca_id uuid, p_variant_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "A lojista escolhe o tamanho da peca que voltou sem tamanho (ou diz que nao tem a peca), no aviso da tela do produto (20261642000000): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; a peca ja resolvida devolve a decisao que ja existe sem creditar de novo; o visitante e o service_role nao a executam."
     },
     {
       "funcao": "public.rls_admin_atual()",
