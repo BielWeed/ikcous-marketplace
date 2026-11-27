@@ -574,6 +574,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     assertStringIncludes(lote._comentario, trecho);
   // o lote desta vem logo antes dos das SUCESSORAS conhecidas, em ordem (os anteriores nao se reordenam)
   const SUCESSORAS_DA_1600 = [
+    // 20261610000000: o catalogo e a configuracao chegam ao vivo em toda loja.
+    "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
     // 20261620000000: a soma das categorias fecha com o faturamento no centavo.
     "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
   ];

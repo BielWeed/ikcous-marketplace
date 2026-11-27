@@ -42,6 +42,11 @@ const SUCESSORAS = [
     versao: "20261600000000",
     consulta: "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado",
   },
+  // 20261610000000: o catalogo e a configuracao chegam ao vivo em toda loja (a publicacao do realtime).
+  {
+    versao: "20261610000000",
+    consulta: "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
+  },
   // 20261620000000: a soma das categorias fecha com o faturamento no centavo (vendas por categoria).
   {
     versao: "20261620000000",
