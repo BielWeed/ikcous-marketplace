@@ -100,7 +100,7 @@ import {
   variacoesDoRascunhoComEstoqueDoBanco,
   variacoesExcluidasNoRascunho,
 } from "@/lib/rascunho-do-produto";
-import { recusaDeFoto } from "@/lib/recusa-de-foto";
+import { comTipoDaExtensao, recusaDeFoto } from "@/lib/recusa-de-foto";
 import { ehAnimada } from "@/lib/redimensiona-imagem";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { textoVariacoesNaoExcluidas } from "@/lib/texto-variacoes-nao-excluidas";
@@ -2550,11 +2550,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
       // O tamanho conta por foto ORIGINAL; o total não, porque cada uma é
       // reduzida antes de subir. A quantidade entra até o máximo de fotos da galeria.
-      const files = arquivos.filter((file) => {
-        const recusa = recusaDeFoto(file);
-        if (recusa) toast.error(recusa);
-        return !recusa;
-      });
+      // Sem tipo declarado, o tipo sai da extensão: senão a foto sobe crua.
+      const files = arquivos
+        .filter((file) => {
+          const recusa = recusaDeFoto(file);
+          if (recusa) toast.error(recusa);
+          return !recusa;
+        })
+        .map(comTipoDaExtensao);
       const vagas = Math.max(
         0,
         MAXIMO_DE_FOTOS_DO_PRODUTO - formData.images.length,
