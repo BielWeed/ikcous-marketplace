@@ -192,7 +192,15 @@ describe("CSV de pedidos com tamanho e cor", () => {
         Promise.resolve({
           data:
             nome === "get_admin_orders_paged" && args.p_page_size !== 200
-              ? { data: pedidosDoBanco, total_count: pedidosDoBanco.length }
+              ? {
+                  // Como o banco: corta no tamanho da página (todos no mesmo
+                  // instante, então a posição anda dentro do empate).
+                  data: pedidosDoBanco.slice(
+                    args.p_page * args.p_page_size,
+                    (args.p_page + 1) * args.p_page_size,
+                  ),
+                  total_count: pedidosDoBanco.length,
+                }
               : { data: [], total_count: 0 },
           error: null,
         }),

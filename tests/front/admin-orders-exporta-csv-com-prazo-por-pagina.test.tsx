@@ -191,8 +191,10 @@ describe("CSV de pedidos: prazo por página da exportação", () => {
 
   it("a segunda página trava: nada de resultado parcial e o laço para ali", async () => {
     await montarHook();
+    // A 1ª página é a que vai sem chave (`p_end_date` do filtro, vazio
+    // aqui); as seguintes continuam da data do último lido (27/11/2026).
     exportacao = (args) =>
-      args.p_page === 0
+      args.p_end_date === ""
         ? Promise.resolve(
             resposta(
               Array.from({ length: 12 }, (_, i) => pedido(i + 1)),
@@ -215,7 +217,7 @@ describe("CSV de pedidos: prazo por página da exportação", () => {
     exportacao = (args) =>
       responde(
         15_000,
-        args.p_page === 0
+        args.p_end_date === ""
           ? resposta(
               Array.from({ length: 12 }, (_, i) => pedido(i + 1)),
               15,
