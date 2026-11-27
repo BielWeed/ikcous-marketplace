@@ -14,6 +14,11 @@
 // vendas antes de janeiro de 2020, e isso é conferido AQUI, para a lojista não
 // levar a recusa do servidor. O mês (`yyyy-mm`, campo de mês) vira `yyyy-mm-01`.
 //
+// Vai ao banco SÓ o que a lojista mexeu nesta folha, por cima do cadastro relido
+// logo antes de gravar (`salvarCadastroFiscalSoOMexido`): a folha pode ficar aberta
+// enquanto outro aparelho grava, e mandar a cópia de quando ela abriu desfaria isso
+// sem aviso (o regime trocado no celular voltava ao antigo).
+//
 // Gravar é UMA chamada e nunca repete sozinha. "Sem resposta" (rede ou prazo) pode
 // ter gravado: a folha manda conferir e PARA o Salvar até a lojista fechar (o
 // cartão relê o cadastro ao fechar). Folha suja pergunta antes de fechar.
@@ -25,12 +30,13 @@ import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/C
 import type { OpcaoDaLista } from "@/components/admin/primitivos/lista-de-escolha/tipos";
 import {
   ErroDoCadastroFiscal,
-  salvarCadastroFiscal,
+  salvarCadastroFiscalSoOMexido,
 } from "@/hooks/useImpostos";
 import { mensagemDeErroFinanceiro } from "@/lib/financeiro";
 import {
   ATIVIDADES_FISCAIS,
   type CadastroFiscal,
+  type CampoDoPayloadFiscal,
   type ErrosDoCadastroFiscal,
   REGIMES_FISCAIS,
   type ResultadoDoCadastroFiscal,
@@ -89,6 +95,22 @@ function formularioInicial(cadastro: CadastroFiscal | null): FormularioDaFolha {
     abertaEm: cadastro?.abertaEm ?? "",
     vendeMes: cadastro?.vendeNoAppDesde?.slice(0, 7) ?? "",
   };
+}
+
+/**
+ * O que a lojista mexeu: o campo cujo TEXTO difere do que a folha mostrou ao abrir,
+ * com o nome do campo no corpo do RPC. A mesma régua decide o "sujo".
+ */
+function camposMexidos(
+  form: FormularioDaFolha,
+  inicial: FormularioDaFolha,
+): CampoDoPayloadFiscal[] {
+  const mexidos: CampoDoPayloadFiscal[] = [];
+  if (form.regime !== inicial.regime) mexidos.push("regime");
+  if (form.atividade !== inicial.atividade) mexidos.push("atividade");
+  if (form.abertaEm !== inicial.abertaEm) mexidos.push("aberta_em");
+  if (form.vendeMes !== inicial.vendeMes) mexidos.push("vende_no_app_desde");
+  return mexidos;
 }
 
 /**
@@ -192,7 +214,7 @@ export function CadastroFiscalFolha({
   const gravando = useRef(false);
 
   // Depois de "sem resposta" o rascunho pode já estar gravado: fechar não pergunta.
-  const sujo = !semResposta && JSON.stringify(form) !== JSON.stringify(inicial);
+  const sujo = !semResposta && camposMexidos(form, inicial).length > 0;
 
   const validacao = useMemo(() => validar(form, hoje), [form, hoje]);
   const erros: ErrosDoCadastroFiscal =
@@ -232,7 +254,10 @@ export function CadastroFiscalFolha({
     setEnviando(true);
     setErroDoServidor(null);
     try {
-      await salvarCadastroFiscal(resultado.payload);
+      await salvarCadastroFiscalSoOMexido(
+        resultado.payload,
+        camposMexidos(form, inicial),
+      );
       aoSalvar();
     } catch (erro) {
       if (erro instanceof ErroDoCadastroFiscal) {

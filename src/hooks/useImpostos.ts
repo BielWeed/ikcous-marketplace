@@ -17,7 +17,8 @@
 // A ESCRITA do cadastro (`salvarCadastroFiscal`) chama o RPC que só o dono da loja
 // pode chamar (o banco confere). Ela NUNCA repete sozinha: rede sem resposta
 // encerra a espera da tela, mas o servidor pode ter gravado, e a frase manda
-// conferir antes de repetir.
+// conferir antes de repetir. A folha grava por `salvarCadastroFiscalSoOMexido`:
+// relê o cadastro de agora e manda só os campos mexidos por cima dele.
 
 import {
   type ConsultaFinanceira,
@@ -32,8 +33,10 @@ import {
   parseExtrato,
 } from "@/lib/financeiro";
 import {
+  type CampoDoPayloadFiscal,
   type LeituraDoCadastroFiscal,
   type PayloadDoCadastroFiscal,
+  juntarAoCadastroDeAgora,
   parseCadastroFiscal,
 } from "@/lib/fiscal/cadastro";
 import type { LancamentoDaGuia } from "@/lib/fiscal/caderno";
@@ -113,18 +116,21 @@ export function useCadastroFiscal(
 ): ConsultaFinanceira<LeituraDoCadastroFiscal> {
   return useConsultaFinanceira(
     ativo ? "fiscal-cadastro" : null,
-    async () => {
-      const { data, error } = await supabase
-        .from("fiscal_cadastro")
-        .select(
-          "regime, atividade, aberta_em, vende_no_app_desde, atualizado_em, atualizado_por",
-        )
-        .maybeSingle();
-      if (error) throw falhaDeLeitura(error, "fiscal");
-      return parseCadastroFiscal(data);
-    },
+    lerCadastroFiscal,
     versao,
   );
+}
+
+/** A linha única de `fiscal_cadastro`, como o banco tem AGORA (sem prazo nem cache). */
+async function lerCadastroFiscal(): Promise<LeituraDoCadastroFiscal> {
+  const { data, error } = await supabase
+    .from("fiscal_cadastro")
+    .select(
+      "regime, atividade, aberta_em, vende_no_app_desde, atualizado_em, atualizado_por",
+    )
+    .maybeSingle();
+  if (error) throw falhaDeLeitura(error, "fiscal");
+  return parseCadastroFiscal(data);
 }
 
 /** Uma alteração do cadastro: quando, quem, e o antes/depois como o banco guardou. */
@@ -384,4 +390,58 @@ export async function salvarCadastroFiscal(
   } catch (erro) {
     throw falhaAoSalvar(erro);
   }
+}
+
+// A releitura vem ANTES de gravar: se ela falha, nada foi ao banco e repetir é
+// seguro (nunca é "sem resposta").
+const FRASE_RELEITURA_DEMOROU =
+  "A internet demorou demais e nada foi salvo. Toque em Salvar de novo.";
+const FRASE_RELEITURA_SEM_CONEXAO =
+  "A conexão falhou e nada foi salvo. Confira a internet e toque em Salvar de novo.";
+
+function falhaAoReler(erro: unknown): ErroDoCadastroFiscal {
+  if (erro instanceof ErroDoCadastroFiscal) return erro;
+  // Frase já pronta pela leitura (tabela ausente, recusa do banco).
+  if (erro instanceof ErroDeLeituraFiscal) {
+    return new ErroDoCadastroFiscal(erro.message, false);
+  }
+  if (ehFalhaDeRedeSemCodigo(erro)) {
+    return new ErroDoCadastroFiscal(FRASE_RELEITURA_SEM_CONEXAO, false);
+  }
+  return new ErroDoCadastroFiscal(mensagemDeErroFinanceiro(erro), false);
+}
+
+/**
+ * Grava SÓ o que a folha mexeu. O RPC recebe a foto inteira, então primeiro relê o
+ * cadastro de agora e põe os campos mexidos por cima dele (`juntarAoCadastroDeAgora`):
+ * o que outro aparelho gravou enquanto a folha estava aberta, e esta folha não
+ * mexeu, fica como está. A releitura tem o prazo das consultas do painel; falha ou
+ * prazo estourado nela lança `ErroDoCadastroFiscal` com `semResposta: false` (nada
+ * foi ao banco). Depois, é a mesma gravação de `salvarCadastroFiscal`.
+ *
+ * Sobra uma janela: outro aparelho que grave ENTRE a releitura e a gravação (uma ida
+ * e volta) ainda é sobrescrito nos campos não mexidos. Fechá-la exige o banco juntar
+ * sob a trava dele.
+ */
+export async function salvarCadastroFiscalSoOMexido(
+  daFolha: PayloadDoCadastroFiscal,
+  mexidos: ReadonlyArray<CampoDoPayloadFiscal>,
+): Promise<LeituraDoCadastroFiscal> {
+  let agora: LeituraDoCadastroFiscal;
+  try {
+    agora = await aguardarComPrazo(
+      lerCadastroFiscal(),
+      PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+      () => new ErroDoCadastroFiscal(FRASE_RELEITURA_DEMOROU, false),
+    );
+  } catch (erro) {
+    throw falhaAoReler(erro);
+  }
+  return salvarCadastroFiscal(
+    juntarAoCadastroDeAgora(
+      daFolha,
+      mexidos,
+      agora.estado === "com_cadastro" ? agora.cadastro : null,
+    ),
+  );
 }
