@@ -103,6 +103,19 @@ const contarPublicadasPorNota = async (
 const mensagemDeAvaliacaoRecebida =
   "Recebemos sua avaliação! Ela aparece no produto após a aprovação da loja.";
 
+const mensagemDeAvaliacaoRepetida = "Você já avaliou este produto.";
+const mensagemDaConferenciaQueFalhou =
+  "Não conseguimos conferir se você já avaliou este produto. Verifique sua internet e tente de novo.";
+
+/** O banco recusou a segunda avaliação da mesma conta para o mesmo produto (23505, migration 20261641000000). */
+const ehAvaliacaoRepetida = (error: unknown): boolean => {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
+  const texto =
+    typeof detalhes.message === "string" ? detalhes.message.toLowerCase() : "";
+  return codigo === "23505" || texto.includes("duplicate key");
+};
+
 /**
  * Traduz a recusa crua do Postgres/PostgREST numa mensagem que o comprador
  * entende. Toda saída é string ESTÁTICA: nenhum trecho de error.message pode
@@ -138,21 +151,13 @@ const mensagemAmigavelErroAvaliacao = (error: unknown): string => {
     return "Sem conexão com o servidor. Verifique sua internet e tente novamente.";
   }
 
-  // Violação de chave única: já existe avaliação desta pessoa para este produto.
-  //
-  // Achado de revisão: hoje NÃO existe nenhuma restrição UNIQUE em
-  // (user_id, product_id) na tabela reviews — só a chave primária em `id`,
-  // dois índices não-únicos e duas FKs (conferido em todas as migrations,
-  // inclusive as arquivadas). A checagem equivalente no hook está comentada
-  // logo abaixo de addReview até hoje. Ou seja, este ramo é código
-  // preparado, não uma regra que o banco aplica agora: mantido porque a
-  // frase é honesta SE algum dia a restrição existir (aí o Postgres passa a
-  // devolver 23505 de verdade para essa causa), e porque remover perderia a
-  // intenção de negócio registrada aqui e no comentário abaixo. Até lá, este
-  // ramo é praticamente inalcançável — 23505 só dispararia por colisão de
-  // chave primária, algo que uma UUID gerada pelo banco não produz na prática.
-  if (codigo === "23505" || pista.includes("duplicate key")) {
-    return "Você já avaliou este produto.";
+  // Já existe avaliação desta pessoa para este produto: o gatilho da
+  // migration 20261641000000 (tr_avaliacao_uma_por_cliente_e_produto) recusa a
+  // segunda com 23505 — é o caso de dois aparelhos que enviam juntos e passam
+  // os dois pela conferência de addReview. addReview trata esse código antes
+  // de chegar aqui; o ramo fica para qualquer outro chamador.
+  if (ehAvaliacaoRepetida(error)) {
+    return mensagemDeAvaliacaoRepetida;
   }
 
   // Sessão inválida ou expirada: só aqui é seguro instruir novo login, porque
@@ -507,6 +512,11 @@ export function useReviews() {
           return null;
         }
 
+        // A conferência "já avaliou?" tem de RESPONDER antes de gravar. Se ela
+        // falha (rede caiu, prazo, erro do banco), a tela NÃO grava às cegas:
+        // avisa e deixa tentar de novo. O banco também recusa a repetida
+        // (20261641000000), mas a conferência evita o envio inútil.
+        let conferiu = false;
         try {
           const { data: existentes, error: erroDaConsulta } =
             await aguardarComPrazo(
@@ -522,12 +532,21 @@ export function useReviews() {
               erroDeConsultaSemResposta,
             );
           if (!erroDaConsulta && existentes?.length) {
-            toast.error("Você já avaliou este produto.");
+            toast.error(mensagemDeAvaliacaoRepetida);
             // Resultado distinto de falha: o formulário pode concluir sem inserir.
             return { jaAvaliado: true };
           }
-        } catch {
-          // Falha na checagem não pode impedir quem ainda não avaliou.
+          if (erroDaConsulta) {
+            console.error("Error checking existing review:", erroDaConsulta);
+          } else {
+            conferiu = true;
+          }
+        } catch (erroDaConferencia) {
+          console.error("Error checking existing review:", erroDaConferencia);
+        }
+        if (!conferiu) {
+          toast.error(mensagemDaConferenciaQueFalhou);
+          return null;
         }
 
         const { data, error } = await aguardarComPrazo(
@@ -567,6 +586,12 @@ export function useReviews() {
         return data;
       } catch (error: any) {
         console.error("Error adding review:", error);
+        // O banco recusou a segunda avaliação (dois aparelhos ao mesmo tempo
+        // passaram juntos pela conferência): o mesmo resultado dela.
+        if (ehAvaliacaoRepetida(error)) {
+          toast.error(mensagemDeAvaliacaoRepetida);
+          return { jaAvaliado: true };
+        }
         if (ehConsultaSemResposta(error) && user) {
           try {
             const { data: conferida, error: erroDaConferencia } =

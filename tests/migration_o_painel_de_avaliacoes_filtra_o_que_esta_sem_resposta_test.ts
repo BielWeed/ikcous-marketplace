@@ -204,10 +204,16 @@ Deno.test("3996: a vigente e' a ULTIMA redefinicao de get_admin_reviews_paged da
   const i = fontes.indexOf(nome);
   assert.ok(i > 0, "a migration nao esta entre as redefinicoes");
   assert.equal(fontes[i - 1], nome3997, "a 3996 sucede a 3997 direto");
+  // A 20261641000000 (a media do painel so das publicadas) e' a SUCESSORA direta: so ela redefine depois da 3996.
+  assert.equal(
+    fontes.at(-2),
+    nome,
+    "outra migration redefine get_admin_reviews_paged entre a 3996 e a 3641: reveja esta prova e as consultas 148a/123a/86a",
+  );
   assert.equal(
     fontes.at(-1),
-    nome,
-    "outra migration redefine get_admin_reviews_paged depois da 3996: reveja esta prova e as consultas 148a/123a/86a",
+    "20261641000000_uma_avaliacao_por_cliente_e_a_media_do_painel_so_das_publicadas.sql",
+    "outra migration redefine get_admin_reviews_paged depois da 3641: reveja esta prova e as consultas 148a/123a/86a",
   );
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
@@ -307,13 +313,17 @@ Deno.test("3996: consultas 148a/148b so de catalogo, quatro linhas fechadas, has
   const a123 = ler(
     "scripts/publicacao/consultas/123a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-aplicado.sql",
   );
-  assert.ok(a123.includes(`h IN ('${H_ANTES}', '${H_NOVO}')`));
+  assert.ok(
+    a123.includes(
+      `h IN ('${H_ANTES}', '${H_NOVO}', '21ba271d66edd776cab2443d32800db7')`,
+    ),
+  );
   const a86 = ler(
     "scripts/publicacao/consultas/86a-conferir-ex-admin-no-resto-do-painel-aplicado.sql",
   );
   assert.ok(
     a86.includes(
-      `md5(replace(p.prosrc,chr(13),'')) IN ('${H_ANTES}','${H_NOVO}')`,
+      `md5(replace(p.prosrc,chr(13),'')) IN ('${H_ANTES}','${H_NOVO}','21ba271d66edd776cab2443d32800db7')`,
     ),
   );
   // A 148a e a 148b nao se aceitam entre si.

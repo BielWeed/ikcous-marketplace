@@ -246,11 +246,14 @@ Deno.test("so a baseline define get_reviews_metrics, e nenhuma view, politica, g
     "20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql", // so REVOKE/lista de ACL
     "20261221000000_a_media_de_avaliacoes_e_o_voto_util_fecham_para_o_visitante.sql", // so ACL
     "20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql", // a sucessora: so troca a guarda is_admin() por is_admin_atual()
+    "20261641000000_uma_avaliacao_por_cliente_e_a_media_do_painel_so_das_publicadas.sql", // a sucessora da 381: so as publicadas entram na conta (a guarda e a mesma)
     "rollback-manual-20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql", // so GRANT
     "rollback-manual-20261221000000_a_media_de_avaliacoes_e_o_voto_util_fecham_para_o_visitante.sql", // so GRANT
     "rollback-manual-20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql", // devolve o corpo desta migration
+    "rollback-manual-20261641000000_uma_avaliacao_por_cliente_e_a_media_do_painel_so_das_publicadas.sql", // devolve o corpo da 381
   ]);
-  // definicao so na baseline (e nesta migration; a sucessora 20261381000000 e o rollback dela trocam so a guarda)
+  // definicao so na baseline (e nesta migration; a sucessora 20261381000000 e o rollback dela trocam so a guarda; a 20261641000000
+  // e o rollback dela trocam so o filtro de status)
   for (const n of todas) {
     if (
       n === "20260806000000_baseline_do_schema_vivo.sql" ||
@@ -259,7 +262,11 @@ Deno.test("so a baseline define get_reviews_metrics, e nenhuma view, politica, g
       n ===
         "20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql" ||
       n ===
-        "rollback-manual-20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql"
+        "rollback-manual-20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql" ||
+      n ===
+        "20261641000000_uma_avaliacao_por_cliente_e_a_media_do_painel_so_das_publicadas.sql" ||
+      n ===
+        "rollback-manual-20261641000000_uma_avaliacao_por_cliente_e_a_media_do_painel_so_das_publicadas.sql"
     )
       continue;
     assert.doesNotMatch(

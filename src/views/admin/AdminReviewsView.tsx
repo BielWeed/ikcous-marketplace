@@ -1003,6 +1003,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
   const renderReview = (review: (typeof adminReviews)[number]) => {
     const pendente = review.status === "pendente";
+    // Quem nunca comprou consegue enviar avaliação (entra pendente e sem selo):
+    // exigir compra no banco é decisão em aberto. Até lá, junto do Aprovar, a
+    // loja vê que a pessoa não tem compra registrada do produto.
+    const semCompra = pendente && !review.verified;
+    const idDoAvisoSemCompra = `avisoSemCompra${review.id}`;
     const aberto = detalhado || expandidas.has(review.id);
     // No modo compacto o comentário cabe em 3 linhas e a resposta em 2; num
     // celular estreito (320 a 360 px) isso corta a partir de uns 90 e uns 60
@@ -1136,66 +1141,79 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           ) : replyingTo === review.id ? (
             renderFormularioDeResposta(review.id)
           ) : (
-            <div className="flex items-center gap-2">
-              {/* Item 7 do laudo de 29/08: o botão manual "Verificar
+            <>
+              {semCompra && (
+                <p id={idDoAvisoSemCompra} className="mb-2 text-sm">
+                  <EstadoComPonto
+                    tom="atencao"
+                    texto="Esta pessoa não tem compra registrada deste produto."
+                  />
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                {/* Item 7 do laudo de 29/08: o botão manual "Verificar
                   Compra/Remover Verificação" SAIU — o selo é derivado da
                   compra com dinheiro reconhecido pelas triggers da
                   20261030000000, e interruptor manual voltaria a significar
                   "alguém clicou". O selo ao lado lê a MESMA coluna `verified`.
                   Item 8: a fila de moderação é real — pendente ganha o botão
                   de publicar. */}
-              {pendente && (
+                {pendente && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleAprovar(review.id);
+                    }}
+                    disabled={
+                      acoesBloqueadas || isOffline || publicando.has(review.id)
+                    }
+                    aria-label="Aprovar e Publicar"
+                    aria-describedby={
+                      semCompra ? idDoAvisoSemCompra : undefined
+                    }
+                    title="Aprovar e Publicar"
+                    className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}
+                  >
+                    <ShieldCheck
+                      aria-hidden="true"
+                      className={`size-4 ${corDoSelo}`}
+                    />
+                    Aprovar
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => {
-                    handleAprovar(review.id);
+                  disabled={acoesBloqueadas || isOffline || isSubmittingReply}
+                  ref={(botao) => {
+                    if (botao) botoesResposta.current.set(review.id, botao);
+                    else botoesResposta.current.delete(review.id);
                   }}
-                  disabled={
-                    acoesBloqueadas || isOffline || publicando.has(review.id)
-                  }
-                  aria-label="Aprovar e Publicar"
-                  title="Aprovar e Publicar"
-                  className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}
+                  aria-label={`${review.merchantReply ? "Editar resposta" : "Responder"} a ${review.customerName}`}
+                  onClick={() => abrirResposta(review.id, review.merchantReply)}
+                  className={cn(
+                    BOTAO_NEUTRO,
+                    "min-w-0 flex-1 lg:min-w-48 lg:flex-none",
+                  )}
                 >
-                  <ShieldCheck
-                    aria-hidden="true"
-                    className={`size-4 ${corDoSelo}`}
-                  />
-                  Aprovar
+                  <MessageSquare aria-hidden="true" className="size-4" />
+                  {review.merchantReply ? "Editar resposta" : "Responder"}
                 </button>
-              )}
-              <button
-                type="button"
-                disabled={acoesBloqueadas || isOffline || isSubmittingReply}
-                ref={(botao) => {
-                  if (botao) botoesResposta.current.set(review.id, botao);
-                  else botoesResposta.current.delete(review.id);
-                }}
-                aria-label={`${review.merchantReply ? "Editar resposta" : "Responder"} a ${review.customerName}`}
-                onClick={() => abrirResposta(review.id, review.merchantReply)}
-                className={cn(
-                  BOTAO_NEUTRO,
-                  "min-w-0 flex-1 lg:min-w-48 lg:flex-none",
-                )}
-              >
-                <MessageSquare aria-hidden="true" className="size-4" />
-                {review.merchantReply ? "Editar resposta" : "Responder"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteId(review.id)}
-                disabled={acoesBloqueadas || isOffline}
-                ref={(botao) => {
-                  if (botao) botoesExcluir.current.set(review.id, botao);
-                  else botoesExcluir.current.delete(review.id);
-                }}
-                aria-label={`Excluir avaliação de ${review.customerName}`}
-                title="Excluir avaliação"
-                className={cn(BOTAO_DE_ICONE_EXCLUIR, "ml-auto")}
-              >
-                <Trash2 aria-hidden="true" className="size-5" />
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteId(review.id)}
+                  disabled={acoesBloqueadas || isOffline}
+                  ref={(botao) => {
+                    if (botao) botoesExcluir.current.set(review.id, botao);
+                    else botoesExcluir.current.delete(review.id);
+                  }}
+                  aria-label={`Excluir avaliação de ${review.customerName}`}
+                  title="Excluir avaliação"
+                  className={cn(BOTAO_DE_ICONE_EXCLUIR, "ml-auto")}
+                >
+                  <Trash2 aria-hidden="true" className="size-5" />
+                </button>
+              </div>
+            </>
           )}
         </div>
       </li>
@@ -1342,9 +1360,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             rodape="nota dos compradores"
           />
           <CartaoDeNumero
-            rotulo="Total recebido"
+            rotulo="Total publicado"
             // Global de verdade (achado 5): é o total sem filtro — o filtrado
-            // continua governando o paginador.
+            // continua governando o paginador. Só as PUBLICADAS (migration
+            // 20261641000000), o mesmo que a vitrine mostra; a fila vem à
+            // parte no rodapé.
             valor={totalGlobalExibido}
             // Item 8 + laudo 0109 (A-4): a moderação é REAL e a contagem é do
             // BANCO — pendentesNoBanco —, não da página carregada.

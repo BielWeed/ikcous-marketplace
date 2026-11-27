@@ -119,10 +119,12 @@ it("sem avaliação anterior insere exatamente uma avaliação pendente", async 
   expect(h.erro).not.toHaveBeenCalled();
 });
 
-it("erro na consulta não impede o envio da avaliação", async () => {
+it("erro na consulta NÃO grava às cegas: avisa e deixa tentar de novo", async () => {
   h.consulta = { data: null, error: { message: "falha de rede" } };
-  expect(await enviar()).toEqual({ id: "nova-avaliacao" });
-  expect(h.insert).toHaveBeenCalledTimes(1);
+  expect(await enviar()).toBeNull();
+  expect(h.insert).not.toHaveBeenCalled();
   expect(h.limit).toHaveBeenCalledExactlyOnceWith(1);
-  expect(h.erro).not.toHaveBeenCalled();
+  expect(h.erro).toHaveBeenCalledExactlyOnceWith(
+    "Não conseguimos conferir se você já avaliou este produto. Verifique sua internet e tente de novo.",
+  );
 });

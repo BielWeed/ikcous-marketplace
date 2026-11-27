@@ -24,7 +24,9 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'get_admin_reviews_paged: corpo exato (md5)', '75f5c48de4eb4005a2516e54b3d33135',
-    COALESCE((SELECT h FROM fn), 'AUSENTE')
+    -- A 20261641000000 (a media do painel so das publicadas) sucede este corpo na MESMA assinatura e so filtra o bloco global por status:
+    -- aceita os dois corpos EXATOS; normaliza ao esperado historico do rol (a 201a distingue).
+    COALESCE((SELECT CASE WHEN h IN ('75f5c48de4eb4005a2516e54b3d33135', '21ba271d66edd776cab2443d32800db7') THEN '75f5c48de4eb4005a2516e54b3d33135' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_reviews_paged: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END

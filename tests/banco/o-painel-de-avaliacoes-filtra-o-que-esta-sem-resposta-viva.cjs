@@ -510,6 +510,11 @@ async function main() {
   const c = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await c.connect();
   try {
+    // A 20261641000000 (a media do painel so das publicadas) sucede esta na MESMA assinatura: sai do clone descartavel pelo
+    // rollback-manual dela ANTES de medir (nao faz nada se nao esta no ar). Esta prova mede a 3996 sobre o corpo que ela deixa.
+    await require("./uma-avaliacao-por-cliente-posterior.cjs").desfazerUmaAvaliacaoPorClienteNaTransacao(
+      c,
+    );
     // ---- 0. O topo instalado pelo CI e' o desta migration; o corpo anterior e' o vivo da 3997. ----
     const topo0 = await umaSo(c);
     assert.equal(
