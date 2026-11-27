@@ -52,8 +52,9 @@ function exigirIkcousESavy(lista: string[], onde: string) {
     assert(lista.includes(p), `${onde}: ${p} sumiu (${lista.join(", ")})`);
 }
 
-// O 8º (login-da-loja.yml, 26/11/2026) nasceu já gerado do cadastro.
-const OITO_WORKFLOWS = [
+// O 8º (login-da-loja.yml, 26/11/2026) e o 9º (objetos-da-frota.yml, 27/11/2026)
+// nasceram já gerados do cadastro.
+const WORKFLOWS_POR_LOJA = [
   "aplicar-migrations.yml",
   "conferir-banco-da-loja.yml",
   "publicar-functions.yml",
@@ -62,6 +63,7 @@ const OITO_WORKFLOWS = [
   "ativar-email-do-login.yml",
   "ativar-google-do-login.yml",
   "login-da-loja.yml",
+  "objetos-da-frota.yml",
 ];
 
 // A loja INVENTADA da fixture: ref, segredo e nome que não existem em lugar nenhum.
@@ -553,7 +555,7 @@ function jobsComBlocoDeSegredos(nome: string): string[] {
 
 Deno.test("todo job com o bloco LOJAS-SEGREDOS tem o passo `id: loja` que roda lojas.cjs validar ANTES do primeiro passo com segredo", () => {
   let jobs = 0;
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const doc = docDe(nome);
     for (const idJob of jobsComBlocoDeSegredos(nome)) {
       jobs++;
@@ -582,15 +584,15 @@ Deno.test("todo job com o bloco LOJAS-SEGREDOS tem o passo `id: loja` que roda l
       );
     }
   }
-  // aplicar (1) + conferir-banco (conferir e ledger) + os 5 de assinante
-  assertEquals(jobs, 8);
+  // aplicar (1) + conferir-banco (conferir e ledger) + os 6 de assinante
+  assertEquals(jobs, 9);
 });
 
 Deno.test("o passo `id: loja` de verdade (bash), com GITHUB_OUTPUT, deixa o nome do segredo da loja e nada mais", async () => {
   const dir = Deno.makeTempDirSync({ prefix: "passo-loja-" });
   try {
     const arq = join(dir, "out.txt");
-    for (const nome of OITO_WORKFLOWS) {
+    for (const nome of WORKFLOWS_POR_LOJA) {
       const doc = docDe(nome);
       for (const idJob of jobsComBlocoDeSegredos(nome)) {
         const passo = doc.jobs[idJob].steps.find((p) => p.id === "loja");
@@ -663,7 +665,7 @@ Deno.test("os workflows estão em sincronia com o cadastro: o gerador, rodado de
   const comBlocos = gerador
     .workflowsComBlocos()
     .map((p) => p.split(/[\\/]/).pop());
-  for (const nome of OITO_WORKFLOWS)
+  for (const nome of WORKFLOWS_POR_LOJA)
     assert(comBlocos.includes(nome), `${nome} não tem blocos LOJAS-SEGREDO*`);
   for (const caminho of gerador.workflowsComBlocos()) {
     const atual = Deno.readTextFileSync(caminho);
@@ -757,7 +759,7 @@ Deno.test("REGRA DA CASA: todo segredo de loja de cada workflow tem a guarda da 
       .filter((l) => l.segredoDoToken === segredo)
       .map((l) => l.projeto);
   let referencias = 0;
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const doc = docDe(nome);
     for (const [idJob, job] of Object.entries(doc.jobs) as any) {
       const passos = job.steps ?? [];
@@ -922,7 +924,7 @@ Deno.test("gerador, org central: os 8 workflows regerados com 2 lojas na org nã
 
   const cad = cadastroComLojasNaOrg(2);
   let usosDaOrg = 0;
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const atual = Deno.readTextFileSync(join(DIR_WF, nome));
     const novo = gerador.sincronizar(atual, cad);
     assertEquals(chavesRepetidasNosEnvs(novo), [], nome);
@@ -975,7 +977,7 @@ Deno.test("gerador: segredo repetido que NÃO é o da org (cadastro montado fora
 
 Deno.test("cada passo com segredo de loja só vê o da loja pedida: as linhas geradas para uma loja nova NUNCA citam o segredo de outra", () => {
   const cad = cadastroComLojaNova();
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const novo = gerador.sincronizar(
       Deno.readTextFileSync(join(DIR_WF, nome)),
       cad,
@@ -1035,8 +1037,9 @@ Deno.test("todo workflow por loja tem `projeto` como menu FECHADO (choice) gerad
     "ativar-email-do-login.yml": "ikcous-publicada",
     "ativar-google-do-login.yml": "ikcous-publicada",
     "login-da-loja.yml": "ikcous-publicada",
+    "objetos-da-frota.yml": "savy",
   };
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const p = inputsDe(docDe(nome)).projeto;
     assertEquals(p.type, "choice", `${nome}: projeto voltou a ser texto livre`);
     assertEquals(p.options, menuEsperado(nome), nome);
@@ -1062,7 +1065,7 @@ Deno.test("todo workflow por loja tem `projeto` como menu FECHADO (choice) gerad
 });
 
 Deno.test("todo workflow por loja confere a loja no cadastro ANTES do primeiro passo que vê segredo", () => {
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const doc = docDe(nome);
     const passos = Object.values(doc.jobs).flatMap((j: any) =>
       (j.steps ?? []).map((p) => [j, p]),
@@ -1154,7 +1157,7 @@ Deno.test("o sha: toda loja fora de loja|sandbox (as do cadastro e as que ainda 
 // ---------------------------------------------------------------------------
 Deno.test("loja nova só por dado (workflows): o gerador acrescenta SÓ a linha de segredo da loja, e sem a loja o arquivo volta idêntico", () => {
   const nova = cadastroComLojaNova();
-  for (const nome of OITO_WORKFLOWS) {
+  for (const nome of WORKFLOWS_POR_LOJA) {
     const atual = Deno.readTextFileSync(join(DIR_WF, nome));
     const comNova = gerador.sincronizar(atual, nova);
     assert(comNova !== atual, `${nome}: a loja nova devia gerar uma linha`);

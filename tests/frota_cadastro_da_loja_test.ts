@@ -54,7 +54,7 @@ const ARQUIVOS_COPIADOS = [
   "scripts/frota/canais-de-backend.json",
   "scripts/frota/politica.json",
 ];
-const OITO_WORKFLOWS = [
+const WORKFLOWS_POR_LOJA = [
   "aplicar-migrations.yml",
   "conferir-banco-da-loja.yml",
   "publicar-functions.yml",
@@ -63,6 +63,7 @@ const OITO_WORKFLOWS = [
   "ativar-email-do-login.yml",
   "ativar-google-do-login.yml",
   "login-da-loja.yml",
+  "objetos-da-frota.yml",
 ];
 
 // A loja INVENTADA: slug, ref e nome que não existem em lugar nenhum.
@@ -231,7 +232,7 @@ Deno.test("com --aplicar: a loja entra em lojas.json, canais e nos 8 workflows, 
       functionsPublicaveis: savy.functionsPublicaveis,
     });
 
-    for (const nome of OITO_WORKFLOWS) {
+    for (const nome of WORKFLOWS_POR_LOJA) {
       const texto = ler(raiz, `.github/workflows/${nome}`);
       const doc = parse(texto);
       const opcoes = (doc.on ?? doc[true]).workflow_dispatch.inputs.projeto
@@ -291,9 +292,9 @@ Deno.test("as lojas que já existem ficam byte a byte iguais: o diff fora da loj
       [
         "scripts/frota/canais-de-backend.json",
         "scripts/frota/lojas.json",
-        ...OITO_WORKFLOWS.map((n) => `.github/workflows/${n}`),
+        ...WORKFLOWS_POR_LOJA.map((n) => `.github/workflows/${n}`),
       ].sort(),
-      "só os dois cadastros e os 8 workflows podem mudar",
+      "só os dois cadastros e os workflows por loja podem mudar",
     );
 
     // lojas.json e canais: UM trecho inserido, que não cita loja existente
@@ -342,7 +343,7 @@ Deno.test("as lojas que já existem ficam byte a byte iguais: o diff fora da loj
     // workflows: só linhas da loja nova (a cadeia única e o grupo por banco são
     // reescritos com ela); nenhuma linha some além dessas duas
     const GRUPO = "group: banco-da-loja-${{ fromJSON('";
-    for (const nome of OITO_WORKFLOWS) {
+    for (const nome of WORKFLOWS_POR_LOJA) {
       const rel = `.github/workflows/${nome}`;
       const a = antes[rel].split("\n");
       const n = depois[rel].split("\n");
