@@ -551,9 +551,7 @@ describe("CSV de todos os pedidos do filtro", () => {
     exportacao = async (args) =>
       resposta(
         // Como o banco: depois do 5000º a página vem vazia.
-        Array.from({ length: 100 }, (_, i) =>
-          Number(args.p_page) * 100 + i + 1,
-        )
+        Array.from({ length: 100 }, (_, i) => Number(args.p_page) * 100 + i + 1)
           .filter((n) => n <= 5000)
           .map((n) => pedido(n)),
         5000,
