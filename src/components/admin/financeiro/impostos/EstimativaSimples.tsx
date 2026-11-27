@@ -9,7 +9,8 @@
 //    centavos, cor neutra e ícone de calculadora;
 //  - TODA estimativa vem com o aviso fixo embaixo (AvisoDaEstimativa);
 //  - DAS arredondado a zero com venda no mês: "menos de R$ 10", nunca "cerca
-//    de R$ 0"; sem venda no mês: "Sem vendas neste mês";
+//    de R$ 0"; sem venda no mês: "Sem vendas neste mês"; com venda, mas devoluções que
+//    igualam ou passam as vendas: a frase das devoluções (nunca "Sem vendas");
 //  - sem número (recusa do núcleo, série incompleta): só texto, via SemEstimativa;
 //  - a estimativa NUNCA aparece como ação ("lançar como despesa"): nada aqui grava;
 //  - "Ocultar valores": o valor vira máscara; o aviso continua;
@@ -45,6 +46,11 @@ export interface EstimativaSimplesProps {
   readonly competencia: string;
   /** Receita do mês, em reais: distingue "DAS menor que R$ 10" de "não vendeu". */
   readonly receitaDoMes: number;
+  /**
+   * Vendas do mês ANTES das devoluções, em reais: distingue "não vendeu" de "as devoluções
+   * comeram as vendas". Ausente = não se sabe, e a tela usa a frase que vale nos dois casos.
+   */
+  readonly vendasDoMes?: number;
 }
 
 const FORMATADOR_DE_REAIS_INTEIROS = new Intl.NumberFormat("pt-BR", {
@@ -82,6 +88,7 @@ export function EstimativaSimples({
   estimativa,
   competencia,
   receitaDoMes,
+  vendasDoMes,
 }: EstimativaSimplesProps) {
   const ocultos = useValoresEstaoOcultos();
 
@@ -123,7 +130,11 @@ export function EstimativaSimples({
       </>
     );
   } else if (semVenda) {
-    valor = "Sem vendas neste mês";
+    if (vendasDoMes === undefined) valor = "Sem receita líquida neste mês";
+    else if (vendasDoMes > 0) {
+      valor =
+        "As devoluções deste mês igualaram ou passaram as vendas, então não há imposto estimado.";
+    } else valor = "Sem vendas neste mês";
   } else if (arredondado === 0) {
     valor = `menos de ${FORMATADOR_DE_REAIS_INTEIROS.format(10)}`;
   } else {

@@ -137,9 +137,10 @@ export function fraseDaMediaDePoucosMeses(meses: number): string | null {
 // O medidor do limite do MEI (aba Impostos). TODO o texto do medidor mora neste bloco, num
 // lugar só e fácil de trocar. Texto final decidido pelo sócio (dono aprovou o rumo).
 //
-// A receita do medidor vem do `fin_dre`, que só enxerga as vendas REGISTRADAS no app. Por
-// isso o número é sempre um MÍNIMO: o que a lojista vendeu sem registrar aqui (Instagram,
-// WhatsApp, feira) também conta para o limite e nunca entra. Dois casos, escolhidos por
+// A receita do medidor vem do `fin_dre`, mas só a parte das vendas do app (pedidos e balcão,
+// `receita-do-mes.ts`). Por isso o número é sempre um MÍNIMO: o que a lojista lançou à mão no
+// Financeiro (mesmo na categoria "Vendas") e o que vendeu sem registrar aqui (Instagram,
+// WhatsApp, feira) também contam para o limite e nunca entram. Dois casos, escolhidos por
 // `coberturaDaReceitaDoAno` (medidor-mei.ts):
 //  - cobertura COMPLETA (o app já registrava desde o começo do período medido): o medidor
 //    mostra as faixas de sempre, mas todo veredito começa com "Pelo que o app
@@ -190,7 +191,7 @@ export function efeitoDoVeredito(
   anoDeAbertura: boolean,
 ): string {
   if (faixa === "dentro") {
-    return `${PELO_QUE_O_APP_REGISTROU} você está dentro do limite do MEI. Confira as vendas feitas por fora do app: elas também contam para o limite.`;
+    return `${PELO_QUE_O_APP_REGISTROU} você está dentro do limite do MEI. Confira as vendas feitas por fora do app e os lançamentos de venda feitos à mão no Financeiro: eles também contam para o limite.`;
   }
   const prazo =
     "Avise a Receita até o último dia útil do mês seguinte ao do excesso.";
@@ -210,7 +211,7 @@ export function efeitoDoVeredito(
 export const TEXTOS_DO_MEDIDOR_DO_MEI = {
   /** Embaixo do medidor, SÓ nas telas com número (ano completo e incompleto). */
   avisoFixo:
-    "Este número só tem as vendas registradas no app. O que você vendeu sem registrar aqui (Instagram, WhatsApp, feira) também conta para o limite do MEI: some por sua conta.",
+    "Este número só tem as vendas feitas pelo app (pedidos e balcão). Os lançamentos feitos à mão no Financeiro (mesmo na categoria Vendas) não entram, nem o que você vendeu sem registrar aqui (Instagram, WhatsApp, feira). Tudo isso também conta para o limite do MEI: some por sua conta.",
   /** O rótulo do número quando a cobertura é parcial. */
   rotuloDoNumeroParcial: "Vendas registradas no app neste ano",
   /** O título de cada faixa no ano COMPLETO. */

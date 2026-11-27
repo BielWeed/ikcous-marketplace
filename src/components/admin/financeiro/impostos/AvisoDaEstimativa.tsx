@@ -11,7 +11,7 @@ import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 
 export const AVISO_DA_ESTIMATIVA =
-  "Isto é uma estimativa feita com as vendas registradas no app. Não é o valor da sua guia. Vendas fora do app não entram, e produtos com ICMS-ST ou PIS/Cofins monofásico costumam pagar menos. O valor certo está na guia do Simples (PGDAS-D) ou com o seu contador.";
+  "Isto é uma estimativa feita só com as vendas feitas pelo app (pedidos e balcão). Não é o valor da sua guia. Vendas fora do app e lançamentos feitos à mão no Financeiro (mesmo na categoria Vendas) não entram, e produtos com ICMS-ST ou PIS/Cofins monofásico costumam pagar menos. O valor certo está na guia do Simples (PGDAS-D) ou com o seu contador.";
 
 export function AvisoDaEstimativa() {
   return (

@@ -101,10 +101,16 @@ function textoDaRecusa(estimativa: SemEstimativaDoSimples): string {
       return "Este mês é anterior à abertura da empresa, por isso não há estimativa.";
     case "mes_antes_das_vendas_no_app":
       return "Este mês é anterior ao começo das suas vendas pelo app, por isso não há estimativa.";
+    // Com `projecao`, a RBT12 saiu da média dos meses medidos x 12: a frase nunca afirma
+    // que as vendas de 12 meses passaram do limite, porque o app não mediu 12 meses.
     case "acima_do_sublimite":
-      return "As vendas dos últimos 12 meses passaram do sublimite do Simples Nacional, e a partir dele o ICMS passa a ser cobrado fora do DAS. Esta conta deixa de valer: veja o valor certo com o seu contador.";
+      return estimativa.projecao
+        ? "Pela média dos meses registrados no app, a projeção de 12 meses passa do sublimite do Simples Nacional, e a partir dele o ICMS passa a ser cobrado fora do DAS. Esta conta deixa de valer: veja o valor certo com o seu contador."
+        : "As vendas dos últimos 12 meses passaram do sublimite do Simples Nacional, e a partir dele o ICMS passa a ser cobrado fora do DAS. Esta conta deixa de valer: veja o valor certo com o seu contador.";
     case "acima_do_teto":
-      return "As vendas dos últimos 12 meses passaram do teto do Simples Nacional. Esta conta deixa de valer: fale com o seu contador.";
+      return estimativa.projecao
+        ? "Pela média dos meses registrados no app, a projeção de 12 meses passa do teto do Simples Nacional. Esta conta deixa de valer: fale com o seu contador."
+        : "As vendas dos últimos 12 meses passaram do teto do Simples Nacional. Esta conta deixa de valer: fale com o seu contador.";
   }
 }
 

@@ -259,7 +259,7 @@ describe("medidor do MEI, ano completo: o número é um mínimo, o veredito nunc
 
   it("dentro do limite manda conferir as vendas feitas por fora", () => {
     expect(efeitoDoVeredito("dentro", false)).toBe(
-      "Pelo que o app registrou, você está dentro do limite do MEI. Confira as vendas feitas por fora do app: elas também contam para o limite.",
+      "Pelo que o app registrou, você está dentro do limite do MEI. Confira as vendas feitas por fora do app e os lançamentos de venda feitos à mão no Financeiro: eles também contam para o limite.",
     );
   });
 
