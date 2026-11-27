@@ -309,7 +309,17 @@ const DURACAO_DO_DESFAZER_MS = 6_000;
 /** Tombstone entry: tracks when a cart item was intentionally deleted locally */
 interface CartTombstone {
   key: string; // productId-chave da variação (escolhas-do-item.ts)
+  // Hora DESTE aparelho: só se compara com a hora da linha daqui (outra aba) e
+  // com o prazo de 7 dias, nunca com a linha que veio do banco. Também serve de
+  // identidade da lápide (o "Desfazer" e a confirmação abaixo comparam igualdade).
   deletedAt: number; // epoch ms
+  // A remoção já foi GRAVADA no banco (uma gravação que saiu com a lápide e sem
+  // a linha teve sucesso). Antes disso a lápide esconde a linha que o banco
+  // ainda traz; depois, a linha que o banco trouxer numa leitura que começou já
+  // com a lápide confirmada foi posta de novo por outro aparelho e volta. Sem o
+  // campo: lápide de uma versão antiga do app, que segue a regra antiga (hora)
+  // até a próxima gravação confirmá-la.
+  confirmada?: boolean;
 }
 
 function chaveDasLapides(uid: string | null): string {
@@ -374,6 +384,49 @@ function saveTombstones(uid: string | null, map: Map<string, CartTombstone>) {
 function esquecerLapide(uid: string | null, key: string) {
   const lapides = loadTombstones(uid);
   if (lapides.delete(key)) saveTombstones(uid, lapides);
+}
+
+/**
+ * A gravação que saiu com estas lápides teve sucesso: o banco já não tem as
+ * linhas delas. Marca como confirmada só a lápide que continua a MESMA (mesma
+ * `deletedAt`) e cuja linha não foi na gravação; a que nasceu durante a
+ * gravação, ou foi trocada por outra tirada, segue pendente.
+ */
+function confirmarLapides(
+  uid: string,
+  noEnvio: ReadonlyMap<string, CartTombstone>,
+  chavesEnviadas: ReadonlySet<string>,
+) {
+  const lapides = loadTombstones(uid);
+  let mudou = false;
+  for (const [key, enviada] of noEnvio) {
+    if (chavesEnviadas.has(key)) continue;
+    const agora = lapides.get(key);
+    if (!agora || agora.deletedAt !== enviada.deletedAt || agora.confirmada) {
+      continue;
+    }
+    lapides.set(key, { ...agora, confirmada: true });
+    mudou = true;
+  }
+  if (mudou) saveTombstones(uid, lapides);
+}
+
+/** Lápide nova. A da conta nasce pendente (a remoção ainda não foi gravada);
+ *  a do visitante não vai ao banco e fica no formato de sempre. */
+function novaLapide(
+  uid: string | null,
+  key: string,
+  deletedAt: number,
+): CartTombstone {
+  return uid ? { key, deletedAt, confirmada: false } : { key, deletedAt };
+}
+
+/** Esquece a lápide aceita pela junção, se ela ainda for a mesma. */
+function esquecerLapideSeIgual(uid: string | null, lapide: CartTombstone) {
+  const lapides = loadTombstones(uid);
+  if (lapides.get(lapide.key)?.deletedAt !== lapide.deletedAt) return;
+  lapides.delete(lapide.key);
+  saveTombstones(uid, lapides);
 }
 
 /** A sessão de agora é mesmo desta conta? Qualquer falha diz "não". */
@@ -733,6 +786,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // não traz uma linha, outro aparelho a tirou (o banco manda). Diferente (ou
   // `null`) = a cliente mexeu e o banco ainda não viu: a junção de sempre.
   const retratoAlinhado = useRef<string | null>(null);
+  // As mesmas linhas de `retratoAlinhado`, uma a uma (`entradaDoItem`): linha
+  // daqui que está nelas não foi mexida desde a última conversa com o banco, e
+  // na junção vale a do banco; linha que não está foi mexida aqui e vale a
+  // daqui. É isto que decide, nunca a hora de um aparelho.
+  const entradasAlinhadas = useRef<Set<string> | null>(null);
+  // O que a última leitura trouxe de cada linha do banco (quantidade e o
+  // `updated_at` que o PRÓPRIO banco deu). A gravação devolve esse carimbo
+  // para a linha que segue com a mesma quantidade; a linha mudada vai sem
+  // carimbo e o banco põe a hora dele. Hora de aparelho não vai ao banco.
+  const linhasLidasDoBanco = useRef(
+    new Map<string, { quantity: number; updatedAt: string | null }>(),
+  );
   // Sobe quando uma gravação começa e quando termina: a releitura que atravessou
   // uma gravação tem um retrato do banco de ANTES dela e não vale para tirar
   // nada daqui.
@@ -866,6 +931,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const leituraDepoisDaJuncao = remotoMescladoRef.current;
       const gravandoNoInicio = syncPending.current;
       const geracaoNaLeitura = geracaoDaGravacao.current;
+      // O que o banco tinha confirmado quando ESTA leitura saiu. Tem de ser o
+      // de agora, não o da hora da junção: uma leitura que saiu antes de uma
+      // gravação e voltou depois traz o banco de antes, e a linha que essa
+      // gravação levou ainda conta como mexida aqui (não volta para a antiga).
+      const confirmadasNoInicio =
+        entradasAlinhadas.current ?? confirmadasDaConta(uidDaLeitura);
+      const lapidesConfirmadasNoInicio = new Map<string, number>();
+      for (const lapide of loadTombstones(uidDaLeitura).values()) {
+        if (lapide.confirmada === true) {
+          lapidesConfirmadasNoInicio.set(lapide.key, lapide.deletedAt);
+        }
+      }
       try {
         const startTime = Date.now();
         console.log(
@@ -946,12 +1023,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 ),
               };
 
+              // `lastModifiedAt` é a hora de uma edição feita NESTE aparelho; a
+              // linha que veio do banco não tem nenhuma (o `updated_at` dela é
+              // de outro relógio e não se compara com o daqui).
               const item: CartItem = {
                 product: mapProductFromDB(productWithVariants),
                 quantity: dbItem.quantity,
-                lastModifiedAt: dbItem.updated_at
-                  ? new Date(dbItem.updated_at).getTime()
-                  : 0,
+                lastModifiedAt: 0,
               };
               // A coluna guarda a chave da linha (`idA~idB` no produto de duas
               // escolhas separadas); linha antiga tem só o id e abre igual.
@@ -1031,8 +1109,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           if (catalogoEmEspera) avisos = [];
 
           // Na junção fica o produto NOVO (preço, estoque, situação) com a
-          // quantidade que "quem escreveu por último" definiu. Antes, com o
-          // carimbo igual (o caso normal), ficava a cópia local velha.
+          // quantidade que a junção escolheu (a daqui se foi mexida aqui, a do
+          // banco se não). Antes ficava a cópia local velha do produto.
           const comOCatalogo = (itens: CartItem[]) =>
             catalogo && !catalogoEmEspera
               ? aplicarCatalogoAoCarrinho(itens, catalogo)
@@ -1053,6 +1131,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             ),
           );
           const retratoDoBanco = retratoDoCarrinho(reconstructedCart);
+          // O `updated_at` de cada linha, só para a lápide de versão antiga
+          // (sem `confirmada`), que segue a regra antiga até ser confirmada.
+          const horaDaLinhaNoBanco = new Map(
+            dbItems.map((dbItem) => [
+              `${dbItem.product_id}-${normalizarChave(dbItem.variant_id)}`,
+              dbItem.updated_at ? Date.parse(dbItem.updated_at) || 0 : 0,
+            ]),
+          );
 
           // O BANCO MANDA: releitura ao vivo (depois da primeira junção), sem
           // gravação no meio, sem pedido sem resposta (a chave do pedido nasce
@@ -1104,6 +1190,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             confirmadasSaem = confirmadasSaem && semGravacaoNoMeio();
           }
 
+          linhasLidasDoBanco.current = new Map(
+            dbItems.map((dbItem) => [
+              `${dbItem.product_id}-${normalizarChave(dbItem.variant_id)}`,
+              {
+                quantity: dbItem.quantity,
+                updatedAt: dbItem.updated_at ?? null,
+              },
+            ]),
+          );
+
           setCart((prev) => {
             const tombstones = loadTombstones(uidDaLeitura);
             // Nada pendente aqui: o carrinho de agora é o último que o banco
@@ -1130,6 +1226,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 retratoDoCarrinho(resultado) === retratoDoBanco
               ) {
                 retratoAlinhado.current = retratoDoBanco;
+                entradasAlinhadas.current = new Set(
+                  entradasDoCarrinho(resultado),
+                );
                 if (uidDaLeitura) guardarConfirmado(uidDaLeitura, resultado);
                 if (nadaPendente) {
                   lastSyncedCart.current = JSON.stringify(resultado);
@@ -1161,7 +1260,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
             const mergedMap = new Map<string, CartItem>();
 
-            // Add local items first (these carry local timestamps)
+            // As linhas daqui primeiro (a hora delas é a DESTE aparelho e só se
+            // compara com a lápide, também deste aparelho).
             prev.forEach((item) => {
               const key = chaveDoItem(item);
               // A exclusão de outra aba também vale para a cópia que ficou aqui.
@@ -1181,31 +1281,40 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               });
             });
 
-            // Merge remote items using Last-Write-Wins with timestamps
+            // As linhas do banco. Nenhuma hora de aparelho decide aqui: os dois
+            // relógios (o daqui e o de quem gravou) não se comparam.
             reconstructedCart.forEach((remoteItem) => {
               const key = chaveDoItem(remoteItem);
-              const remoteTs = remoteItem.lastModifiedAt || 0;
 
               const tombstone = tombstones.get(key);
-              if (tombstone && tombstone.deletedAt > remoteTs) {
-                return;
+              if (tombstone) {
+                // Lápide pendente (a remoção ainda não foi gravada): a linha
+                // que o banco traz é a que a próxima gravação tira. Lápide já
+                // confirmada quando esta leitura saiu: o banco ficou sem a
+                // linha e alguém a pôs de novo -- ela volta e a lápide sai.
+                const postaDeNovo =
+                  tombstone.confirmada === undefined
+                    ? (horaDaLinhaNoBanco.get(key) ?? 0) >= tombstone.deletedAt
+                    : lapidesConfirmadasNoInicio.get(key) ===
+                      tombstone.deletedAt;
+                if (!postaDeNovo) return;
+                esquecerLapideSeIgual(uidDaLeitura, tombstone);
               }
 
-              if (mergedMap.has(key)) {
-                const local = mergedMap.get(key)!;
-                const localTs = local.lastModifiedAt || 0;
-
-                if (localTs >= remoteTs) {
-                  // Local is newer
-                } else {
-                  // Remote is newer
-                  mergedMap.set(key, {
-                    ...remoteItem,
-                    lastModifiedAt: remoteTs,
-                  });
-                }
-              } else {
-                mergedMap.set(key, { ...remoteItem, lastModifiedAt: remoteTs });
+              const local = mergedMap.get(key);
+              if (!local) {
+                mergedMap.set(key, remoteItem);
+                return;
+              }
+              // Linha mexida aqui desde a última conversa com o banco (ou sem
+              // saber o que o banco tinha): vale a daqui, que a próxima
+              // gravação leva. Linha que este aparelho não mexeu: vale a do
+              // banco (outro aparelho a mudou).
+              const mexidaAqui =
+                !confirmadasNoInicio ||
+                !confirmadasNoInicio.has(entradaDoItem(local));
+              if (!mexidaAqui && local.quantity !== remoteItem.quantity) {
+                mergedMap.set(key, remoteItem);
               }
             });
 
@@ -1296,6 +1405,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       remotoMescladoRef.current = false;
       setRemotoMesclado(false);
       retratoAlinhado.current = null;
+      entradasAlinhadas.current = null;
+      linhasLidasDoBanco.current = new Map();
       falhasDeLeitura.current = 0;
       cancelarReleitura();
       // Conta nova a ler: o carrinho NÃO é "vazio" enquanto a leitura não volta
@@ -1547,6 +1658,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }
 
         console.log("[CartContext] 📤 Syncing to Supabase...");
+        // As lápides que saem com ESTA gravação: o sucesso dela as confirma.
+        const lapidesNoEnvio = loadTombstones(user.id);
         const itemMap = new Map<string, any>();
         currentCart.forEach((item) => {
           // `cart_items.variant_id` é texto e único por usuário+produto: leva
@@ -1561,12 +1674,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               variant_id: variantId,
               quantity: item.quantity,
               variant_names: item.variantNames || null,
-              updated_at: item.lastModifiedAt
-                ? new Date(item.lastModifiedAt).toISOString()
-                : new Date().toISOString(),
             });
           }
         });
+        // Hora de aparelho não vai ao banco. A linha que segue igual à que a
+        // última leitura trouxe devolve o carimbo do PRÓPRIO banco (ele não
+        // muda para quem ainda compara carimbos, como o app antigo em outro
+        // aparelho); a linha nova ou mudada vai sem `updated_at` e o
+        // `sync_cart_atomic` grava a hora do servidor (o COALESCE dele).
+        for (const [key, linha] of itemMap) {
+          const lida = linhasLidasDoBanco.current.get(key);
+          if (lida?.updatedAt && lida.quantity === linha.quantity) {
+            linha.updated_at = lida.updatedAt;
+          }
+        }
 
         // Rede pendurada: sem prazo a trava `syncPending` ficava ligada para
         // sempre. Estourou = falha recuperável pelo `catch` de sempre (solta a
@@ -1584,7 +1705,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         // O banco acabou de receber ESTE carrinho (a conta ainda é a mesma).
         if (userIdAtualRef.current === user.id) {
           retratoAlinhado.current = retratoDoCarrinho(currentCart);
+          entradasAlinhadas.current = new Set(entradasDoCarrinho(currentCart));
           guardarConfirmado(user.id, currentCart);
+          confirmarLapides(user.id, lapidesNoEnvio, new Set(itemMap.keys()));
         }
         falhasSeguidas.current = 0;
         syncPending.current = false;
@@ -1775,7 +1898,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const item = indice >= 0 ? cartRef.current.at(indice) : undefined;
       const uid = userIdAtualRef.current;
       const tombstones = loadTombstones(uid);
-      tombstones.set(key, { key, deletedAt });
+      tombstones.set(key, novaLapide(uid, key, deletedAt));
       saveTombstones(uid, tombstones);
       setCart((prev) => prev.filter((linha) => chaveDoItem(linha) !== key));
       if (opcoes?.silencioso) {
@@ -1837,7 +1960,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               toast.error("Este produto está esgotado e saiu do seu carrinho.");
               const tombstones = loadTombstones(uid);
               const key = chaveDoItem(item);
-              tombstones.set(key, { key, deletedAt: Date.now() });
+              tombstones.set(key, novaLapide(uid, key, Date.now()));
               saveTombstones(uid, tombstones);
               return [];
             }
@@ -1882,7 +2005,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const now = Date.now();
         prev.forEach((item) => {
           const key = chaveDoItem(item);
-          tombstones.set(key, { key, deletedAt: now });
+          tombstones.set(key, novaLapide(uid, key, now));
         });
         saveTombstones(uid, tombstones);
         return [];

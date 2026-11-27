@@ -15,6 +15,13 @@
 //     só vale se for mais nova);
 //   - a lápide gravada por outra aba vale também quando o carrinho daqui e o
 //     do banco são idênticos: o produto que a outra aba tirou sai daqui.
+//
+// 27/11/2026: a hora do aparelho deixou de decidir entre a linha daqui e a do
+// banco (o relógio de um aparelho adiantado fazia a edição do outro sumir; ver
+// carrinho-dois-aparelhos-com-relogios-diferentes.test.tsx). Decide se a linha
+// foi MEXIDA aqui desde a última conversa com o banco. O "controle" abaixo
+// passou a provar isso; os casos de lápide sem `confirmada` (formato de antes)
+// seguem a regra antiga até a próxima gravação confirmá-las.
 import { CartProvider, useCartContext } from "@/contexts/CartContext";
 import { mapProductFromDB } from "@/lib/mappers";
 import { act, useEffect } from "react";
@@ -160,14 +167,34 @@ async function abrir() {
 const linhas = () => atual.cart.map((i) => [i.product.id, i.quantity]);
 
 describe("carrinho: junção com carimbo igual ou ausente", () => {
-  it("controle: quem escreveu por último vence, de um lado e do outro", async () => {
+  it("controle: sem saber o que o banco confirmou, vale a linha daqui -- a hora não decide", async () => {
     const t = Date.now() - 5000;
     guardarAqui("p1", 3, t);
     guardarAqui("p2", 3, t + 1000);
     mundo.itens = [linhaDoBanco("p1", 5, t + 1000), linhaDoBanco("p2", 5, t)];
     await abrir();
 
-    // p1: o banco é mais novo; p2: o aparelho é mais novo.
+    // Sem a lista do que o banco confirmou, a linha daqui pode ter edição não
+    // enviada: fica a daqui nas duas, com o banco mais novo ou mais velho.
+    expect(linhas()).toEqual([
+      ["p1", 3],
+      ["p2", 3],
+    ]);
+  });
+
+  it("controle: linha que este aparelho não mexeu segue o banco; a mexida aqui fica -- com qualquer hora", async () => {
+    const t = Date.now() - 5000;
+    // O banco confirmou p1=3 e p2=2; aqui p2 virou 3 e não foi enviado.
+    localStorage.setItem(
+      "marketplace_cart_confirmado_v1",
+      JSON.stringify({ uid: "u1", entradas: ["p1-=3", "p2-=2"] }),
+    );
+    // A hora daqui é a MAIS NOVA em p1 e a mais velha em p2: não importa.
+    guardarAqui("p1", 3, t + 4000);
+    guardarAqui("p2", 3, t);
+    mundo.itens = [linhaDoBanco("p1", 5, t), linhaDoBanco("p2", 5, t + 4000)];
+    await abrir();
+
     expect(linhas()).toEqual([
       ["p1", 5],
       ["p2", 3],
