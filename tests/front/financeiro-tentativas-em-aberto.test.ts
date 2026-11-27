@@ -68,7 +68,9 @@ describe("tentativas em aberto do lançamento", () => {
     };
     vi.stubGlobal("sessionStorage", bloqueado);
     const m = await import(MODULO);
-    expect(() => m.guardarChaveEmAberto(DONO, CONTEUDO, "chave-1")).not.toThrow();
+    expect(() =>
+      m.guardarChaveEmAberto(DONO, CONTEUDO, "chave-1"),
+    ).not.toThrow();
     expect(m.chaveEmAbertoDoConteudo(DONO, CONTEUDO)).toBeNull();
     expect(() => m.esquecerChaveEmAberto(DONO, CONTEUDO)).not.toThrow();
     vi.unstubAllGlobals();

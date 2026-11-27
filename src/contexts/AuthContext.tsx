@@ -1,9 +1,9 @@
+import { esquecerTodasAsChavesEmAberto } from "@/components/admin/financeiro/tentativasEmAberto";
 import {
   esquecerDaMemoriaDoLocal,
   localStorageSeguro,
   sessionStorageSeguro,
 } from "@/lib/armazenamento-seguro";
-import { esquecerTodasAsChavesEmAberto } from "@/components/admin/financeiro/tentativasEmAberto";
 import { pedirAoSwPurgarArquivosPrivados } from "@/lib/arquivo-publico-do-storage";
 import { esquecerAdiamentoDosAvisos } from "@/lib/avisos-do-aparelho";
 import {
