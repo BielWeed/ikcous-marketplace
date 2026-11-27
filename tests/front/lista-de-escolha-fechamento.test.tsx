@@ -119,6 +119,15 @@ const esperar = (ms = 0) =>
     await new Promise((r) => setTimeout(r, ms));
   });
 
+// O `history.back()` da folha chega quando o jsdom quiser (com a máquina
+// cheia, passa de 20 ms): espera ATÉ a entrada sair, com teto de 2 s. A entrada
+// que sobra quebra o teste seguinte do arquivo (o histórico vive o arquivo todo).
+const historicoLimpo = () =>
+  vi.waitFor(() => expect(history.state?.folhaDePolitica).not.toBe(true), {
+    timeout: 2000,
+    interval: 10,
+  });
+
 function tecla(alvo: Element, key: string, extra: KeyboardEventInit = {}) {
   const evento = new KeyboardEvent("keydown", {
     key,
@@ -164,6 +173,9 @@ describe("lista de escolha — campo que trava com a lista aberta", () => {
     render(aoMudar, { desabilitado: false });
     expect(document.querySelector('[role="listbox"]')).toBeNull();
     expect(aoMudar).not.toHaveBeenCalled();
+    // A folha fechou e pediu `history.back()`: sem esperar, o retorno chega
+    // DEPOIS de o teste seguinte empurrar a entrada dele e o deixa sujo.
+    await historicoLimpo();
   });
 
   // No navegador a lista sai com animação (`data-[state=closed]:animate-out`)
@@ -210,6 +222,14 @@ describe("lista de escolha — campo que trava com a lista aberta", () => {
       expect(opcao).not.toBeNull();
       await act(async () => opcao?.click());
       expect(aoMudar).not.toHaveBeenCalled();
+
+      // Com a animação imitada, o Presence nunca termina a saída no jsdom: a
+      // folha só sairia no `afterEach`, e o `history.back()` dela cairia no
+      // teste seguinte. Desmonta aqui, espera o Voltar e confere o histórico
+      // limpo (o `unmount` do `afterEach` vira nada).
+      vi.stubGlobal("getComputedStyle", original);
+      act(() => raiz.unmount());
+      await historicoLimpo();
     },
   );
 });
@@ -396,8 +416,7 @@ describe("lista de escolha — Tab confirma a opção com o anel", () => {
     // vive o arquivo inteiro).
     tecla(document.activeElement as HTMLElement, "Escape");
     expect(folha()).toBeNull();
-    await esperar(20);
-    expect(history.state?.folhaDePolitica).not.toBe(true);
+    await historicoLimpo();
   });
 });
 
@@ -413,8 +432,7 @@ describe("lista de escolha — troca de folha para popover com a lista aberta", 
     mudarLargura(true);
     expect(folha()).toBeNull();
     expect(voltar).toHaveBeenCalledTimes(1);
-    await esperar(20);
-    expect(history.state?.folhaDePolitica).not.toBe(true);
+    await historicoLimpo();
   });
 });
 
