@@ -211,6 +211,8 @@ describe("PoliticaDeDevolucaoSection — prazos em palavras", () => {
       p: {
         prazo_arrependimento_dias: 10,
         categorias_sem_troca: ["Moda íntima"],
+        // a lista vai com a versão que a tela VIU: o banco recusa se outro aparelho a mudou
+        vistos: { categorias_sem_troca: [] },
       },
     });
     expect(toast.success).toHaveBeenCalled();

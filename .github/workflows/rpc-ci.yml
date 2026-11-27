@@ -365,6 +365,8 @@ on:
       - "scripts/publicacao/consultas/200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente.sql"
       - "scripts/publicacao/consultas/201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado.sql"
       - "scripts/publicacao/consultas/201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente.sql"
+      - "scripts/publicacao/consultas/203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado.sql"
+      - "scripts/publicacao/consultas/203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente.sql"
       - "scripts/publicacao/consultas/201m-medir-avaliacoes-repetidas.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
@@ -705,6 +707,8 @@ on:
       - "scripts/publicacao/consultas/200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente.sql"
       - "scripts/publicacao/consultas/201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado.sql"
       - "scripts/publicacao/consultas/201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente.sql"
+      - "scripts/publicacao/consultas/203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado.sql"
+      - "scripts/publicacao/consultas/203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente.sql"
       - "scripts/publicacao/consultas/201m-medir-avaliacoes-repetidas.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
@@ -1520,6 +1524,12 @@ jobs:
       - name: Prova viva de uma avaliacao por cliente e a media so das publicadas (20261641000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-viva.cjs
+      # Migration 20261643000000 (as listas dos ajustes nao somem entre aparelhos): upsert_store_config e salvar_politica_de_devolucao conferem a
+      # lista VISTA (`vistos`) e recusam com LST01 sem gravar. Igual grava, diferente recusa, conjunto/jsonb, NULL aceita, malformado 22023, sem
+      # vistos como antes, DUAS conexoes ao mesmo tempo, ACL, rollback byte a byte, reaplicar (LF/CRLF), pre-voo e consultas 203a/203b. CLONE proprio.
+      - name: Prova viva das listas dos ajustes que nao somem entre aparelhos (20261643000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/as-listas-dos-ajustes-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais

@@ -3675,7 +3675,27 @@ const ROL_DA_201 = [
   "get_reviews_metrics: corpo exato (md5), so as publicadas",
   "get_admin_reviews_paged e get_reviews_metrics: uma assinatura cada, SECURITY DEFINER plpgsql VOLATILE, EXECUTE de authenticated e service_role (nem anon nem PUBLIC)",
 ];
+// Lote 203 (20261643000000, as listas dos ajustes nao somem entre aparelhos: SO o corpo de upsert_store_config e o de
+// salvar_politica_de_devolucao, mesma assinatura, que conferem a lista vista e recusam com LST01). Somente catalogo: nenhuma le
+// configuracao nem politica e nenhuma chama funcao. A 203a espera os dois corpos desta (md5) e os atributos/ACL de sempre (4); a 203b,
+// a base vigente (310 e 99) ou os desta, as cinco colunas e as guardas de admin (4).
+const ROL_DA_203A = [
+  "controle: funcoes de public visiveis a este papel",
+  "upsert_store_config: corpo exato (md5)",
+  "salvar_politica_de_devolucao: corpo exato (md5)",
+  "as duas RPCs: uma assinatura so cada, SECURITY DEFINER plpgsql VOLATILE com search_path=public, retorno jsonb, EXECUTE de authenticated e service_role (nem anon nem PUBLIC)",
+];
+const ROL_DA_203B = [
+  "upsert_store_config: corpo da 20261310000000 ou desta (md5)",
+  "salvar_politica_de_devolucao: corpo da 20261199000000 ou desta (md5)",
+  "as cinco listas: formas_pagamento_entrega (text[]) e home_sections (jsonb) em store_config; metodos_locais, metodos_nacionais e categorias_sem_troca (text[]) em politica_devolucao",
+  "is_admin() e is_admin_atual() existem",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado":
+    ROL_DA_203A,
+  "203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente":
+    ROL_DA_203B,
   "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado":
     ROL_DA_201,
   "201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente":

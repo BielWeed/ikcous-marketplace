@@ -3114,6 +3114,13 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           ),
           versao: "20261280000000",
         },
+        // 27/11/2026 (lote 203): as listas dos ajustes nao somem entre aparelhos (20261643000000) — a politica de
+        // devolucao confere a lista vista (a cadeia 99 -> 1643).
+        {
+          fn: "salvar_politica_de_devolucao",
+          h: "976f05a67ca929ace608a62391588bcd",
+          versao: "20261643000000",
+        },
         {
           fn: "solicitar_estorno",
           h: "840de50f44958fe43b55f5222691df9b",
@@ -3134,6 +3141,13 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "upsert_store_config",
           h: "aa4ed730ac6ad3d3c2644b4285ff39a9",
           versao: "20261310000000",
+        },
+        // 27/11/2026 (lote 203): as vitrines e as formas de pagamento na entrega conferem a lista vista (a cadeia
+        // 99 -> 39 -> 44 -> 1310 -> 1643).
+        {
+          fn: "upsert_store_config",
+          h: "2f772ffd1370359ba6c64540b71c35b2",
+          versao: "20261643000000",
         },
       ]);
       for (const s of sucessoras8e)
@@ -4476,7 +4490,7 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
         get_product_recommendations: "20261399800000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261280000000",
-        upsert_store_config: "20261310000000",
+        upsert_store_config: "20261643000000",
       });
     },
   );
@@ -16916,6 +16930,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
     // 20261641000000: uma avaliacao por cliente e produto, e a media do painel so das publicadas.
     "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
+    // 20261643000000: as listas dos ajustes nao somem entre aparelhos.
+    "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

@@ -67,7 +67,12 @@ interface FormasDePagamentoSectionProps {
   readonly isOffline: boolean;
   readonly updateConfig: (
     updates: Partial<StoreConfig>,
-    options?: { readonly silentSuccess?: boolean },
+    options?: {
+      readonly silentSuccess?: boolean;
+      readonly vistos?: {
+        readonly formasPagamentoEntrega?: readonly FormaDePagamentoNaEntrega[];
+      };
+    },
   ) => Promise<boolean>;
   readonly onDirtyMudou?: (dirty: boolean) => void;
   /**
@@ -148,9 +153,16 @@ export function FormasDePagamentoSection({
       // (ADMIN-010, #94; e a mensagem específica de FORMA_DE_PAGAMENTO
       // desligada quando o `pixLigado` local está stale) — aqui só não se
       // segue em frente se a gravação não confirmou.
+      // Caça 27/11 (20261643000000): a lista que ESTA tela mostrava ao
+      // montar a próxima. O banco recusa se outro aparelho já a mudou (o
+      // aviso e a releitura saem de dentro do `updateConfig`), em vez de
+      // apagar em silêncio a forma que o outro acabou de ligar ou desligar.
       const salvou = await updateConfig(
         { formasPagamentoEntrega: proxima },
-        { silentSuccess: true },
+        {
+          silentSuccess: true,
+          vistos: { formasPagamentoEntrega: [...formasNaEntrega] },
+        },
       );
       if (!salvou) return;
       toast.success(

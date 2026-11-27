@@ -69,6 +69,12 @@ const SUCESSORAS = [
     consulta:
       "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
   },
+  // 20261643000000: as listas dos ajustes nao somem entre aparelhos (upsert_store_config e salvar_politica_de_devolucao).
+  {
+    versao: "20261643000000",
+    consulta:
+      "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

@@ -105,7 +105,7 @@ WITH fns AS (
   UNION ALL
   SELECT 'upsert_store_config: corpo e o da 20261244000000, que grava as duas chaves novas (md5)',
          '391e8e1064400df5aea579f3472b203c',
-         COALESCE((SELECT CASE WHEN f.m = 'aa4ed730ac6ad3d3c2644b4285ff39a9' THEN '391e8e1064400df5aea579f3472b203c' ELSE f.m END FROM fns f WHERE f.nome = 'upsert_store_config'), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m IN ('aa4ed730ac6ad3d3c2644b4285ff39a9', '2f772ffd1370359ba6c64540b71c35b2') THEN '391e8e1064400df5aea579f3472b203c' ELSE f.m END FROM fns f WHERE f.nome = 'upsert_store_config'), 'AUSENTE')
   UNION ALL
   SELECT 'as tres funcoes: uma assinatura so cada e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno)',
          'atributos de sempre',
