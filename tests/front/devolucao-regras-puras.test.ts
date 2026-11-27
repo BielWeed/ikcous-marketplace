@@ -1091,7 +1091,7 @@ describe("linha do tempo, prazos e instruções", () => {
     if (!d) return;
     const texto = instrucaoParaOCliente(d, {});
     expect(texto).toBe(
-      "A devolução foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja.",
+      "A devolução foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja. Se usar o vale numa compra pelo app, a peça nova tem devolução própria naquele pedido.",
     );
     expect(texto).not.toMatch(/foi emitido/i);
   });

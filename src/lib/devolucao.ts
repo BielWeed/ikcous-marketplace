@@ -984,9 +984,9 @@ export function instrucaoParaOCliente(
           : TEXTO_REEMBOLSO_CONFIRMANDO_CLIENTE;
       }
       if (d.resolucao_final === "troca") {
-        return "A troca foi confirmada. A loja combina com você a entrega do novo produto.";
+        return "A troca foi confirmada. A loja combina com você a entrega do novo produto. Se a peça nova tiver algum problema, fale com a loja informando o protocolo.";
       }
-      return "A devolução foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja.";
+      return "A devolução foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja. Se usar o vale numa compra pelo app, a peça nova tem devolução própria naquele pedido.";
     }
     case "recusada":
       return "A loja não aprovou esta devolução.";

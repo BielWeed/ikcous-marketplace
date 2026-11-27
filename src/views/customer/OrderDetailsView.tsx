@@ -1125,8 +1125,9 @@ export function OrderDetailsView({
     globalThis.setTimeout(() => setCopiedTracking(false), 2000);
   };
 
-  const handleWhatsAppSupport = () => {
-    const message = `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(orderId)}.`;
+  // O ÚNICO montador do link do WhatsApp da loja nesta tela: o "Falar com a
+  // loja" e o "A peça da troca veio com problema" mudam só o texto.
+  const abrirWhatsappDaLoja = (message: string) => {
     let phone = limparTelefoneBrasileiro(config.whatsappNumber);
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
@@ -1135,6 +1136,16 @@ export function OrderDetailsView({
     abrirWhatsapp(url);
     haptic.light();
   };
+
+  const handleWhatsAppSupport = () =>
+    abrirWhatsappDaLoja(
+      `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(orderId)}.`,
+    );
+
+  const avisarPecaDaTrocaComProblema = (protocolo: string) =>
+    abrirWhatsappDaLoja(
+      `Olá! A peça que recebi na troca do pedido #${numeroDoPedido(orderId)} (protocolo ${protocolo}) veio com problema.`,
+    );
 
   // Decisão de 30/08 (PRs #358-#365, "sem número, o botão some") chegou ao
   // ProductView mas não aqui — laudo 31/08 (C1): com a sentinela de fábrica
@@ -1987,6 +1998,11 @@ export function OrderDetailsView({
                 horarioDaLoja={config.businessHours ?? null}
                 onCancelar={devolucaoDoProduto.cancelar}
                 onInformarEnvio={devolucaoDoProduto.informarEnvio}
+                onPecaDaTrocaComProblema={
+                  lojaTemWhatsappAgora
+                    ? avisarPecaDaTrocaComProblema
+                    : undefined
+                }
               />
             </motion.div>
           )}
@@ -2416,6 +2432,7 @@ export function OrderDetailsView({
           onAbertoMudou={setPedindoDevolucao}
           elegibilidade={devolucaoDoProduto.elegibilidade}
           rotulosDosItens={rotulosPorLinhaDoPedido}
+          orderId={orderId}
           userId={contaDona.id}
           enderecoDaLoja={config.storeAddress ?? null}
           horarioDaLoja={config.businessHours ?? null}

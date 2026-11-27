@@ -32,6 +32,7 @@ import {
 import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
 import type { DadosDaSolicitacao, Desfecho } from "@/hooks/useDevolucaoCliente";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
+import { sessionStorageSeguro } from "@/lib/armazenamento-seguro";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
@@ -59,6 +60,12 @@ import {
   valorDaSelecao,
 } from "@/lib/devolucao";
 import { imagemAbre } from "@/lib/imagem-abre";
+import {
+  type RascunhoDaDevolucao,
+  lerRascunhoDaDevolucao,
+  limparRascunhoDaDevolucao,
+  salvarRascunhoDaDevolucao,
+} from "@/lib/rascunho-da-devolucao";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { cn } from "@/lib/utils";
 import type {
@@ -74,6 +81,13 @@ interface SolicitarDevolucaoSheetProps {
   readonly aberto: boolean;
   readonly onAbertoMudou: (aberto: boolean) => void;
   readonly elegibilidade: ElegibilidadeDevolucao;
+  /**
+   * Pedido da folha. Com ele (e a conta em `userId`), o rascunho fica guardado
+   * na aba (`src/lib/rascunho-da-devolucao.ts`) e a folha reabre preenchida se
+   * o celular descartar a aba enquanto a cliente escolhe as fotos. Sem ele, a
+   * folha funciona como sempre, só na memória.
+   */
+  readonly orderId?: string;
   readonly userId: string;
   readonly enderecoDaLoja: string | null;
   readonly horarioDaLoja: string | null;
@@ -160,7 +174,26 @@ const soltarPrevia = (previa: string) => {
  * quando mesmo assim ela recusa, a mensagem do servidor aparece como veio.
  */
 export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
-  const { aberto, onAbertoMudou } = props;
+  const { aberto, onAbertoMudou, orderId, userId } = props;
+  const podeSolicitar = props.elegibilidade.pode;
+  // A aba voltou de um descarte (ou recarregou) com um rascunho DESTA conta e
+  // DESTE pedido: a folha reabre e o fluxo o restaura. Se o pedido não aceita
+  // mais devolução (já existe uma em andamento, o prazo acabou), o rascunho
+  // não serve para nada e sai. Uma conferência por pedido e conta.
+  const rascunhoConferidoRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!orderId) return;
+    const quem = `${userId}:${orderId}`;
+    if (rascunhoConferidoRef.current === quem) return;
+    rascunhoConferidoRef.current = quem;
+    const armazenamento = sessionStorageSeguro();
+    if (!lerRascunhoDaDevolucao(armazenamento, userId, orderId)) return;
+    if (!podeSolicitar) {
+      limparRascunhoDaDevolucao(armazenamento, userId, orderId);
+      return;
+    }
+    onAbertoMudou(true);
+  }, [orderId, userId, podeSolicitar, onAbertoMudou]);
   const origemRef = useRef<HTMLElement | null>(null);
   // O conteúdo da folha é desmontado ao fechar: o que a cliente preencheu some
   // junto. Quem sabe se há algo preenchido é o fluxo (ele avisa por esta ref);
@@ -335,6 +368,13 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
                   type="button"
                   onClick={() => {
                     rascunhoRef.current = "nenhum";
+                    if (orderId) {
+                      limparRascunhoDaDevolucao(
+                        sessionStorageSeguro(),
+                        userId,
+                        orderId,
+                      );
+                    }
                     setPergunta("nenhum");
                     onAbertoMudou(false);
                   }}
@@ -351,9 +391,94 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
   );
 }
 
+const AVISO_DE_FOTOS_PERDIDAS =
+  "O app recarregou e as fotos não ficam guardadas. Escolha as fotos de novo.";
+
+interface InicioDoFluxo {
+  passo: Passo;
+  marcados: ReadonlyMap<string, number>;
+  motivo: MotivoDevolucao | null;
+  detalhe: string;
+  resolucao: ResolucaoDevolucao | null;
+  metodo: MetodoDevolucao | null;
+  fotosPerdidas: number;
+}
+
+/**
+ * Como a folha começa: do zero, ou do rascunho que a aba guardou. O rascunho é
+ * conferido com a elegibilidade de AGORA (item que não pode mais voltar, forma
+ * de devolver que saiu, motivo cujo prazo venceu) e a folha recua até o
+ * primeiro passo que não passaria no "Continuar" — com as fotos perdidas, no
+ * máximo o passo das fotos, para a cliente ver o aviso e escolher de novo.
+ */
+function inicioDoFluxo(
+  elegibilidade: ElegibilidadeDevolucao,
+  rascunho: RascunhoDaDevolucao | null,
+): InicioDoFluxo {
+  const { itens, janelas, politica, prazos, metodos } = elegibilidade;
+  const disponiveis = itens.filter((item) => item.disponivel > 0);
+  // Um item só, com uma unidade: já vem marcado — é o caso mais comum.
+  const unico = disponiveis.length === 1 ? disponiveis[0] : null;
+  const marcadosPadrao = new Map(
+    unico && unico.disponivel === 1 ? [[unico.order_item_id, 1]] : [],
+  );
+  const metodoPadrao = metodos.length === 1 ? metodos[0] : null;
+  if (!rascunho) {
+    return {
+      passo: 1,
+      marcados: marcadosPadrao,
+      motivo: null,
+      detalhe: "",
+      resolucao: null,
+      metodo: metodoPadrao,
+      fotosPerdidas: 0,
+    };
+  }
+  const marcados = new Map(rascunho.itens);
+  const metodo =
+    rascunho.metodo && metodos.includes(rascunho.metodo)
+      ? rascunho.metodo
+      : metodoPadrao;
+  const { motivo, detalhe, resolucao } = rascunho;
+  const ateOnde: Passo = erroDosItens(selecaoPossivel(itens, marcados))
+    ? 1
+    : erroDoMotivo({
+          motivo,
+          detalhe,
+          quantidadeDeFotos: 0,
+          janelas,
+          prazos,
+          politica,
+        })
+      ? 2
+      : erroDaResolucao({
+            resolucao,
+            metodo,
+            permitidas: resolucoesPermitidas(motivo, janelas, politica),
+            metodos,
+          })
+        ? 3
+        : 4;
+  const passo = Math.min(
+    rascunho.passo,
+    ateOnde,
+    rascunho.fotos > 0 ? 2 : 4,
+  ) as Passo;
+  return {
+    passo,
+    marcados,
+    motivo,
+    detalhe,
+    resolucao,
+    metodo,
+    fotosPerdidas: rascunho.fotos,
+  };
+}
+
 function FluxoDaDevolucao({
   onAbertoMudou,
   elegibilidade,
+  orderId,
   userId,
   enderecoDaLoja,
   horarioDaLoja,
@@ -369,29 +494,37 @@ function FluxoDaDevolucao({
   const textoDaPolitica = politica.texto_politica?.trim();
   const itensDisponiveis = itens.filter((item) => item.disponivel > 0);
 
-  const [passo, setPasso] = useState<Passo>(1);
-  const [marcados, setMarcados] = useState<ReadonlyMap<string, number>>(() => {
-    // Um item só, com uma unidade: já vem marcado — é o caso mais comum.
-    const unico = itensDisponiveis.length === 1 ? itensDisponiveis[0] : null;
-    return new Map(
-      unico && unico.disponivel === 1 ? [[unico.order_item_id, 1]] : [],
-    );
-  });
+  // Lido UMA vez, ao abrir: o rascunho que a aba guardou para esta conta e
+  // este pedido (a folha reabre sozinha quando ele existe).
+  const [inicio] = useState(() =>
+    inicioDoFluxo(
+      elegibilidade,
+      orderId
+        ? lerRascunhoDaDevolucao(sessionStorageSeguro(), userId, orderId)
+        : null,
+    ),
+  );
+  const [passo, setPasso] = useState<Passo>(inicio.passo);
+  const [marcados, setMarcados] = useState<ReadonlyMap<string, number>>(
+    inicio.marcados,
+  );
   // O que vale é o marcado conferido com a disponibilidade de AGORA: item que
   // sumiu da lista (outra devolução consumiu) não fica preso, invisível, no
   // resumo e no envio — é o que a cliente vê que vai.
   const selecao = selecaoPossivel(itens, marcados);
-  const [motivo, setMotivo] = useState<MotivoDevolucao | null>(null);
-  const [detalhe, setDetalhe] = useState("");
+  const [motivo, setMotivo] = useState<MotivoDevolucao | null>(inicio.motivo);
+  const [detalhe, setDetalhe] = useState(inicio.detalhe);
   const [fotos, setFotos] = useState<FotoEscolhida[]>([]);
   // Duas conferências podem acabar antes do mesmo redesenho. A reserva de
   // vagas é síncrona, sem colocar avisos no atualizador de estado do React.
   const chavesDasFotos = useRef(new Set<string>());
-  const [resolucao, setResolucao] = useState<ResolucaoDevolucao | null>(null);
-  const [metodo, setMetodo] = useState<MetodoDevolucao | null>(
-    metodos.length === 1 ? metodos[0] : null,
+  const [resolucao, setResolucao] = useState<ResolucaoDevolucao | null>(
+    inicio.resolucao,
   );
-  const [erro, setErro] = useState<string | null>(null);
+  const [metodo, setMetodo] = useState<MetodoDevolucao | null>(inicio.metodo);
+  const [erro, setErro] = useState<string | null>(
+    inicio.fotosPerdidas > 0 ? AVISO_DE_FOTOS_PERDIDAS : null,
+  );
   const [enviando, setEnviando] = useState(false);
   const [progresso, setProgresso] = useState("");
   // Fotos escolhidas que ainda estão sendo conferidas (o ref espelha o valor
@@ -466,9 +599,17 @@ function FluxoDaDevolucao({
   // texto, fotos ou resolução (desmarcar o que já vinha marcado não é
   // trabalho). Pedido já aceito (protocolo na tela) não tem o que perder, e
   // pedido em envio não se descarta: já está em voo.
-  const selecaoInicialRef = useRef(selecao);
+  // A base é o que a folha marca SOZINHA (nunca o rascunho restaurado: o que
+  // a cliente marcou antes de a aba recarregar continua sendo trabalho dela).
+  const selecaoInicialRef = useRef<ReadonlyMap<string, number> | null>(null);
+  if (selecaoInicialRef.current === null) {
+    selecaoInicialRef.current = selecaoPossivel(
+      itens,
+      inicioDoFluxo(elegibilidade, null).marcados,
+    );
+  }
   const selecaoMudou = Array.from(selecao).some(
-    ([id, qtd]) => selecaoInicialRef.current.get(id) !== qtd,
+    ([id, qtd]) => selecaoInicialRef.current?.get(id) !== qtd,
   );
   const temRascunho =
     selecaoMudou ||
@@ -506,6 +647,41 @@ function FluxoDaDevolucao({
     window.addEventListener("beforeunload", avisarAntesDeSair);
     return () => window.removeEventListener("beforeunload", avisarAntesDeSair);
   }, [estadoDoRascunho]);
+  // O celular pode DESCARTAR a aba enquanto a câmera/galeria está aberta, e aí
+  // nem o aviso acima aparece: ao voltar, a página recarrega. O rascunho (sem
+  // as fotos) fica guardado na aba a cada mudança e a folha reabre com ele.
+  // Pedido aceito ou nada a perder: sai do armazenamento. O envio recusado
+  // mantém (a cliente ainda vai tentar de novo).
+  useEffect(() => {
+    if (!orderId) return;
+    const armazenamento = sessionStorageSeguro();
+    if (resultado || !temRascunho) {
+      limparRascunhoDaDevolucao(armazenamento, userId, orderId);
+      return;
+    }
+    salvarRascunhoDaDevolucao(armazenamento, userId, orderId, {
+      passo,
+      itens: Array.from(selecaoPossivel(itens, marcados)),
+      motivo,
+      detalhe,
+      resolucao,
+      metodo,
+      fotos: fotos.length,
+    });
+  }, [
+    orderId,
+    userId,
+    resultado,
+    temRascunho,
+    passo,
+    itens,
+    marcados,
+    motivo,
+    detalhe,
+    resolucao,
+    metodo,
+    fotos.length,
+  ]);
 
   const tipo = motivo ? tipoPrevisto(motivo, janelas) : null;
   const permitidas = resolucoesPermitidas(motivo, janelas, politica);
