@@ -18,17 +18,31 @@
  *     "e", "&"… pendurado no fim.
  *  4. Se nem a primeira palavra cabe, corta nela mesma em 12 caracteres.
  *
- * Conta caractere de verdade (não unidade UTF-16), para nunca partir emoji.
+ * Conta o que a pessoa vê como UM caractere (grafema, via `Intl.Segmenter`):
+ * emoji composto ("👩‍🍳" = 3 pontos de código) vale 1 e nunca é partido. O nome
+ * vira NFC antes de contar, para "Ateliê Café" com acento separado (NFD) contar
+ * e sair igual ao mesmo nome em NFC. Sem `Intl.Segmenter` no runtime, cai na
+ * contagem por ponto de código (a de antes), que ainda não parte par substituto.
  */
 export const LIMITE_DO_NOME_CURTO = 12;
 
 const SEPARADOR = /\s*\|\s*|\s+[-–—]\s+/;
 const LIGACAO_NO_FIM = new Set(["de", "da", "do", "das", "dos", "e", "&"]);
 
-const tamanho = (texto: string): number => Array.from(texto).length;
+const SEGMENTADOR =
+  typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? new Intl.Segmenter("pt-BR", { granularity: "grapheme" })
+    : null;
+
+const grafemas = (texto: string): string[] =>
+  SEGMENTADOR
+    ? Array.from(SEGMENTADOR.segment(texto), (parte) => parte.segment)
+    : Array.from(texto);
+
+const tamanho = (texto: string): number => grafemas(texto).length;
 
 export function nomeCurtoDaLoja(nome: string): string {
-  const limpo = nome.trim().replaceAll(/\s+/g, " ");
+  const limpo = nome.normalize("NFC").trim().replaceAll(/\s+/g, " ");
   if (tamanho(limpo) <= LIMITE_DO_NOME_CURTO) return limpo;
 
   const base = limpo.split(SEPARADOR).find((parte) => parte.trim() !== "");
@@ -43,7 +57,7 @@ export function nomeCurtoDaLoja(nome: string): string {
     cabem.push(palavra);
   }
   if (cabem.length === 0) {
-    return Array.from(palavras[0]).slice(0, LIMITE_DO_NOME_CURTO).join("");
+    return grafemas(palavras[0]).slice(0, LIMITE_DO_NOME_CURTO).join("");
   }
   while (
     cabem.length > 1 &&

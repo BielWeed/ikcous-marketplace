@@ -27,6 +27,7 @@ import {
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { TETO_DA_RESPOSTA_DA_LOJA } from "@/lib/teto-da-resposta-da-loja";
+import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
 import type { Review } from "@/types";
 import {
   cachedReviewsData,
@@ -726,7 +727,8 @@ export function useReviews() {
           const { data, error } = await aguardarComPrazo(
             Promise.resolve(
               (supabase.rpc as any)("get_admin_reviews_paged", {
-                p_search: filters?.search || "",
+                // ILIKE com escape padrão (\) no banco: `%` e `_` vão escapados, igual às outras buscas do painel.
+                p_search: prepararTextoDeBuscaDoPainel(filters?.search || ""),
                 p_rating:
                   filters?.rating !== undefined
                     ? filters.rating.toString()
