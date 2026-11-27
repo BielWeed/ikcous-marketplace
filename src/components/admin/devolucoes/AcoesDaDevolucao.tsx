@@ -17,6 +17,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import type { FichaDaDevolucao } from "@/hooks/useDevolucoesAdmin";
 import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
+import { instanteDoCampoDoBanner } from "@/lib/datas-do-banner";
 import {
   CONDICOES,
   acoesDoLojista,
@@ -318,20 +319,24 @@ export function AcoesDaDevolucao({
   }
 
   async function aprovar() {
-    // `datetime-local` é hora do aparelho; o banco guarda instante (ISO).
-    const quando = coletaEm ? new Date(coletaEm) : null;
-    const valida = quando !== null && !Number.isNaN(quando.getTime());
+    // O campo é horário de BRASÍLIA, o mesmo que a cliente vê; nunca o fuso do
+    // aparelho (num computador em UTC, 10:00 virava 07:00 para a cliente).
+    // Vazio continua valendo: a lojista combina a coleta depois.
+    const quando = coletaEm ? instanteDoCampoDoBanner(coletaEm) : null;
+    if (coletaEm && quando === null) {
+      setErro(
+        "Não deu para ler o dia e hora da coleta. Escolha de novo no calendário.",
+      );
+      return;
+    }
     // Coleta que já passou avisaria o cliente de um dia que ficou para trás.
     // 5 min de folga: o relógio do aparelho nunca é exato.
-    if (valida && quando.getTime() < Date.now() - 5 * 60_000) {
+    if (quando !== null && Date.parse(quando) < Date.now() - 5 * 60_000) {
       setErro("Escolha um dia e hora da coleta que ainda não passaram.");
       return;
     }
     setErro(null);
-    await ficha.aprovar({
-      mensagem,
-      coletaEm: valida ? quando.toISOString() : null,
-    });
+    await ficha.aprovar({ mensagem, coletaEm: quando });
   }
 
   async function recusar() {
@@ -491,7 +496,7 @@ export function AcoesDaDevolucao({
               {detalhe.metodo_retorno === "coleta" && (
                 <div>
                   <label htmlFor="devolucao-coleta" className={ROTULO}>
-                    Dia e hora da coleta
+                    Dia e hora da coleta (horário de Brasília)
                   </label>
                   <LocalBufferedInput
                     id="devolucao-coleta"
