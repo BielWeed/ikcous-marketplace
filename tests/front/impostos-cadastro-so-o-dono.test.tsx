@@ -25,16 +25,26 @@ import type { EstadoDoDono } from "@/hooks/useDonoDaLoja";
 import type { ConsultaFinanceira } from "@/hooks/useFinanceiro";
 import type { LeituraDoCadastroFiscal } from "@/lib/fiscal/cadastro";
 
-const { donoFalso, authFalso, limparDonoFalso, rpc, logDoBanco, lojaFalsa } =
-  vi.hoisted(() => ({
-    donoFalso: { atual: {} as EstadoDoDono },
-    // Quem está logado (o id que o histórico usa para dizer "Você").
-    authFalso: { id: null as string | null },
-    limparDonoFalso: vi.fn(),
-    rpc: vi.fn(),
-    logDoBanco: { linhas: [] as unknown[] },
-    lojaFalsa: { documento: null as string | null },
-  }));
+const {
+  donoFalso,
+  authFalso,
+  limparDonoFalso,
+  rpc,
+  logDoBanco,
+  lojaFalsa,
+  cadastroNoBanco,
+} = vi.hoisted(() => ({
+  donoFalso: { atual: {} as EstadoDoDono },
+  // Quem está logado (o id que o histórico usa para dizer "Você").
+  authFalso: { id: null as string | null },
+  limparDonoFalso: vi.fn(),
+  rpc: vi.fn(),
+  logDoBanco: { linhas: [] as unknown[] },
+  lojaFalsa: { documento: null as string | null },
+  // A linha de `fiscal_cadastro` que a folha relê logo antes de gravar: a do
+  // cadastro que a tela mostra (montar/renderizarDeNovo a acertam).
+  cadastroNoBanco: { linha: null as Record<string, unknown> | null },
+}));
 
 vi.mock("@/hooks/useDonoDaLoja", () => ({
   useDonoDaLoja: () => donoFalso.atual,
@@ -49,8 +59,19 @@ vi.mock("@/contexts/StoreContext", () => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc,
-    // A única leitura que o cartão faz sozinho: as últimas alterações.
+    // O cartão lê sozinho as últimas alterações; a folha relê o cadastro antes
+    // de gravar (manda só o mexido por cima dele).
     from: (tabela: string) => {
+      if (tabela === "fiscal_cadastro") {
+        return {
+          select: () => ({
+            maybeSingle: async () => ({
+              data: cadastroNoBanco.linha,
+              error: null,
+            }),
+          }),
+        };
+      }
       if (tabela !== "fiscal_cadastro_log") {
         throw new Error(`leitura inesperada: ${tabela}`);
       }
@@ -149,6 +170,23 @@ let raiz: Root;
 let hospedeiro: HTMLDivElement;
 const aoIrParaMinhaLoja = vi.fn();
 
+/** O banco tem o cadastro que a tela mostra (nenhum outro aparelho no meio). */
+function guardarNoBanco(dados: LeituraDoCadastroFiscal | null) {
+  if (dados?.estado !== "com_cadastro") {
+    cadastroNoBanco.linha = null;
+    return;
+  }
+  const c = dados.cadastro;
+  cadastroNoBanco.linha = {
+    regime: c.regime,
+    atividade: c.atividade,
+    aberta_em: c.abertaEm,
+    vende_no_app_desde: c.vendeNoAppDesde,
+    atualizado_em: c.atualizadoEm,
+    atualizado_por: c.atualizadoPor,
+  };
+}
+
 async function assentar() {
   await act(async () => {
     await new Promise((r) => setTimeout(r, 10));
@@ -173,6 +211,7 @@ async function montar(
   extra = {},
 ) {
   donoFalso.atual = dono;
+  guardarNoBanco(dados);
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
@@ -186,6 +225,7 @@ async function renderizarDeNovo(
   dados: LeituraDoCadastroFiscal | null,
   extra = {},
 ) {
+  guardarNoBanco(dados);
   await act(async () => {
     raiz.render(elemento(dados, extra));
   });
