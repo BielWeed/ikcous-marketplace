@@ -31,6 +31,7 @@ import {
   PRAZO_DO_REENVIO_DO_COMPROVANTE_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
+  ehGravacaoIncerta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import {
@@ -275,10 +276,40 @@ export const PRAZO_DO_AVANCO_DE_STATUS_MS = 15_000;
 // Releitura do status que vem ANTES de avançar (uma leitura barata, nada
 // gravado ainda): 10 s, para os dois passos juntos não passarem de 25 s.
 const PRAZO_DA_RELEITURA_DE_STATUS_MS = 10_000;
+// Conferência DEPOIS de um avanço sem resposta (o banco pode ter gravado):
+// 5 s, para a espera inteira (25 s acima) não passar dos 30 s do cancelamento.
+const PRAZO_DA_CONFERENCIA_DO_AVANCO_MS = 5_000;
+// Quanto tempo a marca de um avanço sem resposta vale. Depois disso, achar o
+// banco na etapa marcada pode ser outro aparelho que já avançou (e avisou a
+// cliente): a tentativa segue o caminho de "mudou", sem segundo aviso.
+export const VALIDADE_DA_MARCA_DO_AVANCO_MS = 120_000;
 export const MENSAGEM_CANCELAMENTO_SEM_RESPOSTA =
   "A conexão está lenta e não conseguimos confirmar se o pedido foi cancelado. Confira o pedido antes de tentar de novo.";
 export const MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA =
   "A conexão está lenta e não conseguimos confirmar se o status mudou. Confira o pedido antes de tentar de novo.";
+
+/**
+ * Depois de um avanço sem resposta: o banco está na etapa pedida? Só `true`
+ * quando a leitura VOLTOU e confirma; sem resposta de novo é `false` ("não
+ * sei" nunca vira "gravou").
+ */
+async function avancoGravouNoBanco(
+  orderId: string,
+  status: OrderStatus,
+): Promise<boolean> {
+  const { data, error } = await aguardarComPrazo(
+    Promise.resolve(
+      supabase
+        .from("marketplace_orders")
+        .select("status")
+        .eq("id", orderId)
+        .single(),
+    ),
+    PRAZO_DA_CONFERENCIA_DO_AVANCO_MS,
+    () => erroDeConsultaSemResposta(),
+  ).catch((erro: unknown) => ({ data: null, error: erro }));
+  return !error && data?.status === status;
+}
 
 /**
  * O cancelamento NÃO aconteceu — a edge respondeu (ou não respondeu) com
@@ -3346,6 +3377,18 @@ export function useOrders(
   const geracaoDoPedidoNoRealtimeRef = useRef(new Map<string, number>());
 
   /**
+   * Avanços deste painel que ficaram SEM resposta e sem confirmação
+   * (id -> etapa pedida e quando). Se a nova tentativa, dentro de
+   * `VALIDADE_DA_MARCA_DO_AVANCO_MS`, achar o banco nessa etapa, foi a
+   * gravação perdida que passou: `updateOrderStatus` resolve como sucesso (a
+   * ficha avisa a cliente) em vez de "mudou". Consumida na primeira vez, para
+   * a cliente nunca ser avisada duas vezes do mesmo avanço.
+   */
+  const avancosSemRespostaRef = useRef(
+    new Map<string, { status: OrderStatus; em: number }>(),
+  );
+
+  /**
    * Pedidos (da cliente ou do painel) cujo INSERT ainda está consultando o banco
    * (id -> última linha de UPDATE que chegou nesse meio-tempo, ou `null`). Sem isto o
    * UPDATE de um pedido AINDA AUSENTE da lista era descartado, e a consulta —
@@ -4606,6 +4649,24 @@ export function useOrders(
                 ),
               );
             }
+            // O banco está na etapa que ESTE painel pediu num avanço que ficou
+            // sem resposta: a gravação perdida passou. É o sucesso dela (a
+            // ficha avisa a cliente), não "mudou". A marca sai aqui de
+            // qualquer jeito: uma tentativa seguinte não avisa de novo.
+            const marca = avancosSemRespostaRef.current.get(orderId);
+            // Negativo = o relógio do aparelho voltou: a marca não vale.
+            const decorrido = marca ? Date.now() - marca.em : -1;
+            const eraOAvancoSemResposta =
+              statusVerdadeiro === status &&
+              marca?.status === status &&
+              decorrido >= 0 &&
+              decorrido <= VALIDADE_DA_MARCA_DO_AVANCO_MS;
+            avancosSemRespostaRef.current.delete(orderId);
+            if (eraOAvancoSemResposta) {
+              clearAnalyticsCache();
+              if (!silent) toast.success("Status atualizado com sucesso");
+              return;
+            }
             if (!silent) {
               toast.warning(
                 `Este pedido mudou há instantes: agora está "${rotulo}". A ficha foi atualizada.`,
@@ -4745,6 +4806,22 @@ export function useOrders(
         // no `catch` abaixo, que desfaz o otimista e conta que NÃO se sabe se
         // gravou. As RPCs do painel conferem a etapa de origem antes de
         // gravar, inclusive se a conexão cair e a lojista tentar novamente.
+        //
+        // Avanço do painel sem resposta (prazo, rede caiu na volta): o banco
+        // pode ter gravado. Confere uma vez; se está na etapa pedida, segue o
+        // caminho do sucesso (a ficha avisa a cliente). Se não deu para
+        // confirmar, fica a marca para a próxima tentativa reconhecer.
+        const avancoSemRespostaPassou = async (erro: unknown) => {
+          if (!isAdmin || status === "cancelled" || !ehGravacaoIncerta(erro)) {
+            return false;
+          }
+          if (await avancoGravouNoBanco(orderId, status)) return true;
+          avancosSemRespostaRef.current.set(orderId, {
+            status,
+            em: Date.now(),
+          });
+          return false;
+        };
         const { error } = await aguardarComPrazo(
           // `rpc` devolve um "thenable", não uma Promise: sem isto o tipo do
           // retorno vira `unknown`.
@@ -4768,10 +4845,16 @@ export function useOrders(
           PRAZO_DO_AVANCO_DE_STATUS_MS,
           () =>
             erroDeConsultaSemResposta(MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA),
-        );
+        ).catch(async (erroDaEspera: unknown) => {
+          // Prazo estourado: mesma conferência da rede caída, logo abaixo.
+          if (await avancoSemRespostaPassou(erroDaEspera))
+            return { error: null };
+          throw erroDaEspera;
+        });
 
-        if (error) throw error;
+        if (error && !(await avancoSemRespostaPassou(error))) throw error;
 
+        avancosSemRespostaRef.current.delete(orderId);
         clearAnalyticsCache();
         if (!silent) {
           toast.success(
