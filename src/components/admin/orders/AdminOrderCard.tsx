@@ -440,7 +440,9 @@ export const AdminOrderCard = memo(function AdminOrderCard({
       </div>
       <button
         type="button"
-        data-abrir-pedido
+        // O id deixa a lista devolver o foco a ESTE cartão (volta da ficha)
+        // ou achar o vizinho quando ele sai da lista.
+        data-abrir-pedido={order.id}
         aria-label={`Ver detalhes do pedido #${numero}`}
         onClick={abrirFicha}
         className={`my-1 flex min-h-11 w-full items-center gap-2.5 rounded-xl py-1 text-left after:absolute after:inset-0 after:rounded-[24px] after:content-[''] ${FOCO}`}
@@ -598,12 +600,16 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           <button
             key="avancar"
             type="button"
-            disabled={bloqueado}
+            // Gravando é passageiro: `aria-disabled` mantém o foco no botão
+            // (com `disabled` o Chrome o joga no <body>); o clique repetido
+            // para na guarda de `avancar`. Sem internet continua `disabled`.
+            disabled={isOffline}
+            aria-disabled={bloqueado && !isOffline ? true : undefined}
             onClick={(evento) => {
               botaoQueAbriuRef.current = evento.currentTarget;
               avancar();
             }}
-            className={`${estiloPrincipal} flex-1`}
+            className={`${estiloPrincipal} flex-1 aria-disabled:cursor-not-allowed aria-disabled:text-zinc-400`}
           >
             {processando
               ? "Processando..."

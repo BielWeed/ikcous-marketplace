@@ -613,7 +613,6 @@ interface OrderActionBarProps {
   mensagemDeRastreio?: string;
   isOffline: boolean;
   isUpdatingStatus: boolean;
-  pagoForaDoFluxo: boolean;
   // Dois callbacks, não um: "Avançar" e "Cancelar pedido" são ações
   // distintas por natureza (uma confirma pagamento pendente, a outra
   // confirma o CANCELAMENTO — laudo #2, L-1: cancelar parou de ser um
@@ -645,7 +644,6 @@ function OrderActionBar({
   mensagemDeRastreio,
   isOffline,
   isUpdatingStatus,
-  pagoForaDoFluxo,
   onAdvance,
   onCancel,
 }: Readonly<OrderActionBarProps>) {
@@ -691,10 +689,11 @@ function OrderActionBar({
                 onAdvance(orderId, nextStatus, event.currentTarget);
               }
             }}
-            disabled={isOffline || (isUpdatingStatus && !pagoForaDoFluxo)}
-            aria-disabled={
-              pagoForaDoFluxo && isUpdatingStatus ? true : undefined
-            }
+            // Gravando é passageiro: `aria-disabled` mantém o foco no botão
+            // (com `disabled` o Chrome joga o foco no <body>). O clique
+            // repetido para na guarda acima. Sem internet continua `disabled`.
+            disabled={isOffline}
+            aria-disabled={isUpdatingStatus && !isOffline ? true : undefined}
             className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-normal rounded-xl bg-foreground px-2.5 text-sm font-semibold leading-tight text-background transition-colors hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40 lg:ml-auto lg:min-w-72 lg:flex-none lg:px-8"
           >
             {isUpdatingStatus ? (
@@ -1838,6 +1837,9 @@ export const OrderDetail = memo(function OrderDetail({
   // A mesma caixa pergunta sobre pedido não pago, pagamento fora do fluxo
   // ou recebimento na entrega. Sem avanço pendente, fica fechada.
   const botaoDoAvancoForaDoFluxoRef = useRef<HTMLButtonElement>(null);
+  // O "Avançar" que pediu a última troca: ao finalizar, a barra some com ele
+  // e o foco cairia no <body> (ver o efeito junto de `tituloDaFichaRef`).
+  const botaoQueAvancouRef = useRef<HTMLButtonElement | null>(null);
   const pagoForaDoFluxo = order.paymentStatus === "pago_apos_expirar";
   const [pendingAdvance, setPendingAdvance] = useState<{
     orderId: string;
@@ -1921,6 +1923,7 @@ export const OrderDetail = memo(function OrderDetail({
     nextStatus: OrderStatus,
     botao: HTMLButtonElement,
   ) => {
+    botaoQueAvancouRef.current = botao;
     if (
       pagoForaDoFluxo ||
       (order.paymentStatus &&
@@ -2662,6 +2665,26 @@ export const OrderDetail = memo(function OrderDetail({
     dialogo,
     fechar: fecharConfirmacao,
   } = useConfirmarAcao({ alvoDoFoco: tituloDaFichaRef });
+  // Abrir a ficha pela lista tira da tela o botão que tinha o foco: sem
+  // destino, quem usa teclado ou leitor de tela recomeçava do topo da página.
+  // Só age com o foco perdido no <body> (nunca rouba de quem está em outro
+  // lugar) e, como o App, não puxa o foco de quem abriu o endereço direto.
+  useEffect(() => {
+    if (!active || navigator.userActivation?.hasBeenActive === false) return;
+    const ativo = document.activeElement;
+    if (ativo && ativo !== document.body) return;
+    tituloDaFichaRef.current?.focus({ preventScroll: true });
+  }, [active, order.id]);
+  // Depois de "Avançar → Finalizado" a barra inteira some com o botão focado
+  // dentro: o foco vai ao título da ficha, não ao <body>.
+  useEffect(() => {
+    const botao = botaoQueAvancouRef.current;
+    if (!botao || botao.isConnected) return;
+    const ativo = document.activeElement;
+    if (ativo && ativo !== document.body) return;
+    botaoQueAvancouRef.current = null;
+    tituloDaFichaRef.current?.focus({ preventScroll: true });
+  });
   // A foto dos campos que alimentam o texto da pergunta: "o app devolve
   // sozinho" só é verdade enquanto o pedido está como estava quando a janela
   // abriu. Pedido que muda com a janela aberta (cliente cancelou, pagamento
@@ -2804,7 +2827,6 @@ export const OrderDetail = memo(function OrderDetail({
         }
         isOffline={isOffline}
         isUpdatingStatus={isUpdatingStatus}
-        pagoForaDoFluxo={pagoForaDoFluxo}
         onAdvance={requestStatusChange}
         onCancel={handleCancelarComConfirmacao}
       />
@@ -3008,6 +3030,15 @@ export const OrderDetail = memo(function OrderDetail({
       >
         <AlertDialogContent
           className="max-w-md rounded-3xl border border-admin-border bg-zinc-950"
+          onOpenAutoFocus={(event) => {
+            // O Radix foca o `AlertDialogCancel` ao abrir; a pergunta
+            // "Recebeu?" não tem um, e o foco ficava atrás do véu. Vai para a
+            // própria janela (título e texto lidos), nunca para "Recebi" ou
+            // "Finalizar": um Enter distraído não grava dinheiro nem status.
+            if (pendingAdvance?.motivo !== "recebimento") return;
+            event.preventDefault();
+            (event.currentTarget as HTMLElement | null)?.focus();
+          }}
           onCloseAutoFocus={(event) => {
             const botao = botaoDoAvancoForaDoFluxoRef.current;
             botaoDoAvancoForaDoFluxoRef.current = null;

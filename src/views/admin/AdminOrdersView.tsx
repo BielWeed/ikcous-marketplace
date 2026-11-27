@@ -147,6 +147,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  type FocusEvent,
   memo,
   useCallback,
   useEffect,
@@ -392,6 +393,18 @@ export function precisaConfirmarRetornoDoProduto(pedido: Order): boolean {
     pedido.status === "cancelled" &&
     Boolean(pedido.cancelledAfterShipping) &&
     !pedido.returnedToSellerAt
+  );
+}
+
+/** O botão "Ver detalhes do pedido #N" do cartão daquele pedido, se estiver na tela. */
+function botaoDeAbrirPedido(
+  raiz: HTMLElement | null,
+  id: string,
+): HTMLElement | null {
+  return (
+    [
+      ...(raiz?.querySelectorAll<HTMLElement>("[data-abrir-pedido]") ?? []),
+    ].find((botao) => botao.dataset.abrirPedido === id) ?? null
   );
 }
 
@@ -918,10 +931,28 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     await fetchExecutiveSummary(true);
   }, [fetchExecutiveSummary]);
 
+  // Região de aviso do status que a lojista acabou de gravar (ver
+  // `handleStatusChange`). Fica montada na lista e na ficha.
+  const [avisoDoStatus, setAvisoDoStatus] = useState("");
+  // Pedido cuja ficha foi aberta pela lista: na volta, o foco retorna ao
+  // botão dele, não ao começo da página.
+  const pedidoDaFichaRef = useRef<string | null>(null);
+  // Último elemento focado dentro de um cartão da lista, com a ordem dos
+  // cartões naquele instante: se ele some (o cartão saiu da lista, ou o
+  // "Avançar" virou "Ver detalhes"), o foco vai ao cartão seguinte.
+  const focoNaListaRef = useRef<{
+    elemento: HTMLElement;
+    id: string;
+    ordem: string[];
+  } | null>(null);
+  const tituloDaListaRef = useRef<HTMLHeadingElement>(null);
+
   const handleSelectOrder = useCallback(
     (order: Order) => {
       saveScroll();
       resetRestored();
+      pedidoDaFichaRef.current = order.id;
+      focoNaListaRef.current = null;
       onNavigate("admin-orders", order.id);
     },
     [onNavigate, saveScroll, resetRestored],
@@ -1180,6 +1211,27 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       resetRestored();
     }
   }, [selectedOrder, viewRef, resetRestored]);
+
+  // Volta da ficha aberta pela lista: o foco retorna ao botão do pedido. Não
+  // tira o foco de quem está digitando ou numa janela aberta.
+  useEffect(() => {
+    if (selectedOrder) return;
+    const id = pedidoDaFichaRef.current;
+    if (!id) return;
+    pedidoDaFichaRef.current = null;
+    const botao = botaoDeAbrirPedido(viewRef.current, id);
+    const ativo = document.activeElement;
+    if (
+      !botao ||
+      (ativo instanceof HTMLElement &&
+        (ativo.isContentEditable ||
+          ativo.closest(
+            "input,textarea,select,[role=dialog],[role=alertdialog]",
+          )))
+    )
+      return;
+    botao.focus({ preventScroll: true });
+  }, [selectedOrder, viewRef]);
 
   // Scroll position is handled by useScrollRestoration hook
 
@@ -1641,6 +1693,41 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [orders, paymentFilter],
   );
 
+  const aoFocarNaLista = (evento: FocusEvent<HTMLElement>) => {
+    // O evento do React atravessa portais: foco numa janela do cartão (que
+    // mora fora do <article>) não conta, só o que está dentro do cartão.
+    const id = evento.target
+      .closest("article")
+      ?.querySelector<HTMLElement>("[data-abrir-pedido]")?.dataset.abrirPedido;
+    if (!id) return;
+    focoNaListaRef.current = {
+      elemento: evento.target,
+      id,
+      ordem: paginatedOrders.map((o) => o.id),
+    };
+  };
+  // Sem lista de dependências de propósito: confere a cada desenho da tela se
+  // o elemento focado num cartão sumiu e deixou o foco no <body>. Só age
+  // nesse caso — nunca rouba o foco de quem está em outro lugar.
+  useEffect(() => {
+    const foco = focoNaListaRef.current;
+    if (!foco || foco.elemento.isConnected || selectedOrder) return;
+    const ativo = document.activeElement;
+    if (ativo && ativo !== document.body) return;
+    focoNaListaRef.current = null;
+    const posicao = foco.ordem.indexOf(foco.id);
+    const candidatos = [
+      foco.id,
+      ...foco.ordem.slice(posicao + 1),
+      ...foco.ordem.slice(0, Math.max(posicao, 0)).reverse(),
+    ];
+    const alvo =
+      candidatos
+        .map((id) => botaoDeAbrirPedido(viewRef.current, id))
+        .find((botao) => botao !== null) ?? tituloDaListaRef.current;
+    alvo?.focus({ preventScroll: true });
+  });
+
   /** Nome do botão de exportar. O CSV consulta o FILTRO INTEIRO, e a contagem
    *  acompanha esse recorte — nunca o total da página. Desde 12/09/2026 este
    *  texto é o nome ACESSÍVEL do botão (o visível é só "CSV", para o controle
@@ -1994,6 +2081,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       orders?.find((o) => o.id === orderId) ??
       (selectedOrder?.id === orderId ? selectedOrder : undefined);
 
+    // O cartão pode sair da lista ("Em Aberto" sem finalizados) e a barra da
+    // ficha some ao finalizar: quem usa leitor de tela ouve o status novo.
+    setAvisoDoStatus(
+      `Pedido #${numeroDoPedido(orderId)} agora está ${rotuloDoStatus(newStatus, alvo?.retiradaNaLoja)}.`,
+    );
+
     if (!alvo) {
       toast.warning("Status atualizado, mas o cliente não foi avisado", {
         description:
@@ -2126,6 +2219,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     );
   }
 
+  const regiaoDoAvisoDoStatus = (
+    <p
+      id="aviso-do-status-do-pedido"
+      role="status"
+      aria-atomic="true"
+      className="sr-only"
+    >
+      {avisoDoStatus}
+    </p>
+  );
+
   if (selectedOrder) {
     return (
       <LocalErrorBoundary>
@@ -2141,6 +2245,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             onRascunhoPendente={aoMudarRascunhoDaFicha}
           />
         </div>
+        {regiaoDoAvisoDoStatus}
         {dialogo}
         <AlertDialog
           open={perguntandoDescarte && fichaProtegida}
@@ -2205,7 +2310,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     >
       <header className="admin-topo-cabecalho flex h-[76px] items-center justify-between gap-3 px-5 max-[360px]:grid max-[360px]:h-auto max-[360px]:grid-cols-[minmax(0,1fr)_44px_44px] max-[360px]:gap-2 max-[360px]:py-4 min-[361px]:max-[390px]:gap-2 min-[361px]:max-[390px]:px-3">
         <div className="min-w-0">
-          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-orders"]} />
+          <AdminPageHeader
+            titulo={NOMES_DO_PAINEL["admin-orders"]}
+            propsDoTitulo={{ ref: tituloDaListaRef, tabIndex: -1 }}
+          />
           <div className="mt-1 flex items-center gap-2">
             <PontoDeOperacao sincronizando={!isLoaded} />
             <span className="text-xs text-zinc-400">
@@ -2786,6 +2894,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           )}
           <LocalErrorBoundary>
             <div
+              onFocus={aoFocarNaLista}
               className={cn(
                 "relative min-h-[220px] transition-opacity duration-300",
                 !isLoaded && "opacity-50 pointer-events-none",
@@ -3041,6 +3150,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           }}
         />
       </div>
+      {regiaoDoAvisoDoStatus}
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
