@@ -487,13 +487,16 @@ describe("classificarRecusaDoPedido", () => {
   it.each([
     "A loja está em manutenção. Tente de novo mais tarde.",
     "Esta loja não está aceitando pedidos agora.",
-  ])("loja sem aceitar pedido (%s) -> aguardar a loja, frase intacta", (frase) => {
-    const r = classificarRecusaDoPedido(p0001(frase));
-    expect(r.acao).toBe("aguardar_a_loja");
-    expect(r.mensagem).toBe(frase);
-    expect(r.resultado).toBeUndefined();
-    expect(r.produto).toBeUndefined();
-  });
+  ])(
+    "loja sem aceitar pedido (%s) -> aguardar a loja, frase intacta",
+    (frase) => {
+      const r = classificarRecusaDoPedido(p0001(frase));
+      expect(r.acao).toBe("aguardar_a_loja");
+      expect(r.mensagem).toBe(frase);
+      expect(r.resultado).toBeUndefined();
+      expect(r.produto).toBeUndefined();
+    },
+  );
 
   it("a frase da pausa só casa inteira: variação dela cai no caso genérico conferir_antes", () => {
     const r = classificarRecusaDoPedido(
