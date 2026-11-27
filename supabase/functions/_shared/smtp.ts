@@ -87,6 +87,18 @@ export class ErroDeEnvio extends Error {
   }
 }
 
+/**
+ * O resto do orcamento ate `prazoFinalMs`, em ms INTEIROS (`performance.now`);
+ * 0 = acabou (inclui prazo invalido). E' a conta que decide se o SMTP ainda
+ * abre conexao — e quem chama o SMTP com prazo usa ESTA mesma, nunca outra: com
+ * 0,6 ms o hook seguia (`ms <= 0`) e o SMTP recusava (ETIMEDOUT), e a falha de
+ * envio que nao aconteceu ia parar no painel (26/11/2026).
+ */
+export function msAtePrazo(prazoFinalMs: number): number {
+  const ms = Math.floor(prazoFinalMs - performance.now());
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
+}
+
 /** Quem envia tem de vir de `resolverRemetente` — e ter usuario e senha. */
 function conferirRemetente(remetente) {
   // `then` presente = Promise: o chamador esqueceu o `await` do resolvedor.
@@ -122,8 +134,8 @@ async function enviarPor(credencial, { para, assunto, html, texto }, deps) {
   const prazo = deps?.prazoFinalMs;
   const erroDePrazo = () => Object.assign(new Error("SMTP: prazo esgotado"), { code: "ETIMEDOUT" });
   const restante = () => {
-    const ms = Math.floor(prazo - performance.now());
-    if (!Number.isFinite(ms) || ms <= 0) throw erroDePrazo();
+    const ms = msAtePrazo(prazo);
+    if (ms === 0) throw erroDePrazo();
     return ms;
   };
   // Opt-in do hook: pedidos existentes mantêm seus timeouts e sua reserva.
