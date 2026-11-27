@@ -147,9 +147,22 @@ describe("L1 · Formas de pagamento: interruptores dentro de <label> de 44px (es
     expect(labels[0]).toContain("has-[:disabled]:cursor-not-allowed");
   });
 
-  it("(d) o <select> das parcelas tem min-h-11", () => {
-    const [tag] = aberturasComMarcador(fonte, "select", "id={idDasParcelas}");
-    expect(tag).toMatch(MIN_H_11);
+  // Lista premium (26/11/2026): as parcelas viraram a lista de escolha do
+  // painel, cujo campo tem 72px (`min-h-[72px]`, provado em
+  // lista-de-escolha-campo.test.tsx) — acima dos 44px que este teste cobra.
+  it("(d) as parcelas usam a lista de escolha (campo de 72px), sem <select>", () => {
+    const tags = aberturasComMarcador(
+      fonte,
+      "CampoDeEscolha",
+      "id={idDasParcelas}",
+    );
+    expect(tags).toHaveLength(1);
+    expect(fonte).not.toMatch(/<select[\s>]/);
+    expect(
+      lerFonte(
+        "src/components/admin/primitivos/lista-de-escolha/CampoDeEscolha.tsx",
+      ),
+    ).toContain("min-h-[72px]");
   });
 });
 

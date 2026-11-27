@@ -10,6 +10,10 @@
 //  - com "Ocultar valores" ligado a linha usa o tamanho da MÁSCARA, nunca o do
 //    valor real (senão a letra entrega a ordem de grandeza);
 //  - o chip mostra o NOME da conta escolhida, e conta inativa vem marcada.
+//
+// Lista premium (26/11/2026): o chip deixou de ter um `<select>` invisível
+// por cima e virou o gatilho da lista de escolha do painel (folha "Mostrar
+// contas" no celular). A escolha passa pelo helper, como a lojista faz.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +28,7 @@ import {
   classeDoValorDaLinha as linhaDoExtrato,
 } from "@/components/admin/financeiro/partesDoExtrato";
 import type { ContaFinanceira } from "@/types/financeiro";
+import { escolherNaLista, opcoesDaLista } from "./helpers/lista-de-escolha";
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -167,24 +172,55 @@ describe("Extrato: o chip da conta", () => {
     );
   });
 
-  it("a lista marca só a conta inativa com '(inativa)'", () => {
-    const el = montar("");
-    const opcoes = [...el.querySelectorAll("option")].map((o) => o.textContent);
-    expect(opcoes).toEqual([
-      "Todas as contas",
-      "Gaveta da loja",
-      "Conta antiga (inativa)",
-    ]);
+  it("é o gatilho da lista: nome 'Conta, Todas as contas', pílula de 44px", () => {
+    montar("");
+    const chip = document.getElementById("chip") as HTMLButtonElement;
+    expect(chip.tagName).toBe("BUTTON");
+    expect(chip.getAttribute("aria-haspopup")).toBe("listbox");
+    expect(chip.getAttribute("aria-expanded")).toBe("false");
+    expect(chip.getAttribute("aria-label")).toBe("Conta, Todas as contas");
+    expect(chip.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["rounded-full", "border-solid", "min-h-11"]),
+    );
+    // Nada de `<select>` escondido por cima.
+    expect(document.querySelector("select")).toBeNull();
   });
 
-  it("trocar a opção avisa com o id da conta", () => {
-    const aoMudar = vi.fn();
-    const el = montar("", aoMudar);
-    const select = el.querySelector("select") as HTMLSelectElement;
+  it("com escolha, o nome do chip diz a conta escolhida", () => {
+    montar("c1");
+    expect(document.getElementById("chip")?.getAttribute("aria-label")).toBe(
+      "Conta, Gaveta da loja",
+    );
+  });
+
+  it("a lista abre com 'Todas as contas' primeiro e marca a desativada", () => {
+    montar("");
+    let lidas: ReturnType<typeof opcoesDaLista> = [];
     act(() => {
-      select.value = "c2";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      lidas = opcoesDaLista("chip");
     });
+    expect(lidas).toEqual([
+      { valor: "", rotulo: "Todas as contas", desabilitada: false },
+      { valor: "c1", rotulo: "Gaveta da loja", desabilitada: false },
+      // Desativada continua escolhível: o extrato dela ainda existe.
+      { valor: "c2", rotulo: "Conta antiga", desabilitada: false },
+    ]);
+    act(() => (document.getElementById("chip") as HTMLButtonElement).click());
+    const opcao = (valor: string) =>
+      document.querySelector(`[role="option"][data-valor="${valor}"]`)
+        ?.textContent ?? "";
+    expect(opcao("")).toContain("Somar tudo");
+    expect(opcao("c2")).toContain("Desativada");
+    expect(opcao("c1")).not.toContain("Desativada");
+    // O título da folha é "Mostrar contas".
+    expect(document.body.textContent).toContain("Mostrar contas");
+  });
+
+  it("escolher na lista avisa com o id da conta", () => {
+    const aoMudar = vi.fn();
+    montar("", aoMudar);
+    act(() => escolherNaLista("chip", "c2"));
+    expect(aoMudar).toHaveBeenCalledTimes(1);
     expect(aoMudar).toHaveBeenLastCalledWith("c2");
   });
 });

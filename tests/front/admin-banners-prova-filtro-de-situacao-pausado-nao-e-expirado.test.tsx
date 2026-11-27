@@ -10,6 +10,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 const foto = "https://example.com/banner-de-teste.jpg";
 const base = {
@@ -166,13 +167,8 @@ describe("Banners — o filtro de Situação separa no ar, pausado, agendado e e
   }
 
   async function filtrar(situacao: string) {
-    const filtro = hospedeiro.querySelector<HTMLSelectElement>(
-      "#banner-status-filter",
-    );
-    if (!filtro) throw new Error("O filtro de Situação não está na tela");
     await act(async () => {
-      filtro.value = situacao;
-      filtro.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherNaLista("banner-status-filter", situacao);
     });
   }
 

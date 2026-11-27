@@ -35,7 +35,7 @@ export interface ConfigDoCartao {
   readonly parcelasMax: number;
 }
 
-/** Teto do select "Parcelar em até" e do CHECK da coluna `parcelas_max`. */
+/** Teto da lista de parcelas "Parcelar em até" e do CHECK da coluna `parcelas_max`. */
 export const PARCELAS_MAX_TETO = 12;
 
 export const CONFIG_DO_CARTAO_DESLIGADA: ConfigDoCartao = Object.freeze({

@@ -12,6 +12,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 import { ExportarParaContador } from "@/components/admin/financeiro/impostos/ExportarParaContador";
+import {
+  escolherNaLista,
+  opcoesDaLista,
+  valorDaLista,
+} from "./helpers/lista-de-escolha";
 
 type Linhas = Parameters<typeof ExportarParaContador>[0] extends {
   buscarLinhas: (...args: never[]) => Promise<infer R>;
@@ -101,20 +106,27 @@ async function clicar(el: HTMLElement) {
   await esperar();
 }
 
-async function escolher(rotulo: string, valor: string) {
+/** O id da lista de escolha pelo rótulo que a lojista lê (o id vem de `useId`). */
+function idDoCampo(rotulo: string): string {
   const label = [...container.querySelectorAll("label")].find(
     (l) => l.textContent === rotulo,
   );
-  const select = document.getElementById(
-    label?.htmlFor ?? "",
-  ) as HTMLSelectElement | null;
-  if (!select) throw new Error(`campo não achado: ${rotulo}`);
+  if (!label?.htmlFor) throw new Error(`campo não achado: ${rotulo}`);
+  return label.htmlFor;
+}
+
+/**
+ * Escolhe na lista como a lojista: toca no campo e toca na opção. Depois espera
+ * a lista terminar de fechar: o foco volta ao campo numa tarefa seguinte
+ * (`setTimeout` do Radix), e a lojista nunca toca no próximo botão antes disso.
+ */
+async function escolher(rotulo: string, valor: string) {
+  const id = idDoCampo(rotulo);
   await act(async () => {
-    Object.getOwnPropertyDescriptor(
-      HTMLSelectElement.prototype,
-      "value",
-    )?.set?.call(select, valor);
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    escolherNaLista(id, valor);
+  });
+  await act(async () => {
+    await new Promise((resolver) => setTimeout(resolver, 0));
   });
 }
 
@@ -281,6 +293,57 @@ describe("ExportarParaContador", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('C.2 mês e ano são listas de escolha: "Março" e 2026 geram 2026-03', async () => {
+    const buscar = vi.fn(async () => COM_VENDA);
+    await montar(buscar);
+    const idMes = idDoCampo("Mês");
+    const idAno = idDoCampo("Ano");
+    // Os dois campos são a lista nova, não o <select> nativo.
+    for (const id of [idMes, idAno]) {
+      const campo = document.getElementById(id);
+      expect(campo?.tagName).toBe("BUTTON");
+      expect(campo?.getAttribute("aria-haspopup")).toBe("listbox");
+    }
+    expect(container.querySelector("select")).toBeNull();
+    // O padrão continua sendo o mês e o ano de hoje (outubro de 2026).
+    expect(valorDaLista(idMes)).toBe("10");
+    expect(valorDaLista(idAno)).toBe("2026");
+
+    // A lojista lê "Março" na lista; é por esse rótulo que ela escolhe.
+    const marco = opcoesDaLista(idMes).find((o) => o.rotulo === "Março");
+    expect(marco?.valor).toBe("03");
+    await escolher("Mês", marco?.valor ?? "");
+    await escolher("Ano", "2026");
+    expect(valorDaLista(idMes)).toBe("03");
+    // O campo fechado mostra o mês escolhido.
+    expect(document.getElementById(idMes)?.textContent).toContain("Março");
+
+    await clicar(botao(/Exportar mês/));
+
+    expect(buscar).toHaveBeenCalledTimes(1);
+    expect(buscar).toHaveBeenCalledWith({
+      modo: "mensal",
+      referencia: "2026-03",
+    });
+  });
+
+  it("borda: escolher o MESMO mês não muda nada e trocar só o ano mantém o mês", async () => {
+    const buscar = vi.fn(async () => COM_VENDA);
+    await montar(buscar);
+    await escolher("Mês", "10");
+    await escolher("Ano", "2024");
+    expect(valorDaLista(idDoCampo("Mês"))).toBe("10");
+    await clicar(botao(/Exportar mês/));
+    expect(buscar).toHaveBeenLastCalledWith({
+      modo: "mensal",
+      referencia: "2024-10",
+    });
+    // Ano fora da janela (atual e os 5 anteriores) não existe na lista.
+    expect(() => escolherNaLista(idDoCampo("Ano"), "2020")).toThrowError(
+      /Não há a opção "2020"/,
+    );
   });
 
   it("a região que o leitor de tela escuta já existe antes de qualquer aviso", async () => {

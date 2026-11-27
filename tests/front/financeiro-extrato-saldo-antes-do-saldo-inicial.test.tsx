@@ -25,6 +25,7 @@ vi.mock("@/components/admin/financeiro/FluxoDeCaixaGrafico", () => ({
 
 import { CONTA_BANCARIA, CONTA_MERCADO_PAGO } from "@/types/financeiro";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 const conta = (parcial: Record<string, unknown>) => ({
   tipo: "banco",
@@ -131,15 +132,8 @@ describe("Financeiro — Extrato: dia antes do saldo inicial não mostra saldo",
       );
     });
     await esperar();
-    const seletor = document.getElementById(
-      "fin-extrato-conta",
-    ) as HTMLSelectElement;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(
-        HTMLSelectElement.prototype,
-        "value",
-      )?.set?.call(seletor, id);
-      seletor.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherNaLista("fin-extrato-conta", id);
     });
     await esperar();
   }

@@ -19,6 +19,7 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { ContaFolha } from "@/components/admin/financeiro/FolhasDeCadastro";
 import { CONTA_BANCARIA, type ContaFinanceira } from "@/types/financeiro";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 const HOJE = "2026-10-13";
 const MOEDAS_NEGATIVAS = [
@@ -115,13 +116,8 @@ async function digitar(id: string, valor: string) {
 }
 
 async function escolherCategoria() {
-  const el = document.getElementById("fin-lanc-categoria") as HTMLSelectElement;
   await act(async () => {
-    Object.getOwnPropertyDescriptor(
-      HTMLSelectElement.prototype,
-      "value",
-    )?.set?.call(el, "cat-aluguel");
-    el.dispatchEvent(new Event("change", { bubbles: true }));
+    escolherNaLista("fin-lanc-categoria", "cat-aluguel");
   });
 }
 
