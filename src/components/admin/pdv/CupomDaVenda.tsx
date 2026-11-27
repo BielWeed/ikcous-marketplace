@@ -178,7 +178,13 @@ export function CupomDaVenda({
   // "Itens da venda") diz o resultado e, se o item saiu, o foco vai ao item
   // seguinte (ou ao de cima, ou à entrada de produto quando o cupom esvazia).
   // Compara com a quantidade de ANTES: toque recusado não fala nada.
-  const [anuncio, setAnuncio] = useState("");
+  // `vez` conta as falas e é a `key` do nó falado: frase igual à anterior
+  // (2 → 3 pelo bipe → 2 pelo "−") não mudaria o DOM e o leitor calaria;
+  // trocar o nó DENTRO da região viva, que fica fixa, é anunciado de novo.
+  const [anuncio, setAnuncio] = useState({ texto: "", vez: 0 });
+  function anunciar(texto: string) {
+    setAnuncio((atual) => ({ texto, vez: atual.vez + 1 }));
+  }
   const listaRef = useRef<HTMLUListElement>(null);
   const mudancaDeQuantidadeRef = useRef<{
     readonly chave: string;
@@ -193,12 +199,12 @@ export function CupomDaVenda({
     const item = estado.itens.find((i) => i.chave === mudanca.chave);
     if (item) {
       if (item.quantidade === mudanca.quantidadeAntes) return;
-      setAnuncio(
+      anunciar(
         `${item.nome}: ${pluralizar(item.quantidade, "unidade", "unidades")}, R$ ${reais(item.preco * item.quantidade)}`,
       );
       return;
     }
-    setAnuncio(`${mudanca.nome} removido da venda`);
+    anunciar(`${mudanca.nome} removido da venda`);
     const linhas = listaRef.current?.children;
     const vizinho =
       linhas && linhas.length > 0
@@ -546,7 +552,7 @@ export function CupomDaVenda({
           {/* Fala do +/− e do "Remover" (ver `mudarQuantidade`). Fica DENTRO
               da seção, não solta na grade do balcão em tela larga. */}
           <p className="sr-only" aria-live="polite" aria-atomic="true">
-            {anuncio}
+            <span key={anuncio.vez}>{anuncio.texto}</span>
           </p>
         </section>
       )}

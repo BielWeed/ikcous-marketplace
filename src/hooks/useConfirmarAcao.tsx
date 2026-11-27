@@ -45,7 +45,10 @@ export interface PedidoDeConfirmacao {
  * `alvoDoFoco`: onde o foco cai ao fechar quando o botão que abriu a pergunta
  * ficou desligado ("Devolvendo…") ou saiu da tela — senão o foco iria ao body
  * e o leitor de tela ficaria sem lugar. Normalmente o título do cartão, com
- * `tabIndex={-1}`. Sem alvo (ou fora da tela), fica o padrão do Radix.
+ * `tabIndex={-1}`. Sem alvo (ou fora da tela), fica o padrão do Radix — que
+ * NÃO devolve o foco a quem abriu: cancela a volta automática e tenta focar o
+ * gatilho (`Trigger`) da janela. Esta pergunta não tem gatilho, então o foco
+ * cai no body.
  */
 export function useConfirmarAcao(
   opcoes: { readonly alvoDoFoco?: RefObject<HTMLElement | null> } = {},
