@@ -346,6 +346,7 @@ vi.mock("@/lib/supabase", () => {
 });
 
 import App from "@/App";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 class ObservadorDeInterseccao {
   observe() {}
@@ -609,15 +610,8 @@ describe("Financeiro: o Voltar do aparelho com a folha suja (App e popstate de v
   it("salvar fecha a folha sem deixar entrada fantasma", async () => {
     await abrirFolhaSuja();
     await digitar("fin-lanc-valor", "10000");
-    const categoria = document.getElementById(
-      "fin-lanc-categoria",
-    ) as HTMLSelectElement;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(
-        HTMLSelectElement.prototype,
-        "value",
-      )?.set?.call(categoria, "cat-aluguel");
-      categoria.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherNaLista("fin-lanc-categoria", "cat-aluguel");
     });
 
     await clicar(botao("Salvar lançamento", folha()));
@@ -628,6 +622,100 @@ describe("Financeiro: o Voltar do aparelho com a folha suja (App e popstate de v
     expect(globalThis.history.state?.modal).toBeUndefined();
     await voltarEChegouEmPedidos();
     expect(prova.dialogoAberto).toBe(0);
+  });
+
+  // Lista de escolha (o lugar do `<select>`) aberta por cima da folha: o
+  // Voltar passa primeiro por ela (`antesDaGuarda`, entregue pelo App em
+  // `consumirVoltarDaFolhaAntesDaGuarda`) e fecha SÓ a lista.
+  const listaDaCategoria = () =>
+    document.getElementById("fin-lanc-categoria-lista");
+  const abrirFolhaLimpa = async () => {
+    await act(async () => {
+      raiz?.render(<App />);
+    });
+    await assentar();
+    await esperarAte(() => botaoNovoLancamento() !== undefined);
+    await clicar(botaoNovoLancamento());
+    await esperarAte(() => folha() !== null);
+  };
+
+  it("com a lista aberta, o Voltar fecha só a lista; o seguinte fecha a folha e o outro sai para Pedidos", async () => {
+    await abrirFolhaLimpa();
+    await clicar(document.getElementById("fin-lanc-categoria"));
+    expect(listaDaCategoria()).not.toBeNull();
+
+    await voltarDoAparelho();
+
+    expect(listaDaCategoria()).toBeNull();
+    expect(folha()).not.toBeNull();
+    expect(pergunta()).toBeNull();
+    expect(telaDoFinanceiro()).toBe(true);
+    expect(rota()).toBe("/admin-financeiro");
+    expect(prova.dialogoAberto).toBe(0);
+
+    // Folha limpa: o Voltar seguinte fecha a folha, sem pergunta…
+    await voltarDoAparelho();
+    expect(folha()).toBeNull();
+    expect(pergunta()).toBeNull();
+    expect(telaDoFinanceiro()).toBe(true);
+    // …e não sobra entrada da lista: o próximo já sai para Pedidos.
+    await voltarEChegouEmPedidos();
+    expect(prova.dialogoAberto).toBe(0);
+  });
+
+  it("escolher na lista não deixa entrada fantasma: o Voltar seguinte é da folha (suja, pergunta)", async () => {
+    await abrirFolhaLimpa();
+    await act(async () => {
+      escolherNaLista("fin-lanc-categoria", "cat-aluguel");
+    });
+    await assentar();
+    expect(listaDaCategoria()).toBeNull();
+
+    await voltarDoAparelho();
+
+    expect(pergunta()?.textContent).toContain(PERGUNTA);
+    expect(folha()).not.toBeNull();
+    expect(telaDoFinanceiro()).toBe(true);
+    expect(rota()).toBe("/admin-financeiro");
+    await clicar(botao("Descartar", document.body));
+    expect(folha()).toBeNull();
+    await voltarEChegouEmPedidos();
+    expect(prova.dialogoAberto).toBe(0);
+  });
+
+  it("Voltar logo depois de escolher (antes do retorno da lista chegar) ainda é da folha", async () => {
+    await abrirFolhaLimpa();
+    // Escolher fecha a lista, e ela devolve a entrada dela com
+    // `history.back()`. O Voltar do aparelho vem logo atrás, ANTES de o
+    // retorno da lista chegar (o jsdom entrega o popstate numa macrotask). O
+    // retorno da lista é engolido; o Voltar, não.
+    await act(async () => {
+      escolherNaLista("fin-lanc-categoria", "cat-aluguel");
+    });
+    await act(async () => {
+      globalThis.history.back();
+    });
+    await assentar(20);
+    const estado = {
+      lista: listaDaCategoria() !== null,
+      folha: folha() !== null,
+      pergunta: pergunta() !== null,
+      tela: telaDoFinanceiro(),
+      rota: rota(),
+    };
+    expect(estado).toEqual({
+      lista: false,
+      folha: true,
+      pergunta: true,
+      tela: true,
+      rota: "/admin-financeiro",
+    });
+
+    expect(listaDaCategoria()).toBeNull();
+    expect(pergunta()?.textContent).toContain(PERGUNTA);
+    expect(folha()).not.toBeNull();
+    expect(telaDoFinanceiro()).toBe(true);
+    expect(rota()).toBe("/admin-financeiro");
   });
 
   it("'Abrir pedido' devolve a entrada da folha antes de ir: o Voltar do pedido volta ao Financeiro de uma vez", async () => {
