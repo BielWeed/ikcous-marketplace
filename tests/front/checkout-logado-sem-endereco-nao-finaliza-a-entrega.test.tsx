@@ -4,7 +4,8 @@
 // pedido com um endereço de entrega escolhido. Essa é a única barreira: o
 // botão "Finalizar pedido" NÃO olha o endereço (o schema do formulário só
 // exige endereço do convidado) e, com a cotação de frete ainda guardada do
-// carrinho, ele fica aceso mesmo sem endereço. Quem recusa é o
+// carrinho, ele ficava aceso mesmo sem endereço (até 27/11/2026: agora o botão
+// também apaga, `entregaSemEnderecoDaConta`). Quem recusa no envio é o
 // `handleSubmitEvent` (`user && !selectedAddressId`). Sem essa guarda o pedido
 // nasce sem `addressId`: estoque (e cupom de uso único) consumidos num pedido
 // que a lojista não tem para onde enviar.
@@ -262,36 +263,27 @@ describe("CheckoutView — conta sem endereço escolhido não finaliza a entrega
     vi.restoreAllMocks();
   });
 
-  it("conta SEM nenhum endereço: o botão está aceso, o clique não cria pedido, avisa e a trava de envio é liberada", async () => {
+  // 27/11/2026: o botão passou a barrar a falta de endereço na ENTREGA
+  // (`entregaSemEnderecoDaConta`) — antes ele acendia e só o handler recusava,
+  // com o toast; a conta sem endereço digitando o CEP (#1966) chegava ao
+  // toque com a cotação feita. A guarda do handler continua (Enter, outro
+  // caminho), agora tratando id fora da lista como ausente.
+  it("conta SEM nenhum endereço: o botão fica apagado na entrega, o clique não cria pedido; com o endereço, o mesmo botão finaliza", async () => {
     lista.atual = [];
     await desenhar();
     await esperar(420);
     await preencherDados();
 
-    // Controle: o botão NÃO barra a falta de endereço — a única barreira é o
-    // handler. Se este controle falhar, a guarda do botão mudou e o teste
-    // precisa ser relido, não afrouxado.
-    expect(botaoFinalizar()!.disabled).toBe(false);
-
-    await clicarFinalizar();
-
-    expect(createOrder).not.toHaveBeenCalled();
-    expect(toastErro).toHaveBeenCalledTimes(1);
-    expect(toastErro).toHaveBeenCalledWith(FRASE_DA_GUARDA);
-
-    // Trava de envio liberada: o botão voltou e um segundo clique é tratado de
-    // novo (se a trava ficasse fechada, `tentarEntrar` recusaria em silêncio e
-    // o aviso não repetiria).
-    expect(botaoFinalizar()!.disabled).toBe(false);
+    expect(botaoFinalizar()!.disabled).toBe(true);
     await clicarFinalizar();
     expect(createOrder).not.toHaveBeenCalled();
-    expect(toastErro).toHaveBeenCalledTimes(2);
 
-    // E, assim que a conta passa a ter endereço (a lista chega), o MESMO botão
-    // finaliza: a recusa não deixou nada preso.
+    // Assim que a conta passa a ter endereço (a lista chega), o MESMO botão
+    // finaliza: nada ficou preso.
     lista.atual = [endereco("addr-novo", "38500-000", true)];
     await desenhar();
     await esperar(50);
+    expect(botaoFinalizar()!.disabled).toBe(false);
     await clicarFinalizar();
 
     expect(createOrder).toHaveBeenCalledTimes(1);

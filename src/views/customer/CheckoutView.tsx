@@ -2879,6 +2879,12 @@ export function CheckoutViewDaConta({
   // Quem tem o cartão "Seu CEP" no resumo: a visitante, e a conta sem endereço
   // salvo que vai retirar (o resto da conta usa o endereço salvo).
   const resumoSoComCep = !user || (contaSemEnderecoSalvo && ehRetirada);
+  // ENTREGA SEM ENDEREÇO NA CONTA (27/11/2026): o CEP digitado da conta sem
+  // endereço cota o frete para ela poder RETIRAR (#1966), e a cotação marca a
+  // entrega sozinha — o Finalizar acendia para uma casa que ela não cadastrou
+  // e o toque só devolvia "adicione um endereço". Na entrega, conta sem
+  // endereço na lista não finaliza: o resumo pede o cadastro e o botão apaga.
+  const entregaSemEnderecoDaConta = !!user && !ehRetirada && !enderecoEfetivo;
 
   // CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
   // Endereços" viraram UMA seção só ("Seus dados e entrega"), com resumo
@@ -4128,6 +4134,15 @@ export function CheckoutViewDaConta({
       handleSelectAddress(defaultAddr);
     }
   }, [addresses, selectedAddressId, handleSelectAddress]);
+  // A LISTA CONFIRMADA VAZIA (27/11/2026): o efeito de cima não age com a
+  // lista vazia ("ainda não sei"), mas `contaSemEnderecoSalvo` só é true
+  // quando o SERVIDOR confirmou a lista vazia — aí o id é de um endereço
+  // apagado (outro aparelho) e não pode ir no pedido. O #1960 fazia isto no
+  // envio da retirada; o #1966 tirou esse bloco, e a entrega ficou com o id
+  // velho (o banco recusava com "Endereço inválido...").
+  useEffect(() => {
+    if (contaSemEnderecoSalvo && selectedAddressId) setSelectedAddressId(null);
+  }, [contaSemEnderecoSalvo, selectedAddressId, setSelectedAddressId]);
 
   // CHECKOUT-090: verificação periódica do pagamento. Nasceu como "rede de
   // segurança" contra o WebSocket do realtime cair sem avisar, mas o achado
@@ -4695,6 +4710,7 @@ export function CheckoutViewDaConta({
   // exigência entra num lugar, não em dois.
   const botaoFinalizarDesabilitado =
     buscandoEnderecoDaEntrega ||
+    entregaSemEnderecoDaConta ||
     cart.length === 0 ||
     !!aplicandoCupom ||
     cupomEmConferencia ||
@@ -5058,7 +5074,9 @@ export function CheckoutViewDaConta({
     // Só a ENTREGA exige endereço salvo de quem tem conta: na retirada o
     // pedido não leva endereço de casa (26/11/2026) — a cotação já saiu do CEP
     // e o banco grava o endereço da loja.
-    if (user && !ehRetirada && !selectedAddressId) {
+    // Id que não está na lista (apagado em outro aparelho, ainda não limpo)
+    // conta como ausente: `enderecoEfetivo` só existe com endereço na lista.
+    if (user && !ehRetirada && (!selectedAddressId || !enderecoEfetivo)) {
       toast.error("Por favor, adicione ou selecione um endereço de entrega.");
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
