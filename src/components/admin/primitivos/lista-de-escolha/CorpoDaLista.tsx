@@ -234,7 +234,7 @@ export function CorpoDaLista<V extends string>({
         aria-activedescendant={comBusca ? undefined : idDaAtiva}
         onKeyDown={comBusca ? undefined : (e) => aoTeclar(e, false)}
         className={cn(
-          "custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none",
+          "lista-de-escolha-lista custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none",
           folha ? "px-3 pb-3" : "p-2",
           // 8 linhas de 44px e o respiro de cima e de baixo.
           !folha && "max-h-[23rem]",

@@ -65,6 +65,25 @@ describe("lista de escolha — cores próprias por tema", () => {
     expect(fonte).toContain("hsl(var(--admin-text, 240 10% 96.1%))");
   });
 
+  it("o anel ouro vence o verde que o index.css põe em todo foco do painel", () => {
+    // `html.admin-mode :focus-visible` (index.css) troca a cor do contorno de
+    // tudo no painel; uma classe sozinha tem menos peso e o anel sairia verde.
+    const anel = (() => {
+      const achadas: Rule[] = [];
+      lista.walkRules((regra) => {
+        if (
+          regra.selectors.includes(
+            "html.admin-mode .lista-de-escolha-anel:focus-visible",
+          )
+        )
+          achadas.push(regra);
+      });
+      return achadas;
+    })();
+    expect(anel).toHaveLength(1);
+    expect(valor(anel[0], "outline")).toContain("--lista-ouro");
+  });
+
   it("temas-do-painel.css não leva nada da lista (ela tem arquivo próprio)", () => {
     expect(
       lerFonte("src/components/layouts/temas-do-painel.css"),

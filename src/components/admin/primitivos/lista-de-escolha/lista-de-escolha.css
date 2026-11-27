@@ -51,10 +51,22 @@ html.admin-mode[data-admin-tema="confortavel"] {
   );
 }
 
-/* Foco de teclado: anel ouro de 2px (campo, Fechar, busca). */
-.lista-de-escolha-anel:focus-visible {
+/* Foco de teclado: anel ouro de 2px (campo, Fechar, busca). O seletor com
+   `html.admin-mode` existe porque o index.css pinta todo :focus-visible do
+   painel de verde (`html.admin-mode :focus-visible`), com mais peso que uma
+   classe só. */
+.lista-de-escolha-anel:focus-visible,
+html.admin-mode .lista-de-escolha-anel:focus-visible {
   outline: 2px solid hsl(var(--lista-ouro, 39.1 66.7% 55.3%));
   outline-offset: 2px;
+}
+
+/* O listbox com foco: o mesmo ouro, por dentro da borda (ele é a área que
+   rola, e um anel por fora seria cortado pela folha). */
+.lista-de-escolha-lista:focus-visible,
+html.admin-mode .lista-de-escolha-lista:focus-visible {
+  outline: 2px solid hsl(var(--lista-ouro, 39.1 66.7% 55.3%));
+  outline-offset: -2px;
 }
 
 /* A opção que o teclado está apontando (aria-activedescendant). */
