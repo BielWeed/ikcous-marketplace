@@ -251,7 +251,12 @@ export function SearchBar({
       // Extract words from product name
       const words = p.name.split(/\s+/);
       words.forEach((w) => {
-        const clean = w.replace(/[^\wÀ-ú]/gi, "").trim();
+        // NFC antes de filtrar: com o acento separado (NFD), "Café" perdia o
+        // acento. Fica só letra/número de qualquer alfabeto; pontuação sai.
+        const clean = w
+          .normalize("NFC")
+          .replace(/[^\p{L}\p{N}]/gu, "")
+          .trim();
         const cleanNormalizado = normalizeText(clean);
         if (
           cleanNormalizado.startsWith(query) &&
