@@ -19,6 +19,7 @@
 // compartilhada com frentes ativas. O padrao ja existe nesta casa --
 // `tests/front/guarda-de-cor-sai-junto-com-a-escrita.test.ts` faz o mesmo, pelo
 // mesmo motivo, e o comentario de la' diz isso com todas as letras.
+import { classificarRecusaDoPedido } from "@/lib/recusaDoPedido";
 import { describe, expect, it } from "vitest";
 
 const MIGRATIONS = import.meta.glob<string>("/supabase/migrations/*.sql", {
@@ -148,6 +149,15 @@ const COMUNS = FRASES_DO_BANCO.filter(
   (frase) => ![SOMENTE_V23, SOMENTE_V24, DO_GATILHO].includes(frase),
 );
 
+// A PAUSA DE VENDAS (26/11/2026 — migration 20261600000000): o gatilho BEFORE
+// INSERT `a_loja_aceita_pedido_novo` recusa o pedido novo da vitrine com a loja
+// em manutenção ou com as vendas pausadas. As regras irmãs em recusaDoPedido.ts
+// (aguardar_a_loja ×2) morrem caladas se alguma frase sumir ou for reescrita.
+const DA_PAUSA_DE_VENDAS = [
+  "A loja está em manutenção. Tente de novo mais tarde.",
+  "Esta loja não está aceitando pedidos agora.",
+];
+
 describe("extração do corpo vigente, não do histórico", () => {
   it("uma reescrita não pode ser escondida pela frase antiga nem pelo rollback", () => {
     const antiga =
@@ -177,6 +187,7 @@ describe("as recusas continuam no corpo mais novo de cada função", () => {
     ["create_marketplace_order_v23", [...COMUNS, SOMENTE_V23]],
     ["create_marketplace_order_v24", [...COMUNS, SOMENTE_V24]],
     ["pedido_com_cupom_exige_a_chave_ligada", [DO_GATILHO]],
+    ["a_loja_aceita_pedido_novo", DA_PAUSA_DE_VENDAS],
   ] as const) {
     const atual = corpoMaisNovo(MIGRATIONS, funcao);
     it(`${funcao}: a definição vigente foi encontrada e tem corpo`, () => {
@@ -194,6 +205,22 @@ describe("as recusas continuam no corpo mais novo de cada função", () => {
       });
     }
   }
+
+  // O CAMINHO INVERSO, só para o gatilho da pausa: a lista acima prende as
+  // frases CONHECIDAS; esta prende a frase NOVA. Um RAISE acrescentado ao
+  // gatilho sem regra em recusaDoPedido.ts cairia em `conferir_antes` ("Ver
+  // meus pedidos" e Finalizar travado) sobre um pedido que nunca nasceu.
+  it("a_loja_aceita_pedido_novo: TODA frase de recusa do corpo vigente tem saída própria, nunca conferir_antes", () => {
+    const atual = corpoMaisNovo(MIGRATIONS, "a_loja_aceita_pedido_novo");
+    const frases = frasesDeRecusa(atual?.corpo ?? "");
+    expect(frases.length).toBeGreaterThan(0);
+    for (const frase of frases) {
+      expect(
+        classificarRecusaDoPedido({ code: "P0001", message: frase }).acao,
+        `${atual?.nome}: "${frase}" não tem regra em recusaDoPedido.ts`,
+      ).not.toBe("conferir_antes");
+    }
+  });
 
   it("comentário e outra função não contam como recusa; aspas e acentos são preservados", () => {
     const atual = corpoMaisNovo(

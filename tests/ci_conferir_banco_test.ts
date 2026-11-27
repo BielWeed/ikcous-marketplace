@@ -324,6 +324,134 @@ Deno.test("198a/198b — rol fechado, um statement so de catalogo, md5 do pre-vo
     assert(!(chave in lote[0]), `lote da 198a: ${chave} nao se aplica`);
 });
 
+// 199 (27/11/2026): o lote da 20261630000000 (a loja ja suspensa tambem pausa). Rol fechado de 4 linhas, o mesmo na 199a e na 199b,
+// so catalogo; a 199a espera a marca desta e a 199b a da 20261600000000 ou a desta. Os md5 saem do PRE-VOO da propria migration.
+Deno.test("199a/199b — rol fechado, um statement so de catalogo, md5 do pre-voo da 20261630000000, menu, rpc-ci, release e lote no canais", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A199 = "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado";
+  const B199 = "199b-antes-a-loja-ja-suspensa-tambem-pausa-base-vigente";
+  const migration = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261630000000_a_loja_ja_suspensa_tambem_pausa.sql`,
+  );
+  const par = /v_hash NOT IN \('([0-9a-f]{32})', '([0-9a-f]{32})'\)/.exec(
+    migration,
+  );
+  assert(par, "o pre-voo da 20261630000000 nao cita (vigente, desta)");
+  const [, vigente, desta] = par;
+  const itens = [
+    "marcar_suspensa_desde: corpo exato (md5)",
+    "marcar_suspensa_desde: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno trigger, search_path fixo e EXECUTE de ninguem",
+    "tr_assinatura_marca_suspensa_desde: AFTER INSERT OR UPDATE OF status por linha em assinatura_da_loja, chama a marca, ligado",
+    "pausa_de_vendas: a tabela de linha unica da 20261600000000 (4 colunas)",
+  ];
+  for (const consulta of [A199, B199]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(
+      !/FROM\s+public\.(assinatura_da_loja|pausa_de_vendas|assinatura_da_loja_chave)\b/i.test(
+        limpo,
+      ),
+      `${consulta}: le so catalogo`,
+    );
+    assertStringIncludes(
+      menu,
+      `- ${consulta}
+`,
+    );
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A199}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B199}.sql`),
+  );
+  // A 199a aceita SO a marca desta; a 199b, a vigente (1600) OU a desta (reaplicacao idempotente).
+  assertStringIncludes(sqlA, `COALESCE(fn.h = '${desta}', false)`);
+  assert(!sqlA.includes(vigente), "a 199a nao pode aceitar a marca da 1600");
+  assertStringIncludes(sqlB, `fn.h IN ('${vigente}', '${desta}')`);
+  // A 196a (lote da 1600) aceita a marca desta como SUCESSORA: senao ela reprova em toda loja depois do apply.
+  const sql196a = sqlSemComentarios(
+    await Deno.readTextFile(
+      `${CONSULTAS_DIR}/196a-conferir-a-loja-pausa-o-pedido-novo-aplicado.sql`,
+    ),
+  );
+  assertStringIncludes(
+    sql196a,
+    `('marcar_suspensa_desde', '${vigente}', '${desta}',`,
+  );
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-ja-suspensa-tambem-pausa-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A199,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261630000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B199);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 199a: ${chave} nao se aplica`);
+  // Depois do lote da 1600 (a 1630 exige a 1600 no ar na mesma loja).
+  const ordem = canais.provasDeObjetos.map(
+    (p: { consulta: string }) => p.consulta,
+  );
+  assert(
+    ordem.indexOf("196a-conferir-a-loja-pausa-o-pedido-novo-aplicado") <
+      ordem.indexOf(A199),
+    "o lote da 199a vem depois do da 196a",
+  );
+});
+
 // 129: medicao ANTES; nao autoriza apply nem registra uma prova de pos-aplicacao.
 const CONSULTAS_129 = [
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
@@ -16246,6 +16374,225 @@ Deno.test("182a/182b — registradas no menu do conferir-banco-da-loja, nos dois
   );
 });
 
+// ---------------------------------------------------------------------------
+// O `if` do job `ledger` fica FECHADO para loja assinante nova (lacuna 4 do
+// plano da org central, 26/11/2026). Ele grava o REGISTRO de migrations antigas
+// que só a IKCOUS e a Savy pularam (92-202, 60-66) e as faixas 72..83 de
+// loja/sandbox; o próprio comentário do workflow diz "qualquer outro nome (loja
+// assinante nova): NENHUMA (o job nem roda)". Abrir o `if` para outras lojas
+// seria um defeito. O teste AVALIA a expressão como o GitHub avalia (não procura
+// texto), para todo valor do menu `gravar_ledger`, todo `confirmar` e os dois
+// booleanos, com nomes de loja nova inclusive os parecidos com os de hoje.
+// ---------------------------------------------------------------------------
+
+/* eslint-disable security/detect-object-injection -- o avaliador indexa a expressão do workflow versionado por posição numérica e os inputs por chave conferida com Object.hasOwn; nada vem de fora do teste. */
+/**
+ * Avaliador do SUBCONJUNTO de expressões do GitHub Actions que o `if` usa:
+ * `( ) ! && || == !=`, `'texto'` (com `''` escapado), `inputs.<nome>`. Segue a
+ * documentação de expressões: precedência `!` > comparação > `&&` > `||`;
+ * `&&`/`||` devolvem o operando; falsos são false, 0, "" e null; texto se
+ * compara SEM diferenciar maiúsculas. Qualquer coisa fora disso LANÇA (forma
+ * nova do `if` = teste a revisar, nunca "falso" por engano).
+ */
+function avaliarExpressaoDoGitHub(
+  expressao: string,
+  inputs: Record<string, string | boolean>,
+): boolean {
+  const m = /^\$\{\{\s*([\s\S]*?)\s*\}\}$/.exec(expressao.trim());
+  if (!m) throw new Error(`não é uma expressão de workflow: ${expressao}`);
+  const fonte = m[1];
+  const fichas: { t: string; v?: unknown }[] = [];
+  let i = 0;
+  while (i < fonte.length) {
+    const c = fonte[i];
+    if (/\s/.test(c)) {
+      i++;
+      continue;
+    }
+    const dois = fonte.slice(i, i + 2);
+    if (["&&", "||", "==", "!="].includes(dois)) {
+      fichas.push({ t: dois });
+      i += 2;
+      continue;
+    }
+    if (c === "(" || c === ")" || c === "!") {
+      fichas.push({ t: c });
+      i++;
+      continue;
+    }
+    if (c === "'") {
+      let s = "";
+      i++;
+      for (;;) {
+        if (i >= fonte.length) throw new Error("texto sem fechar aspas");
+        if (fonte[i] === "'") {
+          if (fonte[i + 1] === "'") {
+            s += "'";
+            i += 2;
+            continue;
+          }
+          i++;
+          break;
+        }
+        s += fonte[i++];
+      }
+      fichas.push({ t: "texto", v: s });
+      continue;
+    }
+    const id = /^[A-Za-z_][A-Za-z0-9_.-]*/.exec(fonte.slice(i));
+    if (!id) throw new Error(`caractere fora do subconjunto: ${c}`);
+    const nome = id[0];
+    i += nome.length;
+    if (nome === "true" || nome === "false")
+      fichas.push({ t: "valor", v: nome === "true" });
+    else if (nome.startsWith("inputs.")) {
+      const chave = nome.slice("inputs.".length);
+      if (!Object.hasOwn(inputs, chave))
+        throw new Error(`input não previsto no teste: ${chave}`);
+      fichas.push({ t: "valor", v: inputs[chave] });
+    } else throw new Error(`identificador fora do subconjunto: ${nome}`);
+  }
+  let p = 0;
+  const olhar = () => fichas[p]?.t;
+  const verdadeiro = (v: unknown) =>
+    !(v === false || v === 0 || v === "" || v === null || v === undefined);
+  const igual = (a: unknown, b: unknown) => {
+    if (typeof a !== typeof b)
+      throw new Error(`comparação entre tipos diferentes: ${a} e ${b}`);
+    return typeof a === "string"
+      ? a.toLowerCase() === (b as string).toLowerCase()
+      : a === b;
+  };
+  function primario(): unknown {
+    const f = fichas[p];
+    if (!f) throw new Error("expressão terminou cedo");
+    if (f.t === "(") {
+      p++;
+      const v = ou();
+      if (olhar() !== ")") throw new Error(`esperava ) na ficha ${p}`);
+      p++;
+      return v;
+    }
+    if (f.t === "texto" || f.t === "valor") {
+      p++;
+      return f.v;
+    }
+    throw new Error(`ficha inesperada: ${f.t}`);
+  }
+  function unario(): unknown {
+    if (olhar() === "!") {
+      p++;
+      return !verdadeiro(unario());
+    }
+    return primario();
+  }
+  function comparacao(): unknown {
+    const a = unario();
+    const op = olhar();
+    if (op === "==" || op === "!=") {
+      p++;
+      const b = unario();
+      return op === "==" ? igual(a, b) : !igual(a, b);
+    }
+    return a;
+  }
+  function conjuncao(): unknown {
+    let v = comparacao();
+    while (olhar() === "&&") {
+      p++;
+      const d = comparacao();
+      v = verdadeiro(v) ? d : v;
+    }
+    return v;
+  }
+  function ou(): unknown {
+    let v = conjuncao();
+    while (olhar() === "||") {
+      p++;
+      const d = conjuncao();
+      v = verdadeiro(v) ? v : d;
+    }
+    return v;
+  }
+  const resultado = ou();
+  if (p !== fichas.length) throw new Error(`sobrou expressão na ficha ${p}`);
+  return verdadeiro(resultado);
+}
+/* eslint-enable security/detect-object-injection */
+
+Deno.test("A21 — o job do ledger NUNCA roda numa loja assinante nova: todo gravar_ledger do menu (e fora dele), todo confirmar, os dois booleanos", async () => {
+  const { parse } = await import(
+    "https://deno.land/std@0.177.0/encoding/yaml.ts"
+  );
+  const doc = parse(await Deno.readTextFile(WORKFLOW));
+  const expressao = doc.jobs.ledger.if;
+  assertEquals(typeof expressao, "string", "o job ledger perdeu o `if`");
+  const disparo = (doc.on ?? doc[true]).workflow_dispatch.inputs;
+  const doMenu = disparo.gravar_ledger.options.map(String);
+  assert(doMenu.includes("92-202") && doMenu.includes("60-66"));
+  const faixas = [...doMenu, "", "NAO", "92-202 ", "qualquer", "72..83"];
+  const confirmacoes = ["GRAVAR", "gravar", "", "nao"];
+  const rodaria = (
+    projeto: string,
+    faixa: string,
+    confirmar: string,
+    original = false,
+    publicado = false,
+  ) =>
+    avaliarExpressaoDoGitHub(expressao, {
+      projeto,
+      gravar_ledger: faixa,
+      confirmar,
+      ikcous_original: original,
+      ikcous_publicado: publicado,
+    });
+
+  // CONTROLE: o avaliador não é "sempre falso" — as lojas de hoje gravam o que
+  // o comentário do workflow diz que gravam, e só com GRAVAR.
+  assertEquals(rodaria("ikcous-publicada", "92-202", "GRAVAR"), true);
+  assertEquals(rodaria("ikcous-publicada", "60-66", "GRAVAR"), true);
+  assertEquals(rodaria("savy", "92-202", "GRAVAR"), true);
+  assertEquals(rodaria("savy", "60-66", "GRAVAR"), false);
+  assertEquals(rodaria("loja", "72-74", "GRAVAR"), true);
+  assertEquals(rodaria("sandbox", "83", "GRAVAR"), true);
+  assertEquals(rodaria("loja", "92-202", "GRAVAR"), false);
+  assertEquals(rodaria("savy", "92-202", "nao"), false);
+  assertEquals(rodaria("savy", "92-202", "GRAVAR", true), false);
+  assertEquals(rodaria("ikcous-publicada", "nao", "GRAVAR"), false);
+
+  // Loja nova: nomes inventados, inclusive os que COMEÇAM ou TERMINAM como os
+  // de hoje (uma guarda por prefixo ou `contains` passaria neles).
+  const lojasNovas = [
+    "loja-teste-xyz",
+    "loja-da-maria",
+    "savy2",
+    "savy-filial",
+    "ikcous-publicada-2",
+    "nova-ikcous-publicada",
+    "loja2",
+    "sandbox-b",
+    "lo",
+    `loja-${"x".repeat(35)}`,
+  ];
+  let combinacoes = 0;
+  for (const projeto of lojasNovas)
+    for (const faixa of faixas)
+      for (const confirmar of confirmacoes)
+        for (const original of [false, true])
+          for (const publicado of [false, true]) {
+            combinacoes++;
+            assertEquals(
+              rodaria(projeto, faixa, confirmar, original, publicado),
+              false,
+              `ledger rodaria em ${projeto} (gravar_ledger=${faixa}, confirmar=${confirmar}, ikcous_original=${original}, ikcous_publicado=${publicado})`,
+            );
+          }
+  assertEquals(
+    combinacoes,
+    lojasNovas.length * faixas.length * confirmacoes.length * 4,
+  );
+});
+
 // 194a/194b (26/11/2026) — a prova de objetos da migration 20261570000000 (o endereco antigo encaminha para o novo). A 194a (DEPOIS, 6
 // linhas) prova a tabela nova fechada com a forma exata, o gatilho e as duas portas pelo md5; a 194b (ANTES, 5 linhas) prova que nada disso
 // existe e a base do pre-voo (a 20261490 aplicada; a chave e o CHECK de frota_lojas). As duas leem so o catalogo. A decisao real (as duas
@@ -16415,6 +16762,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
     // 20261620000000: a soma das categorias fecha com o faturamento no centavo.
     "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
+    // 20261630000000: a loja ja suspensa tambem pausa.
+    "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",
     // 20261640000000: a devolucao com a mesma chave nao paga duas vezes.
     "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
   ];

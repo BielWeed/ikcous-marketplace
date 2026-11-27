@@ -52,6 +52,17 @@ const SUCESSORAS = [
     versao: "20261620000000",
     consulta: "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
   },
+  // 20261630000000: a loja ja suspensa tambem pausa (sucessora da marca da 20261600000000).
+  {
+    versao: "20261630000000",
+    consulta: "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",
+  },
+  // 20261640000000: a devolucao com a mesma chave nao paga duas vezes (solicitar_estorno_com_chave).
+  {
+    versao: "20261640000000",
+    consulta:
+      "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

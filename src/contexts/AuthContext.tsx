@@ -34,9 +34,12 @@ import {
   enderecoTrazErroDeLink,
 } from "@/lib/erro-no-endereco-do-link";
 import {
+  MENSAGEM_CADASTRO_ENVIO_DA_LOJA_FALHOU,
   MENSAGEM_CADASTRO_LOJA_SEM_ENVIO,
   MENSAGEM_LIMITE_DE_EMAIL_DA_LOJA,
+  MENSAGEM_RECUPERACAO_ENVIO_DA_LOJA_FALHOU,
   MENSAGEM_RECUPERACAO_LOJA_SEM_ENVIO,
+  MENSAGEM_REENVIO_ENVIO_DA_LOJA_FALHOU,
   MENSAGEM_REENVIO_LOJA_SEM_ENVIO,
   falhaDeEnvioDeEmail,
   semEnderecoDeEmail,
@@ -1454,6 +1457,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           message = mensagemComCadastroPeloGoogle(
             MENSAGEM_CADASTRO_LOJA_SEM_ENVIO,
           );
+        } else if (falhaDeEnvio === "envio_da_loja_falhou") {
+          // O gancho de e-mail da loja falhou: pode passar sozinho, e o
+          // Google também não depende dele.
+          message = mensagemComCadastroPeloGoogle(
+            MENSAGEM_CADASTRO_ENVIO_DA_LOJA_FALHOU,
+          );
         } else if (falhaDeEnvio === "limite_da_loja") {
           // Limite do projeto inteiro: pode ser a 1ª tentativa da cliente.
           message = MENSAGEM_LIMITE_DE_EMAIL_DA_LOJA;
@@ -1743,12 +1752,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const message =
           falhaDeEnvio === "loja_sem_envio"
             ? MENSAGEM_REENVIO_LOJA_SEM_ENVIO
-            : falhaDeEnvio === "limite_da_loja"
-              ? MENSAGEM_LIMITE_DE_EMAIL_DA_LOJA
-              : error.status === 429 ||
-                  error.code === "over_email_send_rate_limit"
-                ? "Muitas tentativas. Aguarde alguns minutos antes de pedir um novo e-mail. Se você já pediu um, use o e-mail mais recente."
-                : "Não foi possível reenviar o e-mail agora. Tente novamente em instantes.";
+            : falhaDeEnvio === "envio_da_loja_falhou"
+              ? MENSAGEM_REENVIO_ENVIO_DA_LOJA_FALHOU
+              : falhaDeEnvio === "limite_da_loja"
+                ? MENSAGEM_LIMITE_DE_EMAIL_DA_LOJA
+                : error.status === 429 ||
+                    error.code === "over_email_send_rate_limit"
+                  ? "Muitas tentativas. Aguarde alguns minutos antes de pedir um novo e-mail. Se você já pediu um, use o e-mail mais recente."
+                  : "Não foi possível reenviar o e-mail agora. Tente novamente em instantes.";
         toast.error(message);
         return false;
       }
@@ -1834,9 +1845,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             message:
               falhaDeEnvio === "loja_sem_envio"
                 ? MENSAGEM_RECUPERACAO_LOJA_SEM_ENVIO
-                : falhaDeEnvio === "limite_da_loja"
-                  ? MENSAGEM_LIMITE_DE_EMAIL_DA_LOJA
-                  : MENSAGEM_LINK_DE_RECUPERACAO_NAO_ENVIADO,
+                : falhaDeEnvio === "envio_da_loja_falhou"
+                  ? MENSAGEM_RECUPERACAO_ENVIO_DA_LOJA_FALHOU
+                  : falhaDeEnvio === "limite_da_loja"
+                    ? MENSAGEM_LIMITE_DE_EMAIL_DA_LOJA
+                    : MENSAGEM_LINK_DE_RECUPERACAO_NAO_ENVIADO,
           };
         }
 

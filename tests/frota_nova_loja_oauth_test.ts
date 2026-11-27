@@ -465,6 +465,60 @@ Deno.test("receber: troca o código com o verificador e grava o refresh antes de
   );
 });
 
+Deno.test("receber com conferências (trocar-dono, T3): conferirPendente recusa ANTES de trocar o código; conferirAcesso que lança deixa o cofre como estava; que passa, grava", async () => {
+  // conferirPendente recebe o pendente e, lançando, nada sai nem se grava
+  const f1 = fetchFalso(tokenOk(REFRESH_1));
+  const a1 = await abrirComFetch(f1);
+  const antes1 = await a1.cofre.ler(SLUG);
+  const recusa = new Error("pedido de outra troca");
+  let visto;
+  const e1 = await pegarErro(() =>
+    a1.acesso.receber({
+      slug: SLUG,
+      colado: CODIGO,
+      conferirPendente: (p) => {
+        visto = p;
+        throw recusa;
+      },
+    }),
+  );
+  assertEquals(e1, recusa);
+  assertEquals(visto.criadoEm, AGORA);
+  assertEquals(f1.chamadas.length, 0, "trocou o código");
+  assertEquals(await a1.cofre.ler(SLUG), antes1);
+  // conferirAcesso recebe o access token NOVO e, lançando, o cofre fica
+  const cofre = await cofreConectado(REFRESH_2);
+  const f2 = fetchFalso(tokenOk(REFRESH_1));
+  const a2 = await abrirComFetch(f2, cofre);
+  const antes2 = await cofre.ler(SLUG);
+  let token;
+  const e2 = await pegarErro(() =>
+    a2.acesso.receber({
+      slug: SLUG,
+      colado: CODIGO,
+      conferirAcesso: (t) => {
+        token = t;
+        throw recusa;
+      },
+    }),
+  );
+  assertEquals(e2, recusa);
+  assertEquals(token, ACCESS);
+  assertEquals(f2.chamadas.length, 1);
+  assertEquals(await cofre.ler(SLUG), antes2, "sobrescreveu o refresh");
+  assertEquals((await lerRegistro(cofre)).refresh, REFRESH_2);
+  // as duas passam: o refresh novo vai para o cofre
+  const f3 = fetchFalso(tokenOk(REFRESH_1));
+  const a3 = await abrirComFetch(f3, cofre);
+  await a3.acesso.receber({
+    slug: SLUG,
+    colado: CODIGO,
+    conferirPendente: () => {},
+    conferirAcesso: async () => {},
+  });
+  assertEquals((await lerRegistro(cofre)).refresh, REFRESH_1);
+});
+
 Deno.test("receber: state divergente nem chega a chamar o Supabase", async () => {
   const f = fetchFalso();
   const { acesso, cofre } = await abrirComFetch(f);

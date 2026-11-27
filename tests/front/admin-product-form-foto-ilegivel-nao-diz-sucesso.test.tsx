@@ -274,7 +274,7 @@ describe("AdminProductFormView — foto ilegível não diz 'sucesso'", () => {
   );
 
   it.each(["", "application/octet-stream"])(
-    "controle: foto que abre com MIME %j sobe como o próprio arquivo, sem recompressão",
+    "controle: foto que abre com MIME %j sobe com o tipo da extensão (image/jpeg)",
     async (type) => {
       await montar();
       const boa = new File(
@@ -289,8 +289,9 @@ describe("AdminProductFormView — foto ilegível não diz 'sucesso'", () => {
 
       expect(mocks.uploadProductImages).toHaveBeenCalledTimes(1);
       const enviada = mocks.uploadProductImages.mock.calls[0][0][0] as File;
-      expect(enviada).toBe(boa);
-      expect(enviada.type).toBe(type);
+      // Sem tipo, a foto subia crua (sem compressão nem miniaturas): o tipo
+      // agora sai da extensão. Pequena (< 100 KB), não passa pelo canvas.
+      expect(enviada.type).toBe("image/jpeg");
       expect(enviada.name).toBe("boa.jpg");
       expect(enviada.lastModified).toBe(1);
       expect(HTMLCanvasElement.prototype.getContext).not.toHaveBeenCalled();

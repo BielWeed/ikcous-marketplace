@@ -1926,6 +1926,11 @@ async function desfazerPosterioresNaTransacao(c) {
   await require("./a-grade-antiga-posterior.cjs").desfazerGradeAntigaNaTransacao(
     c,
   );
+  // A 20261630000000 sucede a marca da 20261600000000 (PAUSA_DE_VENDAS, no fim da lista abaixo): sai ANTES do laco (o rollback da 1600
+  // recusa a marca com o corpo dela). A marca nao chama is_admin_atual: a 1630 nao entra na lista.
+  await require("./a-loja-ja-suspensa-tambem-pausa-posterior.cjs").desfazerASuspensaAntigaNaTransacao(
+    c,
+  );
   for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,

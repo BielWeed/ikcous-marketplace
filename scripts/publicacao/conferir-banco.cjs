@@ -3593,7 +3593,7 @@ const ROL_DA_196A = [
   "pausa_de_vendas: tabela de linha unica com as 4 colunas, RLS ligada e nenhuma politica",
   "pausa_de_vendas: nenhum privilegio (tabela ou coluna) para anon, authenticated nem service_role",
   "data_da_pausa_de_vendas: uma so, corpo da 20261600000000 (md5), SQL IMMUTABLE com search_path fixo, EXECUTE de ninguem",
-  "marcar_suspensa_desde: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "marcar_suspensa_desde: uma so, corpo da 20261600000000 ou da sucessora 20261630000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
   "motivo_da_loja_nao_aceitar_pedido: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
   "a_loja_aceita_pedido_novo: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
   "situacao_das_vendas_da_loja: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE so de authenticated",
@@ -3637,6 +3637,15 @@ const ROL_DA_198 = [
   "get_category_analytics: corpo exato (md5)",
   "get_category_analytics: assinatura e atributos conhecidos",
 ];
+// O rol das consultas do lote da 20261630000000 (a loja ja suspensa tambem pausa): as MESMAS 4 linhas na 199a e na 199b (so a marca
+// marcar_suspensa_desde muda de corpo). Somente catalogo: nenhuma linha do cartao nem da pausa e lida e a marca nao e chamada. A 199a espera o
+// corpo desta (md5); a 199b, o da 20261600000000 ou o desta (reaplicacao idempotente).
+const ROL_DA_199 = [
+  "marcar_suspensa_desde: corpo exato (md5)",
+  "marcar_suspensa_desde: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno trigger, search_path fixo e EXECUTE de ninguem",
+  "tr_assinatura_marca_suspensa_desde: AFTER INSERT OR UPDATE OF status por linha em assinatura_da_loja, chama a marca, ligado",
+  "pausa_de_vendas: a tabela de linha unica da 20261600000000 (4 colunas)",
+];
 // Lote 200 (20261640000000, a devolucao com a mesma chave nao paga duas vezes: a coluna order_refunds.chave_da_solicitacao, o indice unico parcial
 // uq_order_refunds_chave_da_solicitacao e a funcao NOVA solicitar_estorno_com_chave; aditiva, exige a 20261241000000). Somente catalogo: nenhuma le
 // devolucao ou pedido e nenhuma chama a funcao. A 200a prova o corpo exato (md5), os atributos e o EXECUTE so do authenticated, a coluna (uuid, anulavel,
@@ -3659,6 +3668,8 @@ const ROL_FECHADO_POR_CONSULTA = {
     ROL_DA_200A,
   "200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente":
     ROL_DA_200B,
+  "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado": ROL_DA_199,
+  "199b-antes-a-loja-ja-suspensa-tambem-pausa-base-vigente": ROL_DA_199,
   "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado": ROL_DA_198,
   "198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente": ROL_DA_198,
   "197a-conferir-o-catalogo-chega-ao-vivo-aplicado": ROL_DA_197A,

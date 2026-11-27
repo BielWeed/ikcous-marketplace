@@ -13,7 +13,9 @@
  *    fora do menu) e, de novo, um passo antes de qualquer segredo roda
  *    `node scripts/frota/lojas.cjs validar "$PROJETO"` — recusa com "loja
  *    desconhecida" ANTES de qualquer segredo ser lido (só o último passo vê segredo);
- *  - o NOME do segredo de cada loja mora em `segredoDoToken`, validado por regex.
+ *  - o NOME do segredo de cada loja mora em `segredoDoToken`, validado por regex;
+ *    um segredo por loja, salvo o da org central do Supabase
+ *    (scripts/frota/org-central.json), que toda loja assinante da org divide.
  *
  * O QUE ESTE ARQUIVO NÃO FAZ (de propósito): imprimir o valor de nenhum segredo
  * (`exigir-segredo` só confere que o da loja pedida não está vazio), nem montar
@@ -28,7 +30,9 @@
  * os segredos que o arquivo cita, e a regra da casa ("cada alvo enxerga SÓ o
  * seu segredo") fica de pé.
  *
- * Uso (workflows): node scripts/frota/lojas.cjs validar <projeto> [--assinante]
+ * Uso (workflows): node scripts/frota/lojas.cjs validar <projeto> [--assinante] [--saida-do-passo]
+ *                  (--saida-do-passo: grava `segredo=<NOME do segredo da loja>` no
+ *                  GITHUB_OUTPUT do passo; nunca o valor)
  *                  node scripts/frota/lojas.cjs ref <projeto> [--functions]
  *                  node scripts/frota/lojas.cjs campo <projeto> <classe|segredoDoToken|functionsNomeadas>
  *                  node scripts/frota/lojas.cjs exigir-segredo <projeto>   (só confere que o token da loja chegou; nunca o imprime)
@@ -80,6 +84,15 @@ function listaLegivel(nomes) {
 
 function erroDoCadastro(msg) {
   return new Error(`lojas.json inválido: ${msg}`);
+}
+
+/**
+ * O NOME do segredo da org central (scripts/frota/org-central.json). `require`
+ * aqui dentro, e não no topo: org-central.cjs importa os regex DESTE arquivo, e
+ * um `require` mútuo no topo entregaria um módulo pela metade a um dos dois.
+ */
+function segredoDaOrgCentral() {
+  return require("./org-central.cjs").carregarOrgCentral().segredoDoGitHub;
 }
 
 /**
@@ -156,7 +169,14 @@ function validarCadastro(bruto) {
         );
       if (Object.hasOwn(l, "refDasFunctions"))
         throw erroDoCadastro(`${projeto}: refDasFunctions só existe em legado`);
-      if (segredosVistos.has(l.segredoDoToken))
+      // Um segredo por loja — salvo o da ORG CENTRAL (org-central.json), que
+      // por desenho é de toda loja assinante da org. O arquivo da org só é lido
+      // quando aparece um repetido (o cadastro sem repetição nunca depende dele),
+      // e um org-central.json torto LANÇA aqui: falha fechada, nunca "aceita".
+      if (
+        segredosVistos.has(l.segredoDoToken) &&
+        l.segredoDoToken !== segredoDaOrgCentral()
+      )
         throw erroDoCadastro(
           `${projeto}: o segredo ${l.segredoDoToken} já é de ${segredosVistos.get(l.segredoDoToken)} (um segredo por loja)`,
         );
@@ -270,6 +290,19 @@ function cli(
       return falhar(
         `${l.projeto} não é loja assinante (este workflow só aceita lojas assinantes)`,
       );
+    // Com `--saida-do-passo` (o passo `id: loja` dos workflows), deixa para os
+    // passos seguintes do job o NOME do segredo desta loja
+    // (`steps.loja.outputs.segredo`), nunca o valor. A guarda do segredo da org
+    // central compara com ele (lojas-nos-workflows.cjs). Opção EXPLÍCITA: quem
+    // chama `validar` no meio de outro passo (publicar-functions) não ganha uma
+    // saída que não pediu. O nome já casou RE_SEGREDO: sem quebra de linha.
+    if (
+      resto.includes("--saida-do-passo") &&
+      typeof env.GITHUB_OUTPUT === "string" &&
+      env.GITHUB_OUTPUT !== ""
+    )
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- é o arquivo de saída do passo que o próprio runner do Actions cria e passa no ambiente.
+      fs.appendFileSync(env.GITHUB_OUTPUT, `segredo=${l.segredoDoToken}\n`);
     saida.out(`loja ${l.projeto}: ${l.classe}`);
     return 0;
   }
