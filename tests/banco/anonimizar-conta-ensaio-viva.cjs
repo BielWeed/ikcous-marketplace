@@ -29,10 +29,16 @@
  *   (d) a "busca de sobras" do passo 6 acha essa resposta da loja (e, antes de
  *       anonimizar, acha os dados nos lugares certos);
  *   (e) as travas: pedido em andamento, devolução em andamento, foto ainda no
- *       Storage, sem pedido de exclusão aberto, cliente inexistente e
- *       identificador não trocado recusam — e nada muda;
+ *       Storage, sem pedido de exclusão aberto, cliente inexistente,
+ *       identificador não trocado, conta da DONA da loja, conta de
+ *       ADMINISTRADOR (perfil ou login) e CUPOM EXCLUSIVO dela ainda válido
+ *       recusam — e nada muda; o perfil "vendedor" (o padrão da coluna) e o
+ *       cupom usado, vencido, desligado ou de outra conta NÃO travam;
  *   (f) o bloco "listar" só lê e devolve as contagens certas (e mostra o endereço
- *       em claro, para o passo 6 poder caçá-lo);
+ *       em claro, para o passo 6 poder caçá-lo; conta push, devolução concluída
+ *       com vale/troca e cupom exclusivo válido, com o código);
+ *   (i) a leitura das notas da loja do passo 6 mostra a mensagem ao cliente
+ *       (mensagem_loja) e a busca de sobras a acha depois de anonimizar;
  *   (g) MUTANTES: com o roteiro inteiro nada sobra; tirando UM passo (registro de
  *       atividade do login, códigos de uso único, verificação em duas etapas,
  *       troca de e-mail/telefone pendente, IP, lista de permitidos do pedido) a
@@ -683,6 +689,45 @@ PROVAS.push({
       assert.strictEqual(v["pedidos EM ANDAMENTO"], "0");
       assert.strictEqual(v["devoluções EM ANDAMENTO"], "0");
       assert.strictEqual(v["fotos de devolução guardadas"], "1");
+      assert.strictEqual(v["avisos de celular (push)"], "1");
+      assert.strictEqual(v["cupons EXCLUSIVOS dela ainda válidos"], "0");
+      assert.strictEqual(v["devoluções concluídas com VALE ou TROCA"], "0");
+      // A devolução concluída virou vale (cupom criado à mão) ou troca: o passo 2 mostra,
+      // para a loja avisar a cliente (e entregar a troca) antes de anonimizar.
+      for (const resolucao of ["vale", "troca"]) {
+        await c.query(
+          "UPDATE public.devolucoes SET resolucao_final = $1 WHERE id = '9b1cdddd-0000-4000-8000-000000000001'",
+          [resolucao],
+        );
+        const { rows } = await c.query(comId(BLOCOS.listar, ALVO));
+        assert.strictEqual(
+          rows.find(
+            (x) => x.o_que === "devoluções concluídas com VALE ou TROCA",
+          )?.valor,
+          "1",
+          `devolução concluída com ${resolucao}`,
+        );
+      }
+      // O cupom exclusivo válido aparece com o código, para a loja achá-lo no painel.
+      await c.query(
+        `INSERT INTO public.coupons (id, code, type, value, active, usage_count, usage_limit, alcance)
+         VALUES ('9b1c7777-0000-4000-8000-000000000002', 'PRESENTE-MARIA', 'fixed', 10, true, 0, NULL, 'exclusivo')`,
+      );
+      await c.query(
+        "INSERT INTO public.cupom_clientes (coupon_id, user_id) VALUES ('9b1c7777-0000-4000-8000-000000000002', $1)",
+        [ALVO],
+      );
+      const comCupom = Object.fromEntries(
+        (await c.query(comId(BLOCOS.listar, ALVO))).rows.map((x) => [
+          x.o_que,
+          x.valor,
+        ]),
+      );
+      assert.strictEqual(comCupom["cupons EXCLUSIVOS dela ainda válidos"], "1");
+      assert.strictEqual(
+        comCupom["cupom exclusivo válido (código)"],
+        "PRESENTE-MARIA",
+      );
       const depois = await um(
         c,
         "SELECT count(*)::int AS n FROM public.profiles",
@@ -699,7 +744,7 @@ PROVAS.push({
 });
 
 PROVAS.push({
-  nome: "(e) as travas recusam e nada muda: sem pedido, identificador inválido, entrega, devolução, reembolso pendente ou foto no Storage",
+  nome: "(e) as travas recusam e nada muda: sem pedido, identificador inválido, entrega, devolução, reembolso pendente, dona da loja, administrador, cupom exclusivo válido ou foto no Storage",
   corpo: async (c) => {
     await emTransacao(c, async () => {
       await apagarFotosDoStorage(c);
@@ -854,6 +899,150 @@ PROVAS.push({
         "UPDATE public.marketplace_orders SET payment_status = 'expirado', cancelled_after_shipping = false WHERE id = $1",
         [pedidoCancelado],
       );
+
+      // As travas abaixo deixam o ENSAIO passar quando NÃO se aplicam (controle):
+      // o bloco chega até o "ENSAIO (nada foi gravado)" e nada muda.
+      const passa = async (rotulo) => {
+        const r = await tentar(c, anonimizar(ALVO, false));
+        assert.ok(!r.ok, `${rotulo}: o ensaio sempre termina em erro`);
+        assert.match(r.mensagem, /^ENSAIO \(nada foi gravado\)/, rotulo);
+        assert.strictEqual(await estado(), antes, `${rotulo}: algo mudou`);
+      };
+      await passa("controle: cliente comum chega ao ensaio");
+
+      // Conta da DONA da loja: a chave estrangeira de dono_da_loja só segura DELETE,
+      // e o bloco não apaga: quem para é a trava.
+      await c.query("INSERT INTO public.dono_da_loja (user_id) VALUES ($1)", [
+        ALVO,
+      ]);
+      await recusa(
+        anonimizar(ALVO, true),
+        /^PARADO:.*DONA da loja/,
+        "conta da dona da loja (valendo)",
+      );
+      await recusa(
+        anonimizar(ALVO, false),
+        /^PARADO:.*DONA da loja/,
+        "conta da dona da loja (ensaio)",
+      );
+      await c.query("DELETE FROM public.dono_da_loja WHERE user_id = $1", [
+        ALVO,
+      ]);
+
+      // Papel no perfil: só o postgres muda (prevent_role_change da 20261199 recusa a
+      // sessão de login direto). RESET ROLE volta à sessão do teste.
+      const papel = async (role) => {
+        await c.query("SET LOCAL ROLE postgres");
+        await c.query("UPDATE public.profiles SET role = $2 WHERE id = $1", [
+          ALVO,
+          role,
+        ]);
+        await c.query("RESET ROLE");
+        assert.strictEqual(
+          (
+            await um(c, "SELECT role FROM public.profiles WHERE id = $1", [
+              ALVO,
+            ])
+          ).role,
+          role,
+          `o perfil devia estar como ${role}`,
+        );
+      };
+      const papelNoLogin = (role) =>
+        c.query(
+          `UPDATE auth.users SET raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || jsonb_build_object('role', $2::text) WHERE id = $1`,
+          [ALVO, role],
+        );
+      // Administrador pelo perfil (o gatilho de sincronia leva o papel ao login também).
+      // O login volta a "customer" logo depois: assim só o perfil diz admin e a
+      // trava que olha profiles.role é provada sozinha (sem isso, apagar essa parte
+      // do bloco deixaria o ensaio verde pela outra fonte).
+      await papel("admin");
+      await papelNoLogin("customer");
+      await recusa(
+        anonimizar(ALVO, true),
+        /^PARADO:.*ADMINISTRADOR/,
+        "administrador pelo perfil",
+      );
+      // Perfil comum, mas o login ainda diz admin (fonte de is_admin()): também para.
+      await papel("customer");
+      await papelNoLogin("admin");
+      await recusa(
+        anonimizar(ALVO, true),
+        /^PARADO:.*ADMINISTRADOR/,
+        "administrador só no login",
+      );
+      await papelNoLogin("customer");
+      // "vendedor" é o padrão de todo perfil (DEFAULT da coluna), não cargo: NÃO trava.
+      await papel("vendedor");
+      await passa("perfil vendedor (o padrão) não é trava");
+      await papel("customer");
+      await passa("controle depois de devolver o papel");
+
+      // Cupom EXCLUSIVO só dela (vale-troca, presente): a conta nova teria outro id e
+      // perderia o cupom. Válido = o mesmo critério do checkout (cupons_do_checkout).
+      const cupom = "9b1c7777-0000-4000-8000-000000000001";
+      await c.query(
+        `INSERT INTO public.coupons (id, code, type, value, active, usage_count, usage_limit, alcance)
+         VALUES ($1, 'VALETROCA-TESTE', 'fixed', 30, true, 0, 1, 'exclusivo')`,
+        [cupom],
+      );
+      // Exclusivo de OUTRA conta não trava.
+      await c.query(
+        "INSERT INTO public.cupom_clientes (coupon_id, user_id) VALUES ($1, $2)",
+        [cupom, VIZINHA],
+      );
+      await passa("cupom exclusivo só da vizinha");
+      await c.query(
+        "INSERT INTO public.cupom_clientes (coupon_id, user_id) VALUES ($1, $2)",
+        [cupom, ALVO],
+      );
+      await conferirPendencia("cupons EXCLUSIVOS dela ainda válidos", "1");
+      await recusa(
+        anonimizar(ALVO, true),
+        /^PARADO:.*CUPOM EXCLUSIVO/,
+        "cupom exclusivo válido (valendo)",
+      );
+      await recusa(
+        anonimizar(ALVO, false),
+        /^PARADO:.*CUPOM EXCLUSIVO/,
+        "cupom exclusivo válido (ensaio)",
+      );
+      // Já usado (atingiu o limite), vencido ou desligado: não vale mais, não trava.
+      for (const [rotulo, muda, volta] of [
+        ["usado até o limite", "usage_count = 1", "usage_count = 0"],
+        [
+          "vencido",
+          "valid_until = now() - interval '1 day'",
+          "valid_until = NULL",
+        ],
+        ["desligado", "active = false", "active = true"],
+      ]) {
+        await c.query(`UPDATE public.coupons SET ${muda} WHERE id = $1`, [
+          cupom,
+        ]);
+        await conferirPendencia("cupons EXCLUSIVOS dela ainda válidos", "0");
+        await passa(`cupom exclusivo ${rotulo}`);
+        await c.query(`UPDATE public.coupons SET ${volta} WHERE id = $1`, [
+          cupom,
+        ]);
+      }
+      // Sem limite de uso nem validade: vale para sempre, trava até a loja tirá-la da lista.
+      await c.query(
+        "UPDATE public.coupons SET usage_limit = NULL WHERE id = $1",
+        [cupom],
+      );
+      await recusa(
+        anonimizar(ALVO, true),
+        /^PARADO:.*CUPOM EXCLUSIVO/,
+        "cupom exclusivo sem limite",
+      );
+      // A loja tira a cliente da lista (no painel): o bloco segue.
+      await c.query(
+        "DELETE FROM public.cupom_clientes WHERE coupon_id = $1 AND user_id = $2",
+        [cupom, ALVO],
+      );
+      await passa("cupom exclusivo depois de tirar a cliente da lista");
 
       // foto ainda no Storage
       await c.query(
@@ -1518,6 +1707,73 @@ PROVAS.push({
         vazia[vazia.length - 1].rowCount,
         0,
         "sem valores, a busca não pode achar nada",
+      );
+    });
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Passo 6: a leitura das notas da loja na devolução (lida do roteiro, como os blocos).
+// ---------------------------------------------------------------------------
+function lerLeituraDasNotasDaDevolucao() {
+  const md = fs.readFileSync(ROTEIRO, "utf8");
+  const passo6 = md.split("## Passo 6")[1]?.split("## Passo 7")[0] ?? "";
+  const leituras = [...passo6.matchAll(/```sql\n([\s\S]*?)```/g)]
+    .map((m) => m[1])
+    .filter((sql) => /FROM public\.devolucoes d\n/.test(sql));
+  assert.strictEqual(
+    leituras.length,
+    1,
+    "o passo 6 tem de trazer UMA leitura das notas da loja em public.devolucoes",
+  );
+  return leituras[0];
+}
+
+PROVAS.push({
+  nome: "(i) passo 6: a leitura das notas da loja mostra a MENSAGEM AO CLIENTE (mensagem_loja) mesmo sem nota de inspeção, e a busca de sobras a acha depois de anonimizar",
+  corpo: async (c) => {
+    await emTransacao(c, async () => {
+      const devolucao = "9b1cdddd-0000-4000-8000-000000000001";
+      const mensagem = `Oi ${NOME_ALVO}, aprovamos a sua devolução`;
+      // O mesmo texto que a decisão da loja grava em mensagem_loja e na nota do histórico
+      // (20261200000000); aqui só a mensagem, sem nota de inspeção.
+      await c.query(
+        "UPDATE public.devolucoes SET mensagem_loja = $1, observacao_inspecao = NULL WHERE id = $2",
+        [mensagem, devolucao],
+      );
+      const leitura = comId(lerLeituraDasNotasDaDevolucao(), ALVO);
+      const { rows } = await c.query(leitura);
+      assert.strictEqual(
+        rows.length,
+        1,
+        "a devolução com só a mensagem ao cliente tem de aparecer na leitura",
+      );
+      assert.strictEqual(rows[0].mensagem_loja, mensagem);
+      // Devolução sem nota nenhuma não aparece (a leitura não vira lista de tudo).
+      await c.query(
+        "UPDATE public.devolucoes SET mensagem_loja = '  ' WHERE id = $1",
+        [devolucao],
+      );
+      assert.strictEqual((await c.query(leitura)).rows.length, 0);
+      await c.query(
+        "UPDATE public.devolucoes SET mensagem_loja = $1 WHERE id = $2",
+        [mensagem, devolucao],
+      );
+
+      // Depois de anonimizar valendo, a mensagem continua (o bloco não a conhece) e a busca
+      // de sobras do passo 6 a acha: é por isso que a loja a limpa à mão.
+      await apagarFotosDoStorage(c);
+      const r = await tentar(c, anonimizar(ALVO, true));
+      assert.ok(r.ok, `anonimizar valendo falhou: ${r.mensagem}`);
+      const rs = await c.query(
+        sobras(NOME_ALVO, EMAIL_ALVO, FONE_ALVO_FORMATADO, CPF_ALVO),
+      );
+      const achou = rs[rs.length - 1].rows;
+      assert.ok(
+        achou.some(
+          (x) => x.tabela === "devolucoes" && x.coluna === "mensagem_loja",
+        ),
+        `a busca de sobras devia achar devolucoes.mensagem_loja: ${JSON.stringify(achou)}`,
       );
     });
   },

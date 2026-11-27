@@ -553,6 +553,37 @@ function diagnosticar({
       );
   } else item("quem envia o e-mail", NAO_MEDIDO, "estado do hook inesperado");
 
+  // 7. Google com a confirmação de e-mail desligada (27/11/2026). Com
+  // mailer_autoconfirm=true, quem cadastra o e-mail de outra pessoa com uma
+  // senha já nasce confirmado; quando a dona do e-mail entra pelo Google, o
+  // Auth liga as duas identidades na mesma conta e só remove as NÃO
+  // confirmadas (https://supabase.com/docs/guides/auth/identities, "How Auth
+  // links identities"): a senha do intruso segue abrindo a conta dela.
+  const google = config.external_google_enabled;
+  const nomeGoogle = "login pelo Google com confirmação de e-mail";
+  if (google === true) {
+    if (config.mailer_autoconfirm === true)
+      item(
+        nomeGoogle,
+        FALTA,
+        "Google ligado com a confirmação de e-mail desligada: quem criar conta com o e-mail de outra pessoa e uma senha entra na conta dela (pedidos, endereços, CPF) depois que ela usar o Google. Conserto: ligue a confirmação de e-mail (Confirm email) no Auth da loja",
+      );
+    else if (config.mailer_autoconfirm === false)
+      item(nomeGoogle, OK, "confirmação de e-mail ligada");
+    else item(nomeGoogle, NAO_MEDIDO, "confirmação de cadastro desconhecida");
+  } else if (
+    google !== false &&
+    google !== null &&
+    config.mailer_autoconfirm !== false
+  )
+    // Campo ausente ou de tipo inesperado: com a confirmação não provada
+    // ligada, o risco não pode ser descartado.
+    item(
+      nomeGoogle,
+      NAO_MEDIDO,
+      "estado do Google não lido, e a confirmação de e-mail não está ligada",
+    );
+
   const veredito = itens.some((i) => i.estado === FALTA)
     ? "NÃO"
     : itens.some((i) => i.estado === NAO_MEDIDO)
