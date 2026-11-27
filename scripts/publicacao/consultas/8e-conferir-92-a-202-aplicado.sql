@@ -209,6 +209,7 @@ WITH corpos AS (
     ('get_admin_analytics_v2', 'de8648a7783c12f1be7abd7986c8a2fc', '20261399994000'),
     ('get_admin_analytics_v2', '4f8fb94f6cb0018e10d0ef71541f1cbf', '20261399995000'),
     ('get_category_analytics', 'd7e1e413ac805f598d8657992f43c706', '20261409000000'),
+    ('get_category_analytics', 'a332d6b7c4ab58425c60343883d873d6', '20261620000000'),
     ('fin_dre', 'afc3e13805ce37819cfdcd094043087c', '20261242000000'),
     ('fin_dre', '2d191bc8120a9b188c04eeaaa0263110', '20261382000000'),
     ('fin_dre', 'eafc6a2c4663e33f5459791c6601b848', '20261399600000'),

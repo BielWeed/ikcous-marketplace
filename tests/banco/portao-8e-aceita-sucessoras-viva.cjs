@@ -93,6 +93,7 @@ const {
 } = require("./a-loja-escolhe-como-entrega-posterior.cjs");
 const {
   NOME_RELATORIO_DE_CATEGORIAS,
+  NOME_CATEGORIAS_NO_CENTAVO,
   desfazerRelatorioDeCategoriasNaTransacao,
 } = require("./relatorio-de-categorias-posterior.cjs");
 // Esta prova mede as dez sucessoras originais, a 20261246 (fin_lancamento_salvar), a 20261249 (motivo privado do PDV), a 20261370 (fin_caixa_abrir), a 20261380 (get_admin_orders_cancelados_recentes) e a 20261387 (get_admin_orders_paged). A 20261242000000 (o custo do dia: sucessora de
@@ -198,6 +199,8 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // A 1409 tem prova própria em analise-por-categoria-so-conta-pedido-pago-viva.cjs.
     // O helper de categorias a desfaz antes de montar o estado histórico.
     s.nome !== NOME_RELATORIO_DE_CATEGORIAS &&
+    // A 1620 (a soma das categorias fecha no centavo) sucede a 1409 e tem a mesma prova própria; o mesmo helper a desfaz primeiro.
+    s.nome !== NOME_CATEGORIAS_NO_CENTAVO &&
     // A 1410 tem prova própria em rotulo-historico-na-lista-e-no-rastreio-viva.cjs.
     // O helper das listas do painel a desfaz antes de montar o estado histórico.
     s.nome !==

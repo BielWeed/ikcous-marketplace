@@ -1496,6 +1496,11 @@ async function main() {
         "20261409000000_o_relatorio_de_categorias_nao_da_a_uma_categoria_o_dinheiro_de_item_sem_produto.sql",
         "public.get_category_analytics(timestamp with time zone,timestamp with time zone)",
       ],
+      // A 1620 só arredonda o relatório por categoria (sucede a 1409); a 17a não lê get_category_analytics.
+      [
+        "20261620000000_a_soma_das_categorias_fecha_com_o_faturamento_no_centavo.sql",
+        "public.get_category_analytics(timestamp with time zone,timestamp with time zone)",
+      ],
       // A 1410 redefine duas funções que a 17a não lê.
       [
         ROTULOS_HISTORICOS,
