@@ -2479,19 +2479,29 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
             const data = await response.json()
             const { tracking, status } = normalizarTracking(data, labelId)
+            // 27/11/2026 (caça): etiqueta cancelada no Melhor Envio não traz
+            // código que valha. Gravar o código dela por cima trazia de volta
+            // o código morto depois que a loja digitava um manual novo; e
+            // devolvê-lo fazia a tela pintá-lo na ficha. Só o status volta
+            // (é ele que a tela usa para dizer "a etiqueta está cancelada").
+            // Mesma régua do painel (`statusDaEtiquetaCancelada`).
+            const etiquetaCancelada = status !== null &&
+                ['canceled', 'cancelled'].includes(status.trim().toLowerCase())
+            const trackingQueVale = etiquetaCancelada ? null : tracking
 
             // Mantém a regra original: um código novo substitui o código do
             // pedido, e ausência de código não apaga o que já estava salvo.
-            const atualizado = tracking !== null && tracking !== pedido.tracking_code
+            const atualizado = trackingQueVale !== null && trackingQueVale !== pedido.tracking_code
             if (atualizado) {
                 const { error: rastreioError } = await supabaseClient
                     .from('marketplace_orders')
-                    .update({ tracking_code: tracking })
+                    .update({ tracking_code: trackingQueVale })
                     .eq('id', orderId)
                 if (rastreioError) {
                     return respostaJson({ error: 'Não foi possível salvar o rastreio no pedido. Tente atualizar o rastreio novamente.' }, 500)
                 }
             }
+            // O evento guarda o que o provedor respondeu, cancelada ou não.
             await gravarEvento(supabaseClient, {
                 order_id: orderId,
                 event_type: 'rastreio_consultado',
@@ -2501,7 +2511,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
             return respostaJson({
                 success: true,
-                tracking_code: tracking,
+                tracking_code: trackingQueVale,
                 rastreio_atualizado: atualizado,
                 status_etiqueta: status,
                 label_id: labelId,

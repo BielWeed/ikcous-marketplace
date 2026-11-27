@@ -118,7 +118,12 @@ describe("pedido — botões do rastreio travam durante a gravação", () => {
     return encontrado;
   }
 
-  function editarESalvar() {
+  // 27/11/2026: antes de gravar, o "Salvar" procura o código em outro pedido
+  // (`outroPedidoComORastreio`, OrderDetail), então o update sai uma
+  // microtarefa DEPOIS do clique — o clique agora espera dentro do `act`.
+  // Este dublê não tem `select`: a procura falha, e a falha nunca impede
+  // salvar (é o que deixa o update sair aqui).
+  async function editarESalvar() {
     act(() => botao("Editar Código").click());
     const setter = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
@@ -132,7 +137,7 @@ describe("pedido — botões do rastreio travam durante a gravação", () => {
     expect(campo().value).toBe("RASTREIO-NOVO");
     expect(botao("Salvar").disabled).toBe(false);
     expect(botao("Cancelar edição do código").disabled).toBe(false);
-    act(() => botao("Salvar").click());
+    await act(async () => botao("Salvar").click());
     expect(atualizar).toHaveBeenCalledTimes(1);
     expect(atualizar).toHaveBeenCalledWith({ tracking_code: "RASTREIO-NOVO" });
     expect(salvar).toHaveBeenCalledWith("id", "pedido-rastreio");
@@ -140,7 +145,7 @@ describe("pedido — botões do rastreio travam durante a gravação", () => {
   }
 
   it("Salvar desabilitado: segundo clique não manda outro update enquanto a resposta não chega", async () => {
-    editarESalvar();
+    await editarESalvar();
     const botaoSalvar = botao("Salvar");
     act(() => botaoSalvar.click());
 
@@ -154,7 +159,7 @@ describe("pedido — botões do rastreio travam durante a gravação", () => {
   });
 
   it("Cancelar desabilitado: clicar não fecha a edição nem descarta o código durante o envio", async () => {
-    editarESalvar();
+    await editarESalvar();
     const botaoCancelar = botao("Cancelar edição do código");
     act(() => botaoCancelar.click());
 

@@ -71,6 +71,16 @@ export const LIMITE_POR_RODADA = 100;
 /** `pago_apos_expirar` e `estornado` entram: ver o cabeçalho. */
 const PAGAMENTO_QUE_ENTROU = ["pago", "pago_apos_expirar", "estornado", "recebido_na_entrega"];
 const DEVOLUCAO_COMBINADA = "devolução combinada com a cliente";
+/**
+ * 27/11/2026 (caça): a cliente pode cancelar pedido em `processing` que JÁ TEM
+ * etiqueta paga no Melhor Envio (`shipping_label_id`). Cancelar o pedido não
+ * cancela a etiqueta: o saldo segue gasto, e o pacote pode já estar no correio
+ * mesmo com o pedido ainda em `processing`. Só entra quando o produto NÃO saiu
+ * pelo que o app sabe (no "já saiu" a etiqueta já foi usada). Mesma frase do
+ * sino do painel (`src/utils/avisos-do-lojista.ts`); mudou aqui, mude lá.
+ */
+export const FRASE_DA_ETIQUETA_PAGA =
+  "Esse pedido já tinha etiqueta de envio: se ainda não postou, cancele a etiqueta no Melhor Envio para recuperar o valor; se já postou, fale com a cliente.";
 
 export type ResumoDosCancelamentos = {
   candidatos: number;
@@ -88,6 +98,8 @@ const SEM_RESUMO: ResumoDosCancelamentos = { candidatos: 0, avisados: 0, ignorad
  *   - recebido na entrega: devolução combinada com a cliente;
  *   - pago depois do cancelamento: não há devolução aberta por este caminho;
  *   - pago e não enviado: o banco abre a devolução e a rotina a faz sozinha.
+ * E, se o produto não saiu mas a etiqueta já tinha sido paga, a frase da
+ * etiqueta (`FRASE_DA_ETIQUETA_PAGA`) vem depois da orientação.
  */
 export function montarAvisoDeCancelamento(
   pedido: {
@@ -99,6 +111,7 @@ export function montarAvisoDeCancelamento(
     cancelled_after_shipping?: unknown;
     pickup_address?: unknown;
     returned_to_seller_at?: string | null;
+    shipping_label_id?: unknown;
   },
   historico: { old_status?: unknown },
 ): Aviso {
@@ -133,9 +146,14 @@ export function montarAvisoDeCancelamento(
   const orientacao = recebidoNaEntrega
     ? (frase ? `${frase}; ${DEVOLUCAO_COMBINADA}` : DEVOLUCAO_COMBINADA)
     : frase;
+  const tinhaEtiquetaPaga = !jaSaiu &&
+    typeof pedido.shipping_label_id === "string" &&
+    pedido.shipping_label_id.trim() !== "";
   return {
     title: "Cliente cancelou o pedido",
-    body: `${numeroDoPedido(pedido.id)} · ${formatarBRL(valor)} · ${cliente} — ${orientacao}`,
+    body: `${numeroDoPedido(pedido.id)} · ${formatarBRL(valor)} · ${cliente} — ${orientacao}${
+      tinhaEtiquetaPaga ? `. ${FRASE_DA_ETIQUETA_PAGA}` : ""
+    }`,
     url: `/admin-orders?id=${encodeURIComponent(pedido.id)}`,
   };
 }
@@ -171,7 +189,7 @@ export async function avisarCancelamentosDoCliente(args: {
   const { data: pedidos, error: erroPedidos } = await supabase
     .from("marketplace_orders")
     .select(
-      "id, user_id, customer_name, total, total_amount, payment_status, status, cancelled_after_shipping, returned_to_seller_at, customer_data->>pickup_address",
+      "id, user_id, customer_name, total, total_amount, payment_status, status, cancelled_after_shipping, returned_to_seller_at, shipping_label_id, customer_data->>pickup_address",
     )
     .in("id", idsDosPedidos);
   if (erroPedidos) throw erroPedidos;
