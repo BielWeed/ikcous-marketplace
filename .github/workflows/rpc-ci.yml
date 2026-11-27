@@ -193,6 +193,9 @@ on:
       - "scripts/publicacao/consultas/87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente.sql"
       - "scripts/publicacao/consultas/88a-conferir-so-o-dono-define-cargo-aplicado.sql"
       - "scripts/publicacao/consultas/88b-antes-so-o-dono-define-cargo-ausente.sql"
+      # a prova viva do definir-dono do nova-loja executa a 88c e o SQL_DEFINIR_DONO do script
+      - "scripts/publicacao/consultas/88c-conferir-o-dono-cadastrado.sql"
+      - "scripts/frota/nova-loja.mjs"
       - "scripts/publicacao/consultas/89a-conferir-o-pedido-pelo-app-exige-conta-aplicado.sql"
       - "scripts/publicacao/consultas/89b-antes-o-pedido-pelo-app-exige-conta-base-vigente.sql"
       - "scripts/publicacao/consultas/90a-conferir-busca-do-painel-por-codigo-aplicado.sql"
@@ -525,6 +528,9 @@ on:
       - "scripts/publicacao/consultas/87b-antes-resultado-mostra-tarifa-juro-e-quebra-como-despesa-base-vigente.sql"
       - "scripts/publicacao/consultas/88a-conferir-so-o-dono-define-cargo-aplicado.sql"
       - "scripts/publicacao/consultas/88b-antes-so-o-dono-define-cargo-ausente.sql"
+      # a prova viva do definir-dono do nova-loja executa a 88c e o SQL_DEFINIR_DONO do script
+      - "scripts/publicacao/consultas/88c-conferir-o-dono-cadastrado.sql"
+      - "scripts/frota/nova-loja.mjs"
       - "scripts/publicacao/consultas/89a-conferir-o-pedido-pelo-app-exige-conta-aplicado.sql"
       - "scripts/publicacao/consultas/89b-antes-o-pedido-pelo-app-exige-conta-base-vigente.sql"
       - "scripts/publicacao/consultas/90a-conferir-busca-do-painel-por-codigo-aplicado.sql"
@@ -1596,6 +1602,20 @@ jobs:
       - name: Prova viva de so o dono da loja definir cargo (migration 20261383000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/definir-cargo-so-o-dono-viva.cjs
+      # Sem migration: a ESCRITA do passo definir-dono do nova-loja (SQL_DEFINIR_DONO de scripts/frota/nova-loja.mjs), o texto
+      # inteiro numa consulta simples como o pg-meta da Management API, de uma sessao NAO-superusuario que so vira postgres pelo
+      # SET LOCAL ROLE de dentro. 0 dono + 1 admin confirmada grava e a 88c da sim; repetir = ja_era_dona; a dona nova usa a
+      # definir_cargo; IKD01..IKD06 sem gravar nada; duas chamadas simultaneas (uma grava, a outra ve a dona); 8 mutantes. CLONE proprio.
+      - name: Prova viva do definir-dono do nova-loja (SQL_DEFINIR_DONO, consulta 88c)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-nova-loja-define-o-dono-viva.cjs
+      # Sem migration: a ESCRITA do trocar-dono do nova-loja (sqlTrocarDono e sqlDaTroca de scripts/frota/nova-loja.mjs), o
+      # texto inteiro numa consulta simples como o pg-meta, de uma sessao NAO-superusuario que so vira postgres pelo SET LOCAL
+      # ROLE. IKT01..IKT05 com as 4 tabelas byte a byte iguais; trocada e ja_era_dona com a 88c verde; duas trocas simultaneas;
+      # definir_cargo antes da troca = IKT02; sonda do achado A1 (registra, nao reprova); conexao depois da recusa; 11 mutantes. CLONE proprio.
+      - name: Prova viva do trocar-dono do nova-loja (sqlTrocarDono, consulta 88c)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-nova-loja-troca-o-dono-viva.cjs
       # Migration 20261440000000 (a loja guarda o cadastro fiscal, e so o dono altera): as tabelas fiscal_cadastro e
       # fiscal_cadastro_log nascem VAZIAS (sem regime padrao) e so fiscal_cadastro_salvar grava, so para o dono da loja
       # (dono_da_loja) que seja admin atual. Sem dono ninguem grava (42501, ate o admin atual); dono grava e o log ganha uma
@@ -1708,6 +1728,14 @@ jobs:
       - name: Prova viva da loja nova que nasce com a ficha (migration 20261540000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nova-nasce-com-a-ficha-viva.cjs
+      # Sem migration: a ESCRITA do passo dominio do nova-loja (sqlDoDominio de scripts/frota/nova-loja.mjs: UPDATE de
+      # store_config.dominio_publico com a guarda AND dominio_publico IS NULL). Banco montado pela fila: a ficha nasce com o
+      # dominio NULL (o defeito); como authenticated (admin real) o texto cai na trava (42501 DOMINIO_PUBLICO_SO_MUDA_PELA_FROTA);
+      # pela sessao sem JWT nem SET ROLE (como o pg-meta) grava 1 linha e a leitura anonima de v_store_config devolve o dominio;
+      # repetir = 0 linha; outro dominio nao e sobrescrito (mutante sem a guarda sobrescreve). CLONE proprio.
+      - name: Prova viva do passo dominio do nova-loja (store_config.dominio_publico)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-nova-loja-grava-o-dominio-viva.cjs
       # Migration 20261530000000 (a loja grande nao trava o balcao nem os avisos): a porta leve buscar_clientes_do_balcao (so o
       # authenticated, guardas is_admin + is_admin_atual, o filtro da get_admin_customers_paged letra por letra, sem ler pedido) e os
       # indices de produtos (data_cadastro DESC, id) e do historico (new_status, created_at DESC). Diferencial contra a porta antiga no

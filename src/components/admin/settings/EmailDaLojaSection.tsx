@@ -264,7 +264,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
       setAviso({
         ok: true,
         texto:
-          "Gmail removido. Se o servidor da loja tiver uma conta de e-mail própria, os e-mails voltam a sair por ela; se não, o cliente não recebe e-mail do pedido até você cadastrar outro Gmail.",
+          "Gmail removido. Se o servidor da loja tiver uma conta de e-mail própria, os e-mails voltam a sair por ela; se não, param o e-mail do pedido, a confirmação de cadastro e a recuperação de senha (inclusive a sua) até você cadastrar outro Gmail.",
       });
     } else {
       setAviso({ ok: false, texto: resultado.mensagem });
@@ -695,10 +695,14 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
               <p className="text-xs font-bold leading-relaxed text-orange-300">
                 Remover o Gmail da loja?
               </p>
+              {/* O Gmail também é o canal do login e da recuperação de senha
+                  (gancho de e-mail): a pergunta diz tudo o que para. */}
               <p className="text-[11px] leading-relaxed text-orange-200/90">
                 A senha guardada é apagada. Se o servidor não tiver outra conta
-                de e-mail, seus clientes deixam de receber e-mail do pedido até
-                você cadastrar outro Gmail.
+                de e-mail, param de sair o e-mail do pedido, a confirmação de
+                cadastro e a recuperação de senha, inclusive a sua. Se for
+                trocar de Gmail, não remova: cadastre o novo, que ele entra no
+                lugar deste sem parar os e-mails.
               </p>
               <div className="flex flex-wrap gap-2">
                 <button

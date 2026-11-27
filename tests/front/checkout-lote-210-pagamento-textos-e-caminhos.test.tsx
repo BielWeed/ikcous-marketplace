@@ -785,6 +785,19 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
       }
     });
 
+    it("entrega: mostra o total que o banco gravou, não o do carrinho (diferença de centavos)", async () => {
+      // 3 × R$ 19,90 na tela; o lojista mudou para R$ 19,91 e o banco gravou
+      // R$ 59,73 (aceita até R$ 0,05). createOrder devolve o total relido.
+      mockCartTotal = 59.7;
+      createOrder.mockResolvedValue({ id: "ped-999", totalAmount: 59.73 });
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await fecharPedidoCom(CheckoutView, "Dinheiro na Entrega");
+
+      expect(createOrder.mock.calls[0][0].totalAmount).toBeCloseTo(59.7, 2);
+      expect(texto()).toContain("Total a pagar na entrega: R$ 59,73");
+      expect(texto()).not.toContain("R$ 59,70");
+    });
+
     it("cartão na entrega usa o rótulo que o app já tem em forma-de-pagamento", async () => {
       const { CheckoutView } = await import("@/views/customer/CheckoutView");
       await fecharPedidoCom(CheckoutView, "Cartão na Entrega");

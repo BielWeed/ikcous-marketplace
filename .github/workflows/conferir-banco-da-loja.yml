@@ -506,9 +506,10 @@ jobs:
       # A loja existe no cadastro (scripts/frota/lojas.json)? Recusa ("loja
       # desconhecida") ANTES de qualquer passo que veja segredo. Nao le segredo.
       - name: Confere a loja no cadastro (lojas.json) antes de qualquer segredo
+        id: loja
         env:
           PROJETO: ${{ inputs.projeto }}
-        run: node scripts/frota/lojas.cjs validar "$PROJETO"
+        run: node scripts/frota/lojas.cjs validar "$PROJETO" --saida-do-passo
 
       # Cada alvo enxerga SÓ o seu segredo: a expressão `&& … || ''` nunca cai
       # no outro (segredo vazio dá '', não o segredo do vizinho).
@@ -608,9 +609,10 @@ jobs:
       # A loja existe no cadastro (scripts/frota/lojas.json)? Recusa ("loja
       # desconhecida") ANTES de qualquer passo que veja segredo. Nao le segredo.
       - name: Confere a loja no cadastro (lojas.json) antes de qualquer segredo
+        id: loja
         env:
           PROJETO: ${{ inputs.projeto }}
-        run: node scripts/frota/lojas.cjs validar "$PROJETO"
+        run: node scripts/frota/lojas.cjs validar "$PROJETO" --saida-do-passo
 
       # Cada alvo enxerga SÓ o seu segredo (mesmas expressões do job `conferir`).
       # O script recusa, antes de qualquer requisição, qualquer faixa que não seja

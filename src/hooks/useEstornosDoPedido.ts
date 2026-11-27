@@ -4,7 +4,9 @@ import { toast } from "sonner";
 import { mensagemDoErro } from "@/lib/devolucao";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
+  PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   aguardarComPrazo,
+  ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import {
@@ -117,6 +119,16 @@ const INTERVALO_DE_RECARGA_MS = 15_000;
  * não conseguiu ler (mesmo prazo da cotação do frete, 15 s). */
 const PRAZO_DA_LEITURA_DO_ESTORNO_MS = 15_000;
 
+/** Quanto a tela espera a edge `estornar-pagamento` (Mercado Pago por trás):
+ * 30 s, o mesmo da devolução (`ReembolsoDaDevolucao`, `useDevolucoesAdmin`).
+ * A RPC que cria a linha espera `PRAZO_DAS_ACOES_DO_PEDIDO_MS` (20 s). Os dois
+ * só encerram a ESPERA DA TELA: o servidor pode ter gravado depois. */
+const PRAZO_DA_EDGE_DO_ESTORNO_MS = 30_000;
+
+/** Quantas releituras seguidas a tela tenta depois de uma ação antes de
+ * desistir (cada uma tem o prazo de leitura). */
+const RELEITURAS_ATE_VALER = 3;
+
 const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
 
 /** Os avisos de `solicitarEstorno` são toasts GLOBAIS: se o lojista trocar de
@@ -124,6 +136,10 @@ const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
  *  aberto sem dizer de quem é. Por isso todos levam o número do pedido. */
 const textoRegistradoCron = (numero: string) =>
   `Devolução do pedido #${numero} registrada; o Mercado Pago é acionado em até 10 minutos.`;
+// A RPC que cria a linha não respondeu no prazo: ela PODE ter criado a linha
+// (que o cron executa sozinho), então a frase não diz que falhou.
+const textoSemResposta = (numero: string) =>
+  `Devolução do pedido #${numero}: sem resposta da rede. Não dá para saber se a devolução foi registrada. A lista de devoluções foi atualizada: confira antes de tentar de novo.`;
 
 /**
  * Junta o texto de `order_refunds` ao veredito do servidor. Linha que o
@@ -196,7 +212,10 @@ export function useEstornosDoPedido(
   // não pinta a tela (mesmo padrão de useDevolucaoCliente).
   const rodadaRef = useRef(0);
 
-  const carregar = useCallback(async () => {
+  // Devolve se ESTA leitura chegou à tela (saldo novo ou o erro de leitura);
+  // `false` = outra leitura passou na frente (ou a tela saiu) e esta foi
+  // descartada.
+  const carregar = useCallback(async (): Promise<boolean> => {
     const rodada = ++rodadaRef.current;
     const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
     const fotoDaLeitura = fotoDoPedidoRef.current;
@@ -224,7 +243,7 @@ export function useEstornosDoPedido(
         () => erroDeConsultaSemResposta(),
       );
 
-      if (!valeAinda()) return;
+      if (!valeAinda()) return false;
 
       // Saldo ilegível é erro de leitura: um número de dinheiro de forma
       // inesperada não vai para a tela.
@@ -233,19 +252,35 @@ export function useEstornosDoPedido(
         : lerReembolsosESaldo(respostaSaldo.data);
       if (respostaLinhas.error || !lido) {
         setErro(true);
-        return;
+        return true;
       }
 
       setDetalhes((respostaLinhas.data ?? []) as unknown as DetalheDaLinha[]);
       setSaldo(lido);
       setFotoDoSaldo(fotoDaLeitura);
       setErro(false);
+      return true;
     } catch {
-      if (valeAinda()) setErro(true);
+      if (!valeAinda()) return false;
+      setErro(true);
+      return true;
     } finally {
       if (valeAinda()) setCarregando(false);
     }
   }, [orderId]);
+
+  // Depois de uma ação de dinheiro, o botão só volta a valer com o estado REAL
+  // na tela. Se outra leitura passa na frente (o relógio de 15 s, a volta da
+  // aba), a desta é descartada e a tela seguiria com o saldo de ANTES do toque:
+  // relê de novo. Nenhuma valeu: fica o erro de leitura, que esconde o botão
+  // de devolver (uma leitura que chegue depois o troca pelo estado real).
+  const relerAteValer = useCallback(async () => {
+    for (let vez = 0; vez < RELEITURAS_ATE_VALER; vez++) {
+      if (!ativoRef.current) return;
+      if (await carregar()) return;
+    }
+    if (ativoRef.current) setErro(true);
+  }, [carregar]);
 
   useEffect(() => {
     ativoRef.current = true;
@@ -299,16 +334,44 @@ export function useEstornosDoPedido(
         // dela) e a segunda chamada (outra aba, outra pessoa da loja, o botão que sobrou depois do sucesso)
         // volta com `ja_repetida` e a MESMA repetição. `solicitar_estorno` não sabe qual linha se repete: cria
         // uma linha nova a cada chamada, e duas abas mandariam dois pedidos de devolução ao Mercado Pago.
-        const { data, error } = repetindo
-          ? await supabase.rpc("solicitar_estorno_repetindo", {
-              p_refund_id: repetindo,
-              p_motivo: motivo,
-            })
-          : await supabase.rpc("solicitar_estorno", {
-              p_order_id: orderId,
-              p_amount: amount,
-              p_motivo: motivo,
-            });
+        const pedidoAoServidor = Promise.resolve(
+          repetindo
+            ? supabase.rpc("solicitar_estorno_repetindo", {
+                p_refund_id: repetindo,
+                p_motivo: motivo,
+              })
+            : supabase.rpc("solicitar_estorno", {
+                p_order_id: orderId,
+                p_amount: amount,
+                p_motivo: motivo,
+              }),
+        );
+        let resposta: Awaited<typeof pedidoAoServidor>;
+        try {
+          resposta = await aguardarComPrazo(
+            pedidoAoServidor,
+            PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+            () => erroDeConsultaSemResposta(),
+          );
+        } catch (erroDaEspera) {
+          if (!ehConsultaSemResposta(erroDaEspera)) throw erroDaEspera;
+          // Estourou: a RPC PODE ter criado a linha (o cron
+          // `reconciliar-pagamentos` a executa em até 10 minutos, com a mesma
+          // chave de idempotência). A tela NÃO aciona o Mercado Pago (nem sabe
+          // o id da linha) e nunca aplica a resposta tardia: avisa que não dá
+          // para saber, relê, e só então o `finally` solta o botão — que volta
+          // valendo o estado real, com a linha do estorno se ela existir.
+          toast.warning(textoSemResposta(numero), { duration: 15_000 });
+          await relerAteValer();
+          // A resposta tardia só relê (registrada DEPOIS da releitura acima,
+          // para nunca descartá-la e soltar o botão sobre o saldo antigo).
+          const reler = () => {
+            if (ativoRef.current) void carregar();
+          };
+          void pedidoAoServidor.then(reler, reler);
+          return;
+        }
+        const { data, error } = resposta;
 
         // A RPC já devolve mensagem leiga e ela passa como veio; só a falha de
         // rede, que o navegador entrega em inglês ("Failed to fetch"), vira frase.
@@ -347,23 +410,30 @@ export function useEstornosDoPedido(
         // A linha já existe como `solicitado`. Se o `invoke` falhar agora,
         // NÃO é falha do pedido — o cron `reconciliar-pagamentos` (≤ 10 min)
         // a executa depois, com a mesma chave de idempotência.
+        // Sem resposta no prazo é o mesmo caso: a linha existe e o cron a
+        // executa (se a edge já a executou, a chave de idempotência segura).
         try {
-          const { error: erroDoInvoke } = await supabase.functions.invoke(
-            "estornar-pagamento",
-            { body: { refund_id: refundId } },
+          const { error: erroDoInvoke } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase.functions.invoke("estornar-pagamento", {
+                body: { refund_id: refundId },
+              }),
+            ),
+            PRAZO_DA_EDGE_DO_ESTORNO_MS,
+            () => erroDeConsultaSemResposta(),
           );
           if (erroDoInvoke) toast.info(textoRegistradoCron(numero));
         } catch {
           toast.info(textoRegistradoCron(numero));
         }
 
-        await carregar();
+        await relerAteValer();
       } finally {
         enviandoRef.current = false;
         setEnviando(false);
       }
     },
-    [orderId, carregar],
+    [orderId, carregar, relerAteValer],
   );
 
   const registrarPorForaAposEspera = useCallback(

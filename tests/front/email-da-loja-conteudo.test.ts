@@ -55,6 +55,14 @@ describe("seloDoEmail — o selo de estado do topo", () => {
     expect(selo.detalhe).toContain("NÃO recebem e-mail do pedido");
   });
 
+  it("nada cadastrado: diz que param também a confirmação de cadastro e a recuperação de senha, inclusive a da dona", () => {
+    // Com o gancho de e-mail ligado, é por este remetente que saem o login e a
+    // recuperação de senha — não só o e-mail do pedido.
+    expect(seloDoEmail(status()).detalhe).toBe(
+      "Seus clientes NÃO recebem e-mail do pedido, de confirmação de cadastro nem de recuperação de senha — e você também não.",
+    );
+  });
+
   it("origem ambiente: 'Configurado no servidor'", () => {
     const selo = seloDoEmail(status({ origem: "ambiente" }));
     expect(selo.tipo).toBe("servidor");
