@@ -162,7 +162,8 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
         // 1.5.232: contraste de texto de informação (só a COR muda, nenhuma classe
         // de layout): "Número do pedido"/"Pedido" zinc-400 → zinc-600 e o aviso
         // "Seus dados estão seguros" zinc-300 → zinc-600 (dark:zinc-300).
-        "9ff8c5b04061724e9250166cc7d79e5c4bce189bfabd8d2fff450695cb01ad6a",
+        // 26/11/2026: campo de CEP da conta sem endereço (rótulo, campo, erro, ajuda): 390 → 394, nada saiu.
+        "650d77448a076a2a197bc11d76fdc6205c7f834e996e2b22f6de7c1de4288bd4",
       ],
       [
         caminhos.favoritos,

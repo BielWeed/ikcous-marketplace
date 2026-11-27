@@ -32,6 +32,11 @@ import {
   type CategoriaFinanceira,
   type ContaFinanceira,
 } from "@/types/financeiro";
+import {
+  escolherNaLista,
+  opcoesDaLista,
+  valorDaLista,
+} from "./helpers/lista-de-escolha";
 
 const HOJE = "2026-09-26";
 
@@ -114,15 +119,20 @@ async function digitar(id: string, valor: string) {
   });
 }
 
+/** Escolhe como a lojista: toca no campo e na opção da lista de escolha. */
 async function escolher(id: string, valor: string) {
-  const el = document.getElementById(id) as HTMLSelectElement;
   await act(async () => {
-    Object.getOwnPropertyDescriptor(
-      HTMLSelectElement.prototype,
-      "value",
-    )?.set?.call(el, valor);
-    el.dispatchEvent(new Event("change", { bubbles: true }));
+    escolherNaLista(id, valor);
   });
+}
+
+/** As opções da lista (abre e fecha a lista dentro do `act`). */
+function opcoes(id: string) {
+  let lidas: ReturnType<typeof opcoesDaLista> = [];
+  act(() => {
+    lidas = opcoesDaLista(id);
+  });
+  return lidas;
 }
 
 async function mudarData(id: string, valor: string) {
@@ -192,12 +202,11 @@ describe("Financeiro — Novo lançamento", () => {
   it("despesa a pagar em 3× manda o corpo do contrato e fecha com a mensagem", async () => {
     rpcFalso.mockResolvedValue({ data: { ids: ["a", "b", "c"] }, error: null });
 
-    // A categoria só lista as da natureza do tipo (despesa).
-    const opcoes = [
-      ...(document.getElementById("fin-lanc-categoria") as HTMLSelectElement)
-        .options,
-    ].map((o) => o.textContent);
-    expect(opcoes).toEqual(["Escolha…", "Aluguel"]);
+    // A categoria só lista as da natureza do tipo (despesa). O "Escolha…" é
+    // o aviso do campo vazio, não uma opção que a lojista possa escolher.
+    expect(opcoes("fin-lanc-categoria")).toEqual([
+      { valor: "cat-aluguel", rotulo: "Aluguel", desabilitada: false },
+    ]);
 
     await digitar("fin-lanc-valor", "123456");
     expect(
@@ -403,7 +412,9 @@ describe("Financeiro — Novo lançamento", () => {
     async function transferir(origem: string, destino: string, data: string) {
       await clicar(botao("Transferência"));
       await escolher("fin-lanc-conta", origem);
-      await escolher("fin-lanc-conta-destino", destino);
+      // "" = "Entra em" sem escolha: o campo começa assim, e "Escolha…" não é
+      // opção da lista.
+      if (destino) await escolher("fin-lanc-conta-destino", destino);
       await mudarData("fin-lanc-realizacao", data);
     }
 
@@ -481,3 +492,258 @@ describe("Financeiro — Novo lançamento", () => {
     });
   });
 });
+
+// A lista de escolha no lugar dos `<select>` (plano da lista premium, Lote A1):
+// muda só a FORMA de escolher. O que vai ao banco tem de ser o mesmo, no
+// celular (folha de baixo) e no computador (lista colada no campo).
+class ObservadorDeTamanhoFalso {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+describe.each([
+  { tela: "celular", computador: false },
+  { tela: "computador", computador: true },
+])(
+  "Financeiro — Novo lançamento com a lista de escolha ($tela)",
+  ({ computador }) => {
+    let raiz: Root;
+    let hospedeiro: HTMLDivElement;
+    let aoSalvar: Mock<(mensagem: string) => void>;
+    let aoMudarSujo: Mock<(sujo: boolean) => void>;
+
+    beforeEach(async () => {
+      rpcFalso.mockReset();
+      vi.stubGlobal("ResizeObserver", ObservadorDeTamanhoFalso);
+      vi.stubGlobal("matchMedia", (consulta: string) => ({
+        matches: computador && consulta.includes("min-width: 1024px"),
+        media: consulta,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }));
+      aoSalvar = vi.fn<(mensagem: string) => void>();
+      aoMudarSujo = vi.fn<(sujo: boolean) => void>();
+      hospedeiro = document.createElement("div");
+      document.body.appendChild(hospedeiro);
+      raiz = createRoot(hospedeiro);
+      await act(async () => {
+        raiz.render(
+          <NovoLancamentoFolha
+            hoje={HOJE}
+            contas={CONTAS}
+            categorias={CATEGORIAS}
+            aoFechar={vi.fn()}
+            aoSalvar={aoSalvar}
+            aoMudarSujo={aoMudarSujo}
+          />,
+        );
+      });
+    });
+
+    afterEach(() => {
+      act(() => {
+        raiz.unmount();
+      });
+      hospedeiro.remove();
+      vi.unstubAllGlobals();
+    });
+
+    const campoDaLista = (id: string) => {
+      const el = document.getElementById(id);
+      if (!el) throw new Error(`campo ${id} não existe`);
+      return el;
+    };
+    const corpoEnviado = () => rpcFalso.mock.calls.at(-1)?.[1]?.p;
+
+    it("os campos de escolha são a lista nova, não o <select>", () => {
+      expect(folha().querySelector("select")).toBeNull();
+      for (const id of [
+        "fin-lanc-categoria",
+        "fin-lanc-conta",
+        "fin-lanc-forma",
+      ]) {
+        expect(campoDaLista(id).getAttribute("aria-haspopup")).toBe("listbox");
+      }
+    });
+
+    it("Categoria: começa no aviso 'Escolha…' e só lista as do tipo", async () => {
+      expect(valorDaLista("fin-lanc-categoria")).toBe("");
+      expect(campoDaLista("fin-lanc-categoria").textContent).toContain(
+        "Escolha…",
+      );
+      expect(opcoes("fin-lanc-categoria").map((o) => o.valor)).toEqual([
+        "cat-aluguel",
+      ]);
+
+      await clicar(botao("Receita"));
+      expect(opcoes("fin-lanc-categoria").map((o) => o.valor)).toEqual([
+        "cat-sucata",
+      ]);
+      await escolher("fin-lanc-categoria", "cat-sucata");
+      expect(valorDaLista("fin-lanc-categoria")).toBe("cat-sucata");
+      expect(campoDaLista("fin-lanc-categoria").textContent).toContain(
+        "Venda de sucata",
+      );
+    });
+
+    it("Categoria sem escolha: o erro aparece no campo e nada vai ao banco", async () => {
+      await clicar(botao("Salvar lançamento"));
+
+      const campo = campoDaLista("fin-lanc-categoria");
+      expect(campo.getAttribute("aria-invalid")).toBe("true");
+      expect(
+        document.getElementById("fin-lanc-categoria-erro")?.textContent,
+      ).toContain("Escolha a categoria");
+      expect(rpcFalso).not.toHaveBeenCalled();
+    });
+
+    // Dinheiro: a transferência NUNCA pode trocar origem e destino.
+    it.each([
+      { origem: CONTA_CAIXA_DA_LOJA, destino: CONTA_BANCARIA },
+      { origem: CONTA_BANCARIA, destino: CONTA_CAIXA_DA_LOJA },
+    ])(
+      "Transferência $origem -> $destino: Sai de e Entra em vão ao banco sem inverter",
+      async ({ origem, destino }) => {
+        rpcFalso.mockResolvedValue({ data: { ids: ["t"] }, error: null });
+        await clicar(botao("Transferência"));
+        await digitar("fin-lanc-valor", "10000");
+        await digitar("fin-lanc-descricao", "Depósito");
+        // Escolhe o destino ANTES da origem: a ordem dos toques não importa.
+        await escolher("fin-lanc-conta-destino", destino);
+        await escolher("fin-lanc-conta", origem);
+
+        expect(valorDaLista("fin-lanc-conta")).toBe(origem);
+        expect(valorDaLista("fin-lanc-conta-destino")).toBe(destino);
+        await clicar(botao("Salvar lançamento"));
+
+        expect(rpcFalso).toHaveBeenCalledTimes(1);
+        expect(corpoEnviado()).toMatchObject({
+          tipo: "transferencia",
+          conta_id: origem,
+          conta_destino_id: destino,
+        });
+      },
+    );
+
+    it("Transferência: cada lista tem o seu aria-controls e abre só a dela", async () => {
+      await clicar(botao("Transferência"));
+      const saiDe = campoDaLista("fin-lanc-conta");
+      const entraEm = campoDaLista("fin-lanc-conta-destino");
+      expect(saiDe.getAttribute("aria-controls")).toBe("fin-lanc-conta-lista");
+      expect(entraEm.getAttribute("aria-controls")).toBe(
+        "fin-lanc-conta-destino-lista",
+      );
+
+      await clicar(entraEm);
+      expect(document.querySelectorAll('[role="listbox"]')).toHaveLength(1);
+      expect(
+        document.getElementById("fin-lanc-conta-destino-lista"),
+      ).not.toBeNull();
+      expect(document.getElementById("fin-lanc-conta-lista")).toBeNull();
+      expect(entraEm.getAttribute("aria-expanded")).toBe("true");
+      expect(saiDe.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("Parcelas: 48 opções com busca, e 3× grava exatamente 3 parcelas", async () => {
+      rpcFalso.mockResolvedValue({
+        data: { ids: ["a", "b", "c"] },
+        error: null,
+      });
+      await digitar("fin-lanc-valor", "30000");
+      await digitar("fin-lanc-descricao", "Fornecedor");
+      await escolher("fin-lanc-categoria", "cat-aluguel");
+      await clicar(botao("A pagar"));
+
+      const parcelas = opcoes("fin-lanc-parcelas");
+      expect(parcelas).toHaveLength(48);
+      expect(parcelas.at(0)).toEqual({
+        valor: "1",
+        rotulo: "À vista (1×)",
+        desabilitada: false,
+      });
+      expect(parcelas.at(2)?.rotulo).toBe("3×");
+      expect(parcelas.at(-1)?.valor).toBe("48");
+      await clicar(campoDaLista("fin-lanc-parcelas"));
+      expect(document.getElementById("fin-lanc-parcelas-busca")).not.toBeNull();
+      await act(async () => {
+        document
+          .getElementById("fin-lanc-parcelas-lista")
+          ?.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+          );
+      });
+      expect(document.getElementById("fin-lanc-parcelas-lista")).toBeNull();
+
+      await escolher("fin-lanc-parcelas", "3");
+      expect(texto()).toMatch(/3× de R\$ 100,00/);
+      await clicar(botao("Salvar lançamento"));
+
+      expect(rpcFalso).toHaveBeenCalledTimes(1);
+      expect(corpoEnviado()).toMatchObject({ status: "previsto", parcelas: 3 });
+      expect(aoSalvar).toHaveBeenCalledWith("3 parcelas lançadas.");
+    });
+
+    it("Parcelas: voltar a 'À vista' tira as parcelas do corpo; 48× é o teto", async () => {
+      rpcFalso.mockResolvedValue({ data: { ids: ["a"] }, error: null });
+      await digitar("fin-lanc-valor", "48000");
+      await digitar("fin-lanc-descricao", "Equipamento");
+      await escolher("fin-lanc-categoria", "cat-aluguel");
+      await clicar(botao("A pagar"));
+      await escolher("fin-lanc-parcelas", "48");
+      expect(valorDaLista("fin-lanc-parcelas")).toBe("48");
+      await escolher("fin-lanc-parcelas", "1");
+      await clicar(botao("Salvar lançamento"));
+
+      expect(rpcFalso).toHaveBeenCalledTimes(1);
+      expect(corpoEnviado()).not.toHaveProperty("parcelas");
+      expect(aoSalvar).toHaveBeenCalledWith("Lançamento salvo.");
+    });
+
+    it("Forma: 'Não informar' é opção de verdade e tira a forma do corpo", async () => {
+      rpcFalso.mockResolvedValue({ data: { ids: ["x"] }, error: null });
+      const formas = opcoes("fin-lanc-forma");
+      expect(formas.at(0)).toEqual({
+        valor: "",
+        rotulo: "Não informar",
+        desabilitada: false,
+      });
+      expect(campoDaLista("fin-lanc-forma").textContent).toContain(
+        "Não informar",
+      );
+
+      await digitar("fin-lanc-valor", "5000");
+      await digitar("fin-lanc-descricao", "Internet");
+      await escolher("fin-lanc-categoria", "cat-aluguel");
+      await escolher("fin-lanc-forma", "pix");
+      expect(valorDaLista("fin-lanc-forma")).toBe("pix");
+      await escolher("fin-lanc-forma", "");
+      expect(valorDaLista("fin-lanc-forma")).toBe("");
+      await clicar(botao("Salvar lançamento"));
+
+      expect(rpcFalso).toHaveBeenCalledTimes(1);
+      expect(corpoEnviado()).not.toHaveProperty("forma_pagamento");
+    });
+
+    it("escolher só a Categoria já deixa a folha suja (A1.5)", async () => {
+      expect(aoMudarSujo).toHaveBeenLastCalledWith(false);
+      await escolher("fin-lanc-categoria", "cat-aluguel");
+      expect(aoMudarSujo).toHaveBeenLastCalledWith(true);
+    });
+
+    it("abrir e fechar a lista, ou escolher o que já estava, não suja a folha", async () => {
+      // Abrir e fechar sem escolher.
+      expect(opcoes("fin-lanc-conta").length).toBeGreaterThan(0);
+      // A conta sugerida já é a bancária; escolhê-la de novo não muda nada.
+      expect(valorDaLista("fin-lanc-conta")).toBe(CONTA_BANCARIA);
+      await escolher("fin-lanc-conta", CONTA_BANCARIA);
+      await escolher("fin-lanc-forma", "");
+      expect(aoMudarSujo).toHaveBeenLastCalledWith(false);
+      expect(aoMudarSujo).not.toHaveBeenCalledWith(true);
+    });
+  },
+);

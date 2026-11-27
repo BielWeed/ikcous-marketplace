@@ -1,11 +1,12 @@
 import {
   CAMPO,
-  FOCO,
   INTERRUPTOR,
   PRIMARIO,
   SECUNDARIO,
 } from "@/components/admin/coupons/apresentacao";
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
+import type { OpcaoDaLista } from "@/components/admin/primitivos/lista-de-escolha/tipos";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,13 +28,27 @@ import {
   type FormularioDoFornecedor,
   type Fornecedor,
   LIMITE_DAS_OBSERVACOES,
+  NOME_DA_UF,
   UFS,
   validarFornecedor,
 } from "@/lib/fornecedores";
 import { Factory } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
-const SELECT = `${CAMPO} border px-3 ${FOCO}`;
+/**
+ * O Estado na lista de escolha do painel: "Não informar" é opção de verdade
+ * (grava vazio) e cada estado leva a sigla no selo; a busca acha pelo nome
+ * ("rio") e pela sigla.
+ */
+const OPCOES_DA_UF: readonly OpcaoDaLista[] = [
+  { valor: "", rotulo: "Não informar" },
+  ...UFS.map((uf) => ({
+    valor: uf,
+    // eslint-disable-next-line security/detect-object-injection -- uf vem so da lista fixa UFS.
+    rotulo: NOME_DA_UF[uf],
+    sigla: uf,
+  })),
+];
 
 function formularioInicial(f: Fornecedor | null): FormularioDoFornecedor {
   return {
@@ -314,41 +329,16 @@ export function FolhaDoFornecedor({
             inputMode: "url",
             dica: "Ex.: www.exemplo.com.br",
           })}
-          <div className="grid grid-cols-[1fr_7rem] gap-3">
-            {campoDeTexto("cidade", "Cidade (opcional)")}
-            <div className="space-y-1.5">
-              <Label
-                htmlFor={id("uf")}
-                className="text-sm font-semibold text-zinc-200"
-              >
-                Estado
-              </Label>
-              <select
-                id={id("uf")}
-                value={form.uf}
-                onChange={(e) => mudar("uf", e.target.value)}
-                aria-invalid={erros.uf ? true : undefined}
-                aria-describedby={erros.uf ? id("uf-erro") : undefined}
-                className={SELECT}
-              >
-                <option value="">—</option>
-                {UFS.map((uf) => (
-                  <option key={uf} value={uf}>
-                    {uf}
-                  </option>
-                ))}
-              </select>
-              {erros.uf && (
-                <p
-                  id={id("uf-erro")}
-                  role="alert"
-                  className="text-sm font-semibold text-red-300"
-                >
-                  {erros.uf}
-                </p>
-              )}
-            </div>
-          </div>
+          {campoDeTexto("cidade", "Cidade (opcional)")}
+          {/* Largura cheia: o campo mostra o selo da sigla e o nome do estado. */}
+          <CampoDeEscolha
+            id={id("uf")}
+            rotulo="Estado"
+            opcoes={OPCOES_DA_UF}
+            valor={form.uf}
+            aoMudar={(uf) => mudar("uf", uf)}
+            erro={erros.uf}
+          />
           <div className="space-y-1.5">
             <Label
               htmlFor={id("observacoes")}

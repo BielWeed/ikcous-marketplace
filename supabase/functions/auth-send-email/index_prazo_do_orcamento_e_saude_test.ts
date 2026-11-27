@@ -41,10 +41,12 @@ function requisicaoAssinada(corpo: unknown = payload()) {
   });
 }
 
-/** Relógio que anda para frente quando o teste manda (`performance.now` do hook). */
-function relogioAdiantavel() {
+/** Relógio que anda para frente quando o teste manda (`performance.now` do hook).
+ * `parado`: o tempo real não corre, só o salto — para medir frações de 1 ms. */
+function relogioAdiantavel({ parado = false } = {}) {
   const original = performance.now;
-  const base = original.bind(performance);
+  const congelado = original.call(performance);
+  const base = parado ? () => congelado : original.bind(performance);
   let salto = 0;
   performance.now = () => base() + salto;
   return {
@@ -107,7 +109,9 @@ function cenario(opcoes: Cenario = {}) {
   return { deps, banco, enviados, clientesCriados: () => clientesCriados };
 }
 
-/** Roda o hook com o relógio de mentira e devolve resposta, logs e as tarefas de saúde adiadas. */
+/** Roda o hook com o relógio de mentira e devolve resposta, logs e as tarefas de saúde adiadas.
+ * `msAteResponder` é o tempo REAL até o hook responder — sem as tarefas de fundo
+ * (`waitUntil`), que no ar correm depois da resposta e não seguram o Auth. */
 async function rodar(
   s: ReturnType<typeof cenario>,
   corpo: unknown,
@@ -115,15 +119,18 @@ async function rodar(
 ) {
   const tarefas: Promise<unknown>[] = [];
   let resposta!: Response;
+  let msAteResponder = 0;
   const logs = await capturandoLogs(async () => {
+    const inicio = Date.now();
     resposta = await handler(requisicaoAssinada(corpo), {
       ...s.deps,
       waitUntil: (tarefa: Promise<unknown>) => tarefas.push(tarefa),
     });
+    msAteResponder = Date.now() - inicio;
   });
   await Promise.all(tarefas);
   relogio.restaurar();
-  return { resposta, logs, tarefas };
+  return { resposta, logs, tarefas, msAteResponder };
 }
 
 Deno.test("prazo acabou logo depois da assinatura: 500 tempo_esgotado e o hook nem cria o client do banco", async () => {
@@ -214,13 +221,80 @@ Deno.test("resolver o remetente nunca gasta mais que o RESTO do orçamento: com 
     return corpo;
   };
   try {
-    const inicio = Date.now();
-    const { resposta } = await rodar(s, payload(), relogio);
-    const gastou = Date.now() - inicio;
+    // Mede a RESPOSTA, não as tarefas de fundo: a saúde adiada tem prazo próprio
+    // (3 s) e, contra este banco que pendura tudo, mediria outra coisa.
+    const { resposta, msAteResponder } = await rodar(s, payload(), relogio);
     assertEquals(resposta.status, 500);
-    assert(gastou < 450, `o banco pendurado segurou o hook por ${gastou} ms`);
+    assert(msAteResponder < 450, `o banco pendurado segurou o hook por ${msAteResponder} ms`);
   } finally {
     Webhook.prototype.verify = verificarOriginal;
+    relogio.restaurar();
+  }
+});
+
+// A fronteira do orçamento (26/11/2026). O SMTP conta o resto em ms INTEIROS
+// (`Math.floor`): 0,6 ms para ele é 0, e ele recusa com ETIMEDOUT sem abrir
+// conexão. O hook tinha outra conta (`ms <= 0`): com 0,6 ms ainda seguia, o SMTP
+// recusava, e o hook dizia `envio_falhou` e marcava no painel uma falha de envio
+// que nunca aconteceu. No CI isso acontece de verdade: o temporizador do banco
+// dispara uma fração de ms antes do prazo. Relógio PARADO: a fração é exata.
+const ORCAMENTO_MS = 3500; // o do hook (`index.ts`)
+
+Deno.test("sobra 0,6 ms quando o banco responde: o hook usa a MESMA conta do SMTP, diz tempo_esgotado e não registra falha de envio", async () => {
+  const relogio = relogioAdiantavel({ parado: true });
+  const s = cenario({
+    aoLerNome: () => {
+      relogio.adiantar(ORCAMENTO_MS - 0.6);
+      return { data: { store_name: "Loja da Praça" }, error: null };
+    },
+  });
+  try {
+    const { resposta, logs, tarefas } = await rodar(s, payload(), relogio);
+    assertEquals(resposta.status, 500);
+    assertStringIncludes(logs, "tempo_esgotado");
+    assertEquals(logs.includes("envio_falhou"), false, logs);
+    assertEquals(s.enviados, []);
+    assertEquals(tarefas.length, 0, "nenhum e-mail foi tentado: não há saúde a registrar");
+    assertEquals(s.banco.estado.escritas, [], "o painel não pode mostrar falha de envio que não aconteceu");
+  } finally {
+    relogio.restaurar();
+  }
+});
+
+Deno.test("sobra 1,4 ms (1 ms inteiro para o SMTP): ainda é orçamento — o e-mail sai e a resposta é 200", async () => {
+  const relogio = relogioAdiantavel({ parado: true });
+  const s = cenario({
+    aoLerNome: () => {
+      relogio.adiantar(ORCAMENTO_MS - 1.4);
+      return { data: { store_name: "Loja da Praça" }, error: null };
+    },
+  });
+  try {
+    const { resposta, logs } = await rodar(s, payload(), relogio);
+    assertEquals(resposta.status, 200, logs);
+    assertEquals(s.enviados.length, 1);
+    assertEquals(logs.includes("tempo_esgotado"), false, logs);
+  } finally {
+    relogio.restaurar();
+  }
+});
+
+Deno.test("erro inesperado com 0,6 ms sobrando: classificado pela MESMA conta (tempo_esgotado), não como envio_falhou", async () => {
+  const relogio = relogioAdiantavel({ parado: true });
+  const s = cenario();
+  const deps = {
+    ...s.deps,
+    criarCliente: () => {
+      relogio.adiantar(ORCAMENTO_MS - 0.6);
+      throw new Error("falha inesperada ao criar o client");
+    },
+  };
+  try {
+    const { resposta, logs } = await rodar({ ...s, deps }, payload(), relogio);
+    assertEquals(resposta.status, 500);
+    assertStringIncludes(logs, "tempo_esgotado");
+    assertEquals(logs.includes("envio_falhou"), false, logs);
+  } finally {
     relogio.restaurar();
   }
 });

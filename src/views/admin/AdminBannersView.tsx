@@ -7,6 +7,7 @@ import { CriarBannerComIa } from "@/components/admin/banners/CriarBannerComIa";
 import { EscolherCriacaoDoBanner } from "@/components/admin/banners/EscolherCriacaoDoBanner";
 import { GaleriaDeBanners } from "@/components/admin/banners/GaleriaDeBanners";
 import { PreviaImagemPropria } from "@/components/admin/banners/PreviaImagemPropria";
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -2740,23 +2741,20 @@ export const AdminBannersView = memo(function AdminBannersView({
                 value={searchQueryList}
                 onChange={(e) => setSearchQueryList(e.target.value)}
               />
-              <Label htmlFor="banner-status-filter" className="mt-3 block">
-                Situação
-              </Label>
-              <select
+              <CampoDeEscolha
                 id="banner-status-filter"
-                className="mt-1 min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white lg:max-w-sm"
-                value={statusFilter}
-                onChange={(e) =>
-                  setStatusFilter(e.target.value as typeof statusFilter)
-                }
-              >
-                <option value="all">Todos</option>
-                <option value="active">No ar</option>
-                <option value="paused">Pausados</option>
-                <option value="scheduled">Agendados</option>
-                <option value="expired">Expirados</option>
-              </select>
+                rotulo="Situação"
+                className="mt-3 lg:max-w-sm"
+                valor={statusFilter}
+                aoMudar={setStatusFilter}
+                opcoes={[
+                  { valor: "all", rotulo: "Todos" },
+                  { valor: "active", rotulo: "No ar" },
+                  { valor: "paused", rotulo: "Pausados" },
+                  { valor: "scheduled", rotulo: "Agendados" },
+                  { valor: "expired", rotulo: "Expirados" },
+                ]}
+              />
               <Button
                 variant="ghost"
                 className="min-h-11 text-white"
@@ -2872,6 +2870,12 @@ export const AdminBannersView = memo(function AdminBannersView({
             )}
           </>
         ) : (
+          // A lista de escolha abre num portal, mas o React leva o `input`
+          // dela até aqui: digitar na busca da lista também conta como
+          // digitação e, durante um envio, marca "mudou durante o envio". É o
+          // lado seguro (no pior caso pede salvar de novo). Hoje nenhuma lista
+          // do editor tem busca (todas têm menos de 10 opções); a escolha em
+          // si chega pelo `formData`, que o envio compara inteiro.
           <div
             onInputCapture={() => {
               revisaoDaDigitacao.current += 1;
@@ -3297,36 +3301,30 @@ export const AdminBannersView = memo(function AdminBannersView({
                     Mais opções
                   </summary>
                   <div className="space-y-5 pt-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="banner-position">Onde aparece</Label>
-                      <select
-                        id="banner-position"
-                        className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
-                        value={formData.position}
-                        onChange={(e) => {
-                          const position = e.target.value as Banner["position"];
-                          setFormData((prev) => ({
-                            ...prev,
-                            position,
-                            order:
-                              editingBanner &&
-                              position === editingBanner.position
-                                ? editingBanner.order || 1
-                                : banners.filter(
-                                    (b) =>
-                                      b.position === position &&
-                                      b.id !== editingBanner?.id,
-                                  ).length + 1,
-                          }));
-                        }}
-                      >
-                        {positions.map((p) => (
-                          <option key={p.value} value={p.value}>
-                            {p.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <CampoDeEscolha
+                      id="banner-position"
+                      rotulo="Onde aparece"
+                      valor={formData.position ?? ""}
+                      opcoes={positions.map((p) => ({
+                        valor: p.value,
+                        rotulo: p.label,
+                      }))}
+                      aoMudar={(valor) => {
+                        const position = valor as Banner["position"];
+                        setFormData((prev) => ({
+                          ...prev,
+                          position,
+                          order:
+                            editingBanner && position === editingBanner.position
+                              ? editingBanner.order || 1
+                              : banners.filter(
+                                  (b) =>
+                                    b.position === position &&
+                                    b.id !== editingBanner?.id,
+                                ).length + 1,
+                        }));
+                      }}
+                    />
                     <Label
                       htmlFor={
                         bannerMode === "simple"
@@ -3651,81 +3649,63 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 }
                               />
                             </div>
-                            <Label htmlFor="banner-old-layout">
-                              Disposição do texto
-                            </Label>
-                            <select
+                            <CampoDeEscolha
                               id="banner-old-layout"
-                              className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
-                              value={formData.templateType || "default"}
-                              onChange={(e) =>
+                              rotulo="Disposição do texto"
+                              valor={formData.templateType || "default"}
+                              aoMudar={(templateType) =>
                                 setFormData((prev) => ({
                                   ...prev,
-                                  templateType: e.target.value,
+                                  templateType,
                                 }))
                               }
-                            >
-                              {[
-                                ["default", "Inferior esquerda"],
-                                ["split_center", "Centralizado"],
-                                ["split_left", "À esquerda"],
-                                ["split_right", "À direita"],
-                                ["neon_glow", "Neon"],
-                                ["glassmorphic", "Vidro"],
-                              ].map(([id, nome]) => (
-                                <option key={id} value={id}>
-                                  {nome}
-                                </option>
-                              ))}
-                            </select>
-                            <Label htmlFor="banner-font">Fonte</Label>
-                            <select
+                              opcoes={[
+                                {
+                                  valor: "default",
+                                  rotulo: "Inferior esquerda",
+                                },
+                                {
+                                  valor: "split_center",
+                                  rotulo: "Centralizado",
+                                },
+                                { valor: "split_left", rotulo: "À esquerda" },
+                                { valor: "split_right", rotulo: "À direita" },
+                                { valor: "neon_glow", rotulo: "Neon" },
+                                { valor: "glassmorphic", rotulo: "Vidro" },
+                              ]}
+                            />
+                            <CampoDeEscolha
                               id="banner-font"
-                              className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
-                              value={formData.fontFamily || "system"}
-                              onChange={(e) =>
+                              rotulo="Fonte"
+                              valor={formData.fontFamily || "system"}
+                              aoMudar={(fontFamily) =>
                                 setFormData((prev) => ({
                                   ...prev,
-                                  fontFamily: e.target.value,
+                                  fontFamily,
                                 }))
                               }
-                            >
-                              {[
-                                ["system", "Sem serifa"],
-                                ["font-serif", "Serifa"],
-                                ["font-mono", "Mono"],
-                                ["font-display", "Display"],
-                              ].map(([id, nome]) => (
-                                <option key={id} value={id}>
-                                  {nome}
-                                </option>
-                              ))}
-                            </select>
+                              opcoes={[
+                                { valor: "system", rotulo: "Sem serifa" },
+                                { valor: "font-serif", rotulo: "Serifa" },
+                                { valor: "font-mono", rotulo: "Mono" },
+                                { valor: "font-display", rotulo: "Display" },
+                              ]}
+                            />
                             <details>
                               <summary className="flex min-h-11 cursor-pointer items-center text-sm text-white">
                                 Cores e filtro da imagem
                               </summary>
                               <div className="space-y-3 pt-3">
-                                <Label htmlFor="banner-color-element">
-                                  O que colorir
-                                </Label>
-                                <select
+                                <CampoDeEscolha
                                   id="banner-color-element"
-                                  className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
-                                  value={targetColorEl}
-                                  onChange={(e) =>
-                                    setActiveColorElement(
-                                      e.target
-                                        .value as typeof activeColorElement,
-                                    )
-                                  }
-                                >
-                                  {colorElements.map((c) => (
-                                    <option key={c.id} value={c.id}>
-                                      {c.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                  rotulo="O que colorir"
+                                  valor={targetColorEl}
+                                  aoMudar={setActiveColorElement}
+                                  opcoes={colorElements.map((c) => ({
+                                    valor: c.id,
+                                    rotulo: c.label,
+                                  }))}
+                                />
                                 <Input
                                   type="color"
                                   aria-label="Cor personalizada"
@@ -3818,16 +3798,22 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 >
                                   Usar cores da imagem
                                 </Button>
-                                <Label htmlFor="banner-theme">
-                                  Combinações prontas
-                                </Label>
-                                <select
+                                {/* Modo ação: escolher aplica as cores e o
+                                    campo volta ao convite; escolher a mesma
+                                    combinação de novo reaplica. */}
+                                <CampoDeEscolha
                                   id="banner-theme"
-                                  defaultValue=""
-                                  className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white"
-                                  onChange={(e) => {
+                                  rotulo="Combinações prontas"
+                                  modo="acao"
+                                  placeholder="Escolha uma combinação"
+                                  opcoes={themePresets.map((p) => ({
+                                    valor: p.name,
+                                    rotulo: p.name,
+                                    subinfo: p.description,
+                                  }))}
+                                  aoEscolher={(nome) => {
                                     const preset = themePresets.find(
-                                      (p) => p.name === e.target.value,
+                                      (p) => p.name === nome,
                                     );
                                     if (preset) {
                                       const {
@@ -3841,16 +3827,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                       }));
                                     }
                                   }}
-                                >
-                                  <option value="" disabled>
-                                    Escolha uma combinação
-                                  </option>
-                                  {themePresets.map((p) => (
-                                    <option key={p.name} value={p.name}>
-                                      {p.name}
-                                    </option>
-                                  ))}
-                                </select>
+                                />
                               </div>
                             </details>
                           </>

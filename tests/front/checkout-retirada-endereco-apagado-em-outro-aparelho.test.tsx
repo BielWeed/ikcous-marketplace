@@ -2,15 +2,17 @@
 //
 // CHECKOUT: RETIRADA NA LOJA COM O ENDEREÇO DA CONTA APAGADO EM OUTRO APARELHO.
 //
-// Quem tem conta e escolhe "Retirar na loja" continua com um endereço da conta
-// escolhido (o checkout exige um, e o pedido guarda o `address_id`: a ficha do
-// painel o mostra como "Endereço do cadastro (atual)"). Se a cliente apaga
-// esse endereço em outro aparelho e toca em "Finalizar" aqui, o id velho ia
-// para a RPC, que recusa com "Endereço inválido ou não pertence ao usuário."
-// -- e a tela, que classifica essa frase como "trocar endereço", mandava quem
-// vai BUSCAR na loja cadastrar um endereço. Agora a retirada relê a lista
-// antes de enviar (como a entrega já faz) e, se o endereço escolhido sumiu,
-// nada sai: a cliente confere os dados e finaliza de novo.
+// Até 26/11/2026 quem tinha conta e escolhia "Retirar na loja" mandava o id do
+// endereço escolhido também na retirada. Apagado em outro aparelho, o id velho
+// ia para a RPC, que recusava com "Endereço inválido ou não pertence ao
+// usuário." -- e a tela mandava quem vai BUSCAR na loja cadastrar endereço (o
+// PR #1960 remendou isso relendo a lista antes de enviar).
+//
+// Desde a decisão de 26/11/2026 (retirada pede só o CEP) o pedido de retirada
+// não leva endereço de casa nenhum: `p_address_id` e `p_address_data` vão
+// vazios, a cotação já saiu do CEP e o banco grava o endereço da LOJA. Apagar
+// o endereço em outro aparelho deixa de importar para a retirada: o pedido sai
+// no primeiro toque, sem releitura e sem a recusa do id velho.
 //
 // O banco é um dublê: o "outro aparelho" mexe nele DIRETAMENTE. O `useOrders`
 // é o de verdade; a RPC dublê recusa o id que não existe mais, com a mesma
@@ -231,11 +233,6 @@ function linha(id: string, cep: string, principal: boolean) {
   };
 }
 
-const AVISO_DA_RETIRADA =
-  "O endereço da sua conta foi alterado em outro aparelho. Confira seus dados e finalize de novo.";
-const AVISO_SEM_ENDERECO_NENHUM =
-  "O endereço da sua conta foi apagado em outro aparelho. Cadastre um endereço para finalizar.";
-
 function chamadasDoPedido() {
   return rpc.chamadas.filter((c) =>
     c.nome.startsWith("create_marketplace_order"),
@@ -347,7 +344,7 @@ describe("CheckoutView -- retirada com o endereço apagado em outro aparelho", (
     vi.restoreAllMocks();
   });
 
-  it("o único endereço sumiu: nada é enviado e o aviso não fala de entrega", async () => {
+  it("o único endereço sumiu: o pedido de retirada sai no primeiro toque, sem endereço de casa", async () => {
     const { toast } = await import("sonner");
     await preparar();
     expect(escolha.id).toBe("addr-a");
@@ -355,59 +352,31 @@ describe("CheckoutView -- retirada com o endereço apagado em outro aparelho", (
 
     await finalizar();
 
-    expect(chamadasDoPedido()).toEqual([]);
-    expect(toast.error).toHaveBeenCalledWith(AVISO_SEM_ENDERECO_NENHUM);
+    expect(chamadasDoPedido()).toHaveLength(1);
+    expect(chamadasDoPedido()[0].args.p_address_id).toBeNull();
+    expect(chamadasDoPedido()[0].args.p_address_data).toBeNull();
+    expect(chamadasDoPedido()[0].args.p_shipping_option_id).toBe(
+      "store-pickup",
+    );
     expect(toast.error).not.toHaveBeenCalledWith(
       "Endereço inválido ou não pertence ao usuário.",
     );
-    // A escolha velha saiu, e a seção aberta mostra a saída: "Novo" endereço.
-    expect(escolha.id).toBeNull();
-    expect(document.getElementById("checkout-novo-endereco")).not.toBeNull();
-
-    // Revisão Opus (26/11/2026): o segundo toque NÃO repete o mesmo aviso
-    // em laço. Sem endereço nenhum na conta, vale a regra do checkout para a
-    // retirada com conta: a instrução de cadastrar, e nada sai.
-    vi.mocked(toast.error).mockClear();
-    await finalizar();
-
-    expect(chamadasDoPedido()).toEqual([]);
-    expect(toast.error).not.toHaveBeenCalledWith(AVISO_SEM_ENDERECO_NENHUM);
-    expect(toast.error).not.toHaveBeenCalledWith(AVISO_DA_RETIRADA);
-    expect(toast.error).toHaveBeenCalledWith(
+    expect(toast.error).not.toHaveBeenCalledWith(
       "Por favor, adicione ou selecione um endereço.",
     );
   });
 
-  it("sobrou outro endereço: o segundo toque sai com ele, nunca com o apagado", async () => {
-    banco.linhas = [
-      linha("addr-a", "38500-000", true),
-      linha("addr-b", "38500-000", false),
-    ];
-    await preparar();
-    expect(escolha.id).toBe("addr-a");
-    banco.linhas = [banco.linhas[1]];
-
-    await finalizar();
-    expect(chamadasDoPedido()).toEqual([]);
-
-    await finalizar();
-    expect(chamadasDoPedido()).toHaveLength(1);
-    expect(chamadasDoPedido()[0].args.p_address_id).toBe("addr-b");
-    expect(chamadasDoPedido()[0].args.p_shipping_option_id).toBe(
-      "store-pickup",
-    );
-  });
-
-  it("controle: o endereço continua na conta e o pedido sai no primeiro toque", async () => {
+  it("controle: o endereço continua na conta e o pedido de retirada sai no primeiro toque, também sem ele", async () => {
     await preparar();
 
     await finalizar();
 
     expect(chamadasDoPedido()).toHaveLength(1);
-    expect(chamadasDoPedido()[0].args.p_address_id).toBe("addr-a");
+    expect(chamadasDoPedido()[0].args.p_address_id).toBeNull();
+    expect(chamadasDoPedido()[0].args.p_address_data).toBeNull();
   });
 
-  it("a releitura falhou: a retirada não trava por isso (o servidor confere o dono)", async () => {
+  it("a releitura dos endereços falharia: a retirada nem depende dela", async () => {
     const { toast } = await import("sonner");
     await preparar();
     banco.falharLeitura = true;
@@ -415,7 +384,7 @@ describe("CheckoutView -- retirada com o endereço apagado em outro aparelho", (
     await finalizar();
 
     expect(chamadasDoPedido()).toHaveLength(1);
-    expect(chamadasDoPedido()[0].args.p_address_id).toBe("addr-a");
+    expect(chamadasDoPedido()[0].args.p_address_id).toBeNull();
     expect(toast.error).not.toHaveBeenCalledWith(
       "Não consegui confirmar o endereço. Tente de novo.",
     );

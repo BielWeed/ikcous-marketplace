@@ -16,6 +16,10 @@ const EXCECOES = new Map([
     "src/components/admin/primitivos/FolhaDoPainel.tsx",
     "Folha modal, não ação de tela",
   ],
+  [
+    "src/components/admin/primitivos/lista-de-escolha/FolhaDaLista.tsx",
+    "Folha modal da lista de escolha (celular), não ação de tela",
+  ],
 ]);
 
 function fontes(pasta: string): string[] {

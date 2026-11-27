@@ -11,6 +11,8 @@ import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
 import { IconePix } from "@/components/admin/primitivos/IconePix";
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
+import type { OpcaoDaLista } from "@/components/admin/primitivos/lista-de-escolha/tipos";
 import { Switch } from "@/components/ui/switch";
 import {
   type ConfigDoCartao,
@@ -309,9 +311,15 @@ export function FormasDePagamentoSection({
   );
 }
 
-const OPCOES_DE_PARCELAS = Array.from(
+// Só o 1x leva a linha de baixo. Nada de "sem juros": os juros das parcelas
+// ficam com o cliente (`CARTAO_PELO_APP.parcelas`).
+const OPCOES_DE_PARCELAS: readonly OpcaoDaLista[] = Array.from(
   { length: PARCELAS_MAX_TETO },
-  (_, i) => i + 1,
+  (_, i) => ({
+    valor: String(i + 1),
+    rotulo: `${i + 1}x`,
+    ...(i === 0 ? { subinfo: "à vista" } : {}),
+  }),
 );
 
 type LeituraDoCartao =
@@ -544,39 +552,24 @@ export function CartaoPeloAppBloco({
           )}
           {config.credito && (
             <div className="space-y-1">
-              <div className="space-y-2 rounded-2xl border border-admin-border-strong bg-admin-raised p-3">
-                <label
-                  htmlFor={idDasParcelas}
-                  className="text-xs text-zinc-300"
-                >
-                  Parcelar em até
-                </label>
-                <select
-                  id={idDasParcelas}
-                  value={config.parcelasMax}
-                  disabled={!podeMexer}
-                  onChange={(e) => {
-                    const parcelasMax = Number(e.target.value);
-                    salvar(
-                      { parcelasMax },
-                      parcelasMax === 1
-                        ? "Crédito só à vista"
-                        : `Crédito em até ${parcelasMax}x`,
-                    );
-                  }}
-                  className="min-h-11 w-full rounded-lg border border-admin-border bg-zinc-900 px-3 py-2 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:opacity-50"
-                >
-                  {OPCOES_DE_PARCELAS.map((n) => (
-                    <option
-                      key={n}
-                      value={n}
-                      className="bg-zinc-900 text-white"
-                    >
-                      {n === 1 ? "1x (à vista)" : `${n}x`}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Sem busca, como a tela 2 aprovada (lista premium, 26/11). */}
+              <CampoDeEscolha
+                id={idDasParcelas}
+                rotulo="Parcelar em até"
+                opcoes={OPCOES_DE_PARCELAS}
+                busca={false}
+                valor={String(config.parcelasMax)}
+                desabilitado={!podeMexer}
+                aoMudar={(valor) => {
+                  const parcelasMax = Number(valor);
+                  salvar(
+                    { parcelasMax },
+                    parcelasMax === 1
+                      ? "Crédito só à vista"
+                      : `Crédito em até ${parcelasMax}x`,
+                  );
+                }}
+              />
               <p className="text-[11px] leading-relaxed text-zinc-500">
                 {CARTAO_PELO_APP.parcelas}
               </p>

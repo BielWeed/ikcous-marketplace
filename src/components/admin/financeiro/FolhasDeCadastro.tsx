@@ -2,6 +2,7 @@ import { Check, Landmark, Lock, Tags } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
 import { Switch } from "@/components/ui/switch";
 import { salvarCategoria, salvarConta } from "@/hooks/useFinanceiro";
 import {
@@ -270,21 +271,17 @@ export function ContaFolha({
             className={CLASSE_CAMPO}
           />
         </Campo>
-        <Campo id="fin-conta-tipo" rotulo="Tipo">
-          <select
-            id="fin-conta-tipo"
-            value={form.tipo}
-            disabled={sistema || enviando}
-            onChange={(e) => atualizar({ tipo: e.target.value as TipoDeConta })}
-            className={CLASSE_CAMPO}
-          >
-            {TIPOS_DE_CONTA.map((tipo) => (
-              <option key={tipo} value={tipo}>
-                {rotuloDoTipoDeConta(tipo)}
-              </option>
-            ))}
-          </select>
-        </Campo>
+        <CampoDeEscolha<TipoDeConta>
+          id="fin-conta-tipo"
+          rotulo="Tipo"
+          valor={form.tipo}
+          desabilitado={sistema || enviando}
+          aoMudar={(tipo) => atualizar({ tipo })}
+          opcoes={TIPOS_DE_CONTA.map((tipo) => ({
+            valor: tipo,
+            rotulo: rotuloDoTipoDeConta(tipo),
+          }))}
+        />
         <div className="grid grid-cols-1 gap-5">
           <Campo
             id="fin-conta-saldo"
