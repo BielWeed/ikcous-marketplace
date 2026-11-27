@@ -58,7 +58,7 @@ class ObserverStub {
   disconnect() {}
 }
 
-const AVISO = "Esta pessoa não tem compra registrada deste produto.";
+const AVISO = "Sem compra paga confirmada deste produto.";
 
 function avaliacao(
   id: string,

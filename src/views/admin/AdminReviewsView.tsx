@@ -1005,7 +1005,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     const pendente = review.status === "pendente";
     // Quem nunca comprou consegue enviar avaliação (entra pendente e sem selo):
     // exigir compra no banco é decisão em aberto. Até lá, junto do Aprovar, a
-    // loja vê que a pessoa não tem compra registrada do produto.
+    // loja vê que não há compra PAGA confirmada (pedido ainda não pago ou de
+    // convidada não liga o selo, então o texto não afirma "nunca comprou").
     const semCompra = pendente && !review.verified;
     const idDoAvisoSemCompra = `avisoSemCompra${review.id}`;
     const aberto = detalhado || expandidas.has(review.id);
@@ -1146,7 +1147,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                 <p id={idDoAvisoSemCompra} className="mb-2 text-sm">
                   <EstadoComPonto
                     tom="atencao"
-                    texto="Esta pessoa não tem compra registrada deste produto."
+                    texto="Sem compra paga confirmada deste produto."
                   />
                 </p>
               )}
