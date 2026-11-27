@@ -5,6 +5,10 @@
 // tamanho, pílula sem borda, quadro sem fundo). Aqui o Tailwind do projeto é
 // COMPILADO com as classes dessas abas e cada uma tem de aparecer como regra.
 // Mesma técnica de `financeiro-classes-geram-css-e-sem-dourado.test.ts`.
+//
+// Lista premium (26/11/2026): o chip da conta virou gatilho da lista de
+// escolha do painel. As classes `lista-de-escolha-*` não são do Tailwind; elas
+// moram em `lista-de-escolha.css` e é LÁ que cada uma tem de existir.
 /* eslint-disable security/detect-non-literal-fs-filename --
    lê arquivos-fonte de caminho fixo do repositório */
 import { readFileSync } from "node:fs";
@@ -47,6 +51,11 @@ const escapar = (classe: string) =>
   classe.replace(/[^a-zA-Z0-9_-]/g, (c) =>
     c === "," ? `${BARRA}2c ` : `${BARRA}${c}`,
   );
+
+/** Classes próprias da lista de escolha (CSS dela, não do Tailwind). */
+const DA_LISTA = /^lista-de-escolha-[a-z-]+$/;
+const CSS_DA_LISTA =
+  "src/components/admin/primitivos/lista-de-escolha/lista-de-escolha.css";
 
 const PARECE_CLASSE = /^[!a-z0-9[\]:/%.,()&>_#*+-]+$/;
 
@@ -145,7 +154,6 @@ describe("Financeiro — Extrato e Pagar e receber: toda classe gera CSS", () =>
       "text-[22px]",
       "text-[18px]",
       "text-[13px]",
-      "focus-within:ring-2",
       "bg-red-400/10",
       "border-red-400/25",
     ]) {
@@ -154,12 +162,32 @@ describe("Financeiro — Extrato e Pagar e receber: toda classe gera CSS", () =>
   });
 
   it("cada classe aparece como regra no Tailwind compilado", async () => {
-    const css = await compilar(usadas);
-    const semRegra = usadas.filter((c) => !css.includes(`.${escapar(c)}`));
+    const doTailwind = usadas.filter((c) => !DA_LISTA.test(c));
+    const css = await compilar(doTailwind);
+    const semRegra = doTailwind.filter((c) => !css.includes(`.${escapar(c)}`));
     expect(
       semRegra,
       "classe sem regra no Tailwind (ela não existe no tema do projeto)",
     ).toEqual([]);
+  });
+
+  it("as classes da lista de escolha usadas aqui existem no CSS dela", () => {
+    const css = ler(CSS_DA_LISTA);
+    const daLista = new Set<string>();
+    for (const arquivo of ARQUIVOS) {
+      for (const m of ler(arquivo).matchAll(/lista-de-escolha-[a-z-]+/g)) {
+        daLista.add(m[0]);
+      }
+    }
+    // Controle: o chip aberto usa a borda e o ouro da lista.
+    expect([...daLista]).toEqual(
+      expect.arrayContaining([
+        "lista-de-escolha-aberta",
+        "lista-de-escolha-ouro",
+      ]),
+    );
+    const semRegra = [...daLista].filter((c) => !css.includes(`.${c} `));
+    expect(semRegra, "classe da lista sem regra no CSS dela").toEqual([]);
   });
 
   it("o controle do teste: uma classe inventada É pega", async () => {

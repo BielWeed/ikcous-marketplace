@@ -25,6 +25,7 @@ vi.mock("@/components/admin/financeiro/FluxoDeCaixaGrafico", () => ({
 
 import { CONTA_BANCARIA, CONTA_MERCADO_PAGO } from "@/types/financeiro";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 const CONTAS = [
   {
@@ -311,15 +312,8 @@ describe("Financeiro — Extrato e Pagar e receber no desenho novo", () => {
     it("zero é cinza e sem sinal: nada saiu → 'R$ 0,00' neutro, não vermelho", async () => {
       extratoAtual = [EXTRATO[0]];
       // Recarrega pela troca de conta (nova consulta).
-      const seletor = document.getElementById(
-        "fin-extrato-conta",
-      ) as HTMLSelectElement;
       await act(async () => {
-        Object.getOwnPropertyDescriptor(
-          HTMLSelectElement.prototype,
-          "value",
-        )?.set?.call(seletor, CONTA_MERCADO_PAGO);
-        seletor.dispatchEvent(new Event("change", { bubbles: true }));
+        escolherNaLista("fin-extrato-conta", CONTA_MERCADO_PAGO);
       });
       await esperar();
       const heroi = secao("Resultado do período");
@@ -383,15 +377,8 @@ describe("Financeiro — Extrato e Pagar e receber no desenho novo", () => {
         linha({ id: "g2", valor: 5, descricao: "Venda pequena" }),
       ];
       // Nova consulta pela troca de conta.
-      const seletor = document.getElementById(
-        "fin-extrato-conta",
-      ) as HTMLSelectElement;
       await act(async () => {
-        Object.getOwnPropertyDescriptor(
-          HTMLSelectElement.prototype,
-          "value",
-        )?.set?.call(seletor, CONTA_BANCARIA);
-        seletor.dispatchEvent(new Event("change", { bubbles: true }));
+        escolherNaLista("fin-extrato-conta", CONTA_BANCARIA);
       });
       await esperar();
       const grande = valor(hospedeiro, "+R$ 1.234.567,89");
@@ -407,36 +394,27 @@ describe("Financeiro — Extrato e Pagar e receber no desenho novo", () => {
       );
     });
 
-    it("conta é um chip 'Todas as contas' com o seletor de verdade dentro (mesmo id, mesma consulta)", async () => {
-      const seletor = document.getElementById(
-        "fin-extrato-conta",
-      ) as HTMLSelectElement;
-      expect(seletor).not.toBeNull();
-      expect(seletor.getAttribute("aria-label")).toBe("Conta");
-      const chip = seletor.closest("label") as HTMLElement;
-      expect(normalizar(chip.textContent)).toContain("Todas as contas");
-      expect(classes(chip)).toEqual(
+    it("conta é um chip 'Todas as contas' que abre a lista 'Mostrar contas' (mesmo id, mesma consulta)", async () => {
+      const chip = () =>
+        document.getElementById("fin-extrato-conta") as HTMLButtonElement;
+      expect(chip()).not.toBeNull();
+      expect(chip().getAttribute("aria-haspopup")).toBe("listbox");
+      expect(chip().getAttribute("aria-label")).toBe("Conta, Todas as contas");
+      expect(normalizar(chip().textContent)).toContain("Todas as contas");
+      expect(classes(chip())).toEqual(
         expect.arrayContaining(["rounded-full", "border-solid", "min-h-11"]),
       );
+      expect(hospedeiro.querySelector("select#fin-extrato-conta")).toBeNull();
       await act(async () => {
-        Object.getOwnPropertyDescriptor(
-          HTMLSelectElement.prototype,
-          "value",
-        )?.set?.call(seletor, CONTA_MERCADO_PAGO);
-        seletor.dispatchEvent(new Event("change", { bubbles: true }));
+        escolherNaLista("fin-extrato-conta", CONTA_MERCADO_PAGO);
       });
       await esperar();
       expect(rpcFalso).toHaveBeenCalledWith(
         "fin_extrato",
         expect.objectContaining({ p_conta_id: CONTA_MERCADO_PAGO }),
       );
-      expect(
-        normalizar(
-          (document.getElementById("fin-extrato-conta") as HTMLElement).closest(
-            "label",
-          )?.textContent,
-        ),
-      ).toContain("Mercado Pago");
+      expect(normalizar(chip().textContent)).toContain("Mercado Pago");
+      expect(chip().getAttribute("aria-label")).toBe("Conta, Mercado Pago");
     });
 
     it("filtros Tudo / Entradas / Saídas / Previstos seguem funcionando e o aviso só aparece com filtro", async () => {
@@ -482,17 +460,10 @@ describe("Financeiro — Extrato e Pagar e receber no desenho novo", () => {
           conta_destino_nome: "Conta bancária",
         }),
       ];
-      const seletor = document.getElementById(
-        "fin-extrato-conta",
-      ) as HTMLSelectElement;
       // Vai e volta de conta para forçar uma consulta nova sem filtro.
       for (const escolha of [CONTA_MERCADO_PAGO, ""]) {
         await act(async () => {
-          Object.getOwnPropertyDescriptor(
-            HTMLSelectElement.prototype,
-            "value",
-          )?.set?.call(seletor, escolha);
-          seletor.dispatchEvent(new Event("change", { bubbles: true }));
+          escolherNaLista("fin-extrato-conta", escolha);
         });
         await esperar();
       }
@@ -524,26 +495,15 @@ describe("Financeiro — Extrato e Pagar e receber no desenho novo", () => {
     });
 
     it("com uma conta escolhida e o período chegando até hoje, o dia mostra o saldo ao fim dele", async () => {
-      const seletor = document.getElementById(
-        "fin-extrato-conta",
-      ) as HTMLSelectElement;
       await act(async () => {
-        Object.getOwnPropertyDescriptor(
-          HTMLSelectElement.prototype,
-          "value",
-        )?.set?.call(seletor, CONTA_MERCADO_PAGO);
-        seletor.dispatchEvent(new Event("change", { bubbles: true }));
+        escolherNaLista("fin-extrato-conta", CONTA_MERCADO_PAGO);
       });
       await esperar();
       const hoje = secao(/23 de outubro/);
       expect(normalizar(hoje.textContent)).toContain("Saldo R$ 150,00");
       // Sem conta escolhida não há saldo por dia.
       await act(async () => {
-        Object.getOwnPropertyDescriptor(
-          HTMLSelectElement.prototype,
-          "value",
-        )?.set?.call(seletor, "");
-        seletor.dispatchEvent(new Event("change", { bubbles: true }));
+        escolherNaLista("fin-extrato-conta", "");
       });
       await esperar();
       expect(normalizar(secao(/23 de outubro/).textContent)).not.toContain(
@@ -569,15 +529,8 @@ describe("Financeiro — Extrato e Pagar e receber no desenho novo", () => {
 
     it("vazio: diz que não há lançamento e oferece 'Novo lançamento'", async () => {
       extratoAtual = [];
-      const seletor = document.getElementById(
-        "fin-extrato-conta",
-      ) as HTMLSelectElement;
       await act(async () => {
-        Object.getOwnPropertyDescriptor(
-          HTMLSelectElement.prototype,
-          "value",
-        )?.set?.call(seletor, CONTA_MERCADO_PAGO);
-        seletor.dispatchEvent(new Event("change", { bubbles: true }));
+        escolherNaLista("fin-extrato-conta", CONTA_MERCADO_PAGO);
       });
       await esperar();
       expect(normalizar(hospedeiro.textContent)).toContain(
@@ -588,15 +541,8 @@ describe("Financeiro — Extrato e Pagar e receber no desenho novo", () => {
 
     it("carregando: esqueleto no lugar do cartão e da lista, sem número inventado", async () => {
       extratoPendente = new Promise(() => {});
-      const seletor = document.getElementById(
-        "fin-extrato-conta",
-      ) as HTMLSelectElement;
       await act(async () => {
-        Object.getOwnPropertyDescriptor(
-          HTMLSelectElement.prototype,
-          "value",
-        )?.set?.call(seletor, CONTA_BANCARIA);
-        seletor.dispatchEvent(new Event("change", { bubbles: true }));
+        escolherNaLista("fin-extrato-conta", CONTA_BANCARIA);
       });
       await esperar();
       expect(hospedeiro.querySelectorAll('[aria-busy="true"]').length).toBe(2);
@@ -606,15 +552,8 @@ describe("Financeiro — Extrato e Pagar e receber no desenho novo", () => {
 
     it("erro: mostra o aviso com 'Tentar de novo' e nenhum total", async () => {
       extratoComErro = true;
-      const seletor = document.getElementById(
-        "fin-extrato-conta",
-      ) as HTMLSelectElement;
       await act(async () => {
-        Object.getOwnPropertyDescriptor(
-          HTMLSelectElement.prototype,
-          "value",
-        )?.set?.call(seletor, CONTA_BANCARIA);
-        seletor.dispatchEvent(new Event("change", { bubbles: true }));
+        escolherNaLista("fin-extrato-conta", CONTA_BANCARIA);
       });
       await esperar();
       expect(hospedeiro.querySelector('[role="alert"]')).not.toBeNull();

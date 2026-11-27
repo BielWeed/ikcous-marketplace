@@ -14,6 +14,8 @@ import {
   Truck,
   Undo2,
 } from "lucide-react";
+import type { LucideIcon, LucideProps } from "lucide-react";
+import { forwardRef } from "react";
 
 import { IconeMercadoPago } from "@/components/icons/IconeMercadoPago";
 
@@ -77,6 +79,34 @@ export function IconeDoTipoDeConta({
       return <IconeMercadoPago className={className} />;
     default:
       return <PiggyBank aria-hidden="true" className={className} />;
+  }
+}
+
+/**
+ * O glifo do Mercado Pago no formato que a lista de escolha do painel aceita
+ * (`OpcaoDaLista.icone` é um `LucideIcon`). O `ref` não tem onde cair: o
+ * glifo é decoração (`aria-hidden`) e ninguém mede o `<svg>`.
+ */
+const IconeMercadoPagoDaLista = forwardRef<SVGSVGElement, LucideProps>(
+  function IconeMercadoPagoDaLista({ className }, _ref) {
+    return <IconeMercadoPago className={className} />;
+  },
+);
+
+/**
+ * O MESMO ícone de `IconeDoTipoDeConta`, como componente solto, para a lista
+ * de escolha do painel (chip "Todas as contas ›" do Extrato).
+ */
+export function iconeDaListaDoTipoDeConta(tipo: string): LucideIcon {
+  switch (tipo) {
+    case "caixa":
+      return Archive;
+    case "banco":
+      return Landmark;
+    case "mercado_pago":
+      return IconeMercadoPagoDaLista;
+    default:
+      return PiggyBank;
   }
 }
 
