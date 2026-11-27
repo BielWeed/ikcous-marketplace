@@ -11,6 +11,8 @@
 // rascunho (criada em outro aparelho) ela nunca viu: fica, não se apaga.
 import {
   avisoDeVariacoesAlteradasEmOutroAparelho,
+  comABaseDoCadastro,
+  ehRascunhoPendenteDoCadastro,
   variacoesExcluidasNoRascunho,
 } from "@/lib/rascunho-do-produto";
 import { describe, expect, it } from "vitest";
@@ -209,5 +211,56 @@ describe("avisoDeVariacoesAlteradasEmOutroAparelho", () => {
     expect(avisoDeVariacoesAlteradasEmOutroAparelho([comb, C, D])).toBe(
       "As variações Cor Azul · Tamanho M, Cor C e Cor D foram alteradas em outro aparelho e voltaram para a lista; revise antes de excluir.",
     );
+  });
+});
+
+// O rascunho que o cadastro leva para a edição quando a grade fica sem resposta
+// não tem base. A base dele é o produto SEM variação: tudo o que o banco tem é
+// algo que ele nunca viu (fica), e nada vira exclusão. Sem isso, a grade que
+// gravou sem resposta sumia ao restaurar e o Salvar a inseria de novo.
+describe("comABaseDoCadastro", () => {
+  const novaP = variacao("temp-p", "P");
+  const P = variacao("vp", "P");
+
+  it("pendente sem base: ganha a base vazia, e a grade do banco vai para `manter`", () => {
+    const rascunho = comABaseDoCadastro({
+      variants: [novaP],
+      variacoesPendentes: true,
+    });
+    expect(rascunho.baseDoRascunho).toEqual({ variants: [] });
+    expect(variacoesExcluidasNoRascunho(rascunho, [P])).toEqual({
+      apagar: [],
+      manter: [P],
+      alteradas: [],
+    });
+  });
+
+  it("pendente COM base (da edição): fica como está", () => {
+    const base = { variants: [A] };
+    const rascunho = {
+      variants: [A, novaP],
+      variacoesPendentes: true,
+      baseDoRascunho: base,
+    };
+    expect(ehRascunhoPendenteDoCadastro(rascunho)).toBe(false);
+    expect(comABaseDoCadastro(rascunho)).toBe(rascunho);
+  });
+
+  it("limite: rascunho antigo SEM a marca de pendente não ganha base (o banco nunca vira base: a D de outro aparelho seria apagada)", () => {
+    const rascunho = { variants: [A, B] };
+    expect(ehRascunhoPendenteDoCadastro(rascunho)).toBe(false);
+    expect(comABaseDoCadastro(rascunho)).toBe(rascunho);
+    expect(variacoesExcluidasNoRascunho(rascunho, [A, B, D])).toEqual({
+      apagar: [],
+      manter: [],
+      alteradas: [],
+    });
+  });
+
+  it("limite: marca que não é `true` (texto, 1) não conta como pendente", () => {
+    expect(ehRascunhoPendenteDoCadastro({ variacoesPendentes: "true" })).toBe(
+      false,
+    );
+    expect(ehRascunhoPendenteDoCadastro({ variacoesPendentes: 1 })).toBe(false);
   });
 });
