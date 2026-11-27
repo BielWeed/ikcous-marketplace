@@ -24,6 +24,8 @@
  *   planejarInstalacao(estado, arquivos)  pura: decide recusar / instalar / nada.
  *   envelopeDoArquivo(arquivo)            pura: o SQL de UMA requisição.
  *   instalar(cliente, plano, {aplicar})   executa; sem `aplicar: true` só lê.
+ *                                         Toda chamada passa pelo ritmo da
+ *                                         Management API (clienteComRitmo).
  *
  * CONTRATO DO CLIENTE (o T2 implementa):
  *   cliente.consultar(sql) → Promise<Array<object>> com as linhas do ÚLTIMO
@@ -517,6 +519,67 @@ function falhaDeEscrita(erro, arquivo, versao, aplicados, dica) {
   };
 }
 
+// ─── O ritmo da Management API ──────────────────────────────────────────────
+
+/**
+ * A Management API aceita 120 pedidos por minuto por projeto e por endpoint;
+ * passou disso, responde 429 até o fim da janela
+ * (https://supabase.com/docs/reference/api/introduction, "Rate limits",
+ * conferido em 26/11/2026). A fila inteira são ~290 pedidos ao MESMO
+ * database/query, e um banco vazio aplica cada um em milissegundos: sem ritmo,
+ * o 121º toma 429. A doc NÃO diz que o 429 é recusado antes de executar, então
+ * um 429 num envelope continua sendo ESTADO DESCONHECIDO (como qualquer
+ * resposta do gateway) e nunca se repete sozinho: o jeito é não chegar ao
+ * limite. Entre o FIM de uma resposta e o envio seguinte passam ao menos
+ * INTERVALO_MINIMO_MS; como cada pedido chega ao servidor antes da própria
+ * resposta, chegam no máximo ~100 em qualquer janela de 60 s, com folga para
+ * as leituras de quem chama.
+ */
+export const INTERVALO_MINIMO_MS = 600;
+
+/**
+ * O `cliente` com ritmo: cada `consultar` espera, se preciso, até
+ * `intervaloMs` depois do fim da chamada anterior (com erro ou sem). Nunca
+ * repete nada. `ritmo` (injetável; o teste usa relógio falso):
+ *   intervaloMs  inteiro >= 0 (0 = sem espera: banco local, sem limite);
+ *                qualquer outro valor vale INTERVALO_MINIMO_MS (torto nunca
+ *                fica mais rápido);
+ *   agora        () => ms (padrão: performance.now, que não anda para trás);
+ *   esperar      (ms) => Promise (padrão: setTimeout).
+ * A espera nunca passa de `intervaloMs`: um relógio que volta para trás não
+ * trava a instalação.
+ */
+export function clienteComRitmo(cliente, ritmo = {}) {
+  const iv = ritmo?.intervaloMs;
+  const intervaloMs =
+    Number.isSafeInteger(iv) && iv >= 0 ? iv : INTERVALO_MINIMO_MS;
+  const agora =
+    typeof ritmo?.agora === "function"
+      ? ritmo.agora
+      : () => globalThis.performance.now();
+  const esperar =
+    typeof ritmo?.esperar === "function"
+      ? ritmo.esperar
+      : (ms) => new Promise((ok) => setTimeout(ok, ms));
+  let fimDaAnterior = null;
+  return {
+    async consultar(sql) {
+      if (fimDaAnterior !== null && intervaloMs > 0) {
+        const falta = Math.min(
+          intervaloMs,
+          fimDaAnterior + intervaloMs - agora(),
+        );
+        if (falta > 0) await esperar(falta);
+      }
+      try {
+        return await cliente.consultar(sql);
+      } finally {
+        fimDaAnterior = agora();
+      }
+    },
+  };
+}
+
 /** Lê a conferência dos privilégios padrão (SÓ leitura). Resposta fora do
  * formato LANÇA: nunca vira "bate". */
 export async function lerPrivilegiosPadrao(cliente) {
@@ -570,14 +633,18 @@ function recusaDaRetomadaSemPrivilegios({ papelDono, faltando }) {
  * instalador, alguém no SQL Editor) e, se mudou, RECUSA sem gravar. Para na
  * primeira falha, nunca repete. Antes da 1ª migration (e antes de marcar
  * concluída) os privilégios padrão de public têm de bater no pg_default_acl;
- * não bateu, FALHOU sem enviar nada (ver o cabeçalho).
+ * não bateu, FALHOU sem enviar nada (ver o cabeçalho). TODA chamada ao
+ * banco passa pelo ritmo (clienteComRitmo, `opcoes.ritmo`; padrão: 600 ms
+ * entre o fim de uma resposta e o envio seguinte, relógio de verdade).
  *
  * @returns {estado: "OK"|"ENSAIO"|"NADA_A_FAZER"|"JA_INSTALADA"|"RECUSADO"|
  *          "FALHOU"|"ESTADO_DESCONHECIDO", mensagem, aplicados?, aplicaria?,
- *          arquivo?, codigo?, fase?}
+ *          arquivo?, codigo?, fase?, releituraFalhou?}  (releituraFalhou: os
+ *          envios voltaram sem erro e a releitura da conferência falhou)
  */
-export async function instalar(cliente, plano, opcoes = {}) {
+export async function instalar(clienteSemRitmo, plano, opcoes = {}) {
   const aplicar = opcoes?.aplicar === true;
+  const cliente = clienteComRitmo(clienteSemRitmo, opcoes?.ritmo);
   if (!plano || plano.acao === "recusar") {
     return {
       estado: "RECUSADO",
@@ -730,6 +797,9 @@ export async function instalar(cliente, plano, opcoes = {}) {
     return {
       estado: "FALHOU",
       fase: "conferência",
+      // a releitura não aconteceu: o que os envios fizeram não foi visto
+      // (o nova-loja.mjs diz INCERTO, não NÃO)
+      releituraFalhou: true,
       aplicados,
       mensagem: `FALHOU ao conferir o ledger depois de aplicar (${String(e?.message ?? e).slice(0, 300)}): os ${aplicados.length} envios voltaram sem erro, mas sem a conferência não digo OK.`,
     };

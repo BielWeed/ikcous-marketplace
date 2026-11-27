@@ -1,0 +1,7 @@
+{
+  "_comentario": "A organizacao CENTRAL do Supabase (modelo de 01/12/2026): a IKCOUS e dona de todos os bancos das lojas assinantes numa org Pro so, e a lojista nunca tem conta tecnica. Lido SO por scripts/frota/org-central.cjs, que valida estrito (campo desconhecido e recusado). Campos: `slug` (o slug que a API do Supabase da a org, 20 letras minusculas; null enquanto a org nao existe, e ai todo passo que cria projeto responde NAO); `nome` (como a org aparece no painel do Supabase); `chaveDoCofre` (a chave sob a qual o cofre local do PC do dono guarda a UMA autorizacao OAuth da org, no lugar de uma por loja; mesmo formato de nome de loja e nunca e o nome de uma loja); `segredoDoGitHub` (o NOME do segredo do repositorio com o token de gestao com escopo nesta org, que as lojas assinantes novas recebem em segredoDoToken no lojas.json; e o unico segredo que o lojas.cjs aceita repetido entre lojas; so o nome, nunca o valor).",
+  "slug": null,
+  "nome": "IKCOUS Lojas",
+  "chaveDoCofre": "org-ikcous-lojas",
+  "segredoDoGitHub": "SUPABASE_ACCESS_TOKEN_LOJAS"
+}

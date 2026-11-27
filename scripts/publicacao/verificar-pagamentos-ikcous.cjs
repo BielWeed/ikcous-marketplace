@@ -6,13 +6,56 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
-// Modo fechado de conferencia: CAF foi observado no bundle publico do site.
-// Nunca recebe ref livre, URL ou SQL de caller.
-const PUBLICADO =
-  require.main === module && process.argv[2] === "--site-publicado-caf";
-const REF = PUBLICADO ? "cafkrminfnokvgjqtkle" : "dekxabvqdsuukijblazl";
-const ENDPOINT = `https://api.supabase.com/v1/projects/${REF}/database/query/read-only`;
+const {
+  carregarLojas,
+  lojaDoProjeto,
+  textoSeguro,
+} = require("../frota/lojas.cjs");
 const ROOT = path.resolve(__dirname, "../..");
+
+// Os destinos sao FECHADOS; nunca recebe ref livre, URL ou SQL de caller:
+//   (sem argumento)          o projeto antigo DEK, fixo (job verificar-ikcous-original)
+//   --loja <nome>            loja ASSINANTE de scripts/frota/lojas.json; o ref vem SO
+//                            do cadastro (27/11/2026: a prova do dinheiro vale para a
+//                            Savy e para toda loja nova, antes de publicar functions)
+//   --site-publicado-caf     nome antigo de `--loja ikcous-publicada`
+// Qualquer outra forma (loja legado, desconhecida, ref cru, argumento a mais) e
+// recusada ANTES de olhar o token e de qualquer fetch.
+const REF_ORIGINAL = "dekxabvqdsuukijblazl";
+const PREFIXO_RECUSA = "Destino recusado: ";
+
+function recusar(motivo) {
+  return new Error(`${PREFIXO_RECUSA}${motivo}`);
+}
+
+function resolverDestino(args, cadastro) {
+  if (!Array.isArray(args) || args.some((a) => typeof a !== "string"))
+    throw recusar("argumentos invalidos.");
+  if (args.length === 0)
+    return Object.freeze({ loja: null, ref: REF_ORIGINAL });
+  let nome;
+  if (args.length === 1 && args[0] === "--site-publicado-caf")
+    nome = "ikcous-publicada";
+  else if (args.length === 2 && args[0] === "--loja") nome = args[1];
+  else
+    throw recusar(
+      "use --loja <nome de loja assinante de scripts/frota/lojas.json> (ou --site-publicado-caf); nenhum ref livre.",
+    );
+  const cad = cadastro ?? carregarLojas();
+  const loja = lojaDoProjeto(nome, cad);
+  if (!loja)
+    throw recusar(
+      `loja desconhecida: ${textoSeguro(nome)} (nao esta em scripts/frota/lojas.json).`,
+    );
+  if (loja.classe !== "assinante")
+    throw recusar(
+      `${loja.projeto} nao e loja assinante (a prova do dinheiro so vale para loja assinante).`,
+    );
+  return Object.freeze({ loja: loja.projeto, ref: loja.ref });
+}
+
+const endpointDe = (ref) =>
+  `https://api.supabase.com/v1/projects/${ref}/database/query/read-only`;
 
 const CONSULTAS = Object.freeze({
   funcoes: `SELECT v.chave, (p.oid IS NOT NULL) AS existe,
@@ -73,8 +116,8 @@ function hashesEsperados() {
   return { liberar: hash(liberar[1]), expirar: hash(expirar[1]) };
 }
 
-async function consultar(query, { token, fetchImpl }) {
-  const resposta = await fetchImpl(ENDPOINT, {
+async function consultar(query, { endpoint, token, fetchImpl }) {
+  const resposta = await fetchImpl(endpoint, {
     method: "POST",
     redirect: "error",
     signal: AbortSignal.timeout(20_000),
@@ -173,17 +216,26 @@ function avaliar(resultados, hashes) {
   return checks;
 }
 
-async function verificar({ token, fetchImpl = fetch } = {}) {
+async function verificar({
+  token,
+  fetchImpl = fetch,
+  args = [],
+  cadastro,
+} = {}) {
+  // O destino primeiro: recusa de loja vem antes do token e de qualquer fetch.
+  const destino = resolverDestino(args, cadastro);
   if (typeof token !== "string" || token.trim() === "")
     throw new Error("Token de Actions ausente.");
   const hashes = hashesEsperados();
-  const funcoes = await consultar(CONSULTAS.funcoes, { token, fetchImpl });
-  const colunas = await consultar(CONSULTAS.colunas, { token, fetchImpl });
-  const config = await consultar(CONSULTAS.config, { token, fetchImpl });
+  const opcoes = { endpoint: endpointDe(destino.ref), token, fetchImpl };
+  const funcoes = await consultar(CONSULTAS.funcoes, opcoes);
+  const colunas = await consultar(CONSULTAS.colunas, opcoes);
+  const config = await consultar(CONSULTAS.config, opcoes);
   const resultados = { funcoes, colunas, config };
   const checks = avaliar(resultados, hashes);
   return {
-    projeto: REF,
+    projeto: destino.ref,
+    loja: destino.loja,
     somenteLeitura: true,
     diagnostico: {
       funcoes: funcoes.map((r) => ({
@@ -216,32 +268,56 @@ async function verificar({ token, fetchImpl = fetch } = {}) {
   };
 }
 
-if (require.main === module) {
-  verificar({ token: process.env.SUPABASE_ACCESS_TOKEN })
-    .then((relatorio) => {
-      console.log(JSON.stringify(relatorio, null, 2));
-      process.exitCode = relatorio.ok ? 0 : 1;
-    })
-    .catch((erro) => {
-      // Nunca imprime resposta, token, headers nem stack de rede.
-      const conhecida =
-        /^Supabase respondeu HTTP \d{3}; corpo omitido\.$/.test(erro.message) ||
-        erro.message === "Token de Actions ausente." ||
-        erro.message === "Corpo esperado nao encontrado nas migrations fixas.";
-      console.error(
-        conhecida
-          ? erro.message
-          : "Verificacao falhou; detalhes omitidos para preservar credenciais.",
-      );
-      process.exitCode = 1;
+async function principal(
+  args,
+  {
+    env = process.env,
+    fetchImpl = fetch,
+    cadastro,
+    log = console.log,
+    erro: logErro = console.error,
+  } = {},
+) {
+  try {
+    const relatorio = await verificar({
+      token: env.SUPABASE_ACCESS_TOKEN,
+      fetchImpl,
+      args,
+      cadastro,
     });
+    log(JSON.stringify(relatorio, null, 2));
+    return relatorio.ok ? 0 : 1;
+  } catch (erro) {
+    // Nunca imprime resposta, token, headers nem stack de rede. A recusa de
+    // destino so carrega texto do cadastro ou saneado por textoSeguro.
+    const msg = typeof erro?.message === "string" ? erro.message : "";
+    const conhecida =
+      /^Supabase respondeu HTTP \d{3}; corpo omitido\.$/.test(msg) ||
+      msg === "Token de Actions ausente." ||
+      msg === "Corpo esperado nao encontrado nas migrations fixas." ||
+      (msg.startsWith(PREFIXO_RECUSA) && !/[\r\n]/.test(msg));
+    logErro(
+      conhecida
+        ? msg
+        : "Verificacao falhou; detalhes omitidos para preservar credenciais.",
+    );
+    return 1;
+  }
+}
+
+if (require.main === module) {
+  principal(process.argv.slice(2)).then((codigo) => {
+    process.exitCode = codigo;
+  });
 }
 
 module.exports = {
-  REF,
-  ENDPOINT,
+  REF_ORIGINAL,
   CONSULTAS,
+  resolverDestino,
+  endpointDe,
   hashesEsperados,
   avaliar,
   verificar,
+  principal,
 };
