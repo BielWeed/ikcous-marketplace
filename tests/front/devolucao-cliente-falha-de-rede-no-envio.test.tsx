@@ -232,6 +232,40 @@ describe("devolução: a rede cai no meio do envio", () => {
     if (!desfecho.ok) expect(desfecho.erro).toContain(INCERTO);
   });
 
+  // O caso acima reprova pelas DUAS guardas ao mesmo tempo (já existia E está
+  // encerrada). Os dois abaixo isolam cada uma: tirar só uma delas de
+  // `conferirEnvioIncerto` deixa o caso correspondente vermelho.
+  it("uma devolução que JÁ existia e segue em andamento não é confundida com a nova", async () => {
+    banco = [{ ...NOVA, id: "d-aberta", protocolo: "DV261120-ABERTA" }];
+    gravacao = "cai-sem-gravar";
+    await montar();
+
+    const desfecho = await enviar();
+
+    expect(desfecho.ok).toBe(false);
+    if (!desfecho.ok) expect(desfecho.erro).toContain(INCERTO);
+  });
+
+  it("uma devolução que não existia antes mas já está encerrada não é a nova", async () => {
+    gravacao = "cai-sem-gravar";
+    await montar();
+    // Apareceu depois que a tela abriu, mas já encerrada: não é este pedido
+    // (o que acabou de ser enviado nasce "solicitada").
+    banco = [
+      {
+        ...NOVA,
+        id: "d-fechada",
+        protocolo: "DV261126-FECHADA",
+        status: "cancelada",
+      },
+    ];
+
+    const desfecho = await enviar();
+
+    expect(desfecho.ok).toBe(false);
+    if (!desfecho.ok) expect(desfecho.erro).toContain(INCERTO);
+  });
+
   it("recusa de verdade do servidor continua aparecendo como veio", async () => {
     gravacao = "recusa";
     await montar();
