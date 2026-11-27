@@ -1124,7 +1124,51 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       "Esse caixa já tinha sido fechado (R$ 470,00 contados).",
     );
     expect(texto).toContain("Não deu para conferir o caixa de agora.");
+    expect(texto).toContain("Caixa já estava fechado");
+    expect(texto).not.toContain("Não deu para confirmar se foi agora ou antes");
     expect(toast.success).not.toHaveBeenCalledWith("Caixa fechado.");
+  });
+
+  // A 1ª resposta desta folha se perdeu, a 2ª volta com replay e a conferência
+  // também cai: pode ter sido ela mesma, segundos antes, ou outro aparelho. A
+  // folha não afirma nenhum dos dois lados.
+  it("1ª resposta perdida + replay + conferência falhou: não afirma que já estava fechado", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Fechar caixa"));
+    await digitar("fin-caixa-contado", "47000");
+    servidor.falhasFechamento.push(new TypeError("Failed to fetch"));
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+    // O banco fechou na primeira; a resposta é que se perdeu.
+    servidor.caixa = null;
+    servidor.historico = [HISTORICO_DE_ONTEM];
+    servidor.replay = true;
+    servidor.falhasLeituraCaixa.push(new TypeError("Failed to fetch"));
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.info).mockClear();
+
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+
+    const texto = normalizar(folha()?.textContent);
+    expect(texto).not.toContain("Fechamento registrado.");
+    expect(texto).not.toContain("Caixa já estava fechado");
+    expect(texto).not.toContain("Nada foi fechado agora.");
+    expect(texto).not.toContain("já tinha sido fechado");
+    expect(texto).not.toContain("A tela estava desatualizada");
+    expect(texto).toContain(
+      "O caixa está fechado (R$ 470,00 contados). Não deu para confirmar se foi agora ou antes. Confira o histórico.",
+    );
+    expect(toast.success).not.toHaveBeenCalledWith("Caixa fechado.");
+    expect(toast.info).not.toHaveBeenCalledWith(
+      "Esse caixa já estava fechado. A tela foi atualizada.",
+    );
+    expect(toast.info).toHaveBeenCalledWith(
+      "O caixa está fechado. Não deu para confirmar se foi agora ou antes; confira o histórico.",
+    );
+    expect(
+      rpcFalso.mock.calls.filter(
+        ([nome]) => nome === "fin_caixa_fechar_sessao",
+      ),
+    ).toHaveLength(2);
   });
 
   // Repetição legítima: a rede caiu no fechamento de AGORA (o banco gravou, a

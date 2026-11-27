@@ -585,7 +585,29 @@ interface ResultadoDoFechamento {
     readonly fechadoEm: string | null;
     /** `undefined` = não deu para conferir o caixa de agora. */
     readonly caixaAbertoAgora: string | null | undefined;
+    /**
+     * Esta folha já tinha pedido antes (a 1ª resposta pode ter se perdido).
+     * Sem conferir o caixa de agora, aí não dá para dizer se foi ela mesma.
+     */
+    readonly estaFolhaJaPediu: boolean;
   } | null;
+}
+
+/**
+ * Como o fechamento terminou, para o aviso da tela: `agora`, `antes` (o caixa
+ * já estava fechado) ou `sem-confirmar` (está fechado, mas não deu para saber
+ * se foi este pedido ou um de antes).
+ */
+type ComoFechou = "agora" | "antes" | "sem-confirmar";
+
+function semConfirmarQuando(
+  jaEstavaFechado: ResultadoDoFechamento["jaEstavaFechado"],
+): boolean {
+  return (
+    jaEstavaFechado !== null &&
+    jaEstavaFechado.caixaAbertoAgora === undefined &&
+    jaEstavaFechado.estaFolhaJaPediu
+  );
 }
 
 /**
@@ -612,9 +634,10 @@ export function FecharCaixaFolha({
   readonly aoFechar: () => void;
   /**
    * Chamado assim que o servidor responde (a tela atualiza por baixo).
-   * `deAgora` falso: o caixa já estava fechado antes, nada fechou agora.
+   * `antes`: o caixa já estava fechado, nada fechou agora. `sem-confirmar`:
+   * está fechado, mas não deu para saber se foi agora ou antes.
    */
-  readonly aoFechado: (deAgora: boolean) => void;
+  readonly aoFechado: (como: ComoFechou) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const [valor, setValor] = useState("");
@@ -679,14 +702,55 @@ export function FecharCaixaFolha({
         estaFolhaJaPediu,
         caixaAbertoAgora,
       });
-      setResultado({
-        fechamento,
-        jaEstavaFechado: deAgora
-          ? null
-          : { fechadoEm: conferido?.fechadoEm ?? null, caixaAbertoAgora },
-      });
-      aoFechado(deAgora);
+      const jaEstavaFechado = deAgora
+        ? null
+        : {
+            fechadoEm: conferido?.fechadoEm ?? null,
+            caixaAbertoAgora,
+            estaFolhaJaPediu,
+          };
+      setResultado({ fechamento, jaEstavaFechado });
+      aoFechado(
+        deAgora
+          ? "agora"
+          : semConfirmarQuando(jaEstavaFechado)
+            ? "sem-confirmar"
+            : "antes",
+      );
     });
+  }
+
+  // Conferência falhou e esta folha já tinha pedido: pode ter sido ela mesma,
+  // segundos antes (resposta perdida), ou outro aparelho. Não afirma nenhum.
+  if (resultado && semConfirmarQuando(resultado.jaEstavaFechado)) {
+    const { fechamento } = resultado;
+    return (
+      <FolhaFinanceira
+        titulo="Caixa fechado"
+        icone={AlertTriangle}
+        matiz="#FF9F5A"
+        aoFechar={aoFechar}
+        rodape={
+          <button
+            type="button"
+            onClick={aoFechar}
+            className={CLASSE_BOTAO_PRIMARIO}
+          >
+            Concluir
+          </button>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm leading-relaxed text-zinc-300">
+            {"O caixa está fechado ("}
+            <Dinheiro valor={fechamento.contado} />
+            {
+              " contados). Não deu para confirmar se foi agora ou antes. Confira o histórico."
+            }
+          </p>
+        </div>
+      </FolhaFinanceira>
+    );
   }
 
   if (resultado?.jaEstavaFechado) {
