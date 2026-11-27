@@ -4,8 +4,7 @@
 // caça por mutação:
 //  - `tentativasEmAberto`: o prazo de 10 minutos valia "até 10 min incluso" e
 //    ninguém testava o minuto exato; guardar de novo a mesma tentativa deve
-//    RENOVAR o prazo e trocar a chave (o teste antigo só guardava uma vez);
-//    `esquecerTodasAsChavesEmAberto` não tinha teste algum.
+//    RENOVAR o prazo e trocar a chave (o teste antigo só guardava uma vez).
 //  - `tentativasDoCaixa`: o valor guardado só é reaproveitado se for UUID v4
 //    de verdade (versão 4, variante 8/9/a/b); a validação aceitava qualquer
 //    UUID e nenhum teste usava um que não fosse v4.
@@ -15,13 +14,11 @@ import { chaveDaTentativaDoCaixa } from "@/components/admin/financeiro/tentativa
 import {
   chaveEmAbertoDoConteudo,
   esquecerChaveEmAberto,
-  esquecerTodasAsChavesEmAberto,
   guardarChaveEmAberto,
 } from "@/components/admin/financeiro/tentativasEmAberto";
 
 const DEZ_MINUTOS = 10 * 60_000;
 const AGORA = 1_800_000_000_000;
-const ARMAZEM = "fin-lancamento-tentativas-em-aberto";
 const A = JSON.stringify({ descricao: "Aluguel", valor: 120 });
 const B = JSON.stringify({ descricao: "Internet", valor: 99 });
 const DONO = "8a1f0c2e-2222-4222-8222-000000000002";
@@ -82,21 +79,6 @@ describe("tentativas em aberto do lançamento: prazo e renovação", () => {
     guardarChaveEmAberto(DONO, B, "chave-b");
     expect(() => esquecerChaveEmAberto(DONO, A)).not.toThrow();
     expect(chaveEmAbertoDoConteudo(DONO, B)).toBe("chave-b");
-  });
-
-  it("esquecer todas limpa todos os conteúdos de uma vez, e guardar de novo depois funciona", () => {
-    guardarChaveEmAberto(DONO, A, "chave-a");
-    guardarChaveEmAberto(DONO, B, "chave-b");
-    esquecerTodasAsChavesEmAberto();
-    expect(chaveEmAbertoDoConteudo(DONO, A)).toBeNull();
-    expect(chaveEmAbertoDoConteudo(DONO, B)).toBeNull();
-    expect(JSON.parse(sessionStorage.getItem(ARMAZEM) ?? "null")).toEqual({});
-    guardarChaveEmAberto(DONO, A, "chave-nova");
-    expect(chaveEmAbertoDoConteudo(DONO, A)).toBe("chave-nova");
-  });
-
-  it("esquecer todas sem nada guardado não quebra", () => {
-    expect(() => esquecerTodasAsChavesEmAberto()).not.toThrow();
   });
 });
 

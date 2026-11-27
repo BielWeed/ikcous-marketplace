@@ -3,7 +3,6 @@
 // Financeiro — "Novo lançamento": a chave de idempotência da tentativa (20261246).
 
 import { NovoLancamentoFolha } from "@/components/admin/financeiro/NovoLancamentoFolha";
-import { esquecerTodasAsChavesEmAberto } from "@/components/admin/financeiro/tentativasEmAberto";
 import {
   CONTA_BANCARIA,
   CONTA_CAIXA_DA_LOJA,
@@ -132,7 +131,7 @@ describe("lançamento: a tentativa sobrevive ao prazo, só muda com o conteúdo"
     });
   }
   beforeEach(async () => {
-    esquecerTodasAsChavesEmAberto();
+    sessionStorage.removeItem("fin-lancamento-tentativas-em-aberto");
     vi.useFakeTimers();
     rpcFalso.mockReset().mockImplementation(() => new Promise(() => {}));
     host = document.createElement("div");
@@ -303,6 +302,35 @@ describe("lançamento: a tentativa sobrevive ao prazo, só muda com o conteúdo"
     await abrir(FUNCIONARIA);
     await enviar();
     expect(payload(2).chave_idempotencia).toBe(daFuncionaria);
+  });
+
+  it("a conta da aba muda com a folha aberta: o envio seguinte não leva a chave de quem saiu", async () => {
+    await enviar();
+    await vencerPrazo(); // "pode ter sido salvo": a chave da dona fica em aberto
+    const daDona = payload(0).chave_idempotencia;
+    // Outra aba entrou com a conta da funcionária; a folha é a MESMA (sem
+    // remontar), com o conteúdo igual.
+    await abrir(FUNCIONARIA);
+    await enviar();
+    expect(payload(1)).toEqual({
+      ...payload(0),
+      chave_idempotencia: payload(1).chave_idempotencia,
+    });
+    expect(payload(1).chave_idempotencia).toMatch(UUID);
+    expect(payload(1).chave_idempotencia).not.toBe(daDona);
+    // A dona volta na mesma folha: a chave dela continua dela.
+    await vencerPrazo();
+    await abrir(DONA);
+    await enviar();
+    expect(payload(2).chave_idempotencia).toBe(daDona);
+    // Sem conta conhecida, nem a chave em memória da dona vai junto.
+    await vencerPrazo();
+    await abrir(null);
+    await enviar();
+    expect(payload(3).chave_idempotencia).not.toBe(daDona);
+    expect(payload(3).chave_idempotencia).not.toBe(
+      payload(1).chave_idempotencia,
+    );
   });
 
   it("sem usuário conhecido, reabrir não reaproveita chave de ninguém", async () => {
