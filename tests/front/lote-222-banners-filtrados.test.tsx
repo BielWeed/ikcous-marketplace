@@ -5,6 +5,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 const addBanner = vi.fn();
 const updateBanner = vi.fn();
@@ -248,12 +249,8 @@ describe("lote 222 — banners filtrados", () => {
 
   it("o filtro de situação também trava reordenação e limpar devolve a seta", async () => {
     await montar();
-    const filtro = hospedeiro.querySelector<HTMLSelectElement>(
-      "#banner-status-filter",
-    )!;
     await act(async () => {
-      filtro.value = "active";
-      filtro.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherNaLista("banner-status-filter", "active");
     });
     const seta = hospedeiro.querySelector<HTMLButtonElement>(
       '[aria-label="Subir banner Alfa dois"]',
@@ -264,8 +261,7 @@ describe("lote 222 — banners filtrados", () => {
     });
     expect(reorderBanners).not.toHaveBeenCalled();
     await act(async () => {
-      filtro.value = "all";
-      filtro.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherNaLista("banner-status-filter", "all");
     });
     expect(seta.getAttribute("aria-disabled")).toBe("false");
   });
