@@ -210,6 +210,58 @@ describe.each(CASOS)(
   },
 );
 
+// Toque de tela larga (tablet deitado, iPad Pro, notebook de toque): a lista
+// abre como popover MODAL por cima da folha. O Radix desliga os toques na
+// folha de baixo (pointer-events:none no content), mas o véu dela segue
+// tocável — tocar fora da lista (até num outro campo) cai no véu da folha. O
+// guardião lia isso como "toque fora da folha", engolia o click e fechava a
+// folha inteira; a lista, que fecha nesse mesmo click, ficava aberta.
+describe.each(["touch", "mouse"] as const)(
+  "tocar fora do popover da lista, no computador — %s",
+  (ponteiro) => {
+    beforeEach(() => telaDe(true));
+
+    it("fecha só a lista; a folha-mãe fica, sem pedir para descartar", async () => {
+      const aoFechar = vi.fn();
+      const aoMudar = vi.fn();
+      act(() => {
+        raiz.render(
+          <FolhaFinanceira titulo="Novo lançamento" aoFechar={aoFechar}>
+            <Conta aoMudar={aoMudar} />
+          </FolhaFinanceira>,
+        );
+      });
+      await esperar();
+      await tocar(
+        document.getElementById("fin-conta") as HTMLElement,
+        ponteiro,
+      );
+      await esperar();
+      expect(
+        document.querySelector('[data-lista-de-escolha="popover"]'),
+      ).not.toBeNull();
+      // A premissa, medida (não forjada): com o popover modal por cima, o
+      // Radix desliga os toques no content da folha de baixo.
+      expect(
+        document.querySelector<HTMLElement>('[data-slot="sheet-content"]')
+          ?.style.pointerEvents,
+      ).toBe("none");
+
+      const veuDaFolha = document.querySelector(
+        '[data-slot="sheet-overlay"]',
+      ) as HTMLElement;
+      await tocar(veuDaFolha, ponteiro);
+      await esperar();
+
+      expect(lista()).toBeNull();
+      expect(aoFechar).not.toHaveBeenCalled();
+      expect(aoMudar).not.toHaveBeenCalled();
+      expect(folhaMae()).not.toBeNull();
+      expect(document.body.textContent).not.toContain("Descartar");
+    });
+  },
+);
+
 // A tela inteira, com o Voltar ligado como o App liga (`onSetBackOverride` e o
 // ouvinte de `popstate` que entrega primeiro às folhas): é o caminho do dono.
 function AppFalso() {

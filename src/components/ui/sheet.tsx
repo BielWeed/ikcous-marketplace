@@ -185,6 +185,12 @@ function SheetContent({
     let guardiao: ((evento: MouseEvent) => void) | null = null;
     let timer: number | undefined;
     let gestoDeToque = false;
+    // O gesto começou com uma camada MODAL por cima desta folha (o popover
+    // da lista de escolha no tablet deitado, um diálogo aberto de dentro)?
+    // Então o toque fora é dela, não desta folha: o Radix já recusa fechar
+    // esta (está abaixo), e a camada de cima fecha no click. Engolir esse
+    // click fechava a folha inteira e deixava a lista aberta.
+    let gestoSobOutraCamada = false;
 
     const destruirGuardiao = () => {
       if (guardiao) document.removeEventListener("click", guardiao, true);
@@ -253,9 +259,17 @@ function SheetContent({
       // Captura no document roda ANTES do React: zera aqui, e o
       // `onPointerDownCapture` do content liga de novo se o gesto passar
       // pela árvore dele.
-      if (evento.type === "pointerdown") gestoPelaArvoreRef.current = false;
+      if (evento.type === "pointerdown") {
+        gestoPelaArvoreRef.current = false;
+        // O sinal é o que o DismissableLayer do Radix grava no content de
+        // toda camada abaixo da modal mais alta. Lido no pointerdown e
+        // valendo para o gesto todo: no mouse a camada de cima já fechou no
+        // pointerup, e armar ali engoliria o click à toa.
+        gestoSobOutraCamada = el.style.pointerEvents === "none";
+      }
       gestoDeToque =
         (evento as PointerEvent).pointerType === "touch" ? true : gestoDeToque;
+      if (gestoSobOutraCamada) return;
       if (evento.target instanceof Node && !el.contains(evento.target)) {
         instalarGuardiao();
       }
