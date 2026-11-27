@@ -225,6 +225,12 @@ export interface SessaoDeCaixa {
   readonly status: string;
 }
 
+/**
+ * O caixa visto de fora do Financeiro (balcão): `nunca_aberto` é a loja que
+ * nunca usou o caixa — diferente de `fechado`, que já teve sessão.
+ */
+export type SituacaoDoCaixa = "aberto" | "fechado" | "nunca_aberto";
+
 export interface ResultadoDoMovimentoDeCaixa {
   readonly id: string;
   readonly replay: boolean;

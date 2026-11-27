@@ -69,6 +69,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
+import { consultarSituacaoDoCaixa } from "@/lib/situacao-do-caixa";
 import { supabase } from "@/lib/supabase";
 import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
 import { linkWhatsappDoClienteDoBalcao } from "@/lib/whatsapp-do-cliente";
@@ -1015,6 +1016,10 @@ export function AdminPdvView({
           despachar={despachar}
           aoRegistrarVenda={aoRegistrarVenda}
           limparCupom={limparCupom}
+          // Aviso de caixa fechado no Dinheiro (sócio, 27/11/2026): a mesma
+          // leitura da aba Caixa; o botão leva para lá, onde se abre o caixa.
+          consultarCaixa={consultarSituacaoDoCaixa}
+          aoAbrirCaixa={() => onNavigate("admin-financeiro", "caixa")}
         />
       )}
 
