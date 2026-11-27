@@ -10,6 +10,7 @@ import {
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { aoAnularVenda } from "@/lib/avisa-anulacao-do-balcao";
 import { completarOldDoEvento } from "@/lib/aviso-de-pedido-atualizado";
+import { avisarOClienteDoStatus } from "@/lib/aviso-de-status-ao-cliente";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
@@ -20,7 +21,10 @@ import {
 } from "@/lib/fila-offline-por-usuario";
 import { instanteDentroDoPeriodo } from "@/lib/filtro-da-lista-de-pedidos";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
-import { mapOrderFromDB } from "@/lib/mappers";
+import {
+  enderecoDeRetiradaDoCustomerData,
+  mapOrderFromDB,
+} from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pluralizar } from "@/lib/pluralizar";
 import {
@@ -574,6 +578,14 @@ export function mesclarFilaOfflineAposPassada(
 let sincronizacaoEmVoo: { userId: string; promise: Promise<boolean> } | null =
   null;
 
+// Mudanças da fila cujo aviso à cliente já saiu nesta aba (dono, pedido,
+// carimbo e destino do item). A garantia principal é do banco: a gravação
+// confere a etapa esperada, então a mesma mudança só é ACEITA uma vez, e só a
+// passada que a gravou avisa (a outra aba, a cópia velha da fila e a passada
+// repetida recebem "mudou" ou são descartadas na releitura). Isto cobre o que
+// sobra dentro da aba: o mesmo item gravado de novo não repete o push.
+const avisosDaFilaJaDisparados = new Set<string>();
+
 function syncOfflineOrderUpdates(
   userId: string,
   silenciosa = false,
@@ -694,6 +706,11 @@ async function processarFilaOfflineDePedidos(
     for (const [indice, item] of queue.entries()) {
       const { orderId, status, notes } = item;
       let esperado = item.statusEsperado;
+      // Da releitura abaixo: a quem avisar quando a gravação for aceita.
+      let pedidoDoAviso: { userId: string | null; retiradaNaLoja: boolean } = {
+        userId: null,
+        retiradaNaLoja: false,
+      };
       // Itens antigos sem timestamp saem ao concluir; qualquer versão datada
       // que entrar durante a RPC continua sendo mais nova.
       const timestamp =
@@ -740,9 +757,14 @@ async function processarFilaOfflineDePedidos(
       }
       if (conferirEtapa) {
         try {
+          // Junto da etapa vêm o dono do pedido e o retrato da retirada: é o
+          // que o aviso à cliente precisa, lido do banco na hora (a tela de
+          // pedidos pode nem estar aberta, nem ter este pedido carregado).
           const { data: linhaAtual, error: erroReleitura } = await supabase
             .from("marketplace_orders")
-            .select("status")
+            .select(
+              "status, user_id, endereco_de_retirada:customer_data->pickup_address",
+            )
             .eq("id", orderId)
             .single();
 
@@ -768,6 +790,17 @@ async function processarFilaOfflineDePedidos(
           }
           // Fila legada: ainda rele o banco, mas a gravacao tambem confere esta foto.
           esperado ??= statusAtual;
+          pedidoDoAviso = {
+            userId:
+              typeof linhaAtual?.user_id === "string"
+                ? linhaAtual.user_id
+                : null,
+            // A mesma regra do mapper (`retiradaNaLoja`): fonte única.
+            retiradaNaLoja:
+              enderecoDeRetiradaDoCustomerData({
+                pickup_address: linhaAtual?.endereco_de_retirada,
+              }) !== "",
+          };
         } catch (err) {
           // "Não sei" nunca vira "pode avançar" (mesma regra do L-9 em
           // `updateOrderStatus`): sem confirmar o status atual, o item
@@ -812,6 +845,23 @@ async function processarFilaOfflineDePedidos(
         syncedAny = true;
         processados.set(orderId, timestamp);
         statusEnviados.set(orderId, status);
+        // Gravado: a cliente recebe o MESMO aviso que a ficha manda ao gravar
+        // com rede (`AdminOrdersView.handleStatusChange`), com as mesmas
+        // regras de quando NÃO avisar — mudança silenciosa e pedido sem conta
+        // (convidado, cujo canal é o WhatsApp). Sem esperar o envio: a
+        // passada segue, e a falha do push vira o aviso amarelo de sempre.
+        const chaveDoAviso = `${userId}|${orderId}|${timestamp}|${status}`;
+        if (
+          !item.silent &&
+          pedidoDoAviso.userId &&
+          !avisosDaFilaJaDisparados.has(chaveDoAviso)
+        ) {
+          avisosDaFilaJaDisparados.add(chaveDoAviso);
+          void avisarOClienteDoStatus(orderId, status as OrderStatus, {
+            userId: pedidoDoAviso.userId,
+            retiradaNaLoja: pedidoDoAviso.retiradaNaLoja,
+          });
+        }
       } catch (err) {
         if (erroDeSincronizacaoEhTerminal(err)) {
           if (
