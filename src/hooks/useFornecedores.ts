@@ -63,9 +63,15 @@ const FRASE_GENERICA = "Não deu certo agora. Tente de novo em instantes.";
 
 /** Erro já em português, pronto para a tela. */
 export class ErroDosFornecedores extends Error {
-  constructor(mensagem: string) {
+  /**
+   * A gravação estourou o prazo sem resposta: o banco PODE ter gravado. A tela não diz
+   * "não foi salvo" e relê a lista ao fechar (senão a lojista cadastra de novo e duplica).
+   */
+  readonly semResposta: boolean;
+  constructor(mensagem: string, semResposta = false) {
     super(mensagem);
     this.name = "ErroDosFornecedores";
+    this.semResposta = semResposta;
   }
 }
 
@@ -97,7 +103,10 @@ export function mensagemDeErroDosFornecedores(erro: unknown): string {
 function falha(erro: unknown): ErroDosFornecedores {
   return erro instanceof ErroDosFornecedores
     ? erro
-    : new ErroDosFornecedores(mensagemDeErroDosFornecedores(erro));
+    : new ErroDosFornecedores(
+        mensagemDeErroDosFornecedores(erro),
+        ehConsultaSemResposta(erro),
+      );
 }
 
 function comoFornecedor(linha: unknown): Fornecedor | null {
@@ -140,7 +149,7 @@ export interface UseFornecedores {
   readonly criar: (id: string, dados: DadosDoFornecedor) => Promise<Fornecedor>;
   /**
    * Aceita só os campos que mudaram: o que NÃO vai no objeto não é tocado no banco
-   * (a tela omite `favorito` quando o lojista não mexeu na estrela da folha).
+   * (a tela manda só os campos que a lojista mexeu na folha, estrela inclusive).
    */
   readonly editar: (
     id: string,
