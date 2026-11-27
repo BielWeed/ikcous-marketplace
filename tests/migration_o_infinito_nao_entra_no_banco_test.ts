@@ -42,6 +42,11 @@ const SUCESSORAS = [
     versao: "20261600000000",
     consulta: "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado",
   },
+  // 20261620000000: a soma das categorias fecha com o faturamento no centavo (vendas por categoria).
+  {
+    versao: "20261620000000",
+    consulta: "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

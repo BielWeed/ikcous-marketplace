@@ -1,13 +1,13 @@
 "use strict";
 
 /**
- * RPC VIVA: get_category_analytics (ultima redefinicao: 20261199000000).
+ * RPC VIVA: get_category_analytics (ultima redefinicao: 20261620000000).
  * Periodo fechado nos dois extremos e subtotal zero sem dividir por zero.
  * Somente clone prova_*; fixtures e mutante desfeitos no ROLLBACK de cada caso.
  *
  * node tests/banco/rodar-isolado.cjs tests/banco/analise-por-categoria-periodo-e-subtotal-zero-viva.cjs
  * MUTANTE=0 (padrao): corpo vivo.
- * MUTANTE=1 + GUARDA_CATEGORIA=inicio|fim|receita|ticket: sabota UMA guarda
+ * MUTANTE=1 + GUARDA_CATEGORIA=inicio|fim|receita: sabota UMA guarda
  * dentro da transacao, comprova a instalacao e deixa a mesma prova VERMELHA.
  * Nunca edita a migration nem aceita banco real (efemero.cjs).
  */
@@ -64,17 +64,15 @@ async function mutar() {
   } else {
     const denominador = "NULLIF(f.subtotal_pedido, 0)";
     const partes = corpo.split(denominador);
+    // Desde a 20261620000000 o NULLIF e um so (o da receita): a media sai do
+    // valor ja arredondado dividido pelo numero de pedidos (sempre >= 1), sem
+    // dividir pelo subtotal; nao ha mais guarda de ticket para sabotar.
     assert.equal(
       partes.length,
-      3,
-      "mutante: precisam existir exatamente dois NULLIF no corpo vivo",
+      2,
+      "mutante: precisa existir exatamente um NULLIF no corpo vivo",
     );
-    // A primeira ocorrencia protege a receita; a segunda protege o ticket.
-    // Preserva integralmente a outra ocorrencia, sem mutacao dupla.
-    alterado =
-      GUARDA === "receita"
-        ? `${partes[0]}f.subtotal_pedido${partes[1]}${denominador}${partes[2]}`
-        : `${partes[0]}${denominador}${partes[1]}f.subtotal_pedido${partes[2]}`;
+    alterado = `${partes[0]}f.subtotal_pedido${partes[1]}`;
   }
   assert.notEqual(alterado, corpo, "mutante nao alterou o corpo");
   await P.conexao().query(alterado);
@@ -217,8 +215,8 @@ async function main() {
   assert.ok(["0", "1"].includes(MUTANTE), "MUTANTE deve ser 0 ou 1");
   if (MUTANTE === "1") {
     assert.ok(
-      ["inicio", "fim", "receita", "ticket"].includes(GUARDA),
-      "MUTANTE=1 exige GUARDA_CATEGORIA=inicio|fim|receita|ticket",
+      ["inicio", "fim", "receita"].includes(GUARDA),
+      "MUTANTE=1 exige GUARDA_CATEGORIA=inicio|fim|receita",
     );
   }
   await P.conectar();

@@ -581,6 +581,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/cancelar-pedido-do-painel-confere-a-etapa-portao-viva.cjs",
     "tests/banco/o-cupom-que-nao-da-desconto-portao-viva.cjs",
     "tests/banco/o-relatorio-de-categorias-sem-produto-portao-viva.cjs",
+    // 20261620000000: o portao das consultas 198a/198b (a soma das categorias fecha no centavo).
+    "tests/banco/a-soma-das-categorias-fecha-no-centavo-portao-viva.cjs",
     // 20261251: lucro por variante e cobertura do custo do estoque.
     "tests/banco/lucro-do-estoque-viva.cjs",
     // 20261250: faturamento do estoque e compatibilidade dos portões ancestrais.

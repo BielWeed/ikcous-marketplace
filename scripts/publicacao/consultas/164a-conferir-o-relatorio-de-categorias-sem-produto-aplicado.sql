@@ -16,8 +16,11 @@ WITH fn AS (
 ), itens(item, esperado, vivo, ok) AS (
   SELECT 'get_category_analytics: corpo exato (md5)',
          'd7e1e413ac805f598d8657992f43c706',
-         COALESCE(fn.h, 'AUSENTE'),
-         COALESCE(fn.h = 'd7e1e413ac805f598d8657992f43c706', false)
+         -- A 20261620000000 (a soma das categorias fecha no centavo) sucede este corpo: so o
+         -- arredondamento e novo. Aceita os dois corpos EXATOS; normaliza ao esperado do rol.
+         CASE WHEN fn.h = 'a332d6b7c4ab58425c60343883d873d6' THEN 'd7e1e413ac805f598d8657992f43c706'
+              ELSE COALESCE(fn.h, 'AUSENTE') END,
+         COALESCE(fn.h IN ('d7e1e413ac805f598d8657992f43c706', 'a332d6b7c4ab58425c60343883d873d6'), false)
   FROM (VALUES (1)) AS controle(n) LEFT JOIN fn ON true
   UNION ALL
   SELECT 'get_category_analytics: assinatura e atributos conhecidos', 'sim',

@@ -191,6 +191,9 @@ const NOMES = [
   "20261410000000_a_lista_do_painel_e_o_rastreio_levam_o_nome_antigo_da_opcao.sql",
   // A base do CRM sai junto com Clientes e ficha, antes da 4030.
   "20261412000000_o_crm_ignora_reembolso_integral.sql",
+  // get_category_analytics: 99 -> 409 -> 1620 (o `hashVigente` da 1620 e o `hashDesta` da 409). O rollback da 409 recusa com o corpo
+  // novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261620000000_a_soma_das_categorias_fecha_com_o_faturamento_no_centavo.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

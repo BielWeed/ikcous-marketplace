@@ -221,6 +221,109 @@ Deno.test("167 e 168 — as consultas do cupom e do CRM precisam de rol completo
   }
 });
 
+// 198 (27/11/2026): o lote da 20261620000000 (a soma das categorias fecha com o faturamento no centavo). Rol fechado de 2
+// linhas (o mesmo da 164), so catalogo; a 198a espera o corpo desta e a 198b o da 20261409000000 ou o desta. Os md5 saem do
+// PRE-VOO da propria migration, nao de um literal solto aqui.
+Deno.test("198a/198b — rol fechado, um statement so de catalogo, md5 do pre-voo da 20261620000000, menu, rpc-ci, release e lote no canais", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A198 = "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado";
+  const B198 = "198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente";
+  const migration = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261620000000_a_soma_das_categorias_fecha_com_o_faturamento_no_centavo.sql`,
+  );
+  const par =
+    /\('public\.get_category_analytics\([^)]*\)', '([0-9a-f]{32})', '([0-9a-f]{32})'\)/.exec(
+      migration,
+    );
+  assert(par, "o pre-voo da 20261620000000 nao cita (vigente, desta)");
+  const [, vigente, desta] = par;
+  const itens = [
+    "get_category_analytics: corpo exato (md5)",
+    "get_category_analytics: assinatura e atributos conhecidos",
+  ];
+  for (const consulta of [A198, B198]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(
+      !/marketplace_order|produtos/i.test(limpo),
+      `${consulta}: le so catalogo`,
+    );
+    assertStringIncludes(menu, `- ${consulta}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A198}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B198}.sql`),
+  );
+  // A 198a aceita SO o corpo desta; a 198b, o vigente OU o desta (reaplicacao idempotente).
+  assertStringIncludes(sqlA, `COALESCE(fn.h = '${desta}', false)`);
+  assert(!sqlA.includes(vigente), "a 198a nao pode aceitar o corpo da 1409");
+  assertStringIncludes(sqlB, `fn.h IN ('${vigente}', '${desta}')`);
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/a-soma-das-categorias-fecha-no-centavo-portao-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A198,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261620000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B198);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 198a: ${chave} nao se aplica`);
+});
+
 // 129: medicao ANTES; nao autoriza apply nem registra uma prova de pos-aplicacao.
 const CONSULTAS_129 = [
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
@@ -2635,6 +2738,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "get_category_analytics",
           h: "d7e1e413ac805f598d8657992f43c706",
           versao: "20261409000000",
+        },
+        // 27/11/2026: a soma das categorias fecha com o faturamento no centavo (99 -> 409 -> 1620).
+        {
+          fn: "get_category_analytics",
+          h: "a332d6b7c4ab58425c60343883d873d6",
+          versao: "20261620000000",
         },
         {
           fn: "painel_inicio",
@@ -16302,6 +16411,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado",
     // 20261600000000: a loja pausa o pedido novo.
     "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado",
+    // 20261620000000: a soma das categorias fecha com o faturamento no centavo.
+    "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

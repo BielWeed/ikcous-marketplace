@@ -1305,6 +1305,32 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261620000000: a soma das categorias fecha com o faturamento no centavo. get_category_analytics troca SO a saida: cada
+  // categoria em centavos pelo maior resto e a media a partir do valor arredondado. Os marcadores sao o centavo do maior
+  // resto, a media, o filtro de dinheiro reconhecido e a guarda do admin de AGORA (as duas ultimas nao podem sumir no REPLACE).
+  // O corpo exato (md5) e do preflight da propria migration; o comportamento e da prova viva analise-por-categoria-so-conta-pedido-pago.
+  "20261620000000_a_soma_das_categorias_fecha_com_o_faturamento_no_centavo.sql":
+    [
+      {
+        funcao: "get_category_analytics",
+        esperado: [
+          {
+            texto: "CASE WHEN c.fila_do_resto <= c.faltam THEN 1 ELSE 0 END",
+            vezes: 1,
+          },
+          {
+            texto: "ROUND(r.valor_total / r.num_pedidos, 2) AS ticket_medio",
+            vezes: 1,
+          },
+          {
+            texto:
+              "AND (o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega'))",
+            vezes: 1,
+          },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+    ],
   "20261412000000_o_crm_ignora_reembolso_integral.sql": [
     {
       funcao: "crm__vendas",
