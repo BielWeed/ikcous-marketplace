@@ -204,12 +204,28 @@ export function CartaoDaAssinatura({
   // No teste encerrado, na mensalidade em aberto e nas vendas pausadas somem
   // "Em aberto desde", "Próxima cobrança" e "Teste até": fica só "Cliente
   // desde", montada direto de `inicioEm`.
-  const linhasDeDatas =
+  const todasAsDatas =
     prazo || pausadas
       ? assinatura.inicioEm
         ? [{ rotulo: "Cliente desde", data: assinatura.inicioEm }]
         : []
       : linhasDeDatasDaAssinatura(assinatura);
+  // `valorMensal` é o valor da PRÓXIMA cobrança (27/11/2026): o 1º mês
+  // negociado, o restante de um pagamento parcial ou o preço de depois do
+  // contrato — com "/mês" a lojista lia R$ 175,00/mês, o que é falso. Com conta
+  // vencida (prazo, pausa, regularizar) o mesmo valor é o que está em aberto,
+  // nunca "próxima". Sem conta vencida, a data da próxima cobrança sai da
+  // lista e vai para junto do valor: o rótulo aparece uma vez só.
+  const mostraValor = assinatura.valorMensal != null && !emTeste;
+  const temContaVencida = Boolean(prazo || pausadas || precisaRegularizar);
+  const dataDaCobranca =
+    mostraValor && !temContaVencida
+      ? (todasAsDatas.find((l) => l.rotulo === "Próxima cobrança")?.data ??
+        null)
+      : null;
+  const linhasDeDatas = dataDaCobranca
+    ? todasAsDatas.filter((l) => l.rotulo !== "Próxima cobrança")
+    : todasAsDatas;
 
   return (
     <section
@@ -222,16 +238,20 @@ export function CartaoDaAssinatura({
       <p className="min-w-0 break-words text-xl font-bold text-white [overflow-wrap:anywhere]">
         {assinatura.plano ?? "Plano sem nome"}
       </p>
-      {/* `valorMensal` é o valor da PRÓXIMA cobrança (27/11/2026): o 1º mês
-          negociado, o restante de um pagamento parcial ou o preço de depois
-          do contrato. Com "/mês" a lojista lia R$ 175,00/mês, o que é falso. */}
-      {assinatura.valorMensal != null && !emTeste ? (
-        <div>
-          <p className={ROTULO_INICIO}>Próxima cobrança</p>
-          <p className={`mt-1 text-2xl ${VALOR_INICIO}`}>
+      {mostraValor && assinatura.valorMensal != null ? (
+        <dl>
+          <dt className={ROTULO_INICIO}>
+            {temContaVencida ? "Valor em aberto" : "Próxima cobrança"}
+          </dt>
+          <dd className={`mt-1 text-2xl ${VALOR_INICIO}`}>
             {formatarMoeda(assinatura.valorMensal)}
-          </p>
-        </div>
+          </dd>
+          {dataDaCobranca ? (
+            <dd className="mt-1 text-sm tabular-nums text-zinc-400">
+              em {formatarData(dataDaCobranca)}
+            </dd>
+          ) : null}
+        </dl>
       ) : null}
       <dl className="space-y-3 text-sm">
         {linhasDeDatas.map(({ rotulo, data }) => (

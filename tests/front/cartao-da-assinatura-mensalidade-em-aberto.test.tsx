@@ -121,7 +121,10 @@ describe("CartaoDaAssinatura: mensalidade em aberto da pagante", () => {
 
   it("somem 'Em aberto desde' e 'Regularize'; fica só 'Cliente desde'", () => {
     desenhar({});
-    expect(rotulos()).toEqual(["Cliente desde"]);
+    // Revisão 27/11/2026: o valor ganhou rótulo ligado (`dt`); com a conta
+    // vencida ele diz "Valor em aberto", nunca "Próxima cobrança".
+    expect(rotulos()).toEqual(["Valor em aberto", "Cliente desde"]);
+    expect(tela.textContent).not.toContain("Próxima cobrança");
     expect(tela.textContent).toContain("02/12/2026");
     expect(tela.textContent).not.toContain("Em aberto desde");
     expect(tela.textContent).not.toContain("Regularize");
@@ -145,7 +148,8 @@ describe("CartaoDaAssinatura: mensalidade em aberto da pagante", () => {
 
   it("sem 'Cliente desde' no payload a lista de datas fica vazia", () => {
     desenhar({ inicioEm: null });
-    expect(rotulos()).toEqual([]);
+    // Revisão 27/11/2026: só o rótulo do valor; nenhuma data inventada.
+    expect(rotulos()).toEqual(["Valor em aberto"]);
     expect(paragrafos()).toContain(VENCEU);
   });
 
