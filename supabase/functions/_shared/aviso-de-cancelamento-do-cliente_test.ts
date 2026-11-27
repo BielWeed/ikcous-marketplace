@@ -103,6 +103,7 @@ function cenario(sobre: {
   historico?: Linha[];
   pedidos?: Linha[];
   perfis?: Linha[];
+  eventos?: Linha[];
   falharEm?: string;
 }) {
   const banco = bancoFalso(
@@ -110,6 +111,7 @@ function cenario(sobre: {
       marketplace_order_history: sobre.historico ?? [],
       marketplace_orders: sobre.pedidos ?? [],
       profiles: sobre.perfis ?? [],
+      order_shipping_events: sobre.eventos ?? [],
     },
     { falharEm: sobre.falharEm },
   );
@@ -615,4 +617,97 @@ Deno.test("sem etiqueta (nula, vazia ou só espaços) -> texto de sempre, sem fa
       String(shipping_label_id),
     );
   }
+});
+
+// ── Etiqueta JÁ CANCELADA no Melhor Envio (27/11/2026) ──────────────────────
+// `shipping_label_id` nunca é apagado: a etiqueta cancelada continua no pedido.
+// O app sabe que ela foi cancelada pelo histórico de envio
+// (`order_shipping_events`, evento `rastreio_consultado` com o status que o
+// Melhor Envio devolveu). Mandar "cancele a etiqueta para recuperar o valor"
+// sobre uma etiqueta já cancelada manda a lojista procurar um dinheiro que já
+// voltou.
+const rastreioConsultado = (labelId: string, status: unknown, extra: Linha = {}) => ({
+  order_id: PEDIDO,
+  event_type: "rastreio_consultado",
+  payload: { status_etiqueta: status, label_id: labelId },
+  ...extra,
+});
+
+Deno.test("etiqueta que o histórico já viu CANCELADA no Melhor Envio -> aviso sem a frase da etiqueta", async () => {
+  for (const status of ["canceled", "cancelled", " Canceled "]) {
+    const r = await rodar({
+      historico: [hist("h1", { old_status: "processing" })],
+      pedidos: [pedido({ shipping_label_id: "label-123" })],
+      eventos: [rastreioConsultado("label-123", status)],
+      perfis,
+    });
+    assertEquals(r.avisos.length, 1, status);
+    assertEquals(
+      r.avisos[0].aviso.body,
+      "#4F5A6B · R$ 149,90 · Maria Silva — pago, o reembolso é automático",
+      status,
+    );
+  }
+});
+
+Deno.test("cancelamento de OUTRA etiqueta, status que não é cancelado ou evento de outro tipo -> a frase da etiqueta fica", async () => {
+  for (const eventos of [
+    [rastreioConsultado("label-velha", "canceled")],
+    [rastreioConsultado("label-123", "posted")],
+    [rastreioConsultado("label-123", null)],
+    [{ ...rastreioConsultado("label-123", "canceled"), event_type: "erro" }],
+    [{ ...rastreioConsultado("label-123", "canceled"), order_id: PEDIDO_B }],
+  ]) {
+    const r = await rodar({
+      historico: [hist("h1", { old_status: "processing" })],
+      pedidos: [pedido({ shipping_label_id: "label-123" })],
+      eventos,
+      perfis,
+    });
+    assertEquals(r.avisos.length, 1, JSON.stringify(eventos));
+    assertStringIncludes(r.avisos[0].aviso.body, FRASE_DA_ETIQUETA, JSON.stringify(eventos));
+  }
+});
+
+Deno.test("leitura do histórico de envio falha -> o aviso SAI assim mesmo e mantém a frase da etiqueta (lado seguro do dinheiro)", async () => {
+  const r = await rodar({
+    historico: [hist("h1", { old_status: "processing" })],
+    pedidos: [pedido({ shipping_label_id: "label-123" })],
+    eventos: [rastreioConsultado("label-123", "canceled")],
+    perfis,
+    falharEm: "order_shipping_events",
+  });
+  assertEquals(r.avisos.length, 1);
+  assertStringIncludes(r.avisos[0].aviso.body, FRASE_DA_ETIQUETA);
+  assertEquals(r.resumo.falhas, 0);
+  assertEquals(r.erros.some((e) => e.includes("histórico de envio")), true, r.erros.join("\n"));
+});
+
+Deno.test("nenhum pedido candidato tem etiqueta -> o histórico de envio nem é lido", async () => {
+  const r = await rodar({ historico: [hist("h1")], pedidos: [pedido()], perfis });
+  assertEquals(r.avisos.length, 1);
+  assertEquals(r.banco.leituras.some((l) => l.tabela === "order_shipping_events"), false);
+});
+
+Deno.test("a leitura do histórico de envio é só dos pedidos COM etiqueta e só do evento de rastreio", async () => {
+  const r = await rodar({
+    historico: [hist("h1", { old_status: "processing" })],
+    pedidos: [pedido({ shipping_label_id: "label-123" })],
+    eventos: [rastreioConsultado("label-123", "canceled")],
+    perfis,
+  });
+  const leitura = r.banco.leituras.find((l) => l.tabela === "order_shipping_events");
+  assertEquals(leitura?.filtros, ["in:order_id", "eq:event_type"]);
+});
+
+Deno.test("montarAvisoDeCancelamento: etiqueta no conjunto das canceladas -> sem a frase; fora dele -> com a frase", () => {
+  const p = pedido({ shipping_label_id: "label-123" });
+  assertEquals(
+    montarAvisoDeCancelamento(p, { old_status: "processing" }, new Set(["label-123"])).body,
+    "#4F5A6B · R$ 149,90 · Maria Silva — pago, o reembolso é automático",
+  );
+  assertStringIncludes(
+    montarAvisoDeCancelamento(p, { old_status: "processing" }, new Set(["outra"])).body,
+    FRASE_DA_ETIQUETA,
+  );
 });
