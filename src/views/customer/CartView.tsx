@@ -1445,10 +1445,14 @@ function ConteudoDoCarrinho({
                         `shipping ?? 0` ele anunciava "Frete VIP Liberado" em
                         verde enquanto o rodapé dizia "A calcular" — duas
                         frases opostas na mesma tela (revisão da frente
-                        horário-e-convidado, achado baixa). */}
+                        horário-e-convidado, achado baixa). O frete sendo
+                        RECOTADO (`freteEmCotacao`) também: a opção na mesa é
+                        da quantidade anterior, e o "liberado" dela
+                        contradiria o "A calcular" do resumo. */}
                     {user &&
                       cart.length > 0 &&
                       !freteIndefinido &&
+                      !freteEmCotacao &&
                       // Só retirada e sem transportadora: a meta salva antes
                       // não vale para entrega nenhuma (a retirada já é grátis).
                       !semMetaDeFreteGratis(config) &&

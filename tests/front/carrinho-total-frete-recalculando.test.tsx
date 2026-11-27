@@ -32,14 +32,15 @@ const estado = vi.hoisted(() => ({
   },
   // O que o CartView entregou à calculadora no último render.
   avisarStatus: undefined as ((status: StatusDaCotacao) => void) | undefined,
+  // Sem meta de frete grátis por padrão; o caso do cartão de progresso liga
+  // a meta por valor.
+  config: { shippingFee: 15, freeShippingMin: 0 } as Record<string, unknown>,
 }));
 
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
 
 vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({
-    config: { shippingFee: 15, freeShippingMin: 0 },
-  }),
+  useStore: () => ({ config: estado.config }),
 }));
 
 vi.mock("@/hooks/useProducts", () => ({
@@ -119,7 +120,10 @@ vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   },
 }));
 vi.mock("@/components/ui/custom/ShippingProgress", () => ({
-  ShippingProgress: () => <div data-testid="progresso" />,
+  // Expõe o ESTADO que o carrinho mandou ("liberado", "meta"…).
+  ShippingProgress: (props: { estado: string }) => (
+    <div data-testid="progresso" data-estado={props.estado} />
+  ),
 }));
 vi.mock("@/components/ui/custom/OrderList", () => ({
   OrderList: () => <div data-testid="pedidos" />,
@@ -147,6 +151,7 @@ describe("CartView — Total não soma o frete da quantidade anterior enquanto r
   beforeEach(() => {
     estado.quantidade = 1;
     estado.avisarStatus = undefined;
+    estado.config = { shippingFee: 15, freeShippingMin: 0 };
     escolher({ id: "melhorenvio-pac", name: "PAC", price: 20 });
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -273,6 +278,46 @@ describe("CartView — Total não soma o frete da quantidade anterior enquanto r
     expect(valorDoTotal(resumoDoComputador())).toBe("R$ 232,50");
     expect(valorDoTotal(rodapeDoCelular())).toBe("R$ 232,50");
     expect(valorDoFrete(resumoDoComputador())).toBe("R$ 32,50");
+  });
+
+  it("frete grátis por valor mínimo, cliente logada: enquanto recota, o cartão de progresso NÃO diz 'liberado' (o resumo diz 'A calcular'); no 'pronto' ele volta", async () => {
+    // Meta de R$ 150 para a transportadora; 2 unidades (R$ 200) bateram a
+    // meta e a edge cotou a PAC a R$ 0.
+    estado.config = {
+      shippingFee: 15,
+      freeShippingMin: 150,
+      nationalShippingStrategy: "acima_de_valor",
+      nationalShippingMin: 150,
+      nationalDiscountType: null,
+      nationalDiscountValue: 0,
+      nationalBenefitScope: "todas",
+    };
+    estado.quantidade = 2;
+    escolher({ id: "melhorenvio-pac", name: "PAC", price: 0 }, true);
+    const cartao = () =>
+      hospedeiro.querySelector(
+        '[data-testid="progresso"]',
+      ) as HTMLElement | null;
+
+    await renderizarCarrinho();
+    await calculadoraDiz("pronto");
+    expect(cartao()?.dataset.estado).toBe("liberado");
+
+    // A cliente tira uma unidade (R$ 100, abaixo da meta): a opção R$ 0 da
+    // cotação anterior continua na mesa até a nova voltar.
+    await mudarQuantidadePara(1);
+    await calculadoraDiz("cotando");
+    expect(valorDoTotal(resumoDoComputador())).toBe("A calcular");
+    expect(cartao()).toBeNull();
+
+    // A cotação nova volta: PAC a R$ 25, sem grátis — o cartão reaparece
+    // com a meta, não com "liberado".
+    escolher({ id: "melhorenvio-pac", name: "PAC", price: 25 });
+    await renderizarCarrinho();
+    await calculadoraDiz("pronto");
+    expect(cartao()).not.toBeNull();
+    expect(cartao()?.dataset.estado).not.toBe("liberado");
+    expect(valorDoTotal(resumoDoComputador())).toBe("R$ 125,00");
   });
 
   it("controle: cotação que falhou ('erro') não é 'cotando' — o carrinho não inventa outro estado", async () => {
