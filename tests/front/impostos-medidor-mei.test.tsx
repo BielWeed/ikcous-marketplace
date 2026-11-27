@@ -395,7 +395,7 @@ describe("MedidorMei — acessibilidade e estrutura", () => {
 });
 
 const AVISO_FIXO =
-  "Este número só tem as vendas registradas no app. O que você vendeu sem registrar aqui (Instagram, WhatsApp, feira) também conta para o limite do MEI: some por sua conta.";
+  "Este número só tem as vendas feitas pelo app (pedidos e balcão). Os lançamentos feitos à mão no Financeiro (mesmo na categoria Vendas) não entram, nem o que você vendeu sem registrar aqui (Instagram, WhatsApp, feira). Tudo isso também conta para o limite do MEI: some por sua conta.";
 
 const aviso = (h: HTMLElement) =>
   h.querySelector<HTMLElement>(
@@ -433,7 +433,7 @@ describe("MedidorMei — ano completo: o número é um mínimo, o veredito nunca
   it("dentro do limite pede para conferir as vendas feitas por fora", () => {
     const h = montar(medirReal(10_000), 10_000);
     expect(textoDe(h)).toContain(
-      "Pelo que o app registrou, você está dentro do limite do MEI. Confira as vendas feitas por fora do app: elas também contam para o limite.",
+      "Pelo que o app registrou, você está dentro do limite do MEI. Confira as vendas feitas por fora do app e os lançamentos de venda feitos à mão no Financeiro: eles também contam para o limite.",
     );
   });
 });

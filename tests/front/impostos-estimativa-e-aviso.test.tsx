@@ -38,7 +38,7 @@ import { fraseSemEstimativa } from "@/lib/fiscal/textos";
 // O texto EXATO do parecer do sócio (24/11/2026), copiado à mão: se a tela mudar
 // uma vírgula, este teste cai.
 const AVISO_DO_PARECER =
-  "Isto é uma estimativa feita com as vendas registradas no app. Não é o valor da sua guia. Vendas fora do app não entram, e produtos com ICMS-ST ou PIS/Cofins monofásico costumam pagar menos. O valor certo está na guia do Simples (PGDAS-D) ou com o seu contador.";
+  "Isto é uma estimativa feita só com as vendas feitas pelo app (pedidos e balcão). Não é o valor da sua guia. Vendas fora do app e lançamentos feitos à mão no Financeiro (mesmo na categoria Vendas) não entram, e produtos com ICMS-ST ou PIS/Cofins monofásico costumam pagar menos. O valor certo está na guia do Simples (PGDAS-D) ou com o seu contador.";
 
 type Cadastro = Pick<CadastroFiscal, "regime" | "atividade">;
 const SIMPLES_COMERCIO: Cadastro = {
@@ -183,7 +183,15 @@ describe("EstimativaSimples — o número", () => {
 
   it("DAS zero sem receita no mês: diz que não houve venda, sem 'cerca de' e sem R$", () => {
     for (const receita of [0, -50]) {
-      const h = montar(estimativa(0, receita));
+      // Sem venda nenhuma no mês (a venda bruta é zero): a frase de "sem vendas".
+      const h = montar(
+        <EstimativaSimples
+          estimativa={comEstimativa(0)}
+          competencia="2026-10"
+          receitaDoMes={receita}
+          vendasDoMes={0}
+        />,
+      );
       const texto = textoDe(h);
       expect(texto).toContain("Sem vendas neste mês");
       expect(texto).not.toContain("cerca de");
