@@ -124,9 +124,13 @@ const semConexao = (texto) => {
 };
 
 Deno.test("a pasta das cópias é %LOCALAPPDATA%\\ikcous\\copias; LOCALAPPDATA ausente ou relativo recusa", () => {
+  // Caminho ABSOLUTO no sistema que roda o teste (o CI é Linux; no PC do dono, Windows).
+  const local = Deno.build.os === "windows"
+    ? "C:\\Users\\X\\AppData\\Local"
+    : "/home/x/AppData/Local";
   assertEquals(
-    pastaDasCopias({ LOCALAPPDATA: "C:\\Users\\X\\AppData\\Local" }),
-    join("C:\\Users\\X\\AppData\\Local", "ikcous", "copias"),
+    pastaDasCopias({ LOCALAPPDATA: local }),
+    join(local, "ikcous", "copias"),
   );
   for (const env of [{}, { LOCALAPPDATA: "" }, { LOCALAPPDATA: "relativo" }]) {
     let recusou = false;
