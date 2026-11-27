@@ -172,6 +172,42 @@ describe("useOrders — completa o 'antes' do UPDATE do realtime (old só com a 
     expect(tipoDoAvisoDoPedido(segundo)).toBeNull();
   });
 
+  it("evento ATRASADO (mais velho que a lista): a lista o ignora e o aviso também", async () => {
+    // A lista tem a versão das 11:00. Chega tarde o UPDATE das 10:30 (socket
+    // lento): `mesclarAtualizacaoRealtime` o descarta, e o aviso não pode
+    // anunciar um status que a tela nem mostra.
+    const atrasado = await emitirComOldSoComId({
+      ...linha("p1", "aguardando", "processing"),
+      updated_at: "2026-10-16T10:30:00Z",
+    });
+    expect(atuais.orders.find((p) => p.id === "p1")?.status).toBe("pending");
+    expect(tipoDoAvisoDoPedido(atrasado)).toBeNull();
+
+    // O evento de verdade, mais novo, continua avisando.
+    const novo = await emitirComOldSoComId({
+      ...linha("p1", "aguardando", "processing"),
+      updated_at: "2026-10-16T11:05:00Z",
+    });
+    expect(atuais.orders.find((p) => p.id === "p1")?.status).toBe("processing");
+    expect(tipoDoAvisoDoPedido(novo)).toBe("status");
+  });
+
+  it("pagamento velho ('pago') chegando depois do estorno: não anuncia pagamento", async () => {
+    const estorno = await emitirComOldSoComId({
+      ...linha("p1", "estornado", "cancelled"),
+      updated_at: "2026-10-16T11:10:00Z",
+    });
+    expect(tipoDoAvisoDoPedido(estorno)).toBe("status");
+    const pagoAtrasado = await emitirComOldSoComId({
+      ...linha("p1", "pago", "cancelled"),
+      updated_at: "2026-10-16T11:02:00Z",
+    });
+    expect(atuais.orders.find((p) => p.id === "p1")?.paymentStatus).toBe(
+      "estornado",
+    );
+    expect(tipoDoAvisoDoPedido(pagoAtrasado)).toBeNull();
+  });
+
   it("pedido que a tela não tem (fora da página): chega como veio e o aviso é neutro", async () => {
     const chegou = await emitirComOldSoComId(
       linha("desconhecido", "pago", "shipping"),

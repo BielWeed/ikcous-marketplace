@@ -28,6 +28,8 @@ const servidor = vi.hoisted(() => ({
   /** A próxima gravação falha de forma passageira (servidor 500). */
   falharProximaGravacao: false,
   rpcs: [] as { nome: string; args: Record<string, unknown> }[],
+  /** `updated_at` que a gravação devolve na linha (como as RPCs reais). */
+  gravadoEm: null as string | null,
   invoke: vi.fn(),
 }));
 
@@ -81,7 +83,12 @@ vi.mock("@/lib/supabase", () => ({
         nome === "cancelar_pedido_do_painel"
           ? "cancelled"
           : String(args.p_new_status);
-      return { data: null, error: null };
+      return {
+        data: servidor.gravadoEm
+          ? { id: args.p_order_id, updated_at: servidor.gravadoEm }
+          : null,
+        error: null,
+      };
     },
     functions: { invoke: servidor.invoke },
     channel: () => ({
@@ -173,6 +180,7 @@ describe("fila offline de pedidos — a cliente é avisada quando a mudança sin
     servidor.etapaMudaAntesDaGravacao = null;
     servidor.falharProximaGravacao = false;
     servidor.rpcs = [];
+    servidor.gravadoEm = null;
     servidor.invoke.mockReset();
     servidor.invoke.mockResolvedValue({
       data: { enviados: 1, total: 1 },
@@ -211,6 +219,54 @@ describe("fila offline de pedidos — a cliente é avisada quando a mudança sin
     expect(opcoes.headers).toEqual({ Authorization: "Bearer tk-teste" });
     await deixarOAvisoSair();
     expect(chamadasDoPush()).toHaveLength(1);
+  });
+
+  it("o carimbo de ordem do push é a hora que o BANCO gravou, não o relógio do aparelho", async () => {
+    // Lote 502: o PC da loja com o relógio adiantado carimbava o aviso no
+    // futuro, e o service worker da cliente o mantinha por cima do aviso
+    // mais novo de outro aparelho. Avanço e cancelamento, os dois caminhos.
+    const sincronizar = await abrirAba();
+    servidor.gravadoEm = "2026-11-27T12:00:00.250+00:00";
+    guardar(avanco());
+    const relogio = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.parse("2026-11-27T12:01:00.000Z"));
+    try {
+      await sincronizar(DONO);
+      await vi.waitFor(() => expect(chamadasDoPush()).toHaveLength(1));
+    } finally {
+      relogio.mockRestore();
+    }
+    const [, opcoes] = chamadasDoPush()[0] as [
+      string,
+      { body: { data: Record<string, unknown> } },
+    ];
+    expect(opcoes.body.data.emitidoEm).toBe(
+      Date.parse("2026-11-27T12:00:00.250+00:00"),
+    );
+  });
+
+  it("cancelamento sincronizado também carimba com a hora do banco", async () => {
+    const sincronizar = await abrirAba();
+    servidor.gravadoEm = "2026-11-27T13:00:00.000Z";
+    guardar(avanco({ status: "cancelled", statusEsperado: "pending" }));
+    const relogio = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.parse("2026-11-27T13:05:00.000Z"));
+    try {
+      await sincronizar(DONO);
+      await vi.waitFor(() => expect(chamadasDoPush()).toHaveLength(1));
+    } finally {
+      relogio.mockRestore();
+    }
+    expect(servidor.rpcs[0]?.nome).toBe("cancelar_pedido_do_painel");
+    const [, opcoes] = chamadasDoPush()[0] as [
+      string,
+      { body: { data: Record<string, unknown> } },
+    ];
+    expect(opcoes.body.data.emitidoEm).toBe(
+      Date.parse("2026-11-27T13:00:00.000Z"),
+    );
   });
 
   it("pedido de retirada: o push diz o rótulo da retirada, como a ficha", async () => {

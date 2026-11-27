@@ -10,7 +10,10 @@ import {
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { aoAnularVenda } from "@/lib/avisa-anulacao-do-balcao";
 import { completarOldDoEvento } from "@/lib/aviso-de-pedido-atualizado";
-import { avisarOClienteDoStatus } from "@/lib/aviso-de-status-ao-cliente";
+import {
+  avisarOClienteDoStatus,
+  horaGravadaNoBanco,
+} from "@/lib/aviso-de-status-ao-cliente";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
@@ -62,6 +65,7 @@ import {
   comTravaEntreAbas,
 } from "@/lib/trava-entre-abas";
 import { normalizeText } from "@/lib/utils";
+import { versaoMaisVelhaQueAMemoria } from "@/lib/versao-do-pedido";
 import type { DashboardSummary, Order, OrderStatus } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -363,7 +367,7 @@ function cancelarPedidoDoPainel(
         p_status_esperado: string;
         p_notes: string | null;
       },
-    ) => PromiseLike<{ error: unknown }>
+    ) => PromiseLike<{ data: unknown; error: unknown }>
   )("cancelar_pedido_do_painel", {
     p_order_id: orderId,
     p_status_esperado: statusEsperado,
@@ -831,7 +835,7 @@ async function processarFilaOfflineDePedidos(
       }
 
       try {
-        const { error } =
+        const { data: linhaGravada, error } =
           status !== "cancelled"
             ? await supabase.rpc("avancar_status_do_pedido", {
                 p_order_id: orderId,
@@ -857,10 +861,17 @@ async function processarFilaOfflineDePedidos(
           !avisosDaFilaJaDisparados.has(chaveDoAviso)
         ) {
           avisosDaFilaJaDisparados.add(chaveDoAviso);
-          void avisarOClienteDoStatus(orderId, status as OrderStatus, {
-            userId: pedidoDoAviso.userId,
-            retiradaNaLoja: pedidoDoAviso.retiradaNaLoja,
-          });
+          // Carimbo do aviso = hora que o banco gravou (a linha que a RPC
+          // devolve), não o relógio deste aparelho.
+          void avisarOClienteDoStatus(
+            orderId,
+            status as OrderStatus,
+            {
+              userId: pedidoDoAviso.userId,
+              retiradaNaLoja: pedidoDoAviso.retiradaNaLoja,
+            },
+            horaGravadaNoBanco(linhaGravada),
+          );
         }
       } catch (err) {
         if (erroDeSincronizacaoEhTerminal(err)) {
@@ -1609,9 +1620,9 @@ export function mesclarAtualizacaoRealtime(
   // leitura) e `escolherVersaoDoPedido` (o detalhe), que a lista não tinha.
   // Data ausente/ilegível não é "velha" (decide o conteúdo, como sempre), e
   // data IGUAL aplica: a atualização otimista muda o status sem mexer nela.
-  const tAtual = Date.parse(pedidoAtual.updatedAt);
-  const tNova = Date.parse(mapeado.updatedAt);
-  if (Number.isFinite(tAtual) && Number.isFinite(tNova) && tNova < tAtual) {
+  // A régua mora em `versaoMaisVelhaQueAMemoria`: o aviso "Pedido #N
+  // atualizado para…" usa a MESMA, para não anunciar o que aqui é descartado.
+  if (versaoMaisVelhaQueAMemoria(pedidoAtual.updatedAt, mapeado.updatedAt)) {
     return pedidoAtual;
   }
   // Escritos por nome, não num laço percorrendo uma lista de chaves: a
@@ -4876,7 +4887,7 @@ export function useOrders(
           });
           return false;
         };
-        const { error } = await aguardarComPrazo(
+        const { data: linhaGravada, error } = await aguardarComPrazo(
           // `rpc` devolve um "thenable", não uma Promise: sem isto o tipo do
           // retorno vira `unknown`.
           Promise.resolve(
@@ -4902,7 +4913,7 @@ export function useOrders(
         ).catch(async (erroDaEspera: unknown) => {
           // Prazo estourado: mesma conferência da rede caída, logo abaixo.
           if (await avancoSemRespostaPassou(erroDaEspera))
-            return { error: null };
+            return { data: null, error: null };
           throw erroDaEspera;
         });
 
@@ -4939,6 +4950,12 @@ export function useOrders(
           pedidosCanceladosLocalmenteRef.current.set(orderId, Date.now());
           fetchPedidosCancelados().catch(() => {});
         }
+        // A hora em que o BANCO gravou (a linha que a RPC devolve) é o
+        // carimbo de ordem do aviso à cliente que a ficha manda em seguida
+        // (`avisarOClienteDoStatus`): o relógio deste aparelho pode estar
+        // adiantado. `null` quando a resposta não a traz (gravação confirmada
+        // pela releitura): o aviso cai no relógio local.
+        return { gravadoNoBancoEm: horaGravadaNoBanco(linhaGravada) };
       } catch (err: any) {
         console.error("Error updating status:", err);
         // Gravação que falhou: nada foi feito, o aviso do realtime de uma

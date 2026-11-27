@@ -1957,6 +1957,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // ainda diria "online" — o push falhava e a ficha afirmava que a cliente
     // não seria avisada, quando a fila avisa ao sincronizar.
     let guardadoNaFila = false;
+    // Hora em que o BANCO gravou a mudança (devolvida por `updateOrderStatus`):
+    // é o carimbo de ordem do aviso à cliente, não o relógio deste aparelho.
+    let gravadoNoBancoEm: string | null = null;
     // A RPC VEM PRIMEIRO (PEDIDO-090, #87).
     //
     // Até aqui o push saía ANTES da gravação. Se a RPC falhasse — 401, sessão
@@ -1975,6 +1978,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           (selectedOrder?.id === orderId ? selectedOrder.status : undefined),
       );
       guardadoNaFila = resultado === "guardado-na-fila";
+      if (typeof resultado === "object" && resultado !== null) {
+        gravadoNoBancoEm = resultado.gravadoNoBancoEm;
+      }
       haptic.success();
 
       // Achado 1 (caça-defeitos, Task 4c) — `handleStatusChange` é função
@@ -2103,7 +2109,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // esperamos aqui, senão o botão do pedido ficava em "Processando..." pelo
     // tempo do envio (sem limite, com sinal ruim). A falha segue dando o aviso
     // amarelo, dentro da própria função.
-    void avisarOClienteDoStatus(orderId, newStatus, alvo);
+    void avisarOClienteDoStatus(orderId, newStatus, alvo, gravadoNoBancoEm);
   };
 
   const handleWhatsApp = useCallback(

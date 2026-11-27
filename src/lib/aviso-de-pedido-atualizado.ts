@@ -1,4 +1,5 @@
 import { eAcaoPropriaDoPedido } from "@/lib/acao-propria-do-painel";
+import { versaoMaisVelhaQueAMemoria } from "@/lib/versao-do-pedido";
 import type { Order } from "@/types";
 
 /**
@@ -19,10 +20,19 @@ type EventoDePedido = {
 
 /** Devolve o evento com `old.status`/`old.payment_status` preenchidos a partir
  * do pedido que a tela já tinha. O que o servidor mandou no `old` tem
- * prioridade; sem pedido na memória, o evento volta como veio. */
+ * prioridade; sem pedido na memória, o evento volta como veio.
+ *
+ * `old.updated_at` é o contrário: vale SEMPRE a versão da tela, quando ela a
+ * tem. Ela é a régua de "evento atrasado" do aviso (`tipoDoAvisoDoPedido`), e
+ * a lista descarta o evento comparando com a MEMÓRIA, não com o `old` do
+ * servidor (que, se viesse completo, seria a versão anterior no banco —
+ * sempre mais velha que o evento, e nunca barraria nada). */
 export function completarOldDoEvento<T extends EventoDePedido>(
   evento: T,
-  anterior: Pick<Order, "status" | "paymentStatus"> | undefined,
+  anterior:
+    | (Pick<Order, "status" | "paymentStatus"> &
+        Partial<Pick<Order, "updatedAt">>)
+    | undefined,
 ): T {
   if (evento.eventType !== "UPDATE" || !anterior) return evento;
   const old = evento.old ?? {};
@@ -35,6 +45,9 @@ export function completarOldDoEvento<T extends EventoDePedido>(
         old.payment_status !== undefined
           ? old.payment_status
           : (anterior.paymentStatus ?? null),
+      ...(anterior.updatedAt !== undefined
+        ? { updated_at: anterior.updatedAt }
+        : {}),
     },
   };
 }
@@ -60,6 +73,12 @@ export function deveAvisarPedidoNovo(pedido: EventoDePedido["new"]): boolean {
  * foi a própria lojista que acabou de pedir). `null`: nada novo para contar.
  * Sem o estado anterior no evento (`old` sem o campo) não dá para comparar:
  * avisa sem afirmar uma mudança de status.
+ *
+ * Evento estritamente mais velho que a versão da tela (`old.updated_at`, posto
+ * por `completarOldDoEvento`) é `null`: a lista o descarta pela MESMA régua
+ * (`versaoMaisVelhaQueAMemoria`), e o aviso não pode anunciar "atualizado
+ * para Em preparo" com o pedido já Enviado na tela, nem "pagamento
+ * confirmado" num pedido já estornado.
  */
 export function tipoDoAvisoDoPedido(
   evento: EventoDePedido,
@@ -67,6 +86,9 @@ export function tipoDoAvisoDoPedido(
 ): "pagamento" | "status" | "generico" | null {
   const antes = evento.old ?? undefined;
   const depois = evento.new ?? undefined;
+  if (versaoMaisVelhaQueAMemoria(antes?.updated_at, depois?.updated_at)) {
+    return null;
+  }
   const pagamentoNovo = depois?.payment_status;
   if (
     antes &&
