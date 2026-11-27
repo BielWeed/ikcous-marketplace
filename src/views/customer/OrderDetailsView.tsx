@@ -532,6 +532,8 @@ export function OrderDetailsView({
   // Exceção: o retrato traz o `user_id` do pedido. A cliente logada que
   // consultou o PRÓPRIO pedido e o abre com a lista da conta falhando ou vazia
   // é a dona — as ações dela não somem por causa do caminho que a trouxe.
+  // Menos o "Reenviar comprovante" e a promessa de devolução automática na
+  // pergunta do Cancelar: os dois dependem do que a cópia não traz.
   const retratoDaPropriaConta =
     !!user && !!order?.userId && order.userId === user.id;
   const contaDona = retratoDoConvidado && !retratoDaPropriaConta ? null : user;
@@ -722,6 +724,10 @@ export function OrderDetailsView({
       cancelladoAposEnvio: pedido.cancelledAfterShipping === true,
       produtoJaVoltou: Boolean(pedido.returnedToSellerAt),
       retiradaNaLoja: pedido.retiradaNaLoja === true,
+      // A cópia da consulta por código não traz `cancelled_after_shipping` nem
+      // `returned_to_seller_at`: sem eles, a pergunta não promete a devolução
+      // automática.
+      envioDesconhecido: retratoDoConvidado !== null,
     });
   };
 
@@ -2262,23 +2268,28 @@ export function OrderDetailsView({
               pedido" sem falar do cancelamento. */}
           {/* O reenvio exige sessao (a edge recusa sem ela): quem acompanha
               por codigo, sem conta, nao ve um botao que sempre falharia. */}
-          {!!contaDona && podeReenviarComprovante(order) && (
-            <button
-              onClick={handleResendReceipt}
-              disabled={isResendingReceipt}
-              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100 disabled:opacity-50"
-            >
-              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
-                {isResendingReceipt ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Mail className="size-4" />
-                )}
-              </span>
-              {isResendingReceipt ? "Reenviando…" : "Reenviar comprovante"}
-              <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
-            </button>
-          )}
+          {/* Nem pela cópia da consulta por código: o status dela é o da
+              consulta, e um pedido que a loja cancelou depois ainda aparece
+              ativo — o e-mail "Recebemos seu pedido" gastaria a reserva. */}
+          {!!contaDona &&
+            !retratoDoConvidado &&
+            podeReenviarComprovante(order) && (
+              <button
+                onClick={handleResendReceipt}
+                disabled={isResendingReceipt}
+                className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100 disabled:opacity-50"
+              >
+                <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
+                  {isResendingReceipt ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Mail className="size-4" />
+                  )}
+                </span>
+                {isResendingReceipt ? "Reenviando…" : "Reenviar comprovante"}
+                <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
+              </button>
+            )}
 
           {podeUsarDevolucao &&
             devolucaoDoProduto.erro &&
