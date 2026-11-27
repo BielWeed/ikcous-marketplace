@@ -572,9 +572,16 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "manutencao",
   ])
     assertStringIncludes(lote._comentario, trecho);
-  // o lote desta e' o ULTIMO de provasDeObjetos (os anteriores nao se reordenam)
+  // o lote desta vem logo antes dos das SUCESSORAS, na ordem delas (os anteriores nao se reordenam)
+  const SUCESSORAS_DA_1600 = [
+    // 20261610000000: o catalogo e a configuracao chegam ao vivo em toda loja.
+    "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
+  ];
   const lotes = lerCanais().provasDeObjetos;
-  assertEquals(lotes[lotes.length - 1].consulta, A196);
+  assertEquals(
+    lotes.slice(-(SUCESSORAS_DA_1600.length + 1)).map((l) => l.consulta),
+    [A196, ...SUCESSORAS_DA_1600],
+  );
 });
 
 Deno.test("20261600: os tipos do app conhecem SO a leitura do painel (Args never, Returns Json); a regra, a marca, o motivo e o gatilho ficam fora", () => {

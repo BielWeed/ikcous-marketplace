@@ -352,6 +352,8 @@ on:
       - "scripts/publicacao/consultas/196a-conferir-a-loja-pausa-o-pedido-novo-aplicado.sql"
       - "scripts/publicacao/consultas/196b-antes-a-loja-pausa-o-pedido-novo-ausente.sql"
       - "scripts/publicacao/consultas/196m-medir-quem-cria-pedido.sql"
+      - "scripts/publicacao/consultas/197a-conferir-o-catalogo-chega-ao-vivo-aplicado.sql"
+      - "scripts/publicacao/consultas/197b-antes-o-catalogo-chega-ao-vivo-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -678,6 +680,8 @@ on:
       - "scripts/publicacao/consultas/196a-conferir-a-loja-pausa-o-pedido-novo-aplicado.sql"
       - "scripts/publicacao/consultas/196b-antes-a-loja-pausa-o-pedido-novo-ausente.sql"
       - "scripts/publicacao/consultas/196m-medir-quem-cria-pedido.sql"
+      - "scripts/publicacao/consultas/197a-conferir-o-catalogo-chega-ao-vivo-aplicado.sql"
+      - "scripts/publicacao/consultas/197b-antes-o-catalogo-chega-ao-vivo-ausente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1755,6 +1759,14 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         timeout-minutes: 6
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-pausa-o-pedido-novo-viva.cjs
+      # Migration 20261610000000 (o catalogo e a configuracao chegam ao vivo em toda loja): as 11 tabelas entram na publicacao supabase_realtime na loja
+      # nova (so as 3 da 20261061), a IKCOUS (as 14 ja la) e' NO-OP com o catalogo da publicacao identico, loja pela metade, reaplicar LF/CRLF; pre-voo
+      # (sem RLS, sem chave primaria, NOTHING, ausente) recusa sem deixar nada; sem publicacao e FOR ALL TABLES; rollback com confirmacao (so as 11);
+      # as politicas de SELECT das 11 e o carrinho/favorito/cupom de uma conta fora da outra; trava (55P03 em 5 s); consultas 197a/197b. CLONE proprio.
+      - name: Prova viva de que o catalogo chega ao vivo em toda loja (migration 20261610000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 4
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-catalogo-chega-ao-vivo-em-toda-loja-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam
