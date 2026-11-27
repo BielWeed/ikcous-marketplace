@@ -456,8 +456,16 @@ Deno.test("sem hook e sem SMTP com mailer_autoconfirm=false: NÃO; com autoconfi
     ).veredito,
     "NÃO",
   );
+  // Google desligado declarado: aqui só o remetente está em jogo (o risco do
+  // Google com a confirmação desligada tem teste próprio, abaixo).
   const comAuto = r.diagnosticar(
-    pronta({ config: { ...semRemetente, mailer_autoconfirm: true } }),
+    pronta({
+      config: {
+        ...semRemetente,
+        mailer_autoconfirm: true,
+        external_google_enabled: false,
+      },
+    }),
   );
   assertEquals(comAuto.veredito, "SIM");
   assert(comAuto.itens.some((i) => i.estado === "ATENÇÃO"));
@@ -480,6 +488,78 @@ Deno.test("sem hook e sem SMTP com mailer_autoconfirm=false: NÃO; com autoconfi
       }),
     ).veredito,
     "NÃO",
+  );
+});
+
+// 27/11/2026: com a confirmação de e-mail DESLIGADA (mailer_autoconfirm=true),
+// quem cria conta com o e-mail de outra pessoa e uma senha já nasce
+// confirmado; quando a dona do e-mail entra pelo Google, o Supabase liga as
+// duas identidades na mesma conta e só remove as NÃO confirmadas
+// (supabase.com/docs/guides/auth/identities, "How Auth links identities"):
+// a senha de quem criou a conta continua entrando na conta dela.
+const GOOGLE = "login pelo Google com confirmação de e-mail";
+
+Deno.test("Google ligado com a confirmação de e-mail desligada: FALTA, com o risco e o conserto no texto", () => {
+  const d = r.diagnosticar(
+    pronta({
+      config: { external_google_enabled: true, mailer_autoconfirm: true },
+    }),
+  );
+  assertEquals(d.veredito, "NÃO", JSON.stringify(d));
+  const it = d.itens.find((i) => i.nome === GOOGLE);
+  assert(it, JSON.stringify(d.itens));
+  assertEquals(it.estado, "FALTA");
+  assertStringIncludes(it.detalhe, "e-mail de outra pessoa");
+  assertStringIncludes(it.detalhe, "ligue a confirmação de e-mail");
+});
+
+Deno.test("Google ligado com a confirmação ligada: OK; confirmação desconhecida: NÃO MEDIDO (INCERTO)", () => {
+  const ok = r.diagnosticar(
+    pronta({
+      config: { external_google_enabled: true, mailer_autoconfirm: false },
+    }),
+  );
+  assertEquals(ok.veredito, "SIM", JSON.stringify(ok));
+  assertEquals(estados(ok)[GOOGLE], "OK");
+  for (const v of [null, undefined, "true"]) {
+    const d = r.diagnosticar(
+      pronta({
+        config: { external_google_enabled: true, mailer_autoconfirm: v },
+      }),
+    );
+    assertEquals(estados(d)[GOOGLE], "NÃO MEDIDO", String(v));
+    assert(d.veredito !== "SIM", String(v));
+  }
+});
+
+Deno.test("Google desligado não muda nada; estado do Google não lido com a confirmação desligada: NÃO MEDIDO", () => {
+  for (const g of [false, null]) {
+    const d = r.diagnosticar(
+      pronta({
+        config: { external_google_enabled: g, mailer_autoconfirm: true },
+      }),
+    );
+    assertEquals(d.veredito, "SIM", String(g));
+    assertEquals(estados(d)[GOOGLE], undefined, String(g));
+  }
+  // Leitura sem o campo do Google: com a confirmação LIGADA não há risco a
+  // medir; com ela desligada o risco não pode ser descartado.
+  assertEquals(estados(r.diagnosticar(pronta()))[GOOGLE], undefined);
+  const semLeitura = r.diagnosticar(
+    pronta({ config: { mailer_autoconfirm: true } }),
+  );
+  assertEquals(estados(semLeitura)[GOOGLE], "NÃO MEDIDO");
+  assertEquals(semLeitura.veredito, "INCERTO");
+  // Tipo inesperado no campo do Google não passa por "desligado".
+  assertEquals(
+    estados(
+      r.diagnosticar(
+        pronta({
+          config: { external_google_enabled: "true", mailer_autoconfirm: true },
+        }),
+      ),
+    )[GOOGLE],
+    "NÃO MEDIDO",
   );
 });
 

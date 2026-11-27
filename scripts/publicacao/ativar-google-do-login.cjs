@@ -207,6 +207,17 @@ async function executar({ projeto, acao, env, fetchImpl, saida }) {
       relatar({ config: antes, origens, acao, saida });
       return 0;
     }
+    // 27/11/2026: com a confirmação de e-mail desligada, quem cadastra o
+    // e-mail de outra pessoa com senha já nasce confirmado; quando ela entra
+    // pelo Google, o Auth liga as duas identidades e só remove as NÃO
+    // confirmadas (https://supabase.com/docs/guides/auth/identities): a senha
+    // do intruso abre a conta dela. Só liga com a confirmação provada ligada.
+    if (acao === "ativar" && antes.mailer_autoconfirm !== false)
+      parar(
+        antes.mailer_autoconfirm === true
+          ? "confirmação de e-mail desligada nesta loja: com o Google ligado, quem criar conta com o e-mail de outra pessoa e uma senha entra na conta dela. Nada foi alterado; ligue a confirmação de e-mail (Confirm email) no Auth da loja e rode de novo"
+          : "confirmação de e-mail não lida nesta loja (mailer_autoconfirm ausente ou inesperado). Nada foi alterado; confira o Auth, ligue a confirmação de e-mail (Confirm email) e rode de novo",
+      );
     const patch =
       acao === "desativar"
         ? { external_google_enabled: false }
