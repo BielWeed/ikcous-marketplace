@@ -822,12 +822,14 @@ async function removerDoCarrinho(
 //     cancelou/informou o envio no meio (0 linhas), o item sai do carrinho,
 //     a reserva é solta e a resposta diz o status novo (R1). Erro no update
 //     relê a linha antes de tirar o item: vínculo gravado segue (R3);
-//   * falha DEFINIDA (carrinho recusado/sem id/estourado, checkout 4xx ou
+//   * falha DEFINIDA (carrinho recusado/sem id/estourado, checkout 4xx —
+//     exceto 408/409/423 — ou
 //     2xx com status CONHECIDO de não pago — pending/blocked/canceled):
 //     libera a reserva (e tira o item do carrinho quando ele existe) — nada
 //     foi pago, o lojista tenta de novo;
-//   * checkout 5xx, 2xx sem confirmação legível (vazio, `{message}`, corpo
-//     não-JSON, formato desconhecido — R2) ou exceção pós-vínculo:
+//   * checkout 5xx/408/409/423, 2xx sem confirmação legível (vazio,
+//     `{message}`, corpo não-JSON, formato desconhecido — R2) ou exceção
+//     pós-vínculo:
 //     INDETERMINADO (mesma regra da ida, revisor A′/B do PR #423) — vínculo
 //     MANTIDO, carrinho intacto, resposta manda conferir a conta do ME.
 //     Liberar aqui abriria a compra dupla;
@@ -2064,13 +2066,16 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
             console.error('[melhor-envio-etiqueta] reversa checkout HTTP', checkoutResponse.status, motivo)
             // R2: só 4xx é recusa DEFINIDA. 5xx (o gateway pode ter debitado
             // com a resposta perdida) e qualquer outro código fora de 2xx são
-            // indeterminados — o vínculo fica.
+            // indeterminados — o vínculo fica. 408/409/423 também: a compra
+            // pode ter fechado (mesma regra da ida, `checkoutDeResultadoIncerto`);
+            // tratá-los como recusa soltava o vínculo e o clique seguinte pagava
+            // um SEGUNDO envio reverso. 429 e os demais 4xx seguem recusa.
             // Achado 1c (rodada 4): 5xx aqui é "o ME pode ter debitado com a
             // resposta perdida" — nada registrava essa dúvida no banco até
             // aqui. Marcador DIFERENTE do de pagamento confirmado: a RPC de
             // liberar recusa por padrão, mas aceita liberar se um admin já
             // conferiu "Meus envios" (`p_conferi_no_melhor_envio`).
-            if (checkoutResponse.status < 400 || checkoutResponse.status >= 500) {
+            if (checkoutResponse.status < 400 || checkoutDeResultadoIncerto(checkoutResponse.status)) {
                 await gravarPagamentoIndeterminadoReverso(ctx, String(devolucao.status), meId)
                 return respostaReversaIndeterminada(meId, false)
             }
