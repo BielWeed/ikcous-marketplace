@@ -125,7 +125,10 @@ describe("CartaoDaAssinatura: vendas pela loja pausadas", () => {
 
   it("as datas ficam só com 'Cliente desde'", () => {
     desenhar({});
-    expect(rotulos()).toEqual(["Cliente desde"]);
+    // Revisão 27/11/2026: o valor ganhou rótulo ligado (`dt`); com as vendas
+    // pausadas ele diz "Valor em aberto", nunca "Próxima cobrança".
+    expect(rotulos()).toEqual(["Valor em aberto", "Cliente desde"]);
+    expect(tela.textContent).not.toContain("Próxima cobrança");
   });
 
   it("dias depois a data continua a da pausa", () => {
@@ -190,7 +193,9 @@ describe("CartaoDaAssinatura: quem diz 'pausadas' é o banco", () => {
     expect(tela.textContent).not.toContain("pausad");
     expect(tela.textContent).not.toContain("Seus clientes não conseguem");
     expect(tela.textContent).not.toContain("Suspensa");
-    expect(rotulos()).toEqual(["Cliente desde"]);
+    // Revisão 27/11/2026: mensalidade em aberto → "Valor em aberto".
+    expect(rotulos()).toEqual(["Valor em aberto", "Cliente desde"]);
+    expect(tela.textContent).not.toContain("Próxima cobrança");
   });
 
   it("o mesmo do teste encerrado: 'Teste encerrado', sem afirmar pausa", () => {

@@ -276,7 +276,12 @@ describe("Início do painel", () => {
 
     const pagina = texto(hospedeiro);
     expect(pagina).toContain("Atrasada");
-    expect(pagina).toContain("R$ 99,90/mês");
+    // 27/11/2026: sem "/mês" (o app de gestão pode mandar o restante de um
+    // pagamento parcial). Atrasada: o valor é o que está em aberto, não a
+    // "próxima" cobrança (revisão do mesmo dia).
+    expect(pagina).toContain("Valor em abertoR$ 99,90");
+    expect(pagina).not.toContain("Próxima cobrança");
+    expect(pagina).not.toContain("/mês");
     // Atrasada: a data é a da mensalidade mais antiga em aberto.
     expect(pagina).toContain("Em aberto desde");
     expect(pagina).toContain("01/10/2026");
