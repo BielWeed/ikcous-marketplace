@@ -49,6 +49,11 @@ const ROTULO_DA_ACAO: Record<AcaoDeRecusa, string> = {
   entrar_na_conta: "Entrar ou criar conta",
   tentar_de_novo: "Tentar de novo",
   conferir_antes: "Ver meus pedidos",
+  // Loja em manutenção ou com as vendas pausadas: nenhum pedido nasceu e não há
+  // nada a trocar. O botão só fecha o aviso (o carrinho fica); nem "Ver meus
+  // pedidos" (não existe pedido) nem "Tentar de novo" (a loja acabou de
+  // recusar e a frase do banco já diz quando voltar).
+  aguardar_a_loja: "Entendi",
   // Quem compra SEM CONTA não tem como achar o pedido em "Ver meus pedidos"
   // (a busca exige e-mail e o número, que ela nunca recebeu). A saída é
   // reenviar a MESMA compra — segura porque o banco devolve o pedido que já

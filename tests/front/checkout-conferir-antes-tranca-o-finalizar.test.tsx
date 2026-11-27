@@ -426,6 +426,62 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
     expect(localizarAvisoDeComoDestravar()).toBeUndefined();
   });
 
+  // A PAUSA DE VENDAS (migration 20261600000000): o gatilho recusa o INSERT
+  // antes de o pedido nascer. Antes desta correção as duas frases caíam em
+  // `conferir_antes`: "Ver meus pedidos" sobre um pedido que não existe e o
+  // Finalizar travado à espera de uma conferência sem objeto.
+  it.each([
+    "A loja está em manutenção. Tente de novo mais tarde.",
+    "Esta loja não está aceitando pedidos agora.",
+  ])("loja sem aceitar pedido (%s): o painel não manda conferir pedidos, o Finalizar continua HABILITADO e o carrinho fica", async (frase) => {
+    createOrder.mockRejectedValueOnce({ code: "P0001", message: frase });
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    await preencherEClicarFinalizar();
+
+    const painel = document.querySelector('[role="alert"]');
+    expect(painel?.textContent).toContain(frase);
+    expect(
+      document.querySelector('button[data-acao="aguardar_a_loja"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('button[data-acao="conferir_antes"]'),
+    ).toBeNull();
+    expect(
+      document.querySelector('button[data-acao="reenviar_mesma_compra"]'),
+    ).toBeNull();
+    expect(document.body.textContent).not.toContain("Ver meus pedidos");
+    expect(localizarAvisoDeComoDestravar()).toBeUndefined();
+    expect(localizarBotaoFinalizar()!.disabled).toBe(false);
+    expect(toastError).toHaveBeenCalledWith(`Falha no Pedido: ${frase}`);
+
+    // O botão do painel só fecha o aviso: nada de navegar, nada de esvaziar
+    // o carrinho, nada de reenviar sozinho.
+    onNavigate.mockClear();
+    await act(async () => {
+      (
+        document.querySelector(
+          'button[data-acao="aguardar_a_loja"]',
+        ) as HTMLButtonElement
+      ).click();
+      await esperarMicrotarefas();
+    });
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(clearCart).not.toHaveBeenCalled();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(localizarBotaoFinalizar()!.disabled).toBe(false);
+  });
+
   it("fechar o painel de conferir_antes (botão 'Fechar o aviso') destrava o Finalizar Pedido de novo", async () => {
     createOrder.mockRejectedValueOnce({});
     const { CheckoutView } = await import("@/views/customer/CheckoutView");

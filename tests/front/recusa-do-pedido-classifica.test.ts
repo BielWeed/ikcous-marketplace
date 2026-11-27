@@ -479,4 +479,26 @@ describe("classificarRecusaDoPedido", () => {
     expect(r.produto).toBe("Kit (Disponível: 9, Solicitado: 1)");
     expect(r.disponivel).toBe(2);
   });
+  // A PAUSA DE VENDAS (26/11/2026 — migration 20261600000000, gatilho
+  // `a_loja_aceita_pedido_novo` em marketplace_orders): a loja em manutenção ou
+  // com as vendas pausadas recusa o INSERT ANTES de o pedido nascer. Sem regra,
+  // as duas frases caíam em `conferir_antes` ("Ver meus pedidos" + Finalizar
+  // travado) sobre um pedido que provadamente não existe.
+  it.each([
+    "A loja está em manutenção. Tente de novo mais tarde.",
+    "Esta loja não está aceitando pedidos agora.",
+  ])("loja sem aceitar pedido (%s) -> aguardar a loja, frase intacta", (frase) => {
+    const r = classificarRecusaDoPedido(p0001(frase));
+    expect(r.acao).toBe("aguardar_a_loja");
+    expect(r.mensagem).toBe(frase);
+    expect(r.resultado).toBeUndefined();
+    expect(r.produto).toBeUndefined();
+  });
+
+  it("a frase da pausa só casa inteira: variação dela cai no caso genérico conferir_antes", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("Esta loja não está aceitando pedidos agora"),
+    );
+    expect(r.acao).toBe("conferir_antes");
+  });
 });
