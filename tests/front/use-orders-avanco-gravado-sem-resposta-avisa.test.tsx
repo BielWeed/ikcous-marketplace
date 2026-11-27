@@ -47,6 +47,7 @@ import {
   ErroPedidoMudou,
   MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA,
   PRAZO_DO_AVANCO_DE_STATUS_MS,
+  VALIDADE_DA_MARCA_DO_AVANCO_MS,
   useOrders,
 } from "@/hooks/useOrders";
 import type { OrderStatus } from "@/types";
@@ -323,6 +324,49 @@ describe("Avançar status: gravou no banco, mas a resposta se perdeu", () => {
 
     expect(r3.erro).toBeInstanceOf(ErroPedidoMudou);
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("(d) a marca vale por 2 min: a tentativa DENTRO do prazo ainda vira sucesso", async () => {
+    gravacao = () => new Promise(() => {});
+    redeCaiDepoisDaPrimeiraLeitura();
+    await avancar("processing", "pending");
+
+    statusNoBanco = "processing";
+    releitura = async () => ({ data: { status: statusNoBanco }, error: null });
+    await act(async () => {
+      // a 1ª tentativa já avançou o relógio; somado, ainda dentro dos 2 min
+      await vi.advanceTimersByTimeAsync(
+        VALIDADE_DA_MARCA_DO_AVANCO_MS - PRAZO_DO_AVANCO_DE_STATUS_MS * 2,
+      );
+    });
+    vi.clearAllMocks();
+
+    const r2 = await avancar("processing", "pending");
+
+    expect(r2.ok).toBe(true);
+    expect(toast.success).toHaveBeenCalledWith("Status atualizado com sucesso");
+  });
+
+  it("(d) marca vencida (outro aparelho pode ter avançado e avisado): a tentativa horas depois dá 'mudou' e não avisa", async () => {
+    // a gravação do tablet nem chegou ao servidor; a marca fica
+    gravacao = () => new Promise(() => {});
+    redeCaiDepoisDaPrimeiraLeitura();
+    await avancar("processing", "pending");
+
+    // o celular avança (e avisa a cliente); o tablet volta muito depois
+    statusNoBanco = "processing";
+    releitura = async () => ({ data: { status: statusNoBanco }, error: null });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(VALIDADE_DA_MARCA_DO_AVANCO_MS + 1);
+    });
+    vi.clearAllMocks();
+
+    const r2 = await avancar("processing", "pending");
+
+    expect(r2.erro).toBeInstanceOf(ErroPedidoMudou);
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(gravacoes()).toHaveLength(0);
   });
 
   it("(d) nunca duas vezes: o sucesso confirmado na hora não deixa marca para uma tentativa seguinte", async () => {

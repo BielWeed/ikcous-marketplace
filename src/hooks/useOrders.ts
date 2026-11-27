@@ -279,6 +279,10 @@ const PRAZO_DA_RELEITURA_DE_STATUS_MS = 10_000;
 // Conferência DEPOIS de um avanço sem resposta (o banco pode ter gravado):
 // 5 s, para a espera inteira (25 s acima) não passar dos 30 s do cancelamento.
 const PRAZO_DA_CONFERENCIA_DO_AVANCO_MS = 5_000;
+// Quanto tempo a marca de um avanço sem resposta vale. Depois disso, achar o
+// banco na etapa marcada pode ser outro aparelho que já avançou (e avisou a
+// cliente): a tentativa segue o caminho de "mudou", sem segundo aviso.
+export const VALIDADE_DA_MARCA_DO_AVANCO_MS = 120_000;
 export const MENSAGEM_CANCELAMENTO_SEM_RESPOSTA =
   "A conexão está lenta e não conseguimos confirmar se o pedido foi cancelado. Confira o pedido antes de tentar de novo.";
 export const MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA =
@@ -3374,12 +3378,15 @@ export function useOrders(
 
   /**
    * Avanços deste painel que ficaram SEM resposta e sem confirmação
-   * (id -> etapa pedida). Se a nova tentativa achar o banco nessa etapa, foi
-   * a gravação perdida que passou: `updateOrderStatus` resolve como sucesso (a
+   * (id -> etapa pedida e quando). Se a nova tentativa, dentro de
+   * `VALIDADE_DA_MARCA_DO_AVANCO_MS`, achar o banco nessa etapa, foi a
+   * gravação perdida que passou: `updateOrderStatus` resolve como sucesso (a
    * ficha avisa a cliente) em vez de "mudou". Consumida na primeira vez, para
    * a cliente nunca ser avisada duas vezes do mesmo avanço.
    */
-  const avancosSemRespostaRef = useRef(new Map<string, OrderStatus>());
+  const avancosSemRespostaRef = useRef(
+    new Map<string, { status: OrderStatus; em: number }>(),
+  );
 
   /**
    * Pedidos (da cliente ou do painel) cujo INSERT ainda está consultando o banco
@@ -4646,9 +4653,11 @@ export function useOrders(
             // sem resposta: a gravação perdida passou. É o sucesso dela (a
             // ficha avisa a cliente), não "mudou". A marca sai aqui de
             // qualquer jeito: uma tentativa seguinte não avisa de novo.
+            const marca = avancosSemRespostaRef.current.get(orderId);
             const eraOAvancoSemResposta =
               statusVerdadeiro === status &&
-              avancosSemRespostaRef.current.get(orderId) === status;
+              marca?.status === status &&
+              Date.now() - marca.em <= VALIDADE_DA_MARCA_DO_AVANCO_MS;
             avancosSemRespostaRef.current.delete(orderId);
             if (eraOAvancoSemResposta) {
               clearAnalyticsCache();
@@ -4804,7 +4813,10 @@ export function useOrders(
             return false;
           }
           if (await avancoGravouNoBanco(orderId, status)) return true;
-          avancosSemRespostaRef.current.set(orderId, status);
+          avancosSemRespostaRef.current.set(orderId, {
+            status,
+            em: Date.now(),
+          });
           return false;
         };
         const { error } = await aguardarComPrazo(
