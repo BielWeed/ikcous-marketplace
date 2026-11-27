@@ -19,8 +19,8 @@ import { formatarDataHoraBrasilia } from "@/lib/data-da-loja";
 import {
   formatarDia,
   formatarReais,
+  notaDoEventoParaLoja,
   pedidoDentroDoPrazo,
-  reaisComVirgula,
   rotuloAtor,
   rotuloCondicao,
   rotuloMetodo,
@@ -510,26 +510,29 @@ export function DetalheDaDevolucao({
             <section className={SECAO}>
               <h3 className={TITULO_SECAO}>Histórico</h3>
               <ol className="space-y-3 border-l border-admin-border pl-4">
-                {detalhe.eventos.map((evento) => (
-                  <li key={evento.id} className="relative">
-                    <span className="absolute left-[-21px] top-1 size-2.5 rounded-full border border-admin-gold/60 bg-zinc-950" />
-                    <p className="text-xs font-bold text-white">
-                      {rotuloStatus(evento.para_status)}
-                      <span className="font-normal text-zinc-500">
-                        {" "}
-                        · {rotuloAtor(evento.ator)} ·{" "}
-                        <span className="tabular-nums">
-                          {formatarDataHoraBrasilia(evento.created_at)}
+                {detalhe.eventos.map((evento) => {
+                  const nota = notaDoEventoParaLoja(evento);
+                  return (
+                    <li key={evento.id} className="relative">
+                      <span className="absolute left-[-21px] top-1 size-2.5 rounded-full border border-admin-gold/60 bg-zinc-950" />
+                      <p className="text-xs font-bold text-white">
+                        {rotuloStatus(evento.para_status)}
+                        <span className="font-normal text-zinc-500">
+                          {" "}
+                          · {rotuloAtor(evento.ator)} ·{" "}
+                          <span className="tabular-nums">
+                            {formatarDataHoraBrasilia(evento.created_at)}
+                          </span>
                         </span>
-                      </span>
-                    </p>
-                    {evento.nota && (
-                      <p className="mt-0.5 whitespace-pre-line break-words text-[11px] leading-relaxed text-zinc-400">
-                        {reaisComVirgula(evento.nota)}
                       </p>
-                    )}
-                  </li>
-                ))}
+                      {nota !== null && (
+                        <p className="mt-0.5 whitespace-pre-line break-words text-[11px] leading-relaxed text-zinc-400">
+                          {nota}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
               </ol>
             </section>
           </>

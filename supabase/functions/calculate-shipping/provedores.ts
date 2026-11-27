@@ -306,10 +306,15 @@ const ERRO_DE_TOKEN = /\btoken\b|autentica|unauthori[sz]ed|não autorizado|nao a
  * régua é estreita: só é passageiro o que SE DIZ momentâneo (no momento,
  * temporariamente, tempo esgotado, tente mais tarde); "Serviço indisponível"
  * seco é ambíguo e fica como recusa. Se o texto também fala de cobertura,
- * peso, medida ou CEP, vence a recusa: repetir a consulta repetiria a recusa.
+ * trecho, peso, medida ou CEP, vence a recusa: repetir a consulta repetiria a
+ * recusa. É o caso da J&T (27/11/2026): "Não é possível realizar cotações,
+ * pois o trecho está temporariamente indisponível." é como ela responde à ROTA
+ * que não atende, apesar do "temporariamente". Lida como passageira, toda
+ * cotação com a J&T pedida saía parcial e sem cache, e cada "Tentar de novo"
+ * gastava o limite de cotações da loja para receber a mesma recusa.
  */
 const ERRO_PASSAGEIRO = /\bno momento\b|temporariamente|momentaneamente|\btempo (limite|esgotado|de resposta|de espera)\b|\btimed? ?out\b|tente novamente mais tarde|try again later|fora do ar|instabilidade|service (temporarily )?unavailable/i
-const RECUSA_DO_SERVICO = /n[ãa]o atend|\bpeso\b|dimens|\bmedida|\btamanho\b|\baltura\b|\blargura\b|\bcomprimento\b|acima do permitido|\bcep\b/i
+const RECUSA_DO_SERVICO = /n[ãa]o atend|\btrecho\b|\bpeso\b|dimens|\bmedida|\btamanho\b|\baltura\b|\blargura\b|\bcomprimento\b|acima do permitido|\bcep\b/i
 
 export function erroDeServicoPassageiro(texto: unknown): boolean {
     if (typeof texto !== 'string') return false

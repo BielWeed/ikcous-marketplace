@@ -40,8 +40,9 @@ import { erroDeServicoPassageiro } from "./provedores.ts"
 Deno.test("erro passageiro: indisponibilidade dita como momentânea e tempo esgotado", () => {
     for (const texto of [
         "Serviço indisponível no momento",
-        "Não é possível realizar cotações, pois o trecho está temporariamente indisponível.",
         "Serviço momentaneamente indisponível",
+        // "temporariamente" sem falar de trecho continua passageiro.
+        "Serviço temporariamente indisponível",
         "Tempo limite esgotado ao consultar a transportadora",
         "Tempo de resposta da transportadora excedido",
         "Request timed out",
@@ -56,6 +57,9 @@ Deno.test("erro passageiro: indisponibilidade dita como momentânea e tempo esgo
 Deno.test("erro NÃO passageiro: recusa legítima (trecho não atendido, peso/medida), texto vago ou vazio", () => {
     for (const texto of [
         "Transportadora não atende este trecho.",
+        // A J&T (Standard, 33) responde assim à ROTA que não atende: o texto
+        // fala do trecho, e repetir a consulta devolve a mesma recusa.
+        "Não é possível realizar cotações, pois o trecho está temporariamente indisponível.",
         "Dimensões do objeto ultrapassam o limite da transportadora.",
         "Altura acima do permitido",
         "Peso excedido para o serviço",
@@ -103,11 +107,47 @@ Deno.test("Melhor Envio 200 com o PAC recusado de verdade (não atende o trecho 
 })
 
 Deno.test("Melhor Envio: serviço com erro passageiro que a loja NÃO pediu não marca a cotação como parcial", async () => {
-    // A resposta real traz o J&T (Standard, 33) "temporariamente indisponível",
-    // mas a loja só usa PAC e SEDEX.
-    const r = await rodar(cotacao(), { banco: soME() })
+    // A loja só usa PAC e SEDEX; o J&T (Standard, 33) volta "indisponível no
+    // momento" e fica fora da conta.
+    const jetPassageiro = { ...RESPOSTA_ME_REAL[5], error: "Serviço indisponível no momento" }
+    const r = await rodar(cotacao(), { banco: soME(), rotas: { me: () => json([PAC_ME, SEDEX_ME, jetPassageiro]) } })
     assertEquals(r.resposta.status, 200)
     assertEquals(r.corpo.cotacaoParcial, false)
+})
+
+// A J&T PEDIDA pela loja, com a frase real da rota que ela não atende.
+const ME_CALCULATE = "melhorenvio.com.br/api/v2/me/shipment/calculate"
+const meComJet = () => bancoFalso({
+    credenciais: [{ ...LINHA_ME, credentials: { ...LINHA_ME.credentials, servicos: ["1", "2", "33"] } }, linhaLigados(["melhor_envio"])],
+})
+
+Deno.test("Melhor Envio 200 com a J&T (pedida) em 'trecho temporariamente indisponível': cotação COMPLETA, vai ao cache e o próximo pedido não gasta cotação", async () => {
+    const jet = RESPOSTA_ME_REAL[5]
+    assertEquals(jet.company.name, "JeT")
+    const banco = meComJet()
+    const r = await rodar(cotacao(), { banco, rotas: { me: () => json([PAC_ME, SEDEX_ME, jet]) } })
+    assertEquals(r.resposta.status, 200)
+    assertEquals(r.chamadas.filter((c: any) => c.url.includes(ME_CALCULATE)).length, 1)
+    assertEquals(r.corpo.options.map((o: any) => o.id), ["melhor-envio-1", "melhor-envio-2"])
+    assertEquals(r.corpo.cotacaoParcial, false)
+    assertEquals(r.corpo.options.some((o: any) => "cotacaoParcial" in o), false)
+    const gravado = r.registro.cacheLinhas.at(-1)
+    assert(gravado, "a cotação completa foi gravada no cache")
+    assertEquals(cotacaoDoCacheServe(gravado.options, gravado.options[0].assinaturaCotacao), true)
+
+    // "Tentar de novo" (ou outra visita) dentro das 2 h: o cache serve, a
+    // transportadora não é chamada de novo.
+    const segunda = await rodar(cotacao(), { banco, rotas: { me: () => json([PAC_ME, SEDEX_ME, jet]) } })
+    assertEquals(segunda.resposta.status, 200)
+    assertEquals(segunda.chamadas.filter((c: any) => c.url.includes(ME_CALCULATE)).length, 0)
+    assertEquals(segunda.corpo.options.map((o: any) => o.id), ["melhor-envio-1", "melhor-envio-2"])
+})
+
+Deno.test("Melhor Envio 200 com a J&T (pedida) 'indisponível no momento' SEM falar de trecho: segue PARCIAL", async () => {
+    const jet = { ...RESPOSTA_ME_REAL[5], error: "Serviço indisponível no momento" }
+    const r = await rodar(cotacao(), { banco: meComJet(), rotas: { me: () => json([PAC_ME, SEDEX_ME, jet]) } })
+    assertEquals(r.resposta.status, 200)
+    assertEquals(r.corpo.cotacaoParcial, true)
 })
 
 // ── No handler: SuperFrete ───────────────────────────────────────────────────

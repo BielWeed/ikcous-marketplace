@@ -13,6 +13,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FichaDaDevolucao } from "@/hooks/useDevolucoesAdmin";
+import { campoDoBannerDoInstante } from "@/lib/datas-do-banner";
 import type { DevolucaoDetalhe } from "@/types/devolucao";
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
@@ -254,9 +255,8 @@ describe("aviso de alteração não salva", () => {
 });
 
 describe("folga de 5 minutos da coleta", () => {
-  const dois = (n: number) => String(n).padStart(2, "0");
-  const paraCampo = (d: Date) =>
-    `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}T${dois(d.getHours())}:${dois(d.getMinutes())}`;
+  // O campo é lido como horário de Brasília, então é nele que se escreve.
+  const paraCampo = (d: Date) => campoDoBannerDoInstante(d.toISOString());
   const coletaHa = (minutos: number) =>
     new Date(AGORA.getTime() - minutos * 60_000);
 

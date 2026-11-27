@@ -68,6 +68,12 @@ const mundo = vi.hoisted(() => ({
   // Quantas próximas consultas de sessão respondem "sem sessão" (o cliente do
   // Supabase ainda não restaurou a sessão).
   semSessao: 0,
+  // Atraso da consulta de sessão (a gravação espera por ela antes de montar
+  // o que envia).
+  atrasoDaSessao: 0,
+  // Quantas gravações ainda chegam ao banco antes de a rede cair (null = a
+  // rede não cai).
+  gravacoesAntesDeCair: null as number | null,
 }));
 
 // A hora do servidor: a do relógio falso menos o desvio do aparelho da vez.
@@ -136,6 +142,9 @@ vi.mock("@/lib/supabase", () => ({
     }),
     auth: {
       getSession: async () => {
+        if (mundo.atrasoDaSessao > 0) {
+          await new Promise((r) => setTimeout(r, mundo.atrasoDaSessao));
+        }
         if (mundo.semSessao > 0) {
           mundo.semSessao -= 1;
           return { data: { session: null } };
@@ -153,6 +162,12 @@ vi.mock("@/lib/supabase", () => ({
     ) => {
       if (nome !== "sync_cart_atomic") return { data: null, error: null };
       if (mundo.gravacaoFalha) return { error: { message: "sem rede" } };
+      if (mundo.gravacoesAntesDeCair !== null) {
+        if (mundo.gravacoesAntesDeCair === 0) {
+          return { error: { message: "sem rede" } };
+        }
+        mundo.gravacoesAntesDeCair -= 1;
+      }
       const agora = agoraNoServidor();
       const antes = mundo.linhas;
       mundo.gravacoes.push({
@@ -294,6 +309,8 @@ beforeEach(() => {
   mundo.canalCaido = false;
   mundo.gravacaoFalha = false;
   mundo.semSessao = 0;
+  mundo.atrasoDaSessao = 0;
+  mundo.gravacoesAntesDeCair = null;
   armazens.clear();
   contextos.clear();
   vi.stubGlobal("localStorage", doAparelho("local"));
@@ -686,5 +703,121 @@ describe("carrinho em dois aparelhos com relógios diferentes", () => {
       ["cinto", 1],
       ["vestido", 1],
     ]);
+  });
+
+  // Caça de mutação (27/11/2026): os quatro testes abaixo pegam trechos da
+  // regra das lápides e do carimbo que nenhum teste vigiava.
+  it("leitura que saiu ANTES da gravação da remoção e voltou DEPOIS não devolve o item tirado", async () => {
+    await ligar("computador", 0);
+    await noAparelho("computador", (c) => c.addToCart(produto("bolsa"), 1));
+    await noAparelho("computador", (c) => c.addToCart(produto("vestido"), 1));
+    expect(banco()).toEqual([
+      ["bolsa", 1],
+      ["vestido", 1],
+    ]);
+
+    // A cliente tira o vestido; logo antes da gravação sai uma releitura
+    // lenta com o retrato de ANTES (vestido ainda no banco), que só volta
+    // depois que a gravação já confirmou a remoção. A lápide confirmada no
+    // meio da leitura não vale como "posto de novo": a foto é a do início.
+    mundo.atrasoDaLeitura = 60;
+    mundo.canalCaido = true;
+    await act(async () => contextoDo("computador").removeFromCart("vestido"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(990);
+      window.dispatchEvent(new Event("online"));
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    mundo.atrasoDaLeitura = 0;
+    await assentar();
+
+    expect(carrinhoDo("computador")).toEqual([["bolsa", 1]]);
+    expect(banco()).toEqual([["bolsa", 1]]);
+  });
+
+  it("item tirado enquanto a gravação espera a sessão: a gravação que ainda levou a linha não confirma a remoção", async () => {
+    await ligar("computador", 0);
+    await noAparelho("computador", (c) => c.addToCart(produto("brinco"), 1));
+    await noAparelho("computador", (c) => c.addToCart(produto("cinto"), 1));
+
+    // A gravação do vestido sai 1 s depois do toque e espera a sessão; nesse
+    // meio a cliente tira o brinco. A gravação monta o envio com o carrinho
+    // de quando saiu (com o brinco) e a lápide já nascida. A gravação
+    // seguinte, a que tira o brinco, não chega ao banco.
+    mundo.atrasoDaSessao = 500;
+    mundo.gravacoesAntesDeCair = 1;
+    await act(async () =>
+      contextoDo("computador").addToCart(produto("vestido"), 1),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1100);
+    });
+    await act(async () => contextoDo("computador").removeFromCart("brinco"));
+    await assentar();
+
+    expect(mundo.gravacoes.at(-1)?.enviados).toContainEqual(
+      expect.objectContaining({ product_id: "brinco" }),
+    );
+    expect(banco()).toEqual([
+      ["brinco", 1],
+      ["cinto", 1],
+      ["vestido", 1],
+    ]);
+    expect(lapidesDo("computador")).toEqual([
+      expect.objectContaining({ key: "brinco-", confirmada: false }),
+    ]);
+
+    // O brinco que o banco ainda tem segue escondido numa releitura.
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await assentar();
+    expect(carrinhoDo("computador")).toEqual([
+      ["cinto", 1],
+      ["vestido", 1],
+    ]);
+  });
+
+  it("lápide trocada por outra durante a gravação não é confirmada por uma gravação que não a levou", async () => {
+    await ligar("computador", 0);
+    await noAparelho("computador", (c) => c.addToCart(produto("brinco"), 1));
+    await noAparelho("computador", (c) => c.addToCart(produto("cinto"), 1));
+
+    mundo.gravacoesAntesDeCair = 1;
+    await act(async () => contextoDo("computador").removeFromCart("brinco"));
+    // A gravação da remoção sai 1 s depois e espera a resposta do banco.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1005);
+    });
+    expect(mundo.gravacoes.at(-1)?.enviados).toEqual([
+      expect.objectContaining({ product_id: "cinto" }),
+    ]);
+    const lapideEnviada = lapidesDo("computador")[0]?.deletedAt;
+    // Nesse meio ela põe o brinco e tira de novo: nasce outra lápide, que
+    // esta gravação não levou.
+    await act(async () => {
+      contextoDo("computador").addToCart(produto("brinco"), 1);
+      contextoDo("computador").removeFromCart("brinco");
+    });
+    await assentar();
+
+    const [lapide] = lapidesDo("computador");
+    expect(lapide).toMatchObject({ key: "brinco-", confirmada: false });
+    expect(lapide?.deletedAt).not.toBe(lapideEnviada);
+  });
+
+  it("linha cuja quantidade mudou não devolve o carimbo velho do banco", async () => {
+    await ligar("celular", 0);
+    await noAparelho("celular", (c) => c.addToCart(produto("vestido"), 1));
+    const carimboVelho = mundo.linhas[0]?.updated_at ?? "";
+    vi.advanceTimersByTime(60_000);
+    await noAparelho("celular", (c) => c.updateQuantity("vestido", 2));
+
+    const enviado = mundo.gravacoes.at(-1)?.enviados[0];
+    expect(enviado).toMatchObject({ product_id: "vestido", quantity: 2 });
+    expect(enviado?.updated_at).toBeUndefined();
+    expect(Date.parse(mundo.linhas[0]?.updated_at ?? "")).toBeGreaterThan(
+      Date.parse(carimboVelho),
+    );
   });
 });
