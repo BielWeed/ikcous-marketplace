@@ -63,9 +63,10 @@ vi.mock("@/components/admin/pdv/LeitorDeCodigo", () => ({
 }));
 
 const CAMINHO_CSS = "src/components/admin/pdv/pdv.css";
-// Mesma assinatura do P46: o css SEM o bloco de 1280 px é o de antes dele.
+// Mesma assinatura do P46: o css SEM o bloco de 1280 px é o de antes dele
+// (refeita lá em 27/11/2026, pelo desconto do balcão no celular).
 const ASSINATURA_DO_CSS_ORIGINAL =
-  "3f13e48b2236ab03342ef3786f4c74770c508ef9451a03ac011f80973e55da0d";
+  "fc666b90f189c17e99c3306843ec3404abc89e306ab7cd50a0d464d6b6e4adb0";
 const PARAMS_DO_BLOCO = "(min-width: 1280px)";
 const RAIZ = '.pdv[data-etapa="cupom"]';
 const SEL_AVISO = `${RAIZ} > .pdv-flow > .pdv-notice`;
