@@ -14,6 +14,14 @@ export const formatCurrency = (value: number) =>
   currencyFormatter.format(value);
 
 /**
+ * Dinheiro com milhar e vírgula ("R$ 1.234,50"), com espaço comum no lugar do
+ * inseparável do Intl: num cartão estreito a linha quebra entre o "R$" e o
+ * número (nunca dentro dele), e o texto copiado/enviado sai com espaço normal.
+ */
+export const reaisComEspacoComum = (valor: number) =>
+  formatCurrency(valor).replace(/\u00a0/g, " ");
+
+/**
  * O banco escreve dinheiro no formato americano: "R$ 120.00", "R$ 1,234.50" e,
  * quando apaga o zero da frente, "R$ .50". Aqui vira real brasileiro; o que já
  * está formatado não é tocado.

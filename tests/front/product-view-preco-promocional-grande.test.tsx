@@ -16,6 +16,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
+import { classesDoCelular } from "./classes-do-celular";
 
 vi.mock("@/hooks/useReviews", () => ({
   useReviews: () => ({
@@ -146,6 +147,31 @@ describe("ProductView — preço promocional GRANDE (bloco principal) usa verde,
     expect(preco?.classList.contains("text-emerald-600")).toBe(true);
     expect(preco?.classList.contains("text-rose-600")).toBe(false);
     expect(preco?.classList.contains("text-red-600")).toBe(false);
+  });
+
+  // 27/11/2026: em 320-360 px com fonte em 130%, "A partir de" + preço + "De:"
+  // passavam da largura da tela -- a fileira só quebrava no computador
+  // (`lg:flex-wrap`). Agora quebra também no celular.
+  it("com promoção: preço e 'De:' quebram de linha também no celular", async () => {
+    const { ProductView } = await import("@/views/customer/ProductView");
+
+    await act(async () => {
+      raiz.render(
+        <ProductView
+          product={produtoEmPromocao}
+          isFavorite={false}
+          onToggleFavorite={() => {}}
+          onAddToCart={() => {}}
+          onBack={() => {}}
+        />,
+      );
+    });
+
+    const fileira = encontraPrecoGrande(hospedeiro)?.parentElement;
+    expect(fileira?.textContent).toContain("De:");
+    expect(classesDoCelular(fileira?.className ?? "").split(" ")).toContain(
+      "flex-wrap",
+    );
   });
 
   it("sem promoção: o preço grande é neutro (text-foreground), não verde nem vermelho", async () => {

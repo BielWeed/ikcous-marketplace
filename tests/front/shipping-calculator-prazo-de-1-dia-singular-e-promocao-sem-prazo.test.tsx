@@ -14,6 +14,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CartItem, Product, ShippingOption } from "@/types";
+import { classesDoCelular } from "./classes-do-celular";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 
@@ -127,6 +128,19 @@ describe("ShippingCalculator — singular de 1 dia e promoção sem prazo", () =
     const texto = await montar(opcao({ deliveryDays: 1 }));
     expect(texto).toContain("Entrega em até 1 dia útil");
     expect(texto).not.toContain("1 dias");
+  });
+
+  // 27/11/2026: em 320 px com fonte em 130% o prazo quebra em até 3 linhas, e o
+  // `leading-none` encostava uma linha na outra. No computador fica como era.
+  it("o prazo que quebra em várias linhas não encosta uma na outra no celular", async () => {
+    await montar(opcao({ deliveryDays: 2 }));
+    const prazo = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent === "Entrega em até 2 dias úteis",
+    )!;
+    const celular = classesDoCelular(prazo.className).split(" ");
+    expect(celular).toContain("leading-tight");
+    expect(celular).not.toContain("leading-none");
+    expect(prazo.classList.contains("lg:leading-none")).toBe(true);
   });
 
   it("controle: transportadora de 2 dias segue no plural", async () => {

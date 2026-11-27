@@ -3,7 +3,7 @@ import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO } from "@/lib/cor-do-preco-promocional";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, reaisComEspacoComum } from "@/lib/utils";
 import type { Product } from "@/types";
 import useEmblaCarousel from "embla-carousel-react";
 import { Check, ImageIcon, Loader2, ShoppingCart } from "lucide-react";
@@ -127,6 +127,20 @@ export default function OfertasCompactas({
         itens={vitrineDeOfertas ? "ofertas" : "produtos"}
       />
     </section>
+  );
+}
+
+// "R$ 1.234,56" que só quebra entre o "R$" e o número (27/11/2026): no cartão de
+// 145 px (celular de 320-359 px, fonte em 130%) o `break-words` picava o número
+// ("R$ 1.23" / "4,56"). O espaço depois do "R$" é comum e o número fica inteiro.
+function PrecoInteiro({ valor }: { valor: number }) {
+  const texto = reaisComEspacoComum(valor);
+  const corte = texto.indexOf(" ") + 1;
+  return (
+    <>
+      {texto.slice(0, corte)}
+      <span className="whitespace-nowrap">{texto.slice(corte)}</span>
+    </>
   );
 }
 
@@ -299,7 +313,7 @@ function CartaoOfertaCompacta({
                 : "text-slate-900",
           )}
         >
-          {formatCurrency(preco)}
+          <PrecoInteiro valor={preco} />
         </span>
         {largo && savings > 0 && (
           <span

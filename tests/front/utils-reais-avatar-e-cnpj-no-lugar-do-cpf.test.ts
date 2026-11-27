@@ -6,7 +6,11 @@
 //   - `mascararCpfParaExibicao` mascarava um CNPJ (14 dígitos) como se fosse
 //     CPF, escondendo e mostrando os dígitos errados.
 import { mascararCpfParaExibicao } from "@/lib/cpf";
-import { getAvatarGradient, reaisComVirgula } from "@/lib/utils";
+import {
+  getAvatarGradient,
+  reaisComEspacoComum,
+  reaisComVirgula,
+} from "@/lib/utils";
 import { describe, expect, it } from "vitest";
 
 const semNbsp = (texto: string) => texto.replace(/\u00a0/g, " ");
@@ -32,6 +36,23 @@ describe("reaisComVirgula — só reescreve o que é dinheiro do banco (2 casas)
   it("texto sem dinheiro volta igual, e vazio continua vazio", () => {
     expect(reaisComVirgula("sem valor aqui")).toBe("sem valor aqui");
     expect(reaisComVirgula("")).toBe("");
+  });
+});
+
+// 27/11/2026: o espaço depois do "R$" é o ponto em que um preço pode quebrar
+// de linha num cartão estreito (320-360 px, fonte do sistema em 130%); com o
+// inseparável do Intl, a quebra caía DENTRO do número ("R$ 1.23" / "4,56").
+describe("reaisComEspacoComum — o preço só quebra entre o R$ e o número", () => {
+  it("troca o espaço inseparável do Intl por espaço comum", () => {
+    expect(reaisComEspacoComum(1234.56)).toBe("R$ 1.234,56");
+    expect(reaisComEspacoComum(1234.56)).not.toContain("\u00a0");
+  });
+
+  it("o número continua com milhar e vírgula, sem espaço dentro dele", () => {
+    expect(reaisComEspacoComum(12999.9).split(" ")).toEqual([
+      "R$",
+      "12.999,90",
+    ]);
   });
 });
 

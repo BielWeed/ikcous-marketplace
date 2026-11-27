@@ -15,7 +15,7 @@ import {
   PremiumOffers,
   ordenarOfertas,
 } from "@/components/ui/custom/PremiumOffers";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, reaisComEspacoComum } from "@/lib/utils";
 import type { Product } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -99,6 +99,9 @@ async function montar(products: Product[], layout: Desenho) {
   });
 }
 const texto = () => host.textContent ?? "";
+// O preço grande do desenho compacto usa espaço comum depois do "R$" desde
+// 27/11/2026 (só quebra ali); os outros desenhos seguem com o inseparável.
+const textoComEspacoComum = () => texto().replace(/\u00a0/g, " ");
 
 beforeEach(() => {
   host = document.createElement("div");
@@ -124,7 +127,7 @@ describe.each(DESENHOS)(
           [produto("a", { price: preco, originalPrice: antigo })],
           desenho,
         );
-        expect(texto()).toContain(formatCurrency(preco));
+        expect(textoComEspacoComum()).toContain(reaisComEspacoComum(preco));
         expect(texto()).not.toMatch(/% OFF/);
         expect(texto()).not.toMatch(/De:?\s*R\$/);
         expect(texto()).not.toMatch(/Economiz/);
@@ -158,7 +161,7 @@ describe.each(DESENHOS)(
     it("preço zero é 100% OFF e aparece como R$ 0,00", async () => {
       await montar([produto("a", { price: 0, originalPrice: 50 })], desenho);
       expect(texto()).toMatch(/100% OFF/);
-      expect(texto()).toContain(formatCurrency(0));
+      expect(textoComEspacoComum()).toContain(reaisComEspacoComum(0));
     });
 
     it("desconto real mostra o riscado com o 'De' certo", async () => {
