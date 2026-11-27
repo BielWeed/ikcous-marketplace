@@ -77,7 +77,10 @@ import {
 } from "@/components/ui/custom/FreeShippingBlock";
 import { OrderList } from "@/components/ui/custom/OrderList";
 import { OrderSearch } from "@/components/ui/custom/OrderSearch";
-import { ShippingCalculator } from "@/components/ui/custom/ShippingCalculator";
+import {
+  ShippingCalculator,
+  type StatusDaCotacao,
+} from "@/components/ui/custom/ShippingCalculator";
 import type { EstadoDaBarraDeFrete } from "@/components/ui/custom/ShippingProgress";
 import { ShippingProgress } from "@/components/ui/custom/ShippingProgress";
 import {
@@ -832,6 +835,14 @@ function ConteudoDoCarrinho({
       : promessas.nacional;
   }, [config, selectedShippingOption?.id]);
 
+  // FRETE RECALCULANDO: mudou a quantidade, a calculadora espera o debounce e
+  // recota MANTENDO a opção escolhida — o preço dela é do carrinho anterior.
+  // Enquanto ela diz "cotando", frete e Total ficam "A calcular" (mesma regra
+  // do checkout, `freteEmCotacao` em CheckoutView.tsx); sem isso o Total
+  // somava o frete (ou o "GRÁTIS") da quantidade antiga ao subtotal novo.
+  const [statusDoFrete, setStatusDoFrete] = useState<StatusDaCotacao>("ocioso");
+  const freteEmCotacao = cart.length > 0 && statusDoFrete === "cotando";
+
   const {
     progressPercent,
     amountToFree,
@@ -895,8 +906,8 @@ function ConteudoDoCarrinho({
       return {
         progressPercent: 100,
         amountToFree: 0,
-        shipping: 0,
-        total: subtotal,
+        shipping: freteEmCotacao ? null : 0,
+        total: freteEmCotacao ? null : subtotal,
         savings: 0,
         isNearlyThere: false,
       };
@@ -921,7 +932,7 @@ function ConteudoDoCarrinho({
     // fábrica — exibir `null` ("A calcular") e NÃO somar frete ao total.
     // REVISÃO A3: `save` zerou junto — comparava contra `config.shippingFee`,
     // o preço morto da taxa fixa (ver o comentário acima).
-    const ship = freteIndefinido ? null : ctxShippingFee;
+    const ship = freteIndefinido || freteEmCotacao ? null : ctxShippingFee;
     // TOTAL SÓ FECHA COM FRETE CONHECIDO: com `ship === null` o que existe é
     // "produtos, frete zero" — número que a cliente leria como total e que o
     // checkout (que já não fecha total sem frete) contradiria. `null` aqui
@@ -946,6 +957,7 @@ function ConteudoDoCarrinho({
     cart.length,
     ctxShippingFee,
     freteIndefinido,
+    freteEmCotacao,
     selectedShippingOption?.id,
   ]);
 
@@ -1270,6 +1282,7 @@ function ConteudoDoCarrinho({
                           }
                           onSelectOption={setSelectedShippingOption}
                           onCepValidated={setShippingCep}
+                          onStatusChange={setStatusDoFrete}
                           cepDestino={cepDoDestino}
                           cepDaSelecao={shippingCep}
                           destino={
