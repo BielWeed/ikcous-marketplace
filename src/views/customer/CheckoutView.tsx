@@ -177,6 +177,7 @@ import {
   type RecusaDoPedido,
   classificarRecusaDoPedido,
 } from "@/lib/recusaDoPedido";
+import { relerAConfigDaLoja } from "@/lib/reler-config-da-loja";
 import {
   buscarRevisaoConfigFrete,
   descartarCacheDeFreteDoNavegador,
@@ -5276,9 +5277,15 @@ export function CheckoutViewDaConta({
               ? "O frete mudou, calcule de novo."
               : "Não deu para confirmar o frete agora. Calculamos de novo — confira e finalize.",
           );
+          // O grátis da entrega local é a TELA que aplica, com a config do
+          // aparelho: cotar de novo sem reler a config mostrava o grátis velho
+          // e o servidor recusava em laço (reler-config-da-loja.ts). O
+          // Finalizar só volta com a config nova (ou o teto vencido).
+          const releituraDaConfig = relerAConfigDaLoja(refreshStoreConfig);
           setSelectedShippingOption(null);
           setForcarNovaCotacaoEm((n) => n + 1);
           levarFocoAoProblema("valores");
+          await releituraDaConfig;
           setIsSubmitting(false);
           travaDeEnvioRef.current.liberar();
           return;
@@ -5852,6 +5859,12 @@ export function CheckoutViewDaConta({
       // genérico); a config nova faz o campo de cupom sumir da tela.
       if (ehErroDeCuponsDesligados(error)) {
         refreshStoreConfig({ onlyConfig: true }).catch(() => {});
+      }
+      // "Os valores do pedido mudaram": o frete grátis da loja pode ter mudado
+      // (a tela o aplica com a config do aparelho). Relida a config, o total
+      // na tela passa a bater com o do servidor e o toque seguinte fecha.
+      if (saida.acao === "reconferir_carrinho") {
+        void relerAConfigDaLoja(refreshStoreConfig);
       }
       // createOrder relança o erro sem avisar; a tradução para a cliente
       // fica aqui, no toast e no painel.
