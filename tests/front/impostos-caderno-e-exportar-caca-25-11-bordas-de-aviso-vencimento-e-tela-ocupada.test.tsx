@@ -41,6 +41,12 @@ import { ContextoValoresOcultos } from "@/components/admin/financeiro/partes";
 import type { EstadoDoMes, MesDoCaderno } from "@/lib/fiscal/caderno";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 
+import {
+  escolherNaLista,
+  opcoesDaLista,
+  valorDaLista,
+} from "./helpers/lista-de-escolha";
+
 const normalizar = (t: string | null | undefined) =>
   (t ?? "")
     .replaceAll(String.fromCharCode(160), " ")
@@ -274,25 +280,23 @@ describe("ExportarParaContador — bordas", () => {
     await esperar();
   }
 
-  const campo = (rotulo: string): HTMLSelectElement => {
+  /** O id da lista de escolha pelo rótulo que a lojista lê (vem de `useId`). */
+  const campo = (rotulo: string): string => {
     const label = [...container.querySelectorAll("label")].find(
       (l) => l.textContent === rotulo,
     );
-    const select = document.getElementById(
-      label?.htmlFor ?? "",
-    ) as HTMLSelectElement | null;
-    if (!select) throw new Error(`campo não achado: ${rotulo}`);
-    return select;
+    if (!label?.htmlFor) throw new Error(`campo não achado: ${rotulo}`);
+    return label.htmlFor;
   };
 
+  /** Escolhe como a lojista e espera a lista fechar (o foco volta numa tarefa seguinte). */
   async function escolher(rotulo: string, valor: string) {
-    const select = campo(rotulo);
+    const id = campo(rotulo);
     await act(async () => {
-      Object.getOwnPropertyDescriptor(
-        HTMLSelectElement.prototype,
-        "value",
-      )?.set?.call(select, valor);
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherNaLista(id, valor);
+    });
+    await act(async () => {
+      await new Promise((resolver) => setTimeout(resolver, 0));
     });
   }
 
@@ -303,8 +307,8 @@ describe("ExportarParaContador — bordas", () => {
 
   it("a lista de meses tem os 12 meses; a de anos, o atual e os 5 anteriores", async () => {
     await montar(async () => COM_VENDA);
-    const meses = [...campo("Mês").querySelectorAll("option")];
-    expect(meses.map((o) => o.value)).toEqual([
+    const meses = opcoesDaLista(campo("Mês"));
+    expect(meses.map((o) => o.valor)).toEqual([
       "01",
       "02",
       "03",
@@ -318,23 +322,27 @@ describe("ExportarParaContador — bordas", () => {
       "11",
       "12",
     ]);
-    expect(meses[0]?.textContent).toBe("janeiro");
-    expect(meses[11]?.textContent).toBe("dezembro");
-    expect(
-      [...campo("Ano").querySelectorAll("option")].map((o) => o.value),
-    ).toEqual(["2026", "2025", "2024", "2023", "2022", "2021"]);
+    // Na lista o mês abre com maiúscula; na frase do aviso fica minúsculo.
+    expect(meses[0]?.rotulo).toBe("Janeiro");
+    expect(meses[11]?.rotulo).toBe("Dezembro");
+    expect(opcoesDaLista(campo("Ano")).map((o) => o.valor)).toEqual([
+      "2026",
+      "2025",
+      "2024",
+      "2023",
+      "2022",
+      "2021",
+    ]);
     // O padrão é o mês e o ano de hoje.
-    expect(campo("Mês").value).toBe("10");
-    expect(campo("Ano").value).toBe("2026");
+    expect(valorDaLista(campo("Mês"))).toBe("10");
+    expect(valorDaLista(campo("Ano"))).toBe("2026");
   });
 
   it("a data de hoje é a de Brasília: 23h30 de 31/12 (02h30 UTC de 1/1) ainda é dezembro de 2026", async () => {
     await montar(async () => COM_VENDA, new Date("2027-01-01T02:30:00Z"));
-    expect(campo("Mês").value).toBe("12");
-    expect(campo("Ano").value).toBe("2026");
-    expect(
-      [...campo("Ano").querySelectorAll("option")].map((o) => o.value)[0],
-    ).toBe("2026");
+    expect(valorDaLista(campo("Mês"))).toBe("12");
+    expect(valorDaLista(campo("Ano"))).toBe("2026");
+    expect(opcoesDaLista(campo("Ano"))[0]?.valor).toBe("2026");
   });
 
   it.each([
@@ -417,14 +425,14 @@ describe("ExportarParaContador — bordas", () => {
     expect(document.body.querySelectorAll("a")).toHaveLength(0);
   });
 
-  const doMes = () =>
+  // Os botões de exportar, na ordem da tela (os campos Mês e Ano também são
+  // botões, de lista de escolha, e ficam de fora).
+  const botoesDeExportar = () =>
     container.querySelectorAll<HTMLButtonElement>(
-      "button",
-    )[0] as HTMLButtonElement;
-  const doAno = () =>
-    container.querySelectorAll<HTMLButtonElement>(
-      "button",
-    )[1] as HTMLButtonElement;
+      'button:not([aria-haspopup="listbox"])',
+    );
+  const doMes = () => botoesDeExportar()[0] as HTMLButtonElement;
+  const doAno = () => botoesDeExportar()[1] as HTMLButtonElement;
 
   it("lendo o ANO: os dois botões ficam desabilitados e só o do ano mostra 'Gerando…'", async () => {
     let liberar!: (l: Linhas) => void;
