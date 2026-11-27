@@ -99,6 +99,7 @@ vi.mock("sonner", () => ({
  */
 function microssegundos(valor: unknown): bigint {
   const m =
+    // eslint-disable-next-line security/detect-unsafe-regex -- grupos opcionais rodam no máximo uma vez e a entrada é texto fabricado pelo próprio dublê
     /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(?:(Z)|([+-])(\d{2}):?(\d{2})?)$/.exec(
       String(valor),
     );
