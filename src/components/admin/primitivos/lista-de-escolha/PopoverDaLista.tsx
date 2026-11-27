@@ -90,14 +90,16 @@ export function PopoverDaLista({
             evento.preventDefault();
           }
         }}
-        className="z-[135] flex max-h-[var(--radix-popover-content-available-height)] w-[var(--radix-popover-trigger-width)] min-w-64 flex-col gap-2 outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+        className="z-[135] flex max-h-[var(--radix-popover-content-available-height)] w-[var(--radix-popover-trigger-width)] min-w-64 flex-col outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
       >
         <div className="flex min-h-0 flex-col overflow-hidden rounded-[20px] border border-admin-border-strong bg-admin-raised shadow-2xl">
           {children}
+          {/* A dica é o rodapé da caixa, com o fundo dela: solta embaixo,
+              ficava sem fundo por cima do texto da tela. */}
+          <p className="shrink-0 border-t border-admin-border px-4 py-2 text-xs text-muted-foreground">
+            ↑ ↓ para andar · Enter escolhe · Esc fecha
+          </p>
         </div>
-        <p className="shrink-0 px-1 text-xs text-muted-foreground">
-          ↑ ↓ para andar · Enter escolhe · Esc fecha
-        </p>
       </PopoverPrimitive.Content>
     </PopoverPrimitive.Portal>
   );

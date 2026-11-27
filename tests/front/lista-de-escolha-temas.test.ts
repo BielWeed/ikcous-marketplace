@@ -84,6 +84,23 @@ describe("lista de escolha — cores próprias por tema", () => {
     expect(valor(anel[0], "outline")).toContain("--lista-ouro");
   });
 
+  it("a folha focada não pega o contorno verde do painel (vence o index.css)", () => {
+    // `outline-none` do Tailwind 3 é contorno TRANSPARENTE de 2px; o
+    // `html.admin-mode :focus-visible` (0,2,1) troca a cor dele por verde.
+    // Só um seletor com o mesmo `html.admin-mode` e mais uma classe vence.
+    const achadas: Rule[] = [];
+    lista.walkRules((regra) => {
+      if (
+        regra.selectors.includes(
+          "html.admin-mode .lista-de-escolha-sem-anel:focus-visible",
+        )
+      )
+        achadas.push(regra);
+    });
+    expect(achadas).toHaveLength(1);
+    expect(valor(achadas[0], "outline")).toBe("none");
+  });
+
   it("temas-do-painel.css não leva nada da lista (ela tem arquivo próprio)", () => {
     expect(
       lerFonte("src/components/layouts/temas-do-painel.css"),

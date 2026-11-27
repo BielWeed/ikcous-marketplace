@@ -158,6 +158,28 @@ describe("lista de escolha — corpo", () => {
     expect(opcao("2").className).not.toContain("min-h-[50px]");
   });
 
+  it("a pílula da sigla fica um degrau acima do fundo da lista, na folha e no popover", () => {
+    // Folha: fundo admin-surface, pílula admin-raised. Popover: a caixa JÁ é
+    // admin-raised, então a pílula sobe para admin-hover (e, na linha sob o
+    // mouse, que vira admin-hover, para admin-border-strong) — senão some.
+    const UFS: OpcaoDaLista[] = [
+      { valor: "PR", rotulo: "Paraná", sigla: "PR" },
+      { valor: "RJ", rotulo: "Rio de Janeiro", sigla: "RJ" },
+    ];
+    const pilula = (valor: string) =>
+      opcao(valor).querySelector<HTMLElement>("span[aria-hidden]")?.className ??
+      "";
+    montar({ opcoes: UFS, valorEscolhido: "RJ" });
+    expect(pilula("PR")).toContain("bg-admin-raised");
+    montar({ opcoes: UFS, valorEscolhido: "RJ", variante: "popover" });
+    expect(pilula("PR")).not.toContain("bg-admin-raised");
+    expect(pilula("PR")).toContain("bg-admin-hover");
+    expect(pilula("PR")).toContain("group-hover:bg-admin-border-strong");
+    expect(opcao("PR").className).toContain("group");
+    // A escolhida continua com o ouro, nas duas.
+    expect(pilula("RJ")).toContain("lista-de-escolha-escolhida");
+  });
+
   it("modo ação (valorEscolhido null): ninguém marcado nem com aria-selected", () => {
     montar({ valorEscolhido: null });
     expect(

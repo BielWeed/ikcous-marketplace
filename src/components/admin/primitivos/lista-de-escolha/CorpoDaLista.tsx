@@ -290,7 +290,7 @@ export function CorpoDaLista<V extends string>({
                 onClick={() => escolher(opcao)}
                 className={cn(
                   "flex w-full cursor-pointer select-none items-center gap-3 rounded-[14px] px-3 text-left",
-                  folha ? "min-h-[50px] py-2" : "min-h-11 py-1.5",
+                  folha ? "min-h-[50px] py-2" : "group min-h-11 py-1.5",
                   escolhida
                     ? "lista-de-escolha-escolhida font-bold"
                     : "hover:bg-admin-hover",
@@ -315,9 +315,14 @@ export function CorpoDaLista<V extends string>({
                     aria-hidden="true"
                     className={cn(
                       "inline-flex h-6 min-w-8 shrink-0 items-center justify-center rounded-md px-1.5 text-[11px] font-bold",
+                      // A pílula fica um degrau acima do fundo da lista: a
+                      // folha é admin-surface; a caixa do popover já é
+                      // admin-raised (e a linha sob o mouse, admin-hover).
                       escolhida
                         ? "lista-de-escolha-ouro lista-de-escolha-escolhida"
-                        : "bg-admin-raised text-muted-foreground",
+                        : folha
+                          ? "bg-admin-raised text-muted-foreground"
+                          : "bg-admin-hover text-muted-foreground group-hover:bg-admin-border-strong",
                     )}
                   >
                     {opcao.sigla}

@@ -124,6 +124,25 @@ describe("lista de escolha — popover do computador", () => {
     );
   });
 
+  it("a dica é o rodapé DE DENTRO da caixa (fundo dela, linha fina em cima), nunca solta sobre a tela", async () => {
+    // Fora da caixa, ela ficava sem fundo por cima do texto da página
+    // ("26/11/2026" no lançamento, os botões dos banners).
+    montar();
+    await abrir();
+    const caixa = popover()?.querySelector<HTMLElement>(
+      ".rounded-\\[20px\\]",
+    ) as HTMLElement;
+    const dica = [...(popover()?.querySelectorAll("p") ?? [])].find((p) =>
+      p.textContent?.includes("Esc fecha"),
+    ) as HTMLElement;
+    expect(dica).toBeTruthy();
+    expect(dica.parentElement).toBe(caixa);
+    expect(caixa.lastElementChild).toBe(dica);
+    expect(dica.className).toContain("border-t");
+    // A caixa é o único filho do popover: nada fica de fora dela.
+    expect(popover()?.children).toHaveLength(1);
+  });
+
   it("com busca, o foco vai para a busca", async () => {
     montar();
     await abrir();

@@ -68,7 +68,9 @@ export function FolhaDaLista({
             botaoRef.current?.focus();
           }}
           style={estiloDoTeclado}
-          className="fixed inset-x-0 bottom-[var(--teclado-da-folha,0px)] z-[135] mx-auto flex max-h-[min(85dvh,var(--altura-da-folha,85dvh))] w-full flex-col rounded-t-[28px] border border-b-0 border-admin-border bg-admin-surface pb-[env(safe-area-inset-bottom,0px)] shadow-2xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom sm:max-w-xl"
+          // `lista-de-escolha-sem-anel`: com busca, o foco mora na própria
+          // folha, e o anel verde do painel a contornava inteira.
+          className="lista-de-escolha-sem-anel fixed inset-x-0 bottom-[var(--teclado-da-folha,0px)] z-[135] mx-auto flex max-h-[min(85dvh,var(--altura-da-folha,85dvh))] w-full flex-col rounded-t-[28px] border border-b-0 border-admin-border bg-admin-surface pb-[env(safe-area-inset-bottom,0px)] shadow-2xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom sm:max-w-xl"
         >
           <AlcaDaFolha
             aoFechar={aoFechar}

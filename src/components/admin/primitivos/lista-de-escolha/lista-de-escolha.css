@@ -69,6 +69,14 @@ html.admin-mode .lista-de-escolha-lista:focus-visible {
   outline-offset: -2px;
 }
 
+/* A folha do celular com busca: o foco fica na própria folha (a busca não
+   pode abrir o teclado). O `outline-none` do Tailwind 3 é contorno
+   transparente, e o `html.admin-mode :focus-visible` o pintava de verde em
+   volta da folha inteira. O foco que se vê é o ouro da busca e do Fechar. */
+html.admin-mode .lista-de-escolha-sem-anel:focus-visible {
+  outline: none;
+}
+
 /* A opção que o teclado está apontando (aria-activedescendant). */
 .lista-de-escolha-ativa {
   box-shadow: inset 0 0 0 2px hsl(var(--lista-ouro, 39.1 66.7% 55.3%));

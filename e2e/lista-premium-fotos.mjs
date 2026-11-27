@@ -165,7 +165,22 @@ const MEDIR = `(() => {
   const ativa = lista?.querySelector('.lista-de-escolha-ativa');
   const estiloAtivo = ativo ? getComputedStyle(ativo) : null;
   const opcoes = lista ? [...lista.querySelectorAll('[role="option"]')] : [];
+  // A dica de teclado do popover: tem de morar dentro da caixa da lista.
+  const retangulo = (el) => { if (!el) return null; const q = el.getBoundingClientRect(); return { x: Math.round(q.left), y: Math.round(q.top), direita: Math.round(q.right), baixo: Math.round(q.bottom) }; };
+  const dica = lista ? [...lista.querySelectorAll('p')].find((p) => p.textContent.includes('Esc fecha')) : null;
+  const caixaDaLista = lista?.querySelector('.rounded-\\\\[20px\\\\]') ?? null;
+  const rd = retangulo(dica), rc = retangulo(caixaDaLista);
+  let contrasteDaDica = null;
+  if (dica) { const a = lum(rgb(getComputedStyle(dica).color)), b = lum(fundo(dica)); contrasteDaDica = Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 100) / 100; }
+  // A pílula da sigla de uma UF não escolhida, contra o fundo da linha.
+  const pilula = lista ? [...lista.querySelectorAll('[role="option"]:not([aria-selected="true"]) span[aria-hidden]')].find((s) => /^[A-Z]{2}$/.test(s.textContent.trim())) ?? null : null;
   return JSON.stringify({
+    dica: rd,
+    caixaDaLista: rc,
+    dicaDentroDaCaixa: rd && rc ? rd.x >= rc.x && rd.y >= rc.y && rd.direita <= rc.direita && rd.baixo <= rc.baixo : null,
+    contrasteDaDica,
+    fundoDaPilula: pilula ? getComputedStyle(pilula).backgroundColor : null,
+    fundoAtrasDaPilula: pilula ? 'rgb(' + fundo(pilula.parentElement).slice(0, 3).join(', ') + ')' : null,
     modo: lista?.dataset.listaDeEscolha ?? null,
     zDaLista: lista ? getComputedStyle(embrulho ?? lista).zIndex : null,
     zDaMae: mae ? getComputedStyle(mae).zIndex : null,

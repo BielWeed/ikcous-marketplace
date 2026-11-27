@@ -125,6 +125,16 @@ describe("lista de escolha — folha do celular", () => {
     expect(folha()?.contains(document.activeElement)).toBe(true);
   });
 
+  it("com busca, a folha que fica com o foco não leva o anel verde do painel", () => {
+    // O foco mora na própria folha (a busca não pode abrir o teclado), e o
+    // `html.admin-mode :focus-visible` do index.css a contornava de verde.
+    // A classe abaixo apaga esse anel; o ouro fica na busca e no Fechar.
+    montar();
+    abrir();
+    expect(document.activeElement).toBe(folha());
+    expect(folha()?.className).toContain("lista-de-escolha-sem-anel");
+  });
+
   it("sem busca, o foco vai para o listbox (o teclado anda nele)", () => {
     montar(PARCELAS.slice(0, 4), "2");
     abrir();
