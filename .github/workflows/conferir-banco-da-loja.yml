@@ -435,6 +435,7 @@ on:
           - 200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente
           - 201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado
           - 201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente
+          - 201m-medir-avaliacoes-repetidas
           - 202a-conferir-a-peca-que-volta-sem-tamanho-aplicado
           - 202b-antes-a-peca-que-volta-sem-tamanho-base-vigente
           - backups

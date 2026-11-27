@@ -14,6 +14,21 @@ import { toast } from "sonner";
 /** O que o aviso precisa saber do pedido: para quem vai e se é retirada. */
 export type PedidoDoAviso = Pick<Order, "userId" | "retiradaNaLoja">;
 
+/** O `updated_at` da linha que a gravação do status devolveu (as RPCs do
+ *  painel devolvem a linha do pedido inteira), ou `null` quando a resposta não
+ *  o traz (resposta vazia, versão antiga, gravação confirmada por releitura). */
+export function horaGravadaNoBanco(linhaGravada: unknown): string | null {
+  if (
+    linhaGravada === null ||
+    typeof linhaGravada !== "object" ||
+    Array.isArray(linhaGravada)
+  ) {
+    return null;
+  }
+  const hora = (linhaGravada as { updated_at?: unknown }).updated_at;
+  return typeof hora === "string" && hora !== "" ? hora : null;
+}
+
 /** Push de "seu pedido agora está: …" depois de o status ser gravado. Nunca
  *  lança: a falha vira aviso amarelo para a lojista.
  *
@@ -26,12 +41,24 @@ export async function avisarOClienteDoStatus(
   orderId: string,
   newStatus: OrderStatus,
   alvo: PedidoDoAviso,
+  /** `updated_at` que o BANCO gravou nesta mudança (ver `horaGravadaNoBanco`).
+   *  Nunca o `updatedAt` do pedido da tela: esse é de ANTES da mudança. */
+  gravadoNoBancoEm?: string | null,
 ) {
-  // Carimbo de ordem do aviso, tirado AGORA (status já gravado), antes de
-  // qualquer espera de rede: os avisos de status do mesmo pedido são
+  // Carimbo de ordem do aviso: os avisos de status do mesmo pedido são
   // disparados sem esperar um pelo outro e podem chegar trocados. O aparelho
   // mantém na bandeja o de carimbo maior (`ordem-do-aviso-do-pedido.ts`).
-  const emitidoEm = Date.now();
+  // Vale a hora em que o BANCO gravou a mudança: o relógio do aparelho da
+  // lojista pode estar adiantado, e um aviso de um PC adiantado passava por
+  // cima do aviso mais novo dado de um celular de relógio certo. Sem ela,
+  // o relógio local, tirado AGORA (status já gravado), antes de qualquer
+  // espera de rede — como sempre foi. Mesmo campo, mesmo número em ms: o
+  // service worker já instalado nas clientes não muda nada.
+  const horaDoBanco =
+    typeof gravadoNoBancoEm === "string"
+      ? Date.parse(gravadoNoBancoEm)
+      : Number.NaN;
+  const emitidoEm = Number.isFinite(horaDoBanco) ? horaDoBanco : Date.now();
   // Os avisos amarelos dizem DE QUAL pedido são: a passada da fila offline
   // chama isto em qualquer tela do painel, um por item, e avisos iguais
   // empilhados não diziam à lojista a quem mandar WhatsApp.
