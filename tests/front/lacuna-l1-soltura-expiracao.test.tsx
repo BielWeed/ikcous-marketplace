@@ -643,7 +643,11 @@ describe("Lacuna L1 — soltura da vaga seguida da expiração do pedido", () =>
 
     expect(hospedeiro.textContent).toContain("Este pedido foi cancelado.");
     expect(hospedeiro.textContent).not.toContain(FRASE_L1);
-    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+    // Desde a caça de leitor de tela (27/11/2026) o erro do formulário também
+    // é anunciado: o aviso falado é o terminal da edge, nunca a frase da L1.
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+      "Este pedido foi cancelado.",
+    );
     expect(criarPagamento).toHaveBeenCalledTimes(2);
   });
 
