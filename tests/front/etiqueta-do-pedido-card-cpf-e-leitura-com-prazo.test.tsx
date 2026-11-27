@@ -232,7 +232,9 @@ describe("EtiquetaDoPedidoCard: CPF e leituras com prazo", () => {
 
       expect(vi.mocked(toast.success)).toHaveBeenCalledWith("CPF salvo!");
       expect(vi.mocked(toast.warning)).not.toHaveBeenCalled();
-      expect(hospedeiro.querySelector('[data-testid="precisa-cpf"]')).toBeNull();
+      expect(
+        hospedeiro.querySelector('[data-testid="precisa-cpf"]'),
+      ).toBeNull();
       expect(botao("Gerar etiqueta")).toBeTruthy();
     });
 
@@ -272,7 +274,9 @@ describe("EtiquetaDoPedidoCard: CPF e leituras com prazo", () => {
       });
 
       expect(h.leiturasDoPedido).toHaveLength(3);
-      expect(hospedeiro.querySelector('[data-testid="precisa-cpf"]')).toBeNull();
+      expect(
+        hospedeiro.querySelector('[data-testid="precisa-cpf"]'),
+      ).toBeNull();
       expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
     });
 
@@ -363,7 +367,9 @@ describe("EtiquetaDoPedidoCard: CPF e leituras com prazo", () => {
         botao("Tentar de novo")?.click();
       });
       await passar(0);
-      expect(hospedeiro.querySelector('[data-testid="precisa-cpf"]')).not.toBeNull();
+      expect(
+        hospedeiro.querySelector('[data-testid="precisa-cpf"]'),
+      ).not.toBeNull();
     });
 
     it("histórico de envio pendurado: em 15 s mostra a etiqueta que o pedido já tem", async () => {
