@@ -328,6 +328,36 @@ describe("Q7 remover: o que a tela faz depois da resposta", () => {
     falha: null,
   };
 
+  // O Gmail da loja também é o canal da confirmação de cadastro e da
+  // recuperação de senha (gancho de e-mail): a pergunta e o aviso dizem isso,
+  // inclusive que a recuperação de senha da PRÓPRIA dona para.
+  const PERGUNTA_DE_REMOVER =
+    "A senha guardada é apagada. Se o servidor não tiver outra conta de e-mail, param de sair o e-mail do pedido, a confirmação de cadastro e a recuperação de senha, inclusive a sua. Se for trocar de Gmail, não remova: cadastre o novo, que ele entra no lugar deste sem parar os e-mails.";
+  const AVISO_DEPOIS_DE_REMOVER =
+    "Gmail removido. Se o servidor da loja tiver uma conta de e-mail própria, os e-mails voltam a sair por ela; se não, param o e-mail do pedido, a confirmação de cadastro e a recuperação de senha (inclusive a sua) até você cadastrar outro Gmail.";
+
+  it("a pergunta de remover avisa que param o pedido, o cadastro e a recuperação de senha (inclusive a da dona), e o botão continua o mesmo", async () => {
+    definirStatus(SALVO);
+    await montar();
+    await clicar("Remover o Gmail");
+    expect(texto()).toContain(PERGUNTA_DE_REMOVER);
+    expect(fns.remover).not.toHaveBeenCalled();
+    await clicar("Sim, remover");
+    expect(fns.remover).toHaveBeenCalledTimes(1);
+  });
+
+  it("o aviso depois de remover repete a verdade sobre cadastro e recuperação de senha", async () => {
+    definirStatus(SALVO);
+    fns.remover.mockImplementation(async () => {
+      definirStatus(VAZIO);
+      return { ok: true };
+    });
+    await montar();
+    await clicar("Remover o Gmail");
+    await clicar("Sim, remover");
+    expect(texto()).toContain(AVISO_DEPOIS_DE_REMOVER);
+  });
+
   it("remoção que FALHA fecha a pergunta 'Sim, remover' e mostra o motivo (não deixa o botão de confirmar pendurado)", async () => {
     definirStatus(SALVO);
     fns.remover.mockResolvedValue({

@@ -185,7 +185,10 @@ export function seloDoEmail(status: StatusDoEmail): SeloDoEmail {
     return {
       tipo: "nao_configurado",
       titulo: "Não configurado",
-      detalhe: "Seus clientes NÃO recebem e-mail do pedido.",
+      // Com o gancho de e-mail ligado, é por este remetente que saem também a
+      // confirmação de cadastro e a recuperação de senha (inclusive a da dona).
+      detalhe:
+        "Seus clientes NÃO recebem e-mail do pedido, de confirmação de cadastro nem de recuperação de senha — e você também não.",
     };
   }
   if (status.origem === "ambiente") {
