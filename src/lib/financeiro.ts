@@ -1074,7 +1074,32 @@ export function parseFechamento(json: unknown): FechamentoDeCaixa {
     esperado: numero(o.esperado),
     contado: numero(o.contado),
     diferenca: numero(o.diferenca),
+    // Banco sem a migration da intenção não manda `replay`: o fechamento dele
+    // é sempre de agora. Só `true` de verdade vale como repetição.
+    replay: o.replay === true,
   };
+}
+
+/**
+ * O fechamento que o banco devolveu foi feito AGORA (por este pedido ou por
+ * um anterior desta mesma folha que perdeu a resposta)? Com `replay` o banco
+ * só diz que o caixa já estava fechado com os mesmos dados — não diz quando
+ * nem por quem. A repetição legítima é a da queda de rede: a MESMA folha já
+ * tinha pedido e nenhum OUTRO caixa abriu depois. Tela velha (o caixa fechou
+ * em outro aparelho, talvez ontem, e outro abriu) nunca é "de agora".
+ * `caixaAbertoAgora`: `undefined` = não deu para conferir (na dúvida, não é).
+ */
+export function fechamentoFoiDeAgora(args: {
+  readonly fechamento: FechamentoDeCaixa;
+  readonly estaFolhaJaPediu: boolean;
+  readonly caixaAbertoAgora: string | null | undefined;
+}): boolean {
+  const { fechamento, estaFolhaJaPediu, caixaAbertoAgora } = args;
+  if (!fechamento.replay) return true;
+  return (
+    estaFolhaJaPediu &&
+    (caixaAbertoAgora === null || caixaAbertoAgora === fechamento.id)
+  );
 }
 
 /** `{ids: uuid[]}` de `fin_lancamento_salvar`. */

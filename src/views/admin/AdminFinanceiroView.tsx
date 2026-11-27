@@ -609,9 +609,13 @@ export function AdminFinanceiroView({
             aoReconciliar={aoReconciliarCaixa}
             caixa={folha.caixa}
             aoFechar={pedirParaFechar}
-            aoFechado={() => {
+            aoFechado={(deAgora) => {
               invalidar();
-              toast.success("Caixa fechado.");
+              if (deAgora) toast.success("Caixa fechado.");
+              else
+                toast.info(
+                  "Esse caixa já estava fechado. A tela foi atualizada.",
+                );
             }}
             aoMudarSujo={setSujo}
           />

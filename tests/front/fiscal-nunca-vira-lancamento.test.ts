@@ -151,6 +151,8 @@ const SIMBOLOS_DE_LEITURA = [
   "useCaixaAtual",
   "useHistoricoDoCaixa",
   "conferirCaixaParaReconciliar",
+  // So le fin_caixa_atual e fin_caixa_historico, depois de um fechamento repetido.
+  "conferirCaixaDepoisDoReplay",
   "CHAVE_VALORES_OCULTOS",
   "useValoresOcultos",
   "useTelaLarga",

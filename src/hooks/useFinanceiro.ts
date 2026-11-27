@@ -389,6 +389,36 @@ export async function conferirCaixaParaReconciliar(): Promise<void> {
   parseCaixaHistorico(historico.data);
 }
 
+/**
+ * Depois de um fechamento com `replay` (o banco achou o caixa já fechado): qual
+ * caixa está aberto AGORA e quando aquele fechou. É o que separa a queda de
+ * rede de agora da tela que ficou velha. Só leitura, com prazo; erro sobe.
+ */
+export async function conferirCaixaDepoisDoReplay(sessaoId: string): Promise<{
+  readonly caixaAbertoId: string | null;
+  readonly fechadoEm: string | null;
+}> {
+  const [atual, historico] = await aguardarComPrazo(
+    Promise.all([
+      supabase.rpc("fin_caixa_atual"),
+      supabase.rpc("fin_caixa_historico", { p_limite: 30 }),
+    ]),
+    PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+    () =>
+      new ErroDePrazoFinanceiro(
+        "A internet demorou demais para conferir o caixa. Feche esta tela e confira o caixa antes de tentar de novo.",
+      ),
+  );
+  if (atual.error) throw atual.error;
+  if (historico.error) throw historico.error;
+  return {
+    caixaAbertoId: parseCaixaAtual(atual.data)?.id ?? null,
+    fechadoEm:
+      parseCaixaHistorico(historico.data).find((s) => s.id === sessaoId)
+        ?.fechadoEm ?? null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Escritas (a view sobe a `versao` depois de cada uma)
 // ---------------------------------------------------------------------------

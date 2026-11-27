@@ -237,6 +237,11 @@ export interface FechamentoDeCaixa {
   readonly esperado: number;
   readonly contado: number;
   readonly diferenca: number;
+  /**
+   * O banco achou este MESMO fechamento já feito (mesma pessoa, valor e
+   * observação) e devolveu os números de quando fechou: nada fechou agora.
+   */
+  readonly replay: boolean;
 }
 
 /** Corpo de `fin_lancamento_salvar(p jsonb)` — contrato do plano. */

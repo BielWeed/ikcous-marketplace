@@ -168,7 +168,8 @@ rpcFalso.mockImplementation(async (nome: string) => {
       await servidor.emVoo;
       const error = servidor.falhasFechamento.shift();
       if (error) return { data: null, error };
-      servidor.caixa = null;
+      // Replay = o banco achou o MESMO fechamento já feito: nada muda lá.
+      if (!servidor.replay) servidor.caixa = null;
       return {
         data: {
           id: "sessao-1",
@@ -184,6 +185,29 @@ rpcFalso.mockImplementation(async (nome: string) => {
       return { data: null, error: null };
   }
 });
+
+// O caixa de HOJE, aberto no celular depois que o de ontem (sessao-1) fechou.
+const CAIXA_DE_HOJE = {
+  ...CAIXA_ABERTO,
+  id: "sessao-2",
+  aberto_em: "2026-09-26T11:00:00Z",
+  valor_abertura: 200,
+  vendas_dinheiro: 799.9,
+  esperado: 999.9,
+};
+
+// `fin_caixa_historico`: o de ontem fechado às 19:02 (São Paulo) com R$ 470,00.
+const HISTORICO_DE_ONTEM = {
+  id: "sessao-1",
+  conta_nome: "Caixa da loja",
+  aberto_em: "2026-09-25T12:00:00Z",
+  fechado_em: "2026-09-25T22:02:00Z",
+  valor_abertura: 150,
+  esperado: 480.5,
+  contado: 470,
+  diferenca: -10.5,
+  status: "fechado",
+};
 
 const normalizar = (t: string | null | undefined) =>
   (t ?? "").replace(/\s+/g, " ");
@@ -980,6 +1004,154 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       "Fechamento registrado.",
     );
     semRpcAntiga();
+  });
+
+  // Tela velha: o computador ficou no caixa de ontem; no celular ela fechou esse
+  // caixa (mesmo valor, sem observação) e abriu o de hoje. O banco devolve o
+  // fechamento de ONTEM com replay; a tela não pode dizer "Caixa fechado".
+  it("tela velha: replay de um caixa fechado em outro aparelho diz a verdade e mostra o caixa de agora", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Fechar caixa"));
+    await digitar("fin-caixa-contado", "47000");
+    servidor.replay = true;
+    servidor.caixa = CAIXA_DE_HOJE;
+    servidor.historico = [
+      {
+        ...HISTORICO_DE_ONTEM,
+        id: "sessao-2",
+        aberto_em: CAIXA_DE_HOJE.aberto_em,
+        fechado_em: null,
+        status: "aberto",
+      },
+      HISTORICO_DE_ONTEM,
+    ];
+    vi.mocked(toast.success).mockClear();
+    const leiturasAntes = rpcFalso.mock.calls.filter(
+      ([nome]) => nome === "fin_caixa_atual",
+    ).length;
+
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+
+    const texto = normalizar(folha()?.textContent);
+    expect(texto).not.toContain("Fechamento registrado.");
+    expect(texto).toContain("Caixa já estava fechado");
+    expect(texto).toContain(
+      "Esse caixa já tinha sido fechado em 25/09 às 19:02 (R$ 470,00 contados).",
+    );
+    expect(texto).toContain("A tela estava desatualizada");
+    expect(texto).toContain("Nada foi fechado agora.");
+    expect(texto).toContain(
+      "Há outro caixa aberto agora, e ele continua aberto.",
+    );
+    expect(toast.success).not.toHaveBeenCalledWith("Caixa fechado.");
+    // A consulta do caixa foi relida (conferência + releitura da tela).
+    expect(
+      rpcFalso.mock.calls.filter(([nome]) => nome === "fin_caixa_atual").length,
+    ).toBeGreaterThan(leiturasAntes + 1);
+    expect(
+      rpcFalso.mock.calls.filter(
+        ([nome]) => nome === "fin_caixa_fechar_sessao",
+      ),
+    ).toHaveLength(1);
+
+    await clicar(botaoEm(folha() as HTMLElement, "Concluir"));
+    expect(folha()).toBeNull();
+    const depois = normalizar(hospedeiro.textContent);
+    expect(depois).toContain("Esperado na gaveta agora");
+    // O esperado do caixa de HOJE (o de ontem segue só no histórico).
+    expect(depois).toContain("R$ 999,90");
+    semRpcAntiga();
+  });
+
+  // Tela velha + rede ruim: o 1º pedido desta folha perdeu a resposta e o 2º
+  // volta com replay. "Esta folha já pediu" não basta: o caixa de hoje aberto
+  // (outro id) prova que o fechamento não foi o desta folha.
+  it("tela velha com a 1ª resposta perdida: o caixa de hoje aberto ainda vence a repetição", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Fechar caixa"));
+    await digitar("fin-caixa-contado", "47000");
+    servidor.caixa = CAIXA_DE_HOJE;
+    servidor.historico = [HISTORICO_DE_ONTEM];
+    servidor.falhasFechamento.push(new TypeError("Failed to fetch"));
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+    servidor.replay = true;
+    vi.mocked(toast.success).mockClear();
+
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+
+    const texto = normalizar(folha()?.textContent);
+    expect(texto).not.toContain("Fechamento registrado.");
+    expect(texto).toContain(
+      "Há outro caixa aberto agora, e ele continua aberto.",
+    );
+    expect(toast.success).not.toHaveBeenCalledWith("Caixa fechado.");
+  });
+
+  it("tela velha sem caixa aberto agora: diz que já estava fechado, nunca 'registrado'", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Fechar caixa"));
+    await digitar("fin-caixa-contado", "47000");
+    servidor.replay = true;
+    servidor.caixa = null;
+    servidor.historico = [HISTORICO_DE_ONTEM];
+    vi.mocked(toast.success).mockClear();
+
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+
+    const texto = normalizar(folha()?.textContent);
+    expect(texto).not.toContain("Fechamento registrado.");
+    expect(texto).toContain(
+      "Esse caixa já tinha sido fechado em 25/09 às 19:02 (R$ 470,00 contados).",
+    );
+    expect(texto).toContain("Nenhum caixa está aberto agora.");
+    expect(toast.success).not.toHaveBeenCalledWith("Caixa fechado.");
+  });
+
+  it("replay sem conseguir conferir o caixa de agora: não afirma fechamento e manda conferir", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Fechar caixa"));
+    await digitar("fin-caixa-contado", "47000");
+    servidor.replay = true;
+    servidor.caixa = CAIXA_DE_HOJE;
+    servidor.falhasLeituraCaixa.push(new TypeError("Failed to fetch"));
+    vi.mocked(toast.success).mockClear();
+
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+
+    const texto = normalizar(folha()?.textContent);
+    expect(texto).not.toContain("Fechamento registrado.");
+    expect(texto).toContain(
+      "Esse caixa já tinha sido fechado (R$ 470,00 contados).",
+    );
+    expect(texto).toContain("Não deu para conferir o caixa de agora.");
+    expect(toast.success).not.toHaveBeenCalledWith("Caixa fechado.");
+  });
+
+  // Repetição legítima: a rede caiu no fechamento de AGORA (o banco gravou, a
+  // resposta não chegou) e ela toca de novo na mesma folha. Continua igual.
+  it("queda de rede no fechamento de agora: o replay da mesma folha continua 'Fechamento registrado'", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Fechar caixa"));
+    await digitar("fin-caixa-contado", "47000");
+    servidor.falhasFechamento.push(new TypeError("Failed to fetch"));
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+    expect(normalizar(folha()?.textContent)).not.toContain(
+      "Fechamento registrado.",
+    );
+    // O banco fechou na primeira; a resposta é que se perdeu.
+    servidor.caixa = null;
+    servidor.historico = [
+      { ...HISTORICO_DE_ONTEM, fechado_em: new Date().toISOString() },
+    ];
+    servidor.replay = true;
+    vi.mocked(toast.success).mockClear();
+
+    await clicar(botaoEm(folha() as HTMLElement, "Fechar caixa"));
+
+    const texto = normalizar(folha()?.textContent);
+    expect(texto).toContain("Fechamento registrado.");
+    expect(texto).not.toContain("já tinha sido fechado");
+    expect(toast.success).toHaveBeenCalledWith("Caixa fechado.");
   });
 
   async function reabrirMovimento(movimento = "Sangria") {

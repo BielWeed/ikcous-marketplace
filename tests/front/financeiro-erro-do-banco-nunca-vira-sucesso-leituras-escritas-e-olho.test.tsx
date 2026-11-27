@@ -6,7 +6,7 @@
 //    do caixa) com erro do banco entrega erro e nenhum dado, mesmo que venha
 //    resposta junto, e a frase é a do erro de verdade (não a de "formato");
 //  - a conferência do caixa antes de reconciliar falha se QUALQUER das duas
-//    leituras falhar;
+//    leituras falhar; a conferência depois de um fechamento repetido também;
 //  - o "olho" que esconde valores: armazenamento bloqueado mostra os valores
 //    (nunca esconde sem saber), "1" esconde, outro valor mostra.
 // Dados inventados.
@@ -27,6 +27,7 @@ import {
   abrirCaixa,
   baixarLancamento,
   cancelarLancamento,
+  conferirCaixaDepoisDoReplay,
   conferirCaixaParaReconciliar,
   fecharCaixa,
   movimentarCaixa,
@@ -112,7 +113,13 @@ describe("Financeiro — gravações: erro do banco rejeita, sem erro resolve", 
         }),
       "fin_caixa_fechar_sessao",
       { id: "sessao-1", esperado: 100, contado: 90, diferenca: -10 },
-      { id: "sessao-1", esperado: 100, contado: 90, diferenca: -10 },
+      {
+        id: "sessao-1",
+        esperado: 100,
+        contado: 90,
+        diferenca: -10,
+        replay: false,
+      },
     ],
     ["salvarConta", () => salvarConta({}), "fin_conta_salvar", null, undefined],
     [
@@ -174,6 +181,66 @@ describe("Financeiro — gravações: erro do banco rejeita, sem erro resolve", 
       Promise.resolve({ data: null, error: null }),
     );
     await expect(conferirCaixaParaReconciliar()).resolves.toBeUndefined();
+  });
+
+  it("conferir o caixa depois de um fechamento repetido: erro de QUALQUER leitura sobe, sem dado inventado", async () => {
+    rpc.mockImplementation((nome) =>
+      Promise.resolve(
+        nome === "fin_caixa_atual"
+          ? { data: { id: "sessao-2" }, error: ERRO_DE_PERMISSAO }
+          : { data: [], error: null },
+      ),
+    );
+    await expect(conferirCaixaDepoisDoReplay("sessao-1")).rejects.toBe(
+      ERRO_DE_PERMISSAO,
+    );
+
+    rpc.mockImplementation((nome) =>
+      Promise.resolve(
+        nome === "fin_caixa_historico"
+          ? { data: [], error: ERRO_DE_PERMISSAO }
+          : { data: null, error: null },
+      ),
+    );
+    await expect(conferirCaixaDepoisDoReplay("sessao-1")).rejects.toBe(
+      ERRO_DE_PERMISSAO,
+    );
+
+    // Sem erro: o caixa aberto de agora e quando AQUELE caixa fechou.
+    rpc.mockImplementation((nome) =>
+      Promise.resolve(
+        nome === "fin_caixa_atual"
+          ? { data: { id: "sessao-2" }, error: null }
+          : {
+              data: [
+                { id: "sessao-2", aberto_em: "2026-09-26T11:00:00Z" },
+                {
+                  id: "sessao-1",
+                  aberto_em: "2026-09-25T12:00:00Z",
+                  fechado_em: "2026-09-25T22:02:00Z",
+                },
+              ],
+              error: null,
+            },
+      ),
+    );
+    await expect(conferirCaixaDepoisDoReplay("sessao-1")).resolves.toEqual({
+      caixaAbertoId: "sessao-2",
+      fechadoEm: "2026-09-25T22:02:00Z",
+    });
+
+    // Nenhum caixa aberto, e o fechado fora da lista: nada se inventa.
+    rpc.mockImplementation((nome) =>
+      Promise.resolve(
+        nome === "fin_caixa_atual"
+          ? { data: null, error: null }
+          : { data: [], error: null },
+      ),
+    );
+    await expect(conferirCaixaDepoisDoReplay("sessao-1")).resolves.toEqual({
+      caixaAbertoId: null,
+      fechadoEm: null,
+    });
   });
 });
 

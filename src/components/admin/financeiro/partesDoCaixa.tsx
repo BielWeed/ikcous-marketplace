@@ -125,6 +125,17 @@ export function quandoCurto(instante: string | null | undefined): string {
     : `${partes.dia}, ${partes.hora}`;
 }
 
+/** "hoje às 19:02" ou "em 25/09 às 19:02"; `null` quando a data não se lê. */
+export function quandoPorExtenso(
+  instante: string | null | undefined,
+): string | null {
+  const partes = partesDoInstante(instante);
+  if (!partes) return null;
+  return partes.dia === formatarDataCurta(hojeEmSaoPaulo())
+    ? `hoje às ${partes.hora}`
+    : `em ${partes.dia} às ${partes.hora}`;
+}
+
 /** "21/10 · 08:00 – 18:30" (ou com a data do fim, se virou o dia). */
 export function periodoDaSessao(
   abertoEm: string,
