@@ -436,7 +436,11 @@ Deno.test("o front: o mapper do pedido ja prefere a copia de customer_data.addre
   const checkout = Deno.readTextFileSync(
     new URL("src/views/customer/CheckoutView.tsx", DIR),
   ).replace(/\r\n/g, "\n");
-  assert.ok(checkout.includes("addressId: user ? selectedAddressId : null,"));
+  // 27/11/2026 (retirada sem endereco, PR #1966): quem tem conta e RETIRA nao manda
+  // endereco nenhum (id null); quem recebe em casa continua mandando so o id.
+  assert.ok(
+    checkout.includes("addressId: user && !ehRetirada ? selectedAddressId : null,"),
+  );
   assert.ok(
     checkout.includes(
       "addressData: user\n        ? cpfParaRpc\n          ? { cpf: cpfParaRpc }\n          : null",
