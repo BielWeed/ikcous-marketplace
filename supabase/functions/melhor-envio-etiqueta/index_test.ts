@@ -3834,6 +3834,7 @@ function buscarMeReversoFalso(op: {
     reverso?: 'ok' | 'erro-422' | 'excecao' | 'sem-id' | 'erro-5xx' | 'erro-corpo-ilegivel'
     checkout?:
         | 'pago' | 'pendente' | 'bloqueado' | 'cancelado' | 'erro-4xx' | 'erro-5xx' | 'excecao'
+        | 'erro-408' | 'erro-409' | 'erro-423' | 'erro-429'
         | '200-vazio' | '200-message' | '200-nao-json' | '200-outro-formato' | '200-pago-sem-id'
     /** Achado H1 (rodada 5): 'excecao' faz o generate LANÇAR (ex.: timeout),
      * diferente de 'erro' (responde HTTP 500 normalmente) — é o caminho que
@@ -3893,6 +3894,10 @@ function buscarMeReversoFalso(op: {
             if (op.checkout === 'excecao') throw new Error('AbortError: tempo esgotado simulado')
             if (op.checkout === 'erro-5xx') return json({ error: 'Bad gateway' }, 502)
             if (op.checkout === 'erro-4xx') return json({ message: 'Saldo insuficiente para a compra.' }, 422)
+            if (op.checkout === 'erro-408') return json({ message: 'Request Timeout' }, 408)
+            if (op.checkout === 'erro-409') return json({ message: 'Conflict' }, 409)
+            if (op.checkout === 'erro-423') return json({ message: 'Locked' }, 423)
+            if (op.checkout === 'erro-429') return json({ message: 'Too Many Attempts.' }, 429)
             if (op.checkout === '200-vazio') return json({})
             if (op.checkout === '200-message') return json({ message: 'Your request is being processed.' })
             if (op.checkout === '200-nao-json') return new Response('<html>ok</html>', { status: 200 })
@@ -4420,6 +4425,48 @@ Deno.test("gerar_devolucao_reversa - checkout 5xx ou exceção: INDETERMINADO �
             assertEquals(supa.registro.liberacoes.length, 0)
             assertEquals(me.registro.remocoes, 0)
             assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - checkout 408/409/423 (resultado INCERTO, mesma regra da ida): INDETERMINADO igual ao 5xx — vínculo MANTIDO, carrinho intacto, marcador indeterminado gravado", async () => {
+    await comEnvAdmin(async () => {
+        // Referência: a resposta do 5xx — o 408/409/423 tem de ser a MESMA.
+        const supa5xx = clienteFalsoDevolucao()
+        const { res: res5xx, corpo: corpo5xx } = await rodarReversa(supa5xx, buscarMeReversoFalso({ checkout: 'erro-5xx' }))
+        for (const checkout of ['erro-408', 'erro-409', 'erro-423'] as const) {
+            const supa = clienteFalsoDevolucao()
+            const me = buscarMeReversoFalso({ checkout })
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, res5xx.status, checkout)
+            assertEquals(corpo, corpo5xx, checkout)
+            assertEquals(corpo.resgate, true, checkout)
+            assertEquals(String(corpo.error).includes('INDETERMINADO'), true, checkout)
+            // nada de "recusou o pagamento": a compra pode ter fechado
+            assertEquals(String(corpo.error).includes('recusou'), false, checkout)
+            assertEquals(me.registro.remocoes, 0, checkout)
+            assertEquals(me.registro.geracoes, 0, checkout)
+            assertEquals(supa.registro.liberacoes.length, 0, checkout)
+            assertEquals(supa.registro.gravacoesDeCodigo.length, 0, checkout)
+            assertEquals(supa.registro.eventos.length, 1, checkout)
+            assertEquals(supa.registro.eventos[0].nota, NOTA_PAGAMENTO_INDETERMINADO_REVERSO(ME_REVERSO), checkout)
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - checkout 422 e 429 continuam recusa DEFINIDA: item sai do carrinho, vínculo LIBERADO, nenhum marcador indeterminado", async () => {
+    await comEnvAdmin(async () => {
+        for (const checkout of ['erro-4xx', 'erro-429'] as const) {
+            const supa = clienteFalsoDevolucao()
+            const me = buscarMeReversoFalso({ checkout })
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 502, checkout)
+            assertEquals(corpo.resgate, undefined, checkout)
+            assertEquals(me.registro.remocoes, 1, checkout)
+            assertEquals(supa.registro.liberacoes.length, 1, checkout)
+            assertEquals(temFiltro(supa.registro.liberacoes[0].filtros, 'eq', 'me_reverse_id', ME_REVERSO), true, checkout)
+            assertEquals(supa.registro.eventos.length, 0, checkout)
+            assertEquals(String(corpo.error).includes('INDETERMINADO'), false, checkout)
         }
     })
 })
