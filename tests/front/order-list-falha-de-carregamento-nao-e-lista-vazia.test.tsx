@@ -100,7 +100,7 @@ describe("OrderList — falha de carregamento não vira 'Nenhum pedido'", () => 
 
     expect(texto).toContain("Não conseguimos carregar seus pedidos agora");
     expect(texto).not.toContain("Nenhum pedido");
-    expect(texto).not.toContain("Que tal começar a comprar");
+    expect(texto).not.toContain("Comprou sem entrar na conta");
 
     const botao = botaoTentar();
     expect(botao).toBeDefined();

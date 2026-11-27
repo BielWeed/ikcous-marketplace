@@ -312,6 +312,11 @@ interface OrderListProps {
    * Padrão: `orders.length > 0`.
    */
   hasAnyOrders?: boolean;
+  /**
+   * Abre, dentro da conta, a consulta do pedido feito sem conta (a mesma de
+   * quem está fora dela). Sem ele, a conta sem pedidos não mostra o botão.
+   */
+  onConsultarSemConta?: () => void;
 }
 
 export const OrderList = memo(function OrderList({
@@ -327,6 +332,7 @@ export const OrderList = memo(function OrderList({
   loadError,
   onRetry,
   hasAnyOrders,
+  onConsultarSemConta,
 }: Readonly<OrderListProps>) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -452,11 +458,15 @@ export const OrderList = memo(function OrderList({
               ? "Acesse para ver seu histórico."
               : guestMessage ||
                 "Seus pedidos são vinculados à sua conta. Acesse para visualizar seu histórico completo."
-            : "Você ainda não fez nenhum pedido. Que tal começar a comprar?")}
+            : "Nenhum pedido feito nesta conta.")}
+        {/* Pedido feito sem entrar na conta não fica ligado a conta nenhuma,
+            nem à criada depois com o mesmo e-mail: "você ainda não fez
+            pedido" e "entre com o e-mail da compra" eram falsos para ela. */}
         {!isGuest && !temPedidosEmMemoria && !emptyDescription && (
           <>
             <br />
-            Comprou com outro e-mail? Entre com o usado na compra.
+            Comprou sem entrar na conta, ou com outro e-mail? Esse pedido não
+            aparece aqui.
           </>
         )}
         {!compact && (emptyAction || !isGuest) && (
@@ -470,6 +480,21 @@ export const OrderList = memo(function OrderList({
             </button>
           </span>
         )}
+        {!compact &&
+          !isGuest &&
+          !temPedidosEmMemoria &&
+          !emptyDescription &&
+          onConsultarSemConta && (
+            <span className="mt-3 block">
+              <button
+                type="button"
+                onClick={onConsultarSemConta}
+                className="min-h-11 px-2 text-sm font-semibold text-foreground underline underline-offset-4"
+              >
+                Consultar pedido feito sem conta
+              </button>
+            </span>
+          )}
       </EstadoDaLista>
     );
   }

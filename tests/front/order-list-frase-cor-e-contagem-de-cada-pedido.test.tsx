@@ -519,9 +519,9 @@ describe("OrderList — lista vazia", () => {
     const onNavigate = vi.fn<(view: View, id?: string) => void>();
     const texto = await vazio({}, onNavigate);
     expect(texto).toContain("Nenhum pedido");
-    expect(texto).toContain("Você ainda não fez nenhum pedido");
+    expect(texto).toContain("Nenhum pedido feito nesta conta.");
     expect(texto).toContain(
-      "Comprou com outro e-mail? Entre com o usado na compra.",
+      "Comprou sem entrar na conta, ou com outro e-mail? Esse pedido não aparece aqui.",
     );
     const botao = hospedeiro.querySelector("button");
     expect(botao?.textContent).toBe("Ver produtos");
@@ -533,13 +533,13 @@ describe("OrderList — lista vazia", () => {
 
   it("com pedidos em memória (aba filtrada vazia) não pergunta do outro e-mail", async () => {
     const texto = await vazio({ hasAnyOrders: true });
-    expect(texto).not.toContain("Comprou com outro e-mail?");
+    expect(texto).not.toContain("Comprou sem entrar na conta");
   });
 
   it("descrição própria também dispensa a pergunta do outro e-mail", async () => {
     const texto = await vazio({ emptyDescription: "Nada por aqui." });
     expect(texto).toContain("Nada por aqui.");
-    expect(texto).not.toContain("Comprou com outro e-mail?");
+    expect(texto).not.toContain("Comprou sem entrar na conta");
   });
 
   it("convidado: 'Histórico Protegido', sem botão a menos que haja ação", async () => {
