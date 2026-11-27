@@ -16136,3 +16136,285 @@ Deno.test("182a/182b — registradas no menu do conferir-banco-da-loja, nos dois
     "node tests/banco/rodar-isolado.cjs tests/banco/a-loja-tem-estado-de-vida-viva.cjs",
   );
 });
+
+// 194a/194b (26/11/2026) — a prova de objetos da migration 20261570000000 (o endereco antigo encaminha para o novo). A 194a (DEPOIS, 6
+// linhas) prova a tabela nova fechada com a forma exata, o gatilho e as duas portas pelo md5; a 194b (ANTES, 5 linhas) prova que nada disso
+// existe e a base do pre-voo (a 20261490 aplicada; a chave e o CHECK de frota_lojas). As duas leem so o catalogo. A decisao real (as duas
+// EXECUTADAS no catalogo vivo, com defeitos plantados) fica com tests/banco/o-endereco-antigo-encaminha-viva.cjs.
+const NOME_194A = "194a-conferir-o-endereco-antigo-encaminha-aplicado";
+const NOME_194B = "194b-antes-o-endereco-antigo-encaminha-ausente";
+const MIGRACAO_1570 = `${MIGRATIONS_DIR}/20261570000000_o_endereco_antigo_encaminha_para_o_novo.sql`;
+
+Deno.test("194a/194b — o rol fechado (6 e 5 linhas) bate com os rotulos do SQL, cada consulta tem UM statement, e so le catalogo (nenhuma linha da caderneta)", async () => {
+  const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+  const { [NOME_194A]: rolA, [NOME_194B]: rolB } = ROL_FECHADO_POR_CONSULTA;
+  assertEquals(rolA?.length, 6);
+  assertEquals(rolB?.length, 5);
+  for (const [nome, rol] of [
+    [NOME_194A, rolA],
+    [NOME_194B, rolB],
+  ] as Array<[string, string[]]>) {
+    assertEquals(new Set(rol).size, rol.length, `${nome}: rotulo repetido`);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    assertEquals(contarStatements(sql), 1, `${nome}: tem de ser UM statement`);
+    const rotulos = [...sql.matchAll(/SELECT '([^']+)', '(?:sim|nao)'/g)].map(
+      (m) => m[1],
+    );
+    assertEquals(
+      rotulos,
+      [...rol],
+      `${nome}: rotulos do SQL != rol (na ordem)`,
+    );
+    const codigo = sql.replace(/--.*$/gm, "").replace(/'[^']*'/g, "''");
+    assert(/^\s*WITH\b/i.test(codigo), `${nome}: comeca por WITH`);
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|ALTER|DROP|CREATE|GRANT|REVOKE|TRUNCATE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/.test(
+        codigo,
+      ),
+      `${nome}: so leitura`,
+    );
+    assert(
+      !/\bFROM\s+(public\.)?(frota_lojas|frota_segredo|frota_enderecos_que_encaminham)\b/i.test(
+        codigo,
+      ),
+      `${nome}: nao le linha da caderneta`,
+    );
+    assert(
+      !/\b(resolver_loja(_com_estado)?|resolver_encaminhamento|frota_trocar_dominio)\s*\(/.test(
+        codigo,
+      ),
+      `${nome}: nao chama porta nenhuma`,
+    );
+  }
+});
+
+Deno.test("194a/194b — os md5 da 194a sao os dos tres corpos da 20261570000000 desta arvore, e a 194b exige os corpos da 20261490000000", async () => {
+  const { createHash } = await import("node:crypto");
+  const md5 = (s: string) => createHash("md5").update(s).digest("hex");
+  const corpoDe = (sql: string, nome: string) => {
+    const i = sql.indexOf(`CREATE OR REPLACE FUNCTION ${nome}(`);
+    assert(i >= 0, `${nome} nao esta no arquivo`);
+    const abre = sql.indexOf("AS $$", i) + "AS $$".length;
+    return sql.slice(abre, sql.indexOf("$$;", abre));
+  };
+  const mig = (await Deno.readTextFile(MIGRACAO_1570)).replace(/\r/g, "");
+  const a = (
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_194A}.sql`)
+  ).replace(/\r/g, "");
+  const b = (
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_194B}.sql`)
+  ).replace(/\r/g, "");
+  const novos = [
+    "public.frota_enderecos_que_encaminham_nao_e_principal",
+    "public.resolver_encaminhamento",
+    "public.frota_trocar_dominio",
+  ].map((nome) => md5(corpoDe(mig, nome)));
+  for (const h of novos) {
+    assertEquals(a.split(`'${h}'`).length - 1, 1, `md5 ${h} na 194a`);
+    assert(
+      mig.split(`'${h}'`).length - 1 >= 2,
+      `pre-voo e pos-voo da migration citam o md5 ${h}`,
+    );
+    assert(!b.includes(h), `194b cita o corpo novo ${h}`);
+  }
+  const m1490 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261490000000_a_caderneta_confere_a_chave_sem_bcrypt_por_chamada.sql`,
+    )
+  ).replace(/\r/g, "");
+  for (const nome of [
+    "public.resolver_loja",
+    "public.resolver_loja_com_estado",
+  ]) {
+    const h = md5(corpoDe(m1490, nome));
+    assertEquals(
+      b.split(`'${h}'`).length - 1,
+      1,
+      `194b exige o corpo da 20261490 de ${nome}`,
+    );
+  }
+  for (const [nome, sql, aceitos] of [
+    [NOME_194A, a, novos],
+    [
+      NOME_194B,
+      b,
+      ["public.resolver_loja", "public.resolver_loja_com_estado"].map((n) =>
+        md5(corpoDe(m1490, n)),
+      ),
+    ],
+  ] as Array<[string, string, string[]]>) {
+    for (const [, x] of sql.matchAll(/'([0-9a-f]{32})'/g))
+      assert(aceitos.includes(x), `${nome}: md5 ${x} desconhecido`);
+  }
+});
+
+Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois caminhos do rpc-ci e no portao de rol fechado da release; o lote da 20261570 cita a 194b como prova de ausencia", async () => {
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
+  );
+  const { listarConsultas } = require(SCRIPT);
+  const menu = (
+    await Deno.readTextFile(
+      `${RAIZ}/.github/workflows/conferir-banco-da-loja.yml`,
+    )
+  ).replace(/\r/g, "");
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  for (const nome of [NOME_194A, NOME_194B]) {
+    assert(listarConsultas().includes(nome), `falta a consulta ${nome}`);
+    assert(
+      CONSULTAS_DE_ROL_FECHADO.has(nome),
+      `${nome} fora de CONSULTAS_DE_ROL_FECHADO`,
+    );
+    assertStringIncludes(menu, `          - ${nome}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${nome}.sql"`).length - 1,
+      2,
+      `${nome}: nas duas listas de caminhos do rpc-ci`,
+    );
+  }
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lotes = canais.provasDeObjetos.filter((l) =>
+    (l.versoes ?? []).includes("20261570000000"),
+  );
+  assertEquals(lotes.length, 1, "um lote so para a 20261570");
+  const [lote] = lotes;
+  assertEquals(lote.versoes, ["20261570000000"]);
+  assertEquals(lote.consulta, NOME_194A);
+  assertEquals(lote.ausenciaConfirmadaPor, NOME_194B);
+  assert(
+    !("backfillLedger" in lote) &&
+      !("nuncaAplicar" in lote) &&
+      !("soNosRefs" in lote),
+    "apply normal",
+  );
+  for (const pedaco of [
+    "aditiva pela carta branca",
+    "IKCOUS_FROTA_URL",
+    "194b antes e 194a depois",
+    "depois da 20261490000000",
+  ])
+    assertStringIncludes(lote._comentario, pedaco);
+  // Anexado no fim: os lotes anteriores nao sao reordenados. Depois dele, so os lotes das SUCESSORAS conhecidas, na ordem.
+  const SUCESSORAS_DA_1570 = [
+    // 20261590000000: a loja guarda o dia da pausa do teste.
+    "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado",
+    // 20261600000000: a loja pausa o pedido novo.
+    "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado",
+  ];
+  assertEquals(
+    canais.provasDeObjetos
+      .slice(-(SUCESSORAS_DA_1570.length + 1))
+      .map((p) => p.consulta),
+    [NOME_194A, ...SUCESSORAS_DA_1570],
+    "o lote da 20261570 e' o ultimo antes dos das sucessoras",
+  );
+  assertEquals(
+    canais.provasDeObjetos.at(-(SUCESSORAS_DA_1570.length + 2)).consulta,
+    "193a-conferir-o-infinito-nao-entra-no-banco-aplicado",
+    "anexado logo depois do lote da 20261560",
+  );
+});
+
+// 196m (26/11/2026) — MEDICAO de quem cria pedido, ANTES da migration 20261600000000 (a loja pausa o pedido novo por um gatilho
+// BEFORE INSERT em marketplace_orders). Rol ABERTO (sem coluna ok, nunca portao): a pessoa que le decide se para (funcao que
+// insere pedido fora do mapa, outro gatilho de INSERT, loja com manutencao=true hoje). So catalogo e dado da LOJA: nunca linha de
+// pedido, de cliente nem a chave da assinatura.
+const NOME_196M = "196m-medir-quem-cria-pedido";
+
+Deno.test("196m-medir-quem-cria-pedido — no menu e nos dois caminhos do rpc-ci, UM SELECT so leitura de rol aberto, so catalogo e dado da loja, sem chave nem pedido, e nunca portao", async () => {
+  const { contarStatements, listarConsultas, ROL_FECHADO_POR_CONSULTA } =
+    require(SCRIPT);
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
+  );
+  assert(
+    listarConsultas().includes(NOME_196M),
+    `falta a consulta ${NOME_196M}`,
+  );
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_196M}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const estrutura = semLiterais(sql);
+  const yaml = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  assertStringIncludes(yaml, `          - ${NOME_196M}\n`);
+  assertEquals(
+    rpc.split(`"scripts/publicacao/consultas/${NOME_196M}.sql"`).length - 1,
+    2,
+    "nas duas listas de caminhos do rpc-ci",
+  );
+  assertEquals(contarStatements(sql), 1, "exatamente 1 statement");
+  assert(/^\s*WITH\b/i.test(limpo), "comeca por WITH");
+  assert(
+    !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+      estrutura,
+    ),
+    "palavra de escrita fora de comentario/literal",
+  );
+  assert(
+    !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+      estrutura,
+    ),
+    "SQL dinamico (ou leitura de arquivo)",
+  );
+  assert(!/\bAS\s+ok\b/i.test(estrutura), "rol aberto: sem coluna ok");
+  assertEquals(
+    Object.entries(ROL_FECHADO_POR_CONSULTA).find(
+      ([n]) => n === NOME_196M,
+    )?.[1],
+    undefined,
+  );
+  assert(!CONSULTAS_DE_ROL_FECHADO.has(NOME_196M), "medicao nao e portao");
+  // Dado lido: so as 3 tabelas da LOJA (configuracao e cartao da assinatura); nada de pedido, item, cliente ou auth.
+  assertEquals(
+    [
+      ...new Set(
+        [...estrutura.matchAll(/\b(?:FROM|JOIN)\s+public\.(\w+)/gi)].map(
+          (m) => m[1],
+        ),
+      ),
+    ].sort(),
+    ["assinatura_da_loja", "assinatura_da_loja_chave", "store_config"],
+  );
+  assert(!/\bauth\./i.test(estrutura), "le auth");
+  assert(!/chave_hash/i.test(limpo), "toca o hash da chave da assinatura");
+  // Da chave so a contagem; do cartao so status e datas; do store_config so manutencao.
+  assertStringIncludes(limpo, "FROM public.assinatura_da_loja_chave)");
+  assertStringIncludes(limpo, "to_jsonb(s) ->> 'manutencao'");
+  for (const campo of [...limpo.matchAll(/c\.j (?:->>|\?) '(\w+)'/g)].map(
+    (m) => m[1],
+  ))
+    assert(
+      [
+        "status",
+        "teste_ate",
+        "proxima_cobranca_em",
+        "pausa_em",
+        "atualizado_em",
+      ].includes(campo),
+      `le do cartao o campo ${campo}`,
+    );
+  // O que a decisao de parar precisa: quem INSERE em marketplace_orders, os gatilhos dela e as premissas do pre-voo.
+  assertStringIncludes(
+    limpo,
+    String.raw`'insert\s+into\s+(public\.)?marketplace_orders\M'`,
+  );
+  assertStringIncludes(
+    limpo,
+    "g.tgrelid = to_regclass('public.marketplace_orders') AND NOT g.tgisinternal",
+  );
+  for (const premissa of [
+    "'marketplace_orders', 'canal'",
+    "'marketplace_orders', 'idempotency_key'",
+    "'store_config', 'manutencao'",
+    "'assinatura_da_loja', 'pausa_em'",
+    "'public.is_admin_atual()'",
+    "'pausa_de_vendas'",
+  ])
+    assertStringIncludes(limpo, premissa);
+  assert(
+    /ORDER BY ordem, objeto COLLATE "C";\s*$/.test(limpo),
+    "ordem deterministica (collation C)",
+  );
+});

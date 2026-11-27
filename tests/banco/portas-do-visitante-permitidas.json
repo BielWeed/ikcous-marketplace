@@ -851,6 +851,14 @@
       "porque": "Operacao do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
     },
     {
+      "funcao": "public.resolver_encaminhamento(p_host text, p_chave text)",
+      "executa": ["anon"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "Porteiro da frota (migration 20261570000000): quando a v2 nao acha o endereco, pergunta se ele e um endereco ANTIGO de uma loja que trocou de dominio e recebe o endereco atual dela (o 308). A chave da frota e conferida antes de ler a caderneta, com o mesmo bloco da v2; so o anon tem EXECUTE."
+    },
+    {
       "funcao": "public.resolver_loja(p_host text, p_chave text)",
       "executa": ["anon"],
       "tipo": "volatil",
@@ -921,6 +929,14 @@
       "secdef": true,
       "situacao": "logado",
       "porque": "Conta e carrinho do cliente logado: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.situacao_das_vendas_da_loja()",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Inicio do painel do lojista (20261600000000): diz se a loja aceita pedido novo agora (manutencao ou vendas pausadas por assinatura, e desde quando). Precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL (is_admin() e is_admin_atual(); senao 42501); o visitante e o service_role nao a executam."
     },
     {
       "funcao": "public.solicitar_devolucao(p_order_id uuid, p_itens jsonb, p_motivo text, p_detalhe text, p_resolucao text, p_metodo text, p_fotos text[])",

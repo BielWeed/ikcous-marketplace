@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { ErroDosFornecedores } from "@/hooks/useFornecedores";
 import {
   type DadosDoFornecedor,
   type ErrosDoFornecedor,
@@ -62,6 +63,33 @@ function formularioInicial(f: Fornecedor | null): FormularioDoFornecedor {
   };
 }
 
+const CAMPOS_DO_FORMULARIO = [
+  "nome",
+  "whatsapp",
+  "instagram",
+  "site",
+  "cidade",
+  "uf",
+  "observacoes",
+  "favorito",
+] as const satisfies ReadonlyArray<keyof FormularioDoFornecedor>;
+
+/**
+ * O que a lojista mexeu: o campo cujo TEXTO difere do que a folha mostrou ao abrir.
+ * Compara antes de normalizar: um valor gravado que a validação reescreveria (barra no
+ * fim do site, espaço sobrando) não conta como mexido. A mesma régua decide o "sujo".
+ */
+function camposMexidos(
+  form: FormularioDoFornecedor,
+  inicial: FormularioDoFornecedor,
+): Array<keyof DadosDoFornecedor> {
+  // eslint-disable-next-line security/detect-object-injection -- c vem so da lista literal CAMPOS_DO_FORMULARIO.
+  return CAMPOS_DO_FORMULARIO.filter((c) => form[c] !== inicial[c]);
+}
+
+const FRASE_TALVEZ_SALVO =
+  "A conexão está lenta e o fornecedor pode ter sido salvo. Toque em Salvar fornecedor de novo: repetir não cria outro.";
+
 /**
  * A folha de cadastro e edição de fornecedor. Quem decide se ela está aberta e
  * qual fornecedor edita é a tela (`fornecedor === null` = cadastro novo).
@@ -87,7 +115,11 @@ export function FolhaDoFornecedor({
   readonly fornecedor: Fornecedor | null;
   readonly offline: boolean;
   readonly aoFechar: () => void;
-  readonly aoSalvar: (dados: DadosDoFornecedor) => Promise<unknown>;
+  /** `mexidos`: os campos que a lojista mudou nesta folha (a edição manda só eles). */
+  readonly aoSalvar: (
+    dados: DadosDoFornecedor,
+    mexidos: ReadonlyArray<keyof DadosDoFornecedor>,
+  ) => Promise<unknown>;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const idBase = useId();
@@ -98,8 +130,10 @@ export function FolhaDoFornecedor({
   const [erroDoServidor, setErroDoServidor] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [perguntandoDescarte, setPerguntandoDescarte] = useState(false);
+  // Uma gravação desta abertura estourou o prazo: pode ter sido salva (muda o aviso de descartar).
+  const [podeTerSalvo, setPodeTerSalvo] = useState(false);
   const gravandoRef = useRef(false);
-  const inicial = useRef(JSON.stringify(formularioInicial(fornecedor)));
+  const inicial = useRef(formularioInicial(fornecedor));
 
   // Cada abertura começa do zero (cadastro novo) ou do fornecedor escolhido.
   useEffect(() => {
@@ -110,11 +144,12 @@ export function FolhaDoFornecedor({
     setErroDoServidor(null);
     setSalvando(false);
     setPerguntandoDescarte(false);
+    setPodeTerSalvo(false);
     gravandoRef.current = false;
-    inicial.current = JSON.stringify(base);
+    inicial.current = base;
   }, [aberta, fornecedor]);
 
-  const sujo = aberta && JSON.stringify(form) !== inicial.current;
+  const sujo = aberta && camposMexidos(form, inicial.current).length > 0;
   useEffect(() => {
     aoMudarSujo(sujo);
   }, [sujo, aoMudarSujo]);
@@ -166,12 +201,16 @@ export function FolhaDoFornecedor({
     setSalvando(true);
     setErroDoServidor(null);
     try {
-      await aoSalvar(resultado.dados);
+      await aoSalvar(resultado.dados, camposMexidos(form, inicial.current));
     } catch (e) {
+      const semResposta = e instanceof ErroDosFornecedores && e.semResposta;
+      if (semResposta) setPodeTerSalvo(true);
       setErroDoServidor(
-        e instanceof Error
-          ? e.message
-          : "Não deu certo agora. Tente de novo em instantes.",
+        semResposta
+          ? FRASE_TALVEZ_SALVO
+          : e instanceof Error
+            ? e.message
+            : "Não deu certo agora. Tente de novo em instantes.",
       );
     } finally {
       gravandoRef.current = false;
@@ -364,8 +403,9 @@ export function FolhaDoFornecedor({
               Descartar o que você escreveu?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
-              O fornecedor ainda não foi salvo. Se sair agora, o que você
-              escreveu se perde.
+              {podeTerSalvo
+                ? "A conexão demorou e o fornecedor pode não ter sido salvo. Se sair agora, a lista é atualizada para você conferir antes de cadastrar de novo."
+                : "O fornecedor ainda não foi salvo. Se sair agora, o que você escreveu se perde."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">

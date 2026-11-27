@@ -5,13 +5,16 @@
 // reaplicar (exige o md5 565f82... e a forma de 13 colunas) e as provas dela ficam vermelhas por um estado que nao e' delas.
 //
 // Roda os DOIS degraus, na ordem e numa transacao so: o rollback comum (a porta volta byte a byte) e o destrutivo (a
-// coluna sai; com a confirmacao SET LOCAL que ele exige). Os dois tem pre-voo proprio e recusam estado desconhecido: isto
+// coluna sai; com a confirmacao SET LOCAL que ele exige). Antes, a sucessora 20261600000000 (que le pausa_em) sai pelo rollback comum dela. Os dois tem pre-voo proprio e recusam estado desconhecido: isto
 // nao afrouxa nada. So no Postgres EFEMERO (quem chama ja passou pela trava de efemero.cjs) e so no clone do
 // rodar-isolado.cjs: o COMMIT fica no clone, que some no fim. No-op quando a 1590 nao esta no ar.
 
 /* eslint-disable security/detect-non-literal-fs-filename -- caminhos fixos das migrations versionadas, sem entrada externa. */
 const fs = require("node:fs");
 const path = require("node:path");
+const {
+  desfazerAPausaDeVendas,
+} = require("./a-loja-pausa-o-pedido-novo-posterior.cjs");
 
 const NOME = "20261590000000_a_loja_guarda_o_dia_da_pausa_do_teste.sql";
 const PASTA = path.resolve(__dirname, "..", "..", "supabase", "migrations");
@@ -24,6 +27,8 @@ const NO_AR = `SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_reg
        IS DISTINCT FROM '565f82cb9a65ed96e4702db9d97bf0d6' AS sim`;
 
 async function desfazerODiaDaPausa(c) {
+  // A sucessora 20261600000000 le pausa_em: sai ANTES (senao o destrutivo daqui recusa com PAUSA_EM_USO).
+  await desfazerAPausaDeVendas(c);
   if (!(await c.query(NO_AR)).rows[0].sim) return false;
   await c.query("BEGIN");
   try {

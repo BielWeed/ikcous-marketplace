@@ -345,8 +345,13 @@ on:
       - "scripts/publicacao/consultas/193a-conferir-o-infinito-nao-entra-no-banco-aplicado.sql"
       - "scripts/publicacao/consultas/193b-antes-o-infinito-nao-entra-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/193m-medir-infinitos-guardados.sql"
+      - "scripts/publicacao/consultas/194a-conferir-o-endereco-antigo-encaminha-aplicado.sql"
+      - "scripts/publicacao/consultas/194b-antes-o-endereco-antigo-encaminha-ausente.sql"
       - "scripts/publicacao/consultas/195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado.sql"
       - "scripts/publicacao/consultas/195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente.sql"
+      - "scripts/publicacao/consultas/196a-conferir-a-loja-pausa-o-pedido-novo-aplicado.sql"
+      - "scripts/publicacao/consultas/196b-antes-a-loja-pausa-o-pedido-novo-ausente.sql"
+      - "scripts/publicacao/consultas/196m-medir-quem-cria-pedido.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -666,8 +671,13 @@ on:
       - "scripts/publicacao/consultas/193a-conferir-o-infinito-nao-entra-no-banco-aplicado.sql"
       - "scripts/publicacao/consultas/193b-antes-o-infinito-nao-entra-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/193m-medir-infinitos-guardados.sql"
+      - "scripts/publicacao/consultas/194a-conferir-o-endereco-antigo-encaminha-aplicado.sql"
+      - "scripts/publicacao/consultas/194b-antes-o-endereco-antigo-encaminha-ausente.sql"
       - "scripts/publicacao/consultas/195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado.sql"
       - "scripts/publicacao/consultas/195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente.sql"
+      - "scripts/publicacao/consultas/196a-conferir-a-loja-pausa-o-pedido-novo-aplicado.sql"
+      - "scripts/publicacao/consultas/196b-antes-a-loja-pausa-o-pedido-novo-ausente.sql"
+      - "scripts/publicacao/consultas/196m-medir-quem-cria-pedido.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1713,6 +1723,19 @@ jobs:
       - name: Prova viva de que o infinito nao entra no banco (migration 20261560000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-infinito-nao-entra-no-banco-viva.cjs
+      # Migration 20261570000000 (o endereco antigo encaminha para o novo): tabela frota_enderecos_que_encaminham (RLS sem politica,
+      # nada para PUBLIC/anon/authenticated/service_role; gatilho recusa o endereco principal de uma loja; CHECK de host e de motivo;
+      # apagar a loja apaga os enderecos), a porta de leitura resolver_encaminhamento (so o anon; o bloco da chave e o da v2 letra por
+      # letra; devolve o endereco ATUAL, nunca corrente; ativa = false e o proprio host dao zero linhas; so leitura nao grava) e a porta
+      # de troca frota_trocar_dominio (so o dono; 19 recusas sem escrever; as tres escritas numa transacao; a troca invertida volta o
+      # roteamento; falha no meio desfaz tudo; duas conexoes: a segunda espera e e recusada). Reaplicar 2x (LF e CRLF); sem COMMIT
+      # escondido; rollback comum (2x) preserva a tabela; destrutivo exige APAGAR, o comum antes e a caderneta confirmada; pre-voo
+      # recusa sem a 20261490 e com objeto de outra forma; consultas 194a/194b EXECUTADAS (apply, comum, destrutivo, 14 defeitos
+      # plantados). CLONE proprio.
+      - name: Prova viva do endereco antigo que encaminha para o novo (migration 20261570000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 3
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-endereco-antigo-encaminha-viva.cjs
       # Migration 20261590000000 (a loja guarda o dia da pausa do teste): a coluna assinatura_da_loja.pausa_em (date, anulavel, sem padrao) e a porta
       # assinatura_da_loja_gravar com a 11a chave OPCIONAL pausa_em. Gestao velha (10 chaves) grava e apaga o dia; gestao nova grava; null grava NULL;
       # pausa_em torta = valor_invalido citando o campo; chave errada continua nao_autorizado antes de olhar os dados; o leitor devolve a coluna so ao admin;
@@ -1723,6 +1746,15 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         timeout-minutes: 4
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-guarda-o-dia-da-pausa-do-teste-viva.cjs
+      # Migration 20261600000000 (a loja pausa o pedido novo): a tabela pausa_de_vendas (fechada), a regra das datas (nunca antes de pausa_em; o sinal do
+      # teste sem pausa_em nao pausa; fim de semana vai para segunda), a marca do dia da suspensa pela porta real do cartao, o motivo, e o gatilho que recusa
+      # o pedido ONLINE pelas v23/v24 reais (o balcao segue vendendo; manutencao isenta so o admin de agora; defeito = vende); a leitura do painel; 26
+      # mutantes; reaplicar; rollback comum (tabela mantida) e destrutivo (confirmacao, o comum antes); pre-voo, pos-voo, trava e consultas 196a/196b
+      # EXECUTADAS nos dois estados. CLONE proprio.
+      - name: Prova viva de que a loja pausa o pedido novo (migration 20261600000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 6
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-pausa-o-pedido-novo-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam

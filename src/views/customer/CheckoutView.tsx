@@ -5285,6 +5285,51 @@ export function CheckoutViewDaConta({
       }
     }
 
+    // RETIRADA NA LOJA COM CONTA (caça, 26/11/2026): o pedido leva o id do
+    // endereço escolhido também na retirada — a RPC confere o dono e lê o CEP
+    // dele, e a ficha do painel o mostra como o cadastro atual. Apagado em
+    // outro aparelho, o id velho voltava recusado ("Endereço inválido…") e a
+    // tela mandava quem vai BUSCAR cadastrar endereço. Aqui só a EXISTÊNCIA
+    // importa (nada é entregue nele); releitura sem resposta não trava — a
+    // decisão continua com o servidor, como antes desta conferência.
+    if (contaEsperada && ehRetirada && selectedAddressId) {
+      let enderecosConfirmados: Address[] | undefined;
+      await fetchAddresses({
+        silencioso: true,
+        aoLer: (atualizados) => {
+          enderecosConfirmados = atualizados;
+        },
+      });
+      if (!montadoRef.current || contaRef.current !== contaEsperada) {
+        setIsSubmitting(false);
+        travaDeEnvioRef.current.liberar();
+        return;
+      }
+      if (
+        enderecosConfirmados &&
+        !enderecosConfirmados.some((a) => a.id === selectedAddressId)
+      ) {
+        // A lista foi CONFIRMADA pelo `aoLer`: a escolha passa já ao principal
+        // dela, ou a nenhum. O efeito de escolha automática não faz isso com a
+        // lista vazia (ali vazia é "ainda não sei"), e o id velho prendia cada
+        // toque seguinte neste mesmo aviso, sem saída (revisão Opus, 26/11).
+        // Sem endereço, o próximo toque cai na regra do checkout para quem
+        // tem conta ("adicione ou selecione um endereço") e o resumo mostra
+        // "Cadastre um endereço".
+        const restante = enderecoDeEntregaEfetivo(enderecosConfirmados, null);
+        setSelectedAddressId(restante?.id ?? null);
+        setIdentificacaoAbertaManual(true);
+        toast.error(
+          restante
+            ? "O endereço da sua conta foi alterado em outro aparelho. Confira seus dados e finalize de novo."
+            : "O endereço da sua conta foi apagado em outro aparelho. Cadastre um endereço para finalizar.",
+        );
+        setIsSubmitting(false);
+        travaDeEnvioRef.current.liberar();
+        return;
+      }
+    }
+
     // A MODALIDADE DO CLIQUE × A ESCOLHA DE AGORA (13/11/2026): `orderData`
     // carrega o frete capturado no clique, e até aqui o envio esperou a revisão
     // do frete e a sessão. Se a cliente trocou entrega x retirada (ou o preço

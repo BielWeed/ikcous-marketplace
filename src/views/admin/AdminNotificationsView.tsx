@@ -2,6 +2,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAvisosDoLojista } from "@/hooks/useAvisosDoLojista";
 import { pedirDevolucoesSolicitadas } from "@/lib/aviso-leva-a-devolucoes-solicitadas";
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import {
   type Novidade,
   marcarNovidadeComoLida,
@@ -133,11 +134,13 @@ const TEXTO_DE_LISTA_CORTADA = new Map<TipoDeAviso, string>([
   ],
 ]);
 
+// Hora de Brasília, a mesma do cartão e da ficha do pedido: no fuso do
+// aparelho, a lojista em Manaus lia "26/11 23:30" para o pedido das 00:30.
 function formatarQuando(quando: string): string {
   if (!quando) return "";
   const data = new Date(quando);
   if (Number.isNaN(data.getTime())) return "";
-  return data.toLocaleDateString("pt-BR", {
+  return dataNoFusoDaLoja(data, {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",

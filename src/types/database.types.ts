@@ -4194,6 +4194,10 @@ export type Database = {
         Args: { p_cpf: string };
         Returns: undefined;
       };
+      situacao_das_vendas_da_loja: {
+        Args: never;
+        Returns: Json;
+      };
       solicitar_devolucao: {
         Args: {
           p_detalhe?: string | null;

@@ -24,6 +24,25 @@ const NOME_400 = "20261400000000_valores_negativos_nao_entram_no_banco.sql";
 const A = "193a-conferir-o-infinito-nao-entra-no-banco-aplicado";
 const B = "193b-antes-o-infinito-nao-entra-no-banco-ausente";
 const PROVA_VIVA = "tests/banco/o-infinito-nao-entra-no-banco-viva.cjs";
+// As SUCESSORAS: migrations que nasceram depois desta (em ordem), cada uma com o seu lote no canais. Uma migration
+// nova depois da 1560 entra aqui de proposito, nunca por afrouxar o "e' a maior da raiz".
+const SUCESSORAS = [
+  // 20261570000000: o endereco antigo encaminha para o novo (a troca de dominio).
+  {
+    versao: "20261570000000",
+    consulta: "194a-conferir-o-endereco-antigo-encaminha-aplicado",
+  },
+  // 20261590000000: a loja guarda o dia da pausa do teste (PR do aviso de teste encerrado).
+  {
+    versao: "20261590000000",
+    consulta: "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado",
+  },
+  // 20261600000000: a loja pausa o pedido novo (lote 1 da pausa de vendas).
+  {
+    versao: "20261600000000",
+    consulta: "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado",
+  },
+];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));
 const ler = (n) => lerBruto(n).replace(/\r\n/g, "\n");
@@ -89,20 +108,16 @@ Deno.test("1560: avaliarFase0 nao recusa o par; sem BEGIN/COMMIT; LF; lock_timeo
     assert.ok(!lerBruto(n).includes("\r"), n);
 });
 
-// 20261590000000: a loja guarda o dia da pausa do teste (PR do aviso de teste encerrado).
-const SUCESSORAS = ["20261590000000"];
-
-Deno.test("1560: depois dela so migrations sucessoras conhecidas", () => {
+Deno.test("1560: depois dela so as SUCESSORAS conhecidas, em ordem", () => {
   const versoes = [];
   for (const e of Deno.readDirSync(new URL("supabase/migrations/", DIR)))
     if (e.isFile && /^\d{14}_.+\.sql$/.test(e.name))
       versoes.push(e.name.slice(0, 14));
   versoes.sort();
-  // Sucessoras conhecidas (cada uma com o proprio teste): so elas podem vir depois.
-  const depois = versoes.slice(versoes.indexOf(VERSAO) + 1);
+  // Sucessoras conhecidas (cada uma com o proprio teste): so elas podem vir depois, e todas, na ordem.
   assert.deepEqual(
-    depois.filter((v) => !SUCESSORAS.includes(v)),
-    [],
+    versoes.slice(versoes.indexOf(VERSAO) + 1),
+    SUCESSORAS.map((s) => s.versao),
   );
   assert.equal(versoes.filter((v) => v === VERSAO).length, 1);
 });
@@ -279,14 +294,12 @@ Deno.test("1560: publicacao — lote unico (193a/193b), rol fechado, consultas s
   assert.equal(lote[0].ausenciaConfirmadaPor, B);
   for (const campo of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
     assert.ok(!(campo in lote[0]), campo);
-  // lotes novos vao no fim, sem reordenar: depois deste so os das sucessoras conhecidas
-  const idx = canais.provasDeObjetos.findIndex((p) => p.consulta === A);
-  const seguintes = canais.provasDeObjetos
-    .slice(idx + 1)
-    .flatMap((p) => p.versoes);
+  // lotes novos vao no fim, sem reordenar: depois deste so os das SUCESSORAS, na ordem delas
   assert.deepEqual(
-    seguintes.filter((v) => !SUCESSORAS.includes(v)),
-    [],
+    canais.provasDeObjetos
+      .slice(-(SUCESSORAS.length + 1))
+      .map((p) => p.consulta),
+    [A, ...SUCESSORAS.map((s) => s.consulta)],
   );
   const politica = JSON.parse(lerRepo("scripts/frota/politica.json"));
   assert.ok(

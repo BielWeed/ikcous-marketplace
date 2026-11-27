@@ -9,6 +9,8 @@
  * enquanto o marcador estiver no texto.
  */
 
+import { normalizarCodigoDoCupom } from "@/lib/codigo-do-cupom";
+
 /** Onde o código do cupom da lojista entra. Nunca deve chegar a um cliente. */
 export const MARCADOR_DO_CUPOM = "[CÓDIGO DO SEU CUPOM]";
 
@@ -102,7 +104,42 @@ export function codigosDeCupomCitados(...textos: readonly string[]): string[] {
  * a linha a mais não muda o resultado.
  */
 export function filtroDosCodigosCitados(codigos: readonly string[]): string {
-  return codigos.map((codigo) => `code.ilike.${codigo}`).join(",");
+  const pedidos = new Set<string>();
+  for (const codigo of codigos) {
+    for (const grafia of grafiasDoCodigoCitado(codigo)) pedidos.add(grafia);
+  }
+  return [...pedidos].map((codigo) => `code.ilike.${codigo}`).join(",");
+}
+
+/**
+ * As grafias que o checkout tenta, na ordem dele (`CouponInput`): primeiro o
+ * código como citado, em maiúsculas; depois a versão que o painel grava
+ * (`normalizarCodigoDoCupom`, sem acento). "VERÃO10" no texto acha o cupom
+ * "VERAO10" que o painel gravou, como no checkout.
+ */
+function grafiasDoCodigoCitado(codigo: string): string[] {
+  const citado = codigo.toUpperCase();
+  const normalizado = normalizarCodigoDoCupom(codigo);
+  return normalizado && normalizado !== citado
+    ? [citado, normalizado]
+    : [citado];
+}
+
+/**
+ * O cupom da loja que o código citado alcança no checkout: a grafia citada
+ * vence; a sem acento só vale se a citada não existir. O código GRAVADO não
+ * perde o acento (o servidor compara sem ignorá-lo): "VERAO10" no texto não
+ * acha um cupom antigo "VERÃO10", e a cliente também não acharia.
+ */
+export function cupomDoCodigoCitado(
+  codigo: string,
+  cupons: readonly CupomDaLoja[],
+): CupomDaLoja | undefined {
+  for (const grafia of grafiasDoCodigoCitado(codigo)) {
+    const cupom = cupons.find((c) => c.code.toUpperCase() === grafia);
+    if (cupom) return cupom;
+  }
+  return undefined;
 }
 
 /** Só as colunas de `coupons` que a conferência lê. */
@@ -130,7 +167,8 @@ export type ProblemaDoCupom =
 
 /**
  * O cupom citado serve para uma cliente usar agora? `null` = serve.
- * O código se compara igual ao do servidor (exato, sem ignorar acento).
+ * O código se procura como o checkout procura (`cupomDoCodigoCitado`): exato
+ * primeiro e, se não houver, sem acento — a segunda tentativa do checkout.
  */
 export function problemaDoCupom(
   codigo: string,
@@ -138,7 +176,7 @@ export function problemaDoCupom(
   agora: Date,
   opcoes: { readonly clienteNaListaDoCupom?: boolean } = {},
 ): ProblemaDoCupom | null {
-  const cupom = cupons.find((c) => c.code.toUpperCase() === codigo);
+  const cupom = cupomDoCodigoCitado(codigo, cupons);
   if (!cupom) return "nao-existe";
   if (cupom.active === false) return "desativado";
   if (cupom.valid_until && new Date(cupom.valid_until) <= agora) {

@@ -357,12 +357,21 @@ export function CartaoPeloAppBloco({
     controles: React.ReactNode,
     estado: LeituraDoCartao["estado"],
     ligado: boolean,
+    /** Crédito ou débito ligado na última leitura CONFIRMADA; `null` antes
+     * da primeira. Não volta a `null` durante uma releitura. */
+    ligadoConfirmado: boolean | null,
   ) => React.ReactNode;
   readonly relerGatilho?: number;
 }) {
   const [leitura, setLeitura] = useState<LeituraDoCartao>({
     estado: "carregando",
   });
+  // Stale-while-revalidate: a releitura (reabrir a seção, voltar à aba) põe
+  // `leitura` em "carregando" e, sem isto, o aviso de "ao ligar" e o "+ cartão"
+  // do subtítulo piscavam até a resposta. Só muda com resposta do banco; uma
+  // releitura que FALHA mantém o último confirmado (o servidor confere de novo
+  // na hora de cobrar).
+  const [confirmada, setConfirmada] = useState<ConfigDoCartao | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [avisoDeGravacao, setAvisoDeGravacao] = useState<string | null>(null);
   const idDasParcelas = useId();
@@ -379,6 +388,7 @@ export function CartaoPeloAppBloco({
           ? { estado: "ok", config: resultado.config }
           : { estado: "falhou" },
       );
+      if (resultado.ok) setConfirmada(resultado.config);
     });
     return () => {
       vivo = false;
@@ -411,6 +421,7 @@ export function CartaoPeloAppBloco({
         ...mudanca,
       });
       setLeitura({ estado: "ok", config: gravada });
+      setConfirmada(gravada);
       setAvisoDeGravacao(null);
       toast.success(sucesso);
     } catch (err) {
@@ -424,9 +435,11 @@ export function CartaoPeloAppBloco({
         // O valor anterior deixou de ser confirmação. Solta o botão já, e
         // confere o banco sem esperar a resposta da gravação pendurada.
         setLeitura({ estado: "falhou" });
+        setConfirmada(null);
         buscarConfigDoCartao().then((resultado) => {
           if (resultado.ok) {
             setLeitura({ estado: "ok", config: resultado.config });
+            setConfirmada(resultado.config);
           }
         });
       }
@@ -572,9 +585,10 @@ export function CartaoPeloAppBloco({
         </p>
       )}
       {/* Só sai quando a leitura CONFIRMA crédito ou débito ligado (pedido
-          do dono, 26/11/2026). Carregando ou com a leitura falha não se sabe
-          se o cartão está no ar: o aviso continua, como antes. */}
-      {(!config || (!config.credito && !config.debito)) && (
+          do dono, 26/11/2026). Sem nenhuma confirmação ainda (carregando ou
+          com a leitura falha) não se sabe se o cartão está no ar: o aviso
+          continua. Numa releitura vale o último confirmado, sem piscar. */}
+      {(!confirmada || (!confirmada.credito && !confirmada.debito)) && (
         <p className="flex items-start gap-2 rounded-xl border border-orange-500/20 bg-orange-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-orange-200/90">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-orange-400" />
           {CARTAO_PELO_APP.testeAntes}
@@ -625,5 +639,6 @@ export function CartaoPeloAppBloco({
     controles,
     leitura.estado,
     Boolean(config?.credito || config?.debito),
+    confirmada === null ? null : confirmada.credito || confirmada.debito,
   );
 }

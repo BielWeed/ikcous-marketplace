@@ -16,6 +16,11 @@ import { useEffect } from "react";
  *
  * - Para quando a tela sai do ar (o efeito desmonta): sem intervalo, sem
  *   ouvinte, e uma resposta que chegue depois não faz nada.
+ * - Pergunta UMA vez na montagem: o service worker abre o app pela cópia
+ *   guardada da página, que pode ser a da manutenção já encerrada — sem isso
+ *   a cliente esperava 45 s olhando "manutenção" com a loja aberta. Logo
+ *   depois de uma recarga feita por este hook essa pergunta não sai: a trava
+ *   (90 s desde a última recarga anotada) barra antes de ir à rede.
  * - Aba escondida não gasta rede; ao voltar a ficar visível pergunta na hora.
  * - Uma pergunta por vez.
  * - Trava vencida (3 recargas em 30 min, ou menos de 90 s da última): nem
@@ -45,6 +50,7 @@ export function useVoltaDaManutencao(): void {
       }
     };
 
+    void checar();
     const intervalo = setInterval(() => {
       void checar();
     }, INTERVALO_DA_CHECAGEM_MS);
