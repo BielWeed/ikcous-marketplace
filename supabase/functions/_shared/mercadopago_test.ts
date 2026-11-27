@@ -2941,6 +2941,33 @@ Deno.test("dividirNomeDoPagador: primeiro nome vira first_name e o RESTO vira la
   assertEquals(dividirNomeDoPagador("Ana-Clara D'Ávila Jr."), { first_name: "Ana-Clara", last_name: "D'Ávila Jr." });
 });
 
+// Caça de 26/11/2026: acento DECOMPOSTO (NFD — "e" + U+0301, o que sai de
+// copiar e colar de alguns teclados e sistemas) é `\p{M}`, não `\p{L}`: o
+// nome inteiro virava "lixo" e o cartão saía SEM nome do pagador para o
+// antifraude. Os literais vão em escape para o editor não recompor o texto.
+Deno.test("dividirNomeDoPagador: acento decomposto (NFD) vale e sai composto (NFC); NFC segue igual", () => {
+  const joseNfd = "Jose\u0301 Silva";
+  const joseNfc = "José Silva";
+  assertEquals(joseNfd === joseNfc, false);
+  assertEquals(dividirNomeDoPagador(joseNfd), { first_name: "José", last_name: "Silva" });
+  assertEquals(dividirNomeDoPagador(joseNfc), { first_name: "José", last_name: "Silva" });
+  // Sobrenome decomposto também: o que vai ao MP é sempre a forma composta.
+  const resultado = dividirNomeDoPagador("Ana Conceic\u0327a\u0303o D'A\u0301vila");
+  assertEquals(resultado, { first_name: "Ana", last_name: "Conceição D'Ávila" });
+  assertEquals(resultado.last_name === resultado.last_name?.normalize("NFC"), true);
+  // Lixo continua lixo, com ou sem acento decomposto.
+  for (const ruim of ["Jose\u0301 2", "Jose\u0301 <b>", "Jose\u0301@exemplo.com"]) {
+    assertEquals(dividirNomeDoPagador(ruim), {}, JSON.stringify(ruim));
+  }
+});
+
+Deno.test("montarCorpoCartaoOrders com nome em NFD manda first_name/last_name compostos (NFC)", () => {
+  const corpo = montarCorpoCartaoOrders(argsCartao({ nome: "Jose\u0301 da Conceic\u0327a\u0303o" }));
+  const payer = corpo.payer as Record<string, unknown>;
+  assertEquals(payer.first_name, "José");
+  assertEquals(payer.last_name, "da Conceição");
+});
+
 Deno.test("dividirNomeDoPagador: ausente, vazio ou com cara de lixo (dígito, símbolo, e-mail, comprido demais) NÃO manda nome nenhum", () => {
   for (const ruim of [undefined, null, 42, "", "   ", "Maria 2", "maria@exemplo.com", "<b>Maria</b>", "Maria\nSilva", "x".repeat(101)]) {
     assertEquals(dividirNomeDoPagador(ruim), {}, JSON.stringify(ruim));
