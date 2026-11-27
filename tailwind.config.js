@@ -142,7 +142,15 @@ module.exports = {
   plugins: [
     require("tailwindcss-animate"),
     plugin(({ addVariant }) => {
-      addVariant("hover-hover", "@media (hover: hover)");
+      // Só esconde-até-o-mouse onde NÃO há dedo nenhum: `(hover: hover)`
+      // sozinho olha só o apontador principal (notebook de toque, Surface e
+      // iPad com trackpad dizem "tem mouse"). `(any-pointer: fine)` não
+      // serviria: o touchpad do notebook de toque já é fino. Navegador que
+      // não entende `not (...)` descarta a consulta e o botão fica visível.
+      addVariant(
+        "hover-hover",
+        "@media (hover: hover) and (not (any-pointer: coarse))",
+      );
     }),
   ],
 };

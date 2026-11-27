@@ -495,6 +495,8 @@ export function NotificationsView({
                     {/* Dispensar. Laudo NotificationsView-421: opaco por padrão e
                      * só some até o hover sob `@media (hover: hover)` (variante
                      * `hover-hover`), senão em touch ficava invisível mas tocável.
+                     * Escondido também não recebe toque (`pointer-events-none`,
+                     * que o `::after` herda): apagar não tem desfazer.
                      * size-11 = alvo de 44px. */}
                     <button
                       type="button"
@@ -502,7 +504,7 @@ export function NotificationsView({
                         e.stopPropagation();
                         deleteNotification(notif.id);
                       }}
-                      className="absolute bottom-2 right-0 flex size-11 items-center justify-center rounded-xl text-muted-foreground opacity-100 transition-all after:absolute after:-inset-2 after:content-[''] hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover-hover:opacity-0 hover-hover:focus-visible:opacity-100 hover-hover:group-hover:opacity-100"
+                      className="absolute bottom-2 right-0 flex size-11 items-center justify-center rounded-xl text-muted-foreground opacity-100 transition-all after:absolute after:-inset-2 after:content-[''] hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover-hover:pointer-events-none hover-hover:opacity-0 hover-hover:focus-visible:pointer-events-auto hover-hover:focus-visible:opacity-100 hover-hover:group-hover:pointer-events-auto hover-hover:group-hover:opacity-100"
                       title="Excluir notificação"
                       aria-label={`Excluir notificação: ${notif.title}`}
                     >
