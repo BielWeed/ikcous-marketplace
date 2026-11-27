@@ -11,6 +11,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FichaDaDevolucao } from "@/hooks/useDevolucoesAdmin";
+import { campoDoBannerDoInstante } from "@/lib/datas-do-banner";
 import type { DevolucaoDetalhe } from "@/types/devolucao";
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
@@ -79,13 +80,13 @@ const aprovar = vi.fn();
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
 
-// "Agora" fixo: 12/11/2026 12:00, hora do aparelho (o campo é datetime-local).
+// "Agora" fixo: 12/11/2026 12:00 (um instante; o fuso não importa aqui).
 const AGORA = new Date(2026, 10, 12, 12, 0, 0);
 
-// Formato do `datetime-local`: AAAA-MM-DDTHH:mm, na hora do aparelho.
+// Formato do `datetime-local`: AAAA-MM-DDTHH:mm, no horário de Brasília, que é
+// como a tela lê o campo (`devolucao-coleta-no-horario-de-brasilia.test.tsx`).
 function paraCampo(d: Date): string {
-  const dois = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}T${dois(d.getHours())}:${dois(d.getMinutes())}`;
+  return campoDoBannerDoInstante(d.toISOString());
 }
 
 beforeEach(() => {
