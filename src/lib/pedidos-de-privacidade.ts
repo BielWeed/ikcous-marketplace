@@ -1,4 +1,5 @@
 import { PRAZO_DE_RESPOSTA_EM_DIAS } from "@/config/textos-de-privacidade";
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import type { Database } from "@/types/database.types";
 
 /**
@@ -156,10 +157,10 @@ export function prazoVencido(criadoEm: string, agora: Date): boolean {
   return fim !== null && agora.getTime() > fim.getTime();
 }
 
-/** 14/10/2026, no fuso do aparelho; data ilegível vira texto vazio. */
+/** 14/10/2026, no fuso da loja (Brasília); data ilegível vira texto vazio. */
 export function formatarDataDoPedido(quando: string | null): string {
   if (!quando) return "";
   const data = new Date(quando);
   if (Number.isNaN(data.getTime())) return "";
-  return data.toLocaleDateString("pt-BR");
+  return dataNoFusoDaLoja(data);
 }
