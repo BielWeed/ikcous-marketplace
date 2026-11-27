@@ -1028,6 +1028,47 @@ export function avisoDaMensalidadeEmAberto(
     : { venceuEm, valorMensal, pagueAte: null, pausaEm: null };
 }
 
+/**
+ * As vendas pela loja já pararam (26/11/2026, decisão da pausa, texto 3). Para
+ * pausar, a gestão grava `suspensa` (o único status que o banco pausa, migration
+ * 20261600000000) com os MESMOS dados dos dois avisos acima: sem isto, no dia
+ * em que os pedidos online param, o cartão voltava ao genérico "Suspensa /
+ * Regularize". Exige o sinal completo: valor > 0, vencimento real, `pausa_em`
+ * real e depois do vencimento, `teste_ate` nulo (pagante) ou igual ao
+ * vencimento (teste encerrado), e hoje (São Paulo) no dia da pausa ou depois:
+ * antes dele o banco ainda vende. Sem `pausa_em` (Savy, IKCOUS, gestão velha)
+ * ou com sinal torto, `null` e o cartão continua o de hoje.
+ *
+ * `pausadasDesde` é o `pausa_em` (o dia prometido pela gestão, o mesmo do
+ * WhatsApp). O banco nunca pausa ANTES dele, mas pode pausar depois (suspensa
+ * gravada mais tarde, sexta a domingo vão para a segunda): o cartão não lê o
+ * banco da pausa, então esse atraso não aparece aqui.
+ */
+export function avisoDasVendasPausadas(
+  assinatura: Pick<
+    AssinaturaDaLoja,
+    "status" | "valorMensal" | "proximaCobrancaEm" | "testeAte" | "pausaEm"
+  >,
+  agora: Date = new Date(),
+): {
+  pausadasDesde: string;
+  venceuEm: string;
+  valorMensal: number;
+  doTeste: boolean;
+} | null {
+  const { status, valorMensal } = assinatura;
+  if (status !== "suspensa") return null;
+  if (valorMensal == null || !Number.isFinite(valorMensal) || valorMensal <= 0)
+    return null;
+  const venceuEm = diaRealDoAviso(assinatura.proximaCobrancaEm);
+  const pausaEm = diaRealDoAviso(assinatura.pausaEm);
+  if (!venceuEm || !pausaEm || pausaEm <= venceuEm) return null;
+  const doTeste = assinatura.testeAte !== null;
+  if (doTeste && diaRealDoAviso(assinatura.testeAte) !== venceuEm) return null;
+  if (diaEmSaoPaulo(agora) < pausaEm) return null;
+  return { pausadasDesde: pausaEm, venceuEm, valorMensal, doTeste };
+}
+
 // ─── Erro ────────────────────────────────────────────────────────────────
 
 // A fonte única da frase de erro mora em `erro-do-painel.ts`; os hooks do
