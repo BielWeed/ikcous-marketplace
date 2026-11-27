@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 //
 // RETIRADA NA LOJA DE QUEM TEM CONTA. O banco não copia o endereço de casa para
-// o pedido de retirada (migration 20261399997000 pula `store-pickup`), mas
-// guarda o `address_id`: o mapper cai no JOIN `user_addresses`, que é o
-// cadastro de HOJE. A ficha não pode apresentar esse endereço como se fosse o
-// da compra — ele aparece rotulado "Endereço do cadastro (atual)" — e o recibo
-// de retirada não o imprime (retirada não precisa de endereço de casa no
-// papel). Sem endereço nenhum (apagado ou nunca informado), a ficha diz só
-// "Cliente retira na loja." — sem afirmar que a cliente não informou.
-// Entrega e pedido com cópia do endereço ficam como eram.
+// o pedido de retirada (migration 20261399997000 pula `store-pickup`); pedido
+// antigo ainda guarda o `address_id`, e o mapper cai no JOIN `user_addresses`,
+// que é o cadastro de HOJE. O recibo de retirada não o imprime (retirada não
+// precisa de endereço de casa no papel).
+//
+// A FICHA (decisão de 26/11/2026, retirada pede só o CEP): a retirada que
+// aponta para o cadastro mostra só "Cliente retira na loja.", como a da
+// visitante — sem o endereço do cadastro de hoje (a linha "Endereço do
+// cadastro (atual)" do #1950 sai) e sem o CEP dele. A cópia gravada NA compra
+// e a entrega ficam como eram.
 import type { ReactNode } from "react";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -176,16 +178,18 @@ describe("retirada de quem tem conta: o endereço do cadastro é o de hoje", () 
     return document.body.textContent ?? "";
   }
 
-  it("ficha: retirada sem cópia mostra o endereço do cadastro rotulado como atual", async () => {
+  it("ficha: retirada sem cópia diz só 'Cliente retira na loja.', sem o endereço nem o CEP do cadastro de hoje", async () => {
     const texto = await montarFicha(
       await mapear(
         { ...CLIENTE, pickup_address: ENDERECO_DA_LOJA },
         CADASTRO_DE_HOJE,
       ),
     );
-    expect(texto).toContain("Endereço do cadastro (atual)");
+    expect(texto).toContain("Cliente retira na loja.");
+    expect(texto).not.toContain("Endereço do cadastro (atual)");
     expect(texto).not.toContain("Endereço do cliente");
-    expect(texto).toContain("Rua do Cadastro Novo");
+    expect(texto).not.toContain("Rua do Cadastro Novo");
+    expect(texto).not.toContain("38500-000");
   });
 
   it("ficha: retirada com o endereço apagado diz só 'Cliente retira na loja.', sem afirmar que não informou", async () => {
