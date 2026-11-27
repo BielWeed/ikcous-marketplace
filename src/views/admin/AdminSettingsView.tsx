@@ -29,6 +29,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useRef,
   useState,
 } from "react";
 
@@ -944,8 +945,15 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // deixar o subtítulo de "Entrega e frete" contando a leitura velha. Só a
   // leitura da vez em curso escreve (`vivo`): uma resposta atrasada de uma
   // ida anterior não sobrescreve a nova.
+  // O cartão pelo app relê na MESMA volta à aba (outro aparelho pode ter
+  // ligado ou desligado crédito/débito): só na transição inativa → ativa, já
+  // que ao montar o próprio bloco do cartão faz a primeira leitura.
+  const activeAnterior = useRef(active);
   useEffect(() => {
+    const voltouAAba = activeAnterior.current === false;
+    activeAnterior.current = active;
     if (active === false) return;
+    if (voltouAAba) relerCartao();
     let vivo = true;
     buscarConfiguracaoDeFrete().then((resultado) => {
       if (!vivo) return;
@@ -955,7 +963,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
     return () => {
       vivo = false;
     };
-  }, [active]);
+  }, [active, relerCartao]);
 
   // Transportadoras com cotação REAL ligada, só com o que esta tela JÁ leu
   // (nenhuma chamada nova): ligada, com chave salva e — quando o provedor
@@ -988,8 +996,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // fábrica ("Falta: Nome e logo…"): grupo sem entrada no mapa não desenha a
   // linha, e o aviso no topo explica por quê.
   // O cartão pelo app só é lido dentro do bloco "Cartão pelo app" (render
-  // prop abaixo): o resumo de Pagamentos ganha "+ cartão" quando a leitura
-  // chegou e crédito ou débito está ligado; antes disso não chuta (null).
+  // prop abaixo): o resumo de Pagamentos ganha "+ cartão" quando uma leitura
+  // CONFIRMOU crédito ou débito ligado; antes da primeira não chuta (null), e
+  // numa releitura segue o último confirmado em vez de piscar.
   const subtitulosCom = (cartaoLigado: boolean | null) =>
     configFalhou
       ? SEM_SUBTITULOS
@@ -1073,6 +1082,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               controlesDoCartao,
               estadoDoCartao,
               cartaoLigado,
+              cartaoConfirmado,
             ) => (
               <>
                 <section
@@ -1175,9 +1185,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     <NavegacaoDeAjustes
                       selecionado={grupoSelecionado}
                       onSelecionar={selecionarGrupo}
-                      subtitulos={subtitulosCom(
-                        estadoDoCartao === "ok" ? cartaoLigado : null,
-                      )}
+                      subtitulos={subtitulosCom(cartaoConfirmado)}
                       visuais={VISUAL_DO_GRUPO}
                       pendencias={
                         new Map<ChaveDoGrupoDeAjustes, boolean>([
@@ -1198,9 +1206,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       chave="minha-loja"
                       comPendencia={emailPendente || privacidadePendente}
                       onNavigate={onNavigate}
-                      subtitulos={subtitulosCom(
-                        estadoDoCartao === "ok" ? cartaoLigado : null,
-                      )}
+                      subtitulos={subtitulosCom(cartaoConfirmado)}
                     >
                       {/* E-mail da loja (14/10/2026): o Gmail que envia o e-mail do
                   pedido e o código de login. Nascida FECHADA como as demais;
@@ -1260,9 +1266,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       selecionada={grupoSelecionado === "aparencia"}
                       chave="aparencia"
                       onNavigate={onNavigate}
-                      subtitulos={subtitulosCom(
-                        estadoDoCartao === "ok" ? cartaoLigado : null,
-                      )}
+                      subtitulos={subtitulosCom(cartaoConfirmado)}
                     >
                       {/* Cores do PRÓPRIO painel (Escuro, Claro, Confortável), só
                   neste aparelho: não mexe na vitrine dos clientes. */}
@@ -1285,9 +1289,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       selecionada={grupoSelecionado === "entrega"}
                       chave="entrega"
                       onNavigate={onNavigate}
-                      subtitulos={subtitulosCom(
-                        estadoDoCartao === "ok" ? cartaoLigado : null,
-                      )}
+                      subtitulos={subtitulosCom(cartaoConfirmado)}
                     />
 
                     {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
@@ -1309,9 +1311,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                         abrirPagamentosGatilho + abrirMercadoPagoGatilho
                       }
                       onNavigate={onNavigate}
-                      subtitulos={subtitulosCom(
-                        estadoDoCartao === "ok" ? cartaoLigado : null,
-                      )}
+                      subtitulos={subtitulosCom(cartaoConfirmado)}
                     >
                       {/* Mesmos sinais dos controles, só leitura. O cartão depende
                   também da liberação do pagamento pelo app, como no checkout. */}
@@ -1424,9 +1424,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       chave="devolucao"
                       comPendencia={politicaDevolucaoPendente}
                       onNavigate={onNavigate}
-                      subtitulos={subtitulosCom(
-                        estadoDoCartao === "ok" ? cartaoLigado : null,
-                      )}
+                      subtitulos={subtitulosCom(cartaoConfirmado)}
                     >
                       {(aberta) => (
                         <SecaoColapsavel
@@ -1461,9 +1459,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       chave="ferramentas"
                       subtituloExtra={`Conexão · ${isOffline ? "Indisponível" : "Conectada"}`}
                       onNavigate={onNavigate}
-                      subtitulos={subtitulosCom(
-                        estadoDoCartao === "ok" ? cartaoLigado : null,
-                      )}
+                      subtitulos={subtitulosCom(cartaoConfirmado)}
                     >
                       {(aberta) => (
                         <>

@@ -145,9 +145,7 @@ function ehDecimalComSeparador(texto: string, separador: "." | ","): boolean {
  * - "R$ 10"    → 10; vazio, letras ou mais de 2 casas → `null`.
  */
 export function parseValorBR(entrada: string | number | null | undefined) {
-  if (typeof entrada === "number") {
-    return Number.isFinite(entrada) ? deCentavos(paraCentavos(entrada)) : null;
-  }
+  if (typeof entrada === "number") return reaisOuNulo(entrada);
   if (typeof entrada !== "string") return null;
   let texto = entrada.trim().replace(/^([-−]?)\s*R\$\s*/i, "$1");
   let negativo = false;
@@ -186,10 +184,19 @@ export function parseValorBR(entrada: string | number | null | undefined) {
     return null;
   }
 
-  const numero = Number(normalizado);
-  if (!Number.isFinite(numero)) return null;
-  const reais = deCentavos(paraCentavos(numero));
+  const reais = reaisOuNulo(Number(normalizado));
+  if (reais === null) return null;
   return negativo ? -reais : reais;
+}
+
+/**
+ * Arredonda a centavos e confere o resultado, não a entrada: um número finito
+ * acima de ~1,8e306 estoura ao multiplicar por 100 e viraria `Infinity` (e a
+ * taxa de entrega local, gravada como R$ 0 sem aviso).
+ */
+function reaisOuNulo(numero: number): number | null {
+  const reais = deCentavos(paraCentavos(numero));
+  return Number.isFinite(reais) ? reais : null;
 }
 
 /**
