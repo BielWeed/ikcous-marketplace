@@ -131,7 +131,11 @@ describe("useOrders.updateOrderStatus — conta a quem chamou que a mudança foi
       "avancar_status_do_pedido",
       expect.objectContaining({ p_new_status: "shipping" }),
     );
-    expect(resultado).toBeUndefined();
+    // 27/11/2026: a gravação direta passou a devolver a hora gravada no banco
+    // (carimbo do aviso à cliente); o dublê do rpc não devolve a linha, então vem null.
+    // O que este controle prova continua igual: NÃO foi para a fila.
+    expect(resultado).not.toBe("guardado-na-fila");
+    expect(resultado).toEqual({ gravadoNoBancoEm: null });
     expect(armazem.get("orders_offline_updates_queue:lojista-1")).toBe(
       undefined,
     );
