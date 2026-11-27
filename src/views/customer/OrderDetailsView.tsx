@@ -529,7 +529,12 @@ export function OrderDetailsView({
   // Devolução nem Avaliar (o servidor recusa todos: a dona é outra), e com o
   // "fale com a loja". Se a lista da conta traz o mesmo pedido, o retrato sai
   // (efeito da lista viva abaixo) e as ações voltam.
-  const contaDona = retratoDoConvidado ? null : user;
+  // Exceção: o retrato traz o `user_id` do pedido. A cliente logada que
+  // consultou o PRÓPRIO pedido e o abre com a lista da conta falhando ou vazia
+  // é a dona — as ações dela não somem por causa do caminho que a trouxe.
+  const retratoDaPropriaConta =
+    !!user && !!order?.userId && order.userId === user.id;
+  const contaDona = retratoDoConvidado && !retratoDaPropriaConta ? null : user;
   // Qual cor/tamanho cada linha do pedido mostrava na compra.
   const rotulosDasVariacoes = useRotulosDasVariacoes(order?.items);
   // O mesmo texto, por id da LINHA do pedido: é a chave que a folha de devolução
