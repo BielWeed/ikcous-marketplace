@@ -63,6 +63,12 @@ const SUCESSORAS = [
     consulta:
       "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
   },
+  // 20261641000000: uma avaliacao por cliente e produto, e a media do painel so das publicadas.
+  {
+    versao: "20261641000000",
+    consulta:
+      "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

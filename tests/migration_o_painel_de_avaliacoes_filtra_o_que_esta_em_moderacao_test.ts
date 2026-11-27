@@ -262,10 +262,11 @@ Deno.test("3997: a 86a aceita a funcao nova como sucessora da 381; as consultas 
     c86a.includes(`'8571a56a9b21e90ebdcf941d762870ac'`),
     "a 86a segue aceitando o corpo da 381",
   );
-  // A 20261399996000 sucede o corpo da 3997 na MESMA assinatura de 5 argumentos: a 86a aceita os dois corpos exatos.
+  // A 20261399996000 sucede o corpo da 3997 na MESMA assinatura de 5 argumentos, e a 20261641000000 sucede a 3996: a 86a aceita os
+  // tres corpos exatos.
   assert.ok(
     c86a.includes(
-      `md5(replace(p.prosrc,chr(13),'')) IN ('${H_NOVO}','75f5c48de4eb4005a2516e54b3d33135')`,
+      `md5(replace(p.prosrc,chr(13),'')) IN ('${H_NOVO}','75f5c48de4eb4005a2516e54b3d33135','21ba271d66edd776cab2443d32800db7')`,
     ),
   );
   assert.ok(

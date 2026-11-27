@@ -363,6 +363,8 @@ on:
       - "scripts/publicacao/consultas/199b-antes-a-loja-ja-suspensa-tambem-pausa-base-vigente.sql"
       - "scripts/publicacao/consultas/200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente.sql"
+      - "scripts/publicacao/consultas/201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado.sql"
+      - "scripts/publicacao/consultas/201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -700,6 +702,8 @@ on:
       - "scripts/publicacao/consultas/199b-antes-a-loja-ja-suspensa-tambem-pausa-base-vigente.sql"
       - "scripts/publicacao/consultas/200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente.sql"
+      - "scripts/publicacao/consultas/201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado.sql"
+      - "scripts/publicacao/consultas/201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1506,6 +1510,14 @@ jobs:
       - name: Prova viva da devolucao com a mesma chave sem pagar duas vezes (20261640000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-viva.cjs
+      # Migration 20261641000000 (uma avaliacao por cliente e produto, e a media do painel so das publicadas): gatilho NOVO BEFORE INSERT em reviews que recusa a segunda
+      # avaliacao da mesma conta para o mesmo produto (23505, trava por conta+produto), e as metricas globais de get_admin_reviews_paged e get_reviews_metrics so das publicadas.
+      # Controle sem a migration (a repetida entra, a media soma a pendente), repetida recusada como cliente e service_role, sessao direta e cliente em nome de outra conta fora,
+      # repetidas antigas preservadas (o apply nao toca nenhuma linha), DUAS conexoes reais no mesmo par, insert de varias linhas, media/total/verificadas so das publicadas,
+      # lista e paginador com todas, mutantes, reaplicar, rollback byte a byte, pre-voo e consultas 201a/201b. CLONE proprio.
+      - name: Prova viva de uma avaliacao por cliente e a media so das publicadas (20261641000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais

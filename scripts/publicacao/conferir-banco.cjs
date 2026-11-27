@@ -3663,7 +3663,23 @@ const ROL_DA_200B = [
   "pedido__saldo_a_estornar: corpo da 20261241000000 (md5), a conta que a funcao nova chama",
   "is_admin() e is_admin_atual() existem; order_refunds e marketplace_orders tem as colunas que a funcao nova le",
 ];
+// Lote 201 (20261641000000, uma avaliacao por cliente e produto, e a media do painel so das publicadas: a funcao NOVA do gatilho
+// avaliacao_uma_por_cliente_e_produto, o gatilho BEFORE INSERT tr_avaliacao_uma_por_cliente_e_produto em reviews e os corpos novos de
+// get_admin_reviews_paged e get_reviews_metrics). Somente catalogo: nenhuma le avaliacao e nenhuma chama funcao. A 201a espera os corpos desta (md5);
+// a 201b, os vigentes (20261399996000 e 20261381000000, sem funcao nem gatilho novos) ou os desta (reaplicacao idempotente). Rol de 6, o mesmo nas duas.
+const ROL_DA_201 = [
+  "avaliacao_uma_por_cliente_e_produto: corpo exato (md5)",
+  "avaliacao_uma_por_cliente_e_produto: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno trigger, search_path=public e EXECUTE de ninguem",
+  "tr_avaliacao_uma_por_cliente_e_produto: BEFORE INSERT por linha em reviews, chama a funcao, ligado, sem WHEN",
+  "get_admin_reviews_paged: corpo exato (md5), metricas globais so das publicadas",
+  "get_reviews_metrics: corpo exato (md5), so as publicadas",
+  "get_admin_reviews_paged e get_reviews_metrics: uma assinatura cada, SECURITY DEFINER plpgsql VOLATILE, EXECUTE de authenticated e service_role (nem anon nem PUBLIC)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado":
+    ROL_DA_201,
+  "201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente":
+    ROL_DA_201,
   "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado":
     ROL_DA_200A,
   "200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente":

@@ -244,7 +244,10 @@ it.each(["antes", "depois"])(
 );
 
 it("avaliação existente após prazo não confirma o envio atual", async () => {
-  h.falharLeitura = true;
+  // 27/11/2026 (20261641000000): a conferência "já avaliou?" tem de responder
+  // antes de gravar — se ela falha, nada é enviado. Aqui ela responde "nenhuma"
+  // (outro aparelho ainda não tinha gravado), o envio fica sem resposta e a
+  // conferência depois do prazo acha a avaliação antiga.
   h.pendurarEnvio = true;
   h.conferida = { id: "avaliacao-antiga" };
   let resultado: unknown = null;

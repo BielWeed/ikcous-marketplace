@@ -196,7 +196,7 @@ describe("KPIs globais de Avaliações (par com a migration 20261002000000)", ()
     // A armadilha do achado: "100%" com zero no total. 3 de 7 = 43%.
     expect(texto).not.toContain("100%");
     expect(texto).toContain("43%");
-    expect(cartao("Total recebido").textContent).toContain("7");
+    expect(cartao("Total publicado").textContent).toContain("7");
   });
 
   it("CORRIGE 1 da 2305: nenhum elemento rotulado 'global' mostra o filtrado — a linha do topo inclusa", async () => {
@@ -242,10 +242,10 @@ describe("KPIs globais de Avaliações (par com a migration 20261002000000)", ()
     expect(linha).not.toContain("0,0");
 
     // L1 da revisão final: o "—" tem que estar DENTRO do cartão "Total
-    // recebido" — as taxas já renderizam "—" sozinhas com total 0, então
+    // publicado" — as taxas já renderizam "—" sozinhas com total 0, então
     // um toContain no host inteiro passa com o cartão mostrando 0.
     await expandirResumo();
-    const areaDoCartao = cartao("Total recebido");
+    const areaDoCartao = cartao("Total publicado");
     expect(areaDoCartao.textContent ?? "").toContain("—");
     expect(areaDoCartao.textContent ?? "").not.toMatch(
       /(^|[^\d])0([,.]0)?([^\d]|$)/,

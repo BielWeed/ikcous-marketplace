@@ -747,6 +747,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261640000000: a devolucao com a mesma chave nao paga duas vezes (solicitar_estorno_com_chave e o indice unico parcial; controle com o caminho antigo, duas conexoes reais no mesmo pedido e em
     // pedidos diferentes, recusas, permissao, 14 mutantes, reaplicar, pre-voo, rollback comum e destrutivo, conexao sem BEGIN, dado de antes e consultas 200a/200b).
     "tests/banco/a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-viva.cjs",
+    // 20261641000000: uma avaliacao por cliente e produto (trava no gatilho) e a media do painel so das publicadas.
+    "tests/banco/uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
     // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;

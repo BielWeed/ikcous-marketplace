@@ -858,6 +858,12 @@ prova(
 (async () => {
   await P.conectar();
   try {
+    // A 20261641000000 (uma avaliacao por cliente e produto) recusa a SEGUNDA avaliacao da mesma conta no mesmo produto pela API, e
+    // esta prova grava mais de uma de proposito (o assunto dela e' outro). Sai do clone descartavel pelo rollback-manual dela ANTES
+    // das provas (nao faz nada se nao esta no ar); a trava nova tem a prova dela em uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-viva.cjs.
+    await require("./uma-avaliacao-por-cliente-posterior.cjs").desfazerUmaAvaliacaoPorClienteNaTransacao(
+      P.conexao(),
+    );
     await P.executar("o-texto-da-avaliacao-tem-teto-no-banco");
   } finally {
     await P.conexao()

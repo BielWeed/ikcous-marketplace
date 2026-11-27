@@ -89,6 +89,8 @@ const CLASSES_DO_CELULAR_NA_BASE = [
   "line-clamp-2",
   "mt-3",
   "mt-3",
+  // O aviso "sem compra registrada" junto do Aprovar (pendente sem selo; 20261641000000).
+  "mb-2 text-sm",
   "flex items-center gap-2",
   "min-w-0 flex-1",
   "min-w-0 flex-1",
