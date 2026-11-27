@@ -345,6 +345,8 @@ on:
       - "scripts/publicacao/consultas/193a-conferir-o-infinito-nao-entra-no-banco-aplicado.sql"
       - "scripts/publicacao/consultas/193b-antes-o-infinito-nao-entra-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/193m-medir-infinitos-guardados.sql"
+      - "scripts/publicacao/consultas/194a-conferir-o-endereco-antigo-encaminha-aplicado.sql"
+      - "scripts/publicacao/consultas/194b-antes-o-endereco-antigo-encaminha-ausente.sql"
       - "scripts/publicacao/consultas/195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado.sql"
       - "scripts/publicacao/consultas/195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente.sql"
       - "scripts/publicacao/consultas/196a-conferir-a-loja-pausa-o-pedido-novo-aplicado.sql"
@@ -669,6 +671,8 @@ on:
       - "scripts/publicacao/consultas/193a-conferir-o-infinito-nao-entra-no-banco-aplicado.sql"
       - "scripts/publicacao/consultas/193b-antes-o-infinito-nao-entra-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/193m-medir-infinitos-guardados.sql"
+      - "scripts/publicacao/consultas/194a-conferir-o-endereco-antigo-encaminha-aplicado.sql"
+      - "scripts/publicacao/consultas/194b-antes-o-endereco-antigo-encaminha-ausente.sql"
       - "scripts/publicacao/consultas/195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado.sql"
       - "scripts/publicacao/consultas/195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente.sql"
       - "scripts/publicacao/consultas/196a-conferir-a-loja-pausa-o-pedido-novo-aplicado.sql"
@@ -1719,6 +1723,19 @@ jobs:
       - name: Prova viva de que o infinito nao entra no banco (migration 20261560000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-infinito-nao-entra-no-banco-viva.cjs
+      # Migration 20261570000000 (o endereco antigo encaminha para o novo): tabela frota_enderecos_que_encaminham (RLS sem politica,
+      # nada para PUBLIC/anon/authenticated/service_role; gatilho recusa o endereco principal de uma loja; CHECK de host e de motivo;
+      # apagar a loja apaga os enderecos), a porta de leitura resolver_encaminhamento (so o anon; o bloco da chave e o da v2 letra por
+      # letra; devolve o endereco ATUAL, nunca corrente; ativa = false e o proprio host dao zero linhas; so leitura nao grava) e a porta
+      # de troca frota_trocar_dominio (so o dono; 19 recusas sem escrever; as tres escritas numa transacao; a troca invertida volta o
+      # roteamento; falha no meio desfaz tudo; duas conexoes: a segunda espera e e recusada). Reaplicar 2x (LF e CRLF); sem COMMIT
+      # escondido; rollback comum (2x) preserva a tabela; destrutivo exige APAGAR, o comum antes e a caderneta confirmada; pre-voo
+      # recusa sem a 20261490 e com objeto de outra forma; consultas 194a/194b EXECUTADAS (apply, comum, destrutivo, 14 defeitos
+      # plantados). CLONE proprio.
+      - name: Prova viva do endereco antigo que encaminha para o novo (migration 20261570000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 3
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-endereco-antigo-encaminha-viva.cjs
       # Migration 20261590000000 (a loja guarda o dia da pausa do teste): a coluna assinatura_da_loja.pausa_em (date, anulavel, sem padrao) e a porta
       # assinatura_da_loja_gravar com a 11a chave OPCIONAL pausa_em. Gestao velha (10 chaves) grava e apaga o dia; gestao nova grava; null grava NULL;
       # pausa_em torta = valor_invalido citando o campo; chave errada continua nao_autorizado antes de olhar os dados; o leitor devolve a coluna so ao admin;

@@ -803,6 +803,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-admin-copia-e-apaga-as-fotos-viva.cjs",
     // 20261560: o infinito nao entra no banco (CHECKs novos contra Infinity e -Infinity na taxa local, na variacao e no cupom; todas as portas; sem a 400; NaN segue da 400; linha antiga recusa; mutantes; rollback; consultas 193a/193b).
     "tests/banco/o-infinito-nao-entra-no-banco-viva.cjs",
+    // 20261570: o endereco antigo encaminha para o novo (tabela fechada, gatilho do principal, porta de leitura com o bloco da chave da v2, porta de troca so do dono com 19 recusas, falha no meio, duas conexoes, rollbacks, pre-voo).
+    "tests/banco/o-endereco-antigo-encaminha-viva.cjs",
     // 20261590: a loja guarda o dia da pausa do teste (pausa_em opcional na porta do cartao; gestao velha e nova; recuo da porta velha; mutantes; rollback comum e destrutivo; consultas 150c/195a/195b).
     "tests/banco/a-loja-guarda-o-dia-da-pausa-do-teste-viva.cjs",
     // 20261600: a loja pausa o pedido novo (regra das datas com pausa_em; marca do dia da suspensa; motivo; recusa do pedido online v23/v24 com balcao livre; manutencao so o admin de agora; painel; mutantes; rollback comum e destrutivo; consultas 196a/196b).
