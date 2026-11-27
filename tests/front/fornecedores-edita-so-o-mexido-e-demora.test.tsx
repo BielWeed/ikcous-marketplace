@@ -228,6 +228,33 @@ describe("Meus fornecedores: edição manda só o mexido; demora ao gravar relê
     expect(toastSucesso).not.toHaveBeenCalled();
   });
 
+  it("edição que estourou o prazo e depois volta ao valor original: Salvar sem mudança fecha E relê a lista", async () => {
+    await montar();
+    expect(leiturasDaLista()).toBe(1);
+    // O banco gravou "Campinas", mas a resposta não chegou a tempo.
+    banco.responder = ((anterior) => (metodos) => {
+      if (usou(metodos, "update")) throw erroDeConsultaSemResposta();
+      return anterior(metodos);
+    })(banco.responder);
+
+    await clicar(botao("Editar Atacado Fixture"));
+    await act(async () => digitar(campo(/Cidade/), "Campinas"));
+    await clicar(botao("Salvar fornecedor"));
+    expect(gravacoes()).toHaveLength(1);
+
+    // A lojista desiste: volta a cidade ao valor de quando abriu e toca em Salvar.
+    listaDoServidor = [{ ...COMPLETO, cidade: "Campinas" }];
+    await act(async () => digitar(campo(/Cidade/), "São Paulo"));
+    await clicar(botao("Salvar fornecedor"));
+
+    // Nada mexido não grava de novo, mas a gravação que estourou pode ter valido: a lista
+    // se relê e mostra o que o banco tem.
+    expect(gravacoes()).toHaveLength(1);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(leiturasDaLista()).toBe(2);
+    expect(tela()).toContain("Campinas");
+  });
+
   it("cadastro que estourou o prazo: manda tocar em Salvar fornecedor e, ao fechar, avisa que pode não ter sido salvo e relê a lista", async () => {
     await montar();
     expect(leiturasDaLista()).toBe(1);
