@@ -45,7 +45,10 @@ interface CartaoDeCupomProps {
   readonly cupom: CupomDisponivel;
   readonly melhor: boolean;
   readonly aplicandoEste: boolean;
+  /** O pedido está saindo: trava de vez (`disabled`). */
   readonly travado: boolean;
+  /** Um cupom está sendo conferido: trava sem tirar o foco (`aria-disabled`). */
+  readonly ocupado: boolean;
   readonly onAplicar: (codigo: string) => void;
 }
 
@@ -71,6 +74,7 @@ const CartaoDeCupom = memo(function CartaoDeCupom({
   melhor,
   aplicandoEste,
   travado,
+  ocupado,
   onAplicar,
 }: CartaoDeCupomProps) {
   const idDaDescricao = useId();
@@ -158,11 +162,18 @@ const CartaoDeCupom = memo(function CartaoDeCupom({
     <li>
       <button
         type="button"
-        onClick={() => onAplicar(cupom.codigo)}
+        onClick={() => {
+          if (!ocupado) onAplicar(cupom.codigo);
+        }}
+        // A conferência é passageira: `aria-disabled` mantém o cartão na ordem
+        // de foco (com `disabled` o foco caía no body e, com o cupom recusado,
+        // nada o trazia de volta). O mesmo padrão do "Adicionar ao carrinho"
+        // da ficha do produto; o toque repetido para na guarda do onClick.
         disabled={travado}
+        aria-disabled={!travado && ocupado ? true : undefined}
         aria-label={`Aplicar o cupom ${cupom.codigo}`}
         aria-describedby={idDaDescricao}
-        className="flex min-h-11 w-full items-center gap-3 rounded-2xl border-2 border-solid border-zinc-200 bg-white p-3 text-left transition-colors hover:border-zinc-300 disabled:cursor-not-allowed"
+        className="flex min-h-11 w-full items-center gap-3 rounded-2xl border-2 border-solid border-zinc-200 bg-white p-3 text-left transition-colors hover:border-zinc-300 disabled:cursor-not-allowed aria-disabled:cursor-not-allowed"
       >
         <CanhotoDoCupom cupom={cupom} />
         {textos}
@@ -380,7 +391,8 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
                   cupom={cupom}
                   melhor={cupom.codigo === melhor}
                   aplicandoEste={aplicando === cupom.codigo}
-                  travado={aplicando !== null || emEnvio}
+                  travado={emEnvio}
+                  ocupado={aplicando !== null}
                   onAplicar={aplicar}
                 />
               ))}

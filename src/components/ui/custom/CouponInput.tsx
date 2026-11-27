@@ -164,8 +164,14 @@ export const CouponInput = memo(function CouponInput({
         />
         <button
           type="submit"
-          disabled={!code.trim() || aplicando || travado}
-          className="flex min-h-[44px] min-w-[70px] shrink-0 items-center justify-center rounded-lg bg-zinc-900 p-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600"
+          // "Aplicando…" é passageiro: `aria-disabled` mantém o botão focado
+          // (com `disabled` o foco caía no body e a recusa o deixava lá). O
+          // clique repetido para na guarda de `handleSubmit`.
+          disabled={!code.trim() || travado}
+          aria-disabled={
+            aplicando && !travado && code.trim() ? true : undefined
+          }
+          className="flex min-h-[44px] min-w-[70px] shrink-0 items-center justify-center rounded-lg bg-zinc-900 p-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600 aria-disabled:cursor-not-allowed aria-disabled:bg-zinc-200 aria-disabled:text-zinc-600"
         >
           {aplicando ? "Aplicando…" : "Aplicar"}
         </button>

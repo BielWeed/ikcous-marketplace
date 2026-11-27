@@ -122,7 +122,8 @@ describe("CouponInput", () => {
     const botao = hospedeiro.querySelector<HTMLButtonElement>(
       "button[type=submit]",
     );
-    expect(botao?.disabled).toBe(true);
+    // Trava passageira: `aria-disabled`, não `disabled` (que tira o foco).
+    expect(botao?.getAttribute("aria-disabled")).toBe("true");
     expect(botao?.textContent).toBe("Aplicando…");
     // Enter no campo dispara o submit do formulário mesmo com o botão travado.
     await act(async () => {
