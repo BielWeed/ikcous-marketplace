@@ -46,7 +46,11 @@ function consultasDa(css: string, classe: string): string[] {
   const achadas: string[] = [];
   raiz.walkRules((regra) => {
     if (!regra.selector.includes(escapada)) return;
-    for (let pai = regra.parent; pai; pai = pai.parent) {
+    for (
+      let pai: postcss.Node | undefined = regra.parent;
+      pai;
+      pai = pai.parent
+    ) {
       if (pai.type === "atrule") {
         achadas.unshift((pai as postcss.AtRule).params);
       }
