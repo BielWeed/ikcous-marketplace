@@ -105,6 +105,8 @@ function pedidoDoBanco(n: number, status = "processing"): Linha {
 let banco: Linha[];
 let chamadas: Argumentos[];
 let depoisDaChamada: (n: number) => void;
+// Servidor que não anda: ignora a posição pedida e devolve sempre a primeira.
+let respostaNaoAnda: boolean;
 
 function responder(args: Argumentos) {
   const fim = args.p_end_date ? microssegundos(args.p_end_date) : null;
@@ -135,6 +137,7 @@ beforeEach(async () => {
   rpc.mockReset();
   chamadas = [];
   depoisDaChamada = () => {};
+  respostaNaoAnda = false;
   rpc.mockImplementation((nome: string, args: Argumentos) => {
     if (nome !== "get_admin_orders_paged" || args.p_page_size !== 100) {
       const vazio = Promise.resolve({
@@ -144,7 +147,7 @@ beforeEach(async () => {
       return Object.assign(vazio, { abortSignal: () => vazio });
     }
     chamadas.push({ ...args });
-    const resposta = responder(args);
+    const resposta = responder(respostaNaoAnda ? { ...args, p_page: 0 } : args);
     depoisDaChamada(chamadas.length);
     return Promise.resolve(resposta);
   });
@@ -252,5 +255,21 @@ describe("CSV de pedidos lê por chave, não por posição", () => {
       Array.from({ length: 250 }, (_, i) => i + 1),
     );
     expect(chamadas.length).toBeLessThanOrEqual(5);
+  });
+
+  it("empate maior que a página com resposta que não anda: para logo, sem pedir dezenas de páginas", async () => {
+    // 150 pedidos no mesmo instante: a leitura precisa andar pela posição
+    // dentro do empate, mas o servidor devolve sempre a mesma página.
+    banco = Array.from({ length: 150 }, (_, i) => pedidoDoBanco(i + 1));
+    const mesmoInstante = banco[0].created_at;
+    for (const linha of banco) linha.created_at = mesmoInstante;
+    respostaNaoAnda = true;
+
+    const leitura = exportar({ statusFilter: "processing" });
+
+    await expect(leitura).rejects.toThrow(/incompleta/i);
+    // 1ª página, a 1ª da chave nova (o empate inteiro já tinha vindo) e a
+    // 2ª da chave, que não trouxe nada novo: para aí.
+    expect(chamadas).toHaveLength(3);
   });
 });

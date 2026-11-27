@@ -137,6 +137,13 @@ describe("toque em cartão que acabou de mudar de lugar", () => {
     expect(toast.warning).not.toHaveBeenCalledWith(AVISO, expect.anything());
   });
 
+  it("primeira montagem: o toque no 2º cartão também avança (nenhum deles apareceu agora)", async () => {
+    await mostrar([ANA, BIA]);
+    await tocar(botaoAvancarDe("Bia"));
+    expect(avancar).toHaveBeenCalledWith(BIA.id, "processing", "pending");
+    expect(toast.warning).not.toHaveBeenCalledWith(AVISO, expect.anything());
+  });
+
   it("pedido novo entra no topo: o toque que cai no cartão novo não avança ninguém", async () => {
     await mostrar([ANA]);
     agora += 5_000;
