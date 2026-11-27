@@ -36,6 +36,11 @@ import {
   type ContaFinanceira,
   type TipoDeConta,
 } from "@/types/financeiro";
+import {
+  escolherNaLista,
+  opcoesDaLista,
+  valorDaLista,
+} from "./helpers/lista-de-escolha";
 
 const COFRE = "conta-cofre-teste";
 const ANTIGA = "conta-antiga-teste";
@@ -145,17 +150,11 @@ async function colar(id: string, valor: string) {
   });
 }
 
+// A conta é a lista de escolha do painel: tocar no campo e na opção.
+const CAMPO = "fin-caixa-mov-conta";
+
 async function escolherConta(id: string) {
-  const select = document.getElementById(
-    "fin-caixa-mov-conta",
-  ) as HTMLSelectElement;
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(
-      globalThis.HTMLSelectElement.prototype,
-      "value",
-    )?.set?.call(select, id);
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  await act(async () => escolherNaLista(CAMPO, id));
 }
 
 const botaoDeRegistro = (movimento: "sangria" | "suprimento") =>
@@ -170,8 +169,17 @@ async function registrar(movimento: "sangria" | "suprimento") {
   for (let i = 0; i < 4; i += 1) await act(async () => Promise.resolve());
 }
 
-const seleto = () =>
-  document.getElementById("fin-caixa-mov-conta") as HTMLSelectElement;
+const campo = () => document.getElementById(CAMPO) as HTMLButtonElement;
+/** O que o campo fechado mostra (a conta escolhida ou o placeholder). */
+const textoDoCampo = () =>
+  normalizar(document.getElementById(`${CAMPO}-valor`)?.textContent);
+function opcoes() {
+  let lidas: ReturnType<typeof opcoesDaLista> = [];
+  act(() => {
+    lidas = opcoesDaLista(CAMPO);
+  });
+  return lidas;
+}
 const chamadas = () =>
   rpc.mock.calls.filter(([nome]) => nome === "fin_caixa_movimentar_com_chave");
 
@@ -182,11 +190,9 @@ describe.each(["sangria", "suprimento"] as const)(
 
     it("a lista só traz contas ativas que não são o caixa, e o Banco já vem escolhido", async () => {
       await montar(movimento);
-      expect([...seleto().options].map((o) => o.textContent)).toEqual([
-        "Banco",
-        "Cofre",
-      ]);
-      expect(seleto().value).toBe(CONTA_BANCARIA);
+      expect(opcoes().map((o) => o.rotulo)).toEqual(["Banco", "Cofre"]);
+      expect(valorDaLista(CAMPO)).toBe(CONTA_BANCARIA);
+      expect(textoDoCampo()).toBe("Banco");
       // E vai para o servidor: o Banco, sem a pessoa precisar mexer.
       await colar("fin-caixa-mov-valor", "10,00");
       await registrar(movimento);
@@ -207,19 +213,27 @@ describe.each(["sangria", "suprimento"] as const)(
       await montar(movimento, {
         contas: [CAIXA, conta(COFRE, "Cofre", "outro")],
       });
-      expect(seleto().value).toBe("");
-      const vazia = [...seleto().options].find((o) => o.value === "");
-      expect(vazia?.textContent).toBe("Escolha uma conta");
-      expect(vazia?.disabled).toBe(true);
+      expect(valorDaLista(CAMPO)).toBe("");
+      // "Escolha uma conta" é o placeholder do campo, não uma opção.
+      expect(textoDoCampo()).toBe("Escolha uma conta");
+      expect(opcoes().map((o) => o.valor)).toEqual([COFRE]);
       // Antes de tentar, ainda não reclama.
       expect(texto()).not.toContain(`Escolha a conta de ${destino}.`);
+      expect(campo().getAttribute("aria-invalid")).toBeNull();
 
       await colar("fin-caixa-mov-valor", "10,00");
       await registrar(movimento);
       expect(chamadas()).toHaveLength(0);
       expect(texto()).toContain(`Escolha a conta de ${destino}.`);
+      expect(textoDoCampo()).toBe("Escolha uma conta");
+      expect(campo().getAttribute("aria-invalid")).toBe("true");
+      expect(document.getElementById(`${CAMPO}-erro`)?.textContent).toBe(
+        `Escolha a conta de ${destino}.`,
+      );
 
       await escolherConta(COFRE);
+      expect(textoDoCampo()).toBe("Cofre");
+      expect(campo().getAttribute("aria-invalid")).toBeNull();
       expect(texto()).not.toContain(`Escolha a conta de ${destino}.`);
       await registrar(movimento);
       expect(chamadas()).toHaveLength(1);
@@ -233,7 +247,10 @@ describe.each(["sangria", "suprimento"] as const)(
       expect(texto()).toContain(
         `Não há outra conta ativa ${movimento === "sangria" ? "para receber" : "de onde tirar"} esse dinheiro.`,
       );
-      expect(seleto().options).toHaveLength(0);
+      // Nada para escolher: o campo diz isso e não abre uma lista vazia.
+      expect(textoDoCampo()).toBe("Nenhuma outra conta ativa");
+      expect(campo().disabled).toBe(true);
+      expect(() => escolherNaLista(CAMPO, ANTIGA)).toThrowError(/desabilitada/);
       expect(botaoDeRegistro(movimento).disabled).toBe(true);
       await colar("fin-caixa-mov-valor", "10,00");
       await act(async () => botaoDeRegistro(movimento).click());
@@ -246,6 +263,7 @@ describe.each(["sangria", "suprimento"] as const)(
         "As contas ainda não carregaram. Aguarde um instante ou atualize a página.",
       );
       expect(texto()).not.toContain("Não há outra conta ativa");
+      expect(texto()).not.toContain("Nenhuma outra conta ativa");
       expect(botaoDeRegistro(movimento).disabled).toBe(true);
     });
   },
