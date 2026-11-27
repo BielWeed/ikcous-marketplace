@@ -354,6 +354,8 @@ on:
       - "scripts/publicacao/consultas/196m-medir-quem-cria-pedido.sql"
       - "scripts/publicacao/consultas/198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado.sql"
       - "scripts/publicacao/consultas/198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente.sql"
+      - "scripts/publicacao/consultas/199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado.sql"
+      - "scripts/publicacao/consultas/199b-antes-a-loja-ja-suspensa-tambem-pausa-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -682,6 +684,8 @@ on:
       - "scripts/publicacao/consultas/196m-medir-quem-cria-pedido.sql"
       - "scripts/publicacao/consultas/198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado.sql"
       - "scripts/publicacao/consultas/198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente.sql"
+      - "scripts/publicacao/consultas/199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado.sql"
+      - "scripts/publicacao/consultas/199b-antes-a-loja-ja-suspensa-tambem-pausa-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1762,6 +1766,14 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         timeout-minutes: 6
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-pausa-o-pedido-novo-viva.cjs
+      # Migration 20261630000000 (a loja ja suspensa tambem pausa): a marca marcar_suspensa_desde grava o dia quando a loja SEGUE suspensa sem
+      # dia (a que ja era suspensa quando a 1600 chegou); com dia, mantem; entrar/sair como na 1600; pela porta real do cartao; ponta a ponta com
+      # a regra e o motivo; controle com a marca da 1600 (o defeito); mutantes; falha = WARNING; reaplicar 2x sem tocar dados; retrato; rollback
+      # byte a byte antes do da 1600; pre-voo, pos-voo, atomicidade e consultas 199a/199b/196a EXECUTADAS. CLONE proprio.
+      - name: Prova viva de que a loja ja suspensa tambem pausa (migration 20261630000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 4
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-ja-suspensa-tambem-pausa-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam

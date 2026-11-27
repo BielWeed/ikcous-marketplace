@@ -1867,7 +1867,7 @@ const ITEM_MANUTENCAO =
 const FALTA_TUDO_196A = [
   "a_loja_aceita_pedido_novo: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
   "data_da_pausa_de_vendas: uma so, corpo da 20261600000000 (md5), SQL IMMUTABLE com search_path fixo, EXECUTE de ninguem",
-  "marcar_suspensa_desde: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "marcar_suspensa_desde: uma so, corpo da 20261600000000 ou da sucessora 20261630000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
   "motivo_da_loja_nao_aceitar_pedido: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
   "situacao_das_vendas_da_loja: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE so de authenticated",
   "tr_a_loja_aceita_pedido_novo: BEFORE INSERT por linha em marketplace_orders, com o WHEN do balcao, ligado",
@@ -2090,6 +2090,13 @@ prova(
 (async () => {
   await P.conectar();
   try {
+    // A sucessora 20261630000000 troca o corpo da marca: sai do clone ANTES (o pre-voo, o rollback e os md5 daqui sao os da 1600).
+    if (
+      await require("./a-loja-ja-suspensa-tambem-pausa-posterior.cjs").desfazerASuspensaAntiga(
+        P.conexao(),
+      )
+    )
+      console.log("  (a sucessora 20261630000000 foi desfeita no clone)");
     await P.executar("a-loja-pausa-o-pedido-novo");
   } finally {
     await P.conexao()

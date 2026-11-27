@@ -518,6 +518,11 @@ async function desfazerPosterioresNaTransacao(cliente) {
   // As sucessoras da 99 (20261212, 20261214: redefinem corpos dela) saem
   // primeiro — sem isso o rollback da 99 recusa (B1_BASELINE_DIVERGENT).
   await desfazerSucessorasDa99(cliente);
+  // A 20261630000000 sucede a marca da 20261600000000 (PAUSA_DE_VENDAS, no fim da lista abaixo): sai ANTES do laco (o rollback da 1600
+  // recusa a marca com o corpo dela). A marca nao chama is_admin_atual: a 1630 nao entra na lista.
+  await require("./a-loja-ja-suspensa-tambem-pausa-posterior.cjs").desfazerASuspensaAntigaNaTransacao(
+    cliente,
+  );
   for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,
@@ -1694,6 +1699,11 @@ PROVAS.push({
       // A 20261243000000 (redefine o corpo de registrar_pagamento_recebido que a 97 confere por hash) também sai antes
       // (só se no ar): sem isso a recusa por hash dela vem ANTES da recusa por dependentes que esta prova mede.
       await desfazerDesfazerRecebimentoNaTransacao(cliente);
+      // A 20261630000000 sucede a marca da 20261600000000 (PAUSA_DE_VENDAS, nesta pilha): sai antes (só se no ar), senão o rollback
+      // da 1600 recusa a marca com o corpo dela.
+      await require("./a-loja-ja-suspensa-tambem-pausa-posterior.cjs").desfazerASuspensaAntigaNaTransacao(
+        cliente,
+      );
       // Índice 2 = a 99: as sucessoras dela (tests/banco/sucessoras-da-99.cjs)
       // saem antes, senão o rollback da 99 recusa.
       if (i === 2) await desfazerSucessorasDa99(cliente);
