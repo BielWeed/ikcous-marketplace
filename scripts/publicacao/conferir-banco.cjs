@@ -3610,25 +3610,25 @@ const ROL_DA_196B = [
   "premissa: o cartao com as 14 colunas da 20261590000000 (com pausa_em) e a tabela da chave da 20261399998000",
   "store_config: nenhuma linha com manutencao = true hoje (se houver, a loja passa a recusar pedido online no apply: avisar o dono antes)",
 ];
-// Lote 197 (20261610000000, o catalogo e a configuracao chegam ao vivo em toda loja: 11 tabelas entram na publicacao supabase_realtime; aditiva,
-// exige a 20261061000000). Somente catalogo, nenhuma linha de tabela lida. A 197a prova exatamente as 14 tabelas esperadas na publicacao e a RLS
-// ligada nas 11 (6); na IKCOUS ela ja sai positiva antes do apply (as 11 postas a mao). A 197b prova que pelo menos uma das 11 esta fora e as
-// premissas do pre-voo (6).
+// Lote 197 (20261610000000, o catalogo e a configuracao chegam ao vivo em toda loja: 10 tabelas entram na publicacao supabase_realtime; aditiva,
+// exige a 20261061000000). Somente catalogo, nenhuma linha de tabela lida. A 197a prova as 10 e as 3 da 20261061 na publicacao, nenhuma outra alem
+// de coupons (TOLERADA: a IKCOUS a tem, posta a mao) e a RLS ligada (6); positiva com 13 (Savy, loja nova) e com 14 (IKCOUS, ja antes do apply).
+// A 197b prova que pelo menos uma das 10 esta fora e as premissas do pre-voo (6).
 const ROL_DA_197A = [
   "controle: catalogo publico visivel",
   "a publicacao supabase_realtime existe, nao e FOR ALL TABLES e publica INSERT, UPDATE e DELETE",
-  "as 11 tabelas do catalogo e da configuracao estao na publicacao",
+  "as 10 tabelas do catalogo e da configuracao estao na publicacao",
   "as 3 tabelas da 20261061000000 (pedido, item do pedido, notificacao) continuam na publicacao",
-  "nenhuma outra tabela do esquema public esta na publicacao (exatamente as 14 esperadas)",
-  "as 11 tabelas existem com RLS ligada",
+  "nenhuma outra tabela do esquema public esta na publicacao (so as 13 e coupons, tolerada)",
+  "as 10 tabelas existem com RLS ligada (e coupons, se publicada)",
 ];
 const ROL_DA_197B = [
   "controle: catalogo publico visivel",
-  "pelo menos uma das 11 tabelas ainda esta fora da publicacao",
+  "pelo menos uma das 10 tabelas ainda esta fora da publicacao",
   "premissa: a publicacao supabase_realtime existe e nao e FOR ALL TABLES",
-  "premissa: as 11 tabelas existem com RLS ligada e identidade de replicacao utilizavel (chave primaria, FULL ou indice)",
+  "premissa: as 10 tabelas existem com RLS ligada e identidade de replicacao utilizavel (chave primaria, FULL ou indice)",
   "premissa: as 3 tabelas da 20261061000000 ja estao na publicacao",
-  "nenhuma tabela do esquema public fora das 14 esperadas esta na publicacao",
+  "nenhuma tabela do esquema public alem das 13 e de coupons (tolerada) esta na publicacao",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
   "197a-conferir-o-catalogo-chega-ao-vivo-aplicado": ROL_DA_197A,

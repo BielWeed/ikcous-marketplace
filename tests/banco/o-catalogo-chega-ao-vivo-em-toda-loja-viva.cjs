@@ -4,15 +4,17 @@
 // descartavel do rodar-isolado.cjs (efemero.cjs recusa qualquer outro alvo); nunca em banco de loja.
 //
 // O que se prova, cada caso numa transacao desfeita (menos o ultimo, que COMITA no clone e recusa rodar fora de um banco prova_*):
-//   1. loja nova (a Savy em 27/11/2026: so as 3 da 20261061): as 11 entram, as 3 ficam, nada mais entra; 197a/197b viram;
-//   2. a IKCOUS (as 14 ja la, postas a mao): NO-OP, o catalogo da publicacao fica identico (nenhum DROP/ADD por baixo);
+//   1. loja nova (a Savy em 27/11/2026: so as 3 da 20261061): as 10 entram, as 3 ficam, coupons NAO entra (13); 197a/197b viram;
+//   2. a IKCOUS (as 10 e coupons ja la, postas a mao: 14): NO-OP, o catalogo da publicacao fica identico (nenhum DROP/ADD por
+//      baixo), coupons continua, e a 197a aceita as 14 (coupons tolerada) mas recusa qualquer outra tabela publicada;
 //   3. loja pela metade: so as que faltam entram;
 //   4. reaplicar (LF e CRLF) nao erra e nao mexe;
 //   5. o pre-voo recusa (B1) e nada entra: tabela sem RLS, sem chave primaria, com REPLICA IDENTITY NOTHING, ausente;
 //   6. sem a publicacao: nao erra e nao cria nada; publicacao FOR ALL TABLES: no-op sem erro (e o rollback recusa);
-//   7. rollback: sem a confirmacao recusa; com ela tira SO as 11 e deixa as 3; repetir e' no-op; reaplicar devolve as 14;
-//   8. o realtime entrega o que o SELECT ja entrega: as politicas de SELECT das 11 sao as do comentario da migration, e o carrinho, o
-//      favorito e o cupom de uma conta nao aparecem para outra nem para o visitante; o custo do produto nao sai para ninguem;
+//   7. rollback: sem a confirmacao recusa; com ela tira SO as 10 e deixa as 3 (e coupons, se estava); repetir e' no-op; reaplicar
+//      devolve as 13;
+//   8. o realtime entrega o que o SELECT ja entrega: as politicas de SELECT das 10 sao as do comentario da migration, e o carrinho e
+//      o favorito de uma conta nao aparecem para outra nem para o visitante; o custo do produto nao sai para ninguem;
 //   9. trava: gravacao e leitura em voo nao seguram o apply; quem segura SHARE UPDATE EXCLUSIVE (VACUUM/ANALYZE) faz o apply desistir
 //      em 5 s (55P03) sem deixar nada.
 const assert = require("node:assert/strict");
@@ -39,12 +41,11 @@ const B = "197b-antes-o-catalogo-chega-ao-vivo-ausente";
 const lerConsulta = (n) =>
   fs.readFileSync(path.join(CONSULTAS, `${n}.sql`), "utf8");
 
-const ONZE = [
+const DEZ = [
   "answers",
   "banners",
   "cart_items",
   "categorias",
-  "coupons",
   "favorites",
   "product_variants",
   "produtos",
@@ -53,7 +54,9 @@ const ONZE = [
   "store_config",
 ];
 const TRES = ["marketplace_order_items", "marketplace_orders", "notificacoes"];
-const CATORZE = [...ONZE, ...TRES].sort();
+const TREZE = [...DEZ, ...TRES].sort();
+// A IKCOUS: as 13 e coupons, posta a mao (a migration nao a poe nem a tira).
+const CATORZE = [...TREZE, "coupons"].sort();
 const CONFIRMA =
   "SELECT set_config('app.confirmo_tirar_do_realtime_20261610', 'TIRAR', true)";
 
@@ -76,15 +79,17 @@ async function retrato() {
   );
   return JSON.stringify(r.rows);
 }
-async function semAsOnze() {
-  for (const t of ONZE)
+/** A loja nova: tira as 10 e coupons (so as 3 da 20261061 ficam). */
+async function semRealtimeDoCatalogo() {
+  for (const t of [...DEZ, "coupons"])
     if ((await membros()).includes(t))
       await c.query(
         `ALTER PUBLICATION supabase_realtime DROP TABLE public.${t}`,
       );
 }
-async function comAsOnze() {
-  for (const t of ONZE)
+/** A IKCOUS: as 10 e coupons, postas a mao. */
+async function comoAIkcous() {
+  for (const t of [...DEZ, "coupons"])
     if (!(await membros()).includes(t))
       await c.query(
         `ALTER PUBLICATION supabase_realtime ADD TABLE public.${t}`,
@@ -126,65 +131,101 @@ async function identidades() {
   const r = await c.query(
     `SELECT relname::text AS t, relreplident::text AS ri FROM pg_class
       WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1) ORDER BY 1`,
-    [CATORZE],
+    [TREZE],
   );
   return new Map(r.rows.map((x) => [x.t, x.ri]));
 }
 
 caso(
-  "loja nova (so as 3 da 20261061): as 11 entram, as 3 ficam e nada mais entra",
+  "loja nova (so as 3 da 20261061): as 10 entram, as 3 ficam, coupons nao entra e nada mais entra",
   async () => {
-    await semAsOnze();
+    await semRealtimeDoCatalogo();
     assert.deepEqual(await membros(), TRES, "simulei a loja nova");
     const antesA = await conferencia(A);
     const antesB = await conferencia(B);
     assert.deepEqual(
       falsos(antesA),
-      ["as 11 tabelas do catalogo e da configuracao estao na publicacao"],
-      "a 197a antes do apply: so o item das 11 diz nao",
+      ["as 10 tabelas do catalogo e da configuracao estao na publicacao"],
+      "a 197a antes do apply: so o item das 10 diz nao",
     );
     assert.ok(tudoOk(antesB), `a 197b antes do apply: ${falsos(antesB)}`);
     const ri = await identidades();
     await aplicar();
-    assert.deepEqual(await membros(), CATORZE, "exatamente as 14 depois");
+    assert.deepEqual(await membros(), TREZE, "exatamente as 13 depois");
     assert.deepEqual(await identidades(), ri, "replica identity intocada");
     assert.ok(
-      ONZE.every((t) => ri.get(t) === "d") &&
+      DEZ.every((t) => ri.get(t) === "d") &&
         TRES.every((t) => ri.get(t) === "f"),
-      "as 11 default, as 3 da 1061 FULL",
+      "as 10 default, as 3 da 1061 FULL",
     );
     const depoisA = await conferencia(A);
     assert.ok(tudoOk(depoisA), `a 197a depois: ${falsos(depoisA)}`);
     assert.deepEqual(
       falsos(await conferencia(B)),
-      ["pelo menos uma das 11 tabelas ainda esta fora da publicacao"],
+      ["pelo menos uma das 10 tabelas ainda esta fora da publicacao"],
       "a 197b depois do apply: so o item da ausencia diz nao",
     );
   },
 );
 
 caso(
-  "a IKCOUS (as 14 ja la, postas a mao): NO-OP, o catalogo da publicacao fica identico",
+  "a IKCOUS (as 10 e coupons ja la, postas a mao): NO-OP, o catalogo da publicacao fica identico e a 197a aceita as 14",
   async () => {
-    await comAsOnze();
+    await comoAIkcous();
+    assert.deepEqual(await membros(), CATORZE, "simulei a IKCOUS");
+    const antesA = await conferencia(A);
+    assert.ok(tudoOk(antesA), `a 197a antes do apply: ${falsos(antesA)}`);
     const antes = await retrato();
     await aplicar();
     await aplicar(MIGRATION.replace(/\n/g, "\r\n"));
     assert.equal(await retrato(), antes, "nenhum DROP/ADD por baixo");
-    assert.deepEqual(await membros(), CATORZE);
+    assert.deepEqual(await membros(), CATORZE, "coupons continua");
     assert.ok(tudoOk(await conferencia(A)));
   },
 );
 
+caso(
+  "a 197a tolera coupons mas recusa outra tabela publicada e coupons publicada sem RLS",
+  async () => {
+    await comoAIkcous();
+    await aplicar();
+    await c.query(
+      "ALTER PUBLICATION supabase_realtime ADD TABLE public.devolucoes",
+    );
+    assert.deepEqual(falsos(await conferencia(A)), [
+      "nenhuma outra tabela do esquema public esta na publicacao (so as 13 e coupons, tolerada)",
+    ]);
+    assert.ok(
+      falsos(await conferencia(B)).includes(
+        "nenhuma tabela do esquema public alem das 13 e de coupons (tolerada) esta na publicacao",
+      ),
+    );
+    await c.query(
+      "ALTER PUBLICATION supabase_realtime DROP TABLE public.devolucoes",
+    );
+    await c.query("ALTER TABLE public.coupons DISABLE ROW LEVEL SECURITY");
+    assert.deepEqual(falsos(await conferencia(A)), [
+      "as 10 tabelas existem com RLS ligada (e coupons, se publicada)",
+    ]);
+    await c.query(
+      "ALTER PUBLICATION supabase_realtime DROP TABLE public.coupons",
+    );
+    assert.ok(
+      tudoOk(await conferencia(A)),
+      "coupons fora e sem RLS: a 197a nao a exige",
+    );
+  },
+);
+
 caso("loja pela metade: so as que faltam entram", async () => {
-  await semAsOnze();
+  await semRealtimeDoCatalogo();
   for (const t of ["produtos", "store_config", "cart_items"])
     await c.query(`ALTER PUBLICATION supabase_realtime ADD TABLE public.${t}`);
   const antes = JSON.parse(await retrato()).filter((x) =>
     ["produtos", "store_config", "cart_items"].includes(x.tabela),
   );
   await aplicar();
-  assert.deepEqual(await membros(), CATORZE);
+  assert.deepEqual(await membros(), TREZE);
   const depois = JSON.parse(await retrato()).filter((x) =>
     ["produtos", "store_config", "cart_items"].includes(x.tabela),
   );
@@ -196,7 +237,7 @@ caso("loja pela metade: so as que faltam entram", async () => {
 });
 
 caso("reaplicar (LF e CRLF) na loja nova nao erra e nao mexe", async () => {
-  await semAsOnze();
+  await semRealtimeDoCatalogo();
   await aplicar();
   const uma = await retrato();
   await aplicar();
@@ -206,9 +247,9 @@ caso("reaplicar (LF e CRLF) na loja nova nao erra e nao mexe", async () => {
 
 for (const [rotulo, estrago, padrao] of [
   [
-    "coupons sem RLS",
-    "ALTER TABLE public.coupons DISABLE ROW LEVEL SECURITY",
-    /B1_BASELINE_DIVERGENT: public\.coupons esta sem RLS/,
+    "banners sem RLS",
+    "ALTER TABLE public.banners DISABLE ROW LEVEL SECURITY",
+    /B1_BASELINE_DIVERGENT: public\.banners esta sem RLS/,
   ],
   [
     "favorites sem chave primaria",
@@ -227,13 +268,23 @@ for (const [rotulo, estrago, padrao] of [
   ],
 ]) {
   caso(`o pre-voo recusa e nada entra: ${rotulo}`, async () => {
-    await semAsOnze();
+    await semRealtimeDoCatalogo();
     await c.query(estrago);
     const r = await tentar(MIGRATION);
     assert.match(String(r.erro), padrao);
-    assert.deepEqual(await membros(), TRES, "nenhuma das 11 entrou");
+    assert.deepEqual(await membros(), TRES, "nenhuma das 10 entrou");
   });
 }
+
+caso(
+  "coupons sem RLS nao segura a migration (ela nao a toca) e nao entra",
+  async () => {
+    await semRealtimeDoCatalogo();
+    await c.query("ALTER TABLE public.coupons DISABLE ROW LEVEL SECURITY");
+    await aplicar();
+    assert.deepEqual(await membros(), TREZE);
+  },
+);
 
 caso("sem a publicacao: nao erra e nao cria nada", async () => {
   await c.query("DROP PUBLICATION supabase_realtime");
@@ -257,40 +308,51 @@ caso(
 );
 
 caso(
-  "rollback: sem a confirmacao recusa; com ela tira so as 11 e deixa as 3; repetir e' no-op; reaplicar devolve as 14",
+  "rollback: sem a confirmacao recusa; com ela tira so as 10 e deixa as 3; repetir e' no-op; reaplicar devolve as 13",
   async () => {
-    await semAsOnze();
+    await semRealtimeDoCatalogo();
     await aplicar();
     const semConfirmar = await tentar(ROLLBACK);
     assert.match(String(semConfirmar.erro), /REALTIME_SO_LOJA_QUE_NAO_TINHA/);
-    assert.deepEqual(await membros(), CATORZE, "nada saiu sem a confirmacao");
+    assert.deepEqual(await membros(), TREZE, "nada saiu sem a confirmacao");
     await c.query(CONFIRMA);
     const r = await tentar(ROLLBACK);
     assert.equal(r.erro, null, String(r.erro));
-    assert.deepEqual(await membros(), TRES, "so as 11 sairam");
+    assert.deepEqual(await membros(), TRES, "so as 10 sairam");
     assert.ok(tudoOk(await conferencia(B)), "a 197b volta a dizer sim");
     assert.deepEqual(falsos(await conferencia(A)), [
-      "as 11 tabelas do catalogo e da configuracao estao na publicacao",
+      "as 10 tabelas do catalogo e da configuracao estao na publicacao",
     ]);
     const de_novo = await tentar(ROLLBACK);
     assert.equal(de_novo.erro, null, "rollback repetido e' no-op");
     assert.deepEqual(await membros(), TRES);
     await aplicar();
-    assert.deepEqual(await membros(), CATORZE, "reaplicar depois do rollback");
+    assert.deepEqual(await membros(), TREZE, "reaplicar depois do rollback");
+  },
+);
+
+caso(
+  "rollback numa loja com coupons publicada: coupons fica (a migration nao a pos)",
+  async () => {
+    await comoAIkcous();
+    await c.query(CONFIRMA);
+    const r = await tentar(ROLLBACK);
+    assert.equal(r.erro, null, String(r.erro));
+    assert.deepEqual(await membros(), [...TRES, "coupons"].sort());
   },
 );
 
 caso(
   "o rollback com a confirmacao de outra transacao nao vale (SET LOCAL)",
   async () => {
-    await semAsOnze();
+    await semRealtimeDoCatalogo();
     await aplicar();
     await c.query("SAVEPOINT outra");
     await c.query(CONFIRMA);
     await c.query("ROLLBACK TO SAVEPOINT outra");
     const r = await tentar(ROLLBACK);
     assert.match(String(r.erro), /REALTIME_SO_LOJA_QUE_NAO_TINHA/);
-    assert.deepEqual(await membros(), CATORZE);
+    assert.deepEqual(await membros(), TREZE);
   },
 );
 
@@ -320,13 +382,6 @@ const POLITICAS = [
     "((( SELECT auth.uid() AS uid) = user_id) OR ( SELECT rls_admin_atual() AS rls_admin_atual))",
   ],
   ["categorias", "categorias_select_policy", "SELECT", "{public}", "true"],
-  [
-    "coupons",
-    "coupons_select_policy",
-    "SELECT",
-    "{authenticated}",
-    "( SELECT rls_admin_atual() AS rls_admin_atual)",
-  ],
   [
     "favorites",
     "favorites_all_policy",
@@ -360,13 +415,13 @@ const POLITICAS = [
 ];
 
 caso(
-  "o realtime entrega o que o SELECT ja entrega: as politicas de SELECT das 11 sao as do comentario",
+  "o realtime entrega o que o SELECT ja entrega: as politicas de SELECT das 10 sao as do comentario",
   async () => {
     const r = await c.query(
       `SELECT tablename::text, policyname::text, cmd::text, roles::text, qual FROM pg_policies
       WHERE schemaname = 'public' AND tablename = ANY($1) AND cmd IN ('SELECT', 'ALL') AND permissive = 'PERMISSIVE'
       ORDER BY 1, 2`,
-      [ONZE],
+      [DEZ],
     );
     assert.deepEqual(
       r.rows.map((x) => [x.tablename, x.policyname, x.cmd, x.roles, x.qual]),
@@ -374,15 +429,15 @@ caso(
     );
     const restritivas = await c.query(
       "SELECT count(*)::int AS n FROM pg_policies WHERE schemaname = 'public' AND tablename = ANY($1) AND permissive <> 'PERMISSIVE'",
-      [ONZE],
+      [DEZ],
     );
     assert.equal(restritivas.rows[0].n, 0);
     const rls = await c.query(
       `SELECT count(*)::int AS n FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1)
         AND relrowsecurity AND NOT relforcerowsecurity`,
-      [ONZE],
+      [DEZ],
     );
-    assert.equal(rls.rows[0].n, 11, "RLS ligada nas 11");
+    assert.equal(rls.rows[0].n, 10, "RLS ligada nas 10");
     // O realtime tira da mensagem a coluna que o papel nao pode ler: o custo do produto nao sai para ninguem; o visitante nem le produtos.
     const p = await c.query(
       `SELECT has_table_privilege('anon', 'public.produtos', 'SELECT') AS anon_tabela,
@@ -400,7 +455,7 @@ caso(
 );
 
 caso(
-  "o carrinho, o favorito e o cupom de uma conta nao aparecem para outra nem para o visitante (a regra que o realtime aplica)",
+  "o carrinho e o favorito de uma conta nao aparecem para outra nem para o visitante (a regra que o realtime aplica)",
   async () => {
     await aplicar();
     const ana = "00000000-0000-4000-8000-0000000016a1";
@@ -417,9 +472,6 @@ caso(
       "INSERT INTO public.favorites (user_id, product_id) VALUES ($1, 'produto-ficticio-1610')",
       [ana],
     );
-    await c.query(
-      "INSERT INTO public.coupons (code, type, value, alcance, active) VALUES ('EXCLUSIVO1610', 'fixed', 5, 'exclusivo', true)",
-    );
     const contar = async (papel, uid) => {
       await c.query("SAVEPOINT papel");
       try {
@@ -433,8 +485,7 @@ caso(
         await c.query(`SET LOCAL ROLE ${papel}`);
         const r = await c.query(
           `SELECT (SELECT count(*) FROM public.cart_items WHERE product_id = 'produto-ficticio-1610')::int AS carrinho,
-                (SELECT count(*) FROM public.favorites WHERE product_id = 'produto-ficticio-1610')::int AS favorito,
-                (SELECT count(*) FROM public.coupons WHERE code = 'EXCLUSIVO1610')::int AS cupom`,
+                (SELECT count(*) FROM public.favorites WHERE product_id = 'produto-ficticio-1610')::int AS favorito`,
         );
         return r.rows[0];
       } finally {
@@ -444,26 +495,23 @@ caso(
     assert.deepEqual(await contar("authenticated", ana), {
       carrinho: 1,
       favorito: 1,
-      cupom: 0,
     });
     assert.deepEqual(await contar("authenticated", bia), {
       carrinho: 0,
       favorito: 0,
-      cupom: 0,
     });
     assert.deepEqual(await contar("anon", null), {
       carrinho: 0,
       favorito: 0,
-      cupom: 0,
     });
   },
 );
 
 async function trava() {
-  // Este caso COMITA a loja sem as 11 no banco: so no clone do rodar-isolado.cjs (que some no fim).
+  // Este caso COMITA a loja sem as 10 (e sem coupons) no banco: so no clone do rodar-isolado.cjs (que some no fim).
   const banco = (await c.query("SELECT current_database() AS d")).rows[0].d;
   assert.match(banco, /^prova_/, "a trava so roda no clone do rodar-isolado");
-  await semAsOnze();
+  await semRealtimeDoCatalogo();
   const outro = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await outro.connect();
   try {
@@ -473,7 +521,7 @@ async function trava() {
       await c.query("BEGIN");
       try {
         await aplicar();
-        assert.deepEqual(await membros(), CATORZE, `${modo} em voo nao segura`);
+        assert.deepEqual(await membros(), TREZE, `${modo} em voo nao segura`);
       } finally {
         await c.query("ROLLBACK");
         await outro.query("ROLLBACK");

@@ -1,8 +1,8 @@
 // @ts-nocheck
-// O CATALOGO E A CONFIGURACAO CHEGAM AO VIVO EM TODA LOJA — prova offline do par 20261610000000 + rollback. O COMPORTAMENTO (as 11
+// O CATALOGO E A CONFIGURACAO CHEGAM AO VIVO EM TODA LOJA — prova offline do par 20261610000000 + rollback. O COMPORTAMENTO (as 10
 // entram na loja nova, a IKCOUS fica identica, pre-voo, rollback com confirmacao, politicas de SELECT, trava, consultas 197a/197b) e'
 // provado no Postgres efemero por tests/banco/o-catalogo-chega-ao-vivo-em-toda-loja-viva.cjs. Aqui fica o que se prova so lendo o texto:
-// so ADD TABLE das 11 (nenhuma outra tabela, nenhum DROP, replica identity intocada), o rollback so com confirmacao e so as 11, e a
+// so ADD TABLE das 10 (nenhuma outra tabela, coupons fora, nenhum DROP, replica identity intocada), o rollback so com confirmacao e so as 10, e a
 // fiacao de publicacao (lote, menu, rpc-ci, release).
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -20,12 +20,11 @@ const NOME = `${VERSAO}_o_catalogo_e_a_configuracao_chegam_ao_vivo_em_toda_loja.
 const A = "197a-conferir-o-catalogo-chega-ao-vivo-aplicado";
 const B = "197b-antes-o-catalogo-chega-ao-vivo-ausente";
 const PROVA_VIVA = "tests/banco/o-catalogo-chega-ao-vivo-em-toda-loja-viva.cjs";
-const ONZE = [
+const DEZ = [
   "answers",
   "banners",
   "cart_items",
   "categorias",
-  "coupons",
   "favorites",
   "product_variants",
   "produtos",
@@ -43,9 +42,9 @@ const codigo = (s) =>
     .filter((l) => !l.trim().startsWith("--"))
     .join("\n")
     .replace(/\s+/g, " ");
-const arrayDas11 = (s) => {
-  const m = codigo(s).match(/v_onze CONSTANT text\[\] := ARRAY\[([^\]]+)\]/);
-  assert.ok(m, "o array das 11 sumiu");
+const arrayDas10 = (s) => {
+  const m = codigo(s).match(/v_dez CONSTANT text\[\] := ARRAY\[([^\]]+)\]/);
+  assert.ok(m, "o array das 10 sumiu");
   return [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
 };
 
@@ -72,8 +71,8 @@ Deno.test("1610: avaliarFase0 nao recusa o par; sem BEGIN/COMMIT; LF; lock_timeo
   }
 });
 
-Deno.test("1610: so ADD TABLE das 11, so se a publicacao existir e a tabela nao estiver nela; nada de DROP, replica identity ou outra tabela", () => {
-  assert.deepEqual(arrayDas11(migration), ONZE);
+Deno.test("1610: so ADD TABLE das 10 (coupons fora), so se a publicacao existir e a tabela nao estiver nela; nada de DROP, replica identity ou outra tabela", () => {
+  assert.deepEqual(arrayDas10(migration), DEZ);
   const c = codigo(migration);
   assert.equal(
     [...c.matchAll(/ALTER PUBLICATION/g)].length,
@@ -94,6 +93,7 @@ Deno.test("1610: so ADD TABLE das 11, so se a publicacao existir e a tabela nao 
     /\bPOLICY\b/i,
     /\b(INSERT|UPDATE|DELETE)\s+(INTO|FROM|public\.)/i,
     /devolucoes|fornecedores|internal_notes|livro_de_registro|item_custo|tentativas/,
+    /coupons/,
   ])
     assert.ok(!proibido.test(c), `a migration nao pode ter ${proibido}`);
   // so se a publicacao existir; o IF NOT EXISTS em pg_publication_tables antes do ADD
@@ -117,11 +117,11 @@ Deno.test("1610: so ADD TABLE das 11, so se a publicacao existir e a tabela nao 
   assert.ok(c.indexOf("B2_POSVOO_DIVERGENTE") > iAdd);
 });
 
-Deno.test("1610: o cabecalho cita a politica de SELECT de cada uma das 11, o DELETE que so leva a chave e a IKCOUS no-op", () => {
+Deno.test("1610: o cabecalho cita a politica de SELECT de cada uma das 10, o DELETE que so leva a chave e a IKCOUS no-op", () => {
   const cab = migration.slice(0, migration.indexOf("SET LOCAL lock_timeout"));
   // a linha de cada tabela na tabela de RLS: "-- <tabela> <politica>_(select|all)_policy ..."
   const linhas = cab.split("\n").map((l) => l.replace(/\s+/g, " "));
-  for (const t of ONZE)
+  for (const t of DEZ)
     assert.ok(
       linhas.some(
         (l) =>
@@ -135,15 +135,17 @@ Deno.test("1610: o cabecalho cita a politica de SELECT de cada uma das 11, o DEL
     "o DELETE nao passa pela",
     "SO a chave primaria",
     "IKCOUS (as 14 ja la): NO-OP",
-    "cupom exclusivo NAO vaza",
+    "CUPONS NAO ENTRAM",
+    "coupons fica de fora",
+    "NUNCA casa com",
     "SEM a coluna custo",
     "SEM BEGIN/COMMIT",
   ])
     assert.ok(cab.includes(trecho), trecho);
 });
 
-Deno.test("1610: o rollback exige a confirmacao SET LOCAL antes de tirar, tira so as 11 e nunca as 3 da 20261061", () => {
-  assert.deepEqual(arrayDas11(rollback), ONZE);
+Deno.test("1610: o rollback exige a confirmacao SET LOCAL antes de tirar, tira so as 10 e nunca as 3 da 20261061 nem coupons", () => {
+  assert.deepEqual(arrayDas10(rollback), DEZ);
   const c = codigo(rollback);
   const iConfirma = c.indexOf(
     "IF COALESCE(current_setting('app.confirmo_tirar_do_realtime_20261610', true), '') <> 'TIRAR' THEN RAISE EXCEPTION 'REALTIME_SO_LOJA_QUE_NAO_TINHA:",
@@ -161,12 +163,18 @@ Deno.test("1610: o rollback exige a confirmacao SET LOCAL antes de tirar, tira s
     "notificacoes",
     "marketplace_orders",
     "marketplace_order_items",
+    "coupons",
   ])
     assert.ok(!c.includes(tres), `o rollback nao toca ${tres}`);
   assert.ok(
     !/REPLICA IDENTITY|\bALTER TABLE\b|DROP TABLE public\.(?!%I)/.test(c),
   );
   assert.ok(rollback.includes("NUNCA NA IKCOUS"));
+  assert.ok(
+    rollback.includes(
+      "SO PARA LOJA QUE NAO TINHA NENHUMA DAS 10 ANTES DO APPLY (197b antes do apply com 0 das 10 publicadas)",
+    ),
+  );
 });
 
 Deno.test("1610: publicacao — lote unico (197a/197b) de apply normal por ultimo, rol fechado, workflows, release e prova viva", async () => {
@@ -227,7 +235,7 @@ Deno.test("1610: publicacao — lote unico (197a/197b) de apply normal por ultim
       !/\b(FROM|JOIN)\s+public\./i.test(estrutura),
       `${nome} le tabela`,
     );
-    for (const t of ONZE) assert.ok(sql.includes(`('${t}')`), `${nome}: ${t}`);
+    for (const t of DEZ) assert.ok(sql.includes(`('${t}')`), `${nome}: ${t}`);
   }
   assert.ok(
     rpc.includes(
