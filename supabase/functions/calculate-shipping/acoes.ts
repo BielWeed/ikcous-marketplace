@@ -601,6 +601,11 @@ async function salvarCredenciais(body: any, supabase: any, responder: Responder)
 
 // ── save_active_providers ───────────────────────────────────────────────────
 
+/** Recusa de `save_active_providers` quando a lista vista pelo aparelho já não é a do banco. */
+export const MOTIVO_LIGADOS_MUDARAM = 'ligados_mudaram'
+const MENSAGEM_LIGADOS_MUDARAM =
+    'As transportadoras foram mudadas em outro aparelho. Conferimos a lista de novo — revise e salve outra vez.'
+
 /**
  * Liga/desliga provedores (R2-1 + R1-3 + R3-1). Ordem:
  * 1. valida: todo pedido tem chave salva e não é Sandbox; quem PASSA a ser
@@ -610,10 +615,26 @@ async function salvarCredenciais(body: any, supabase: any, responder: Responder)
  * 4. o espelho `store_config.shipping_provider` (1º ligado na ordem canônica,
  *    ou `flat_fee`) — falhou = `espelho:'pendente'`, nunca "falhou".
  * Repetir com a MESMA lista não testa, não regrava e não apaga nada.
+ *
+ * `ligadosVistos` (caça 27/11): a lista que o aparelho MOSTRAVA ao montar a
+ * escolha (o `ligados` de `ler_configuracao_frete`, ou da última gravação).
+ * Diferente da atual = outro aparelho salvou no meio: recusa com
+ * `motivo:'ligados_mudaram'` ANTES de validar/testar, e nada grava — antes o
+ * celular desatualizado desligava em silêncio a transportadora que o
+ * computador tinha acabado de ligar. Ausente (app antigo em cache) = grava
+ * como sempre. A comparação é contra `atual.ligados` (a mesma projeção que a
+ * leitura devolve: só quem tem chave; no legado, o espelho). Não é atômica:
+ * entre esta leitura e o upsert sobra a janela dos testes dos provedores
+ * (segundos), não mais a da tela aberta (horas).
  */
 async function salvarLigados(body: any, supabase: any, responder: Responder): Promise<Response> {
     const lista = body.ligados
     if (!Array.isArray(lista) || lista.some((p) => !ehProvedor(p))) {
+        return responder({ success: false, error: 'Lista de provedores inválida.' })
+    }
+    const vistos = body.ligadosVistos
+    const conferirVistos = vistos !== undefined
+    if (conferirVistos && (!Array.isArray(vistos) || vistos.some((p) => !ehProvedor(p)))) {
         return responder({ success: false, error: 'Lista de provedores inválida.' })
     }
     const ligados = emOrdemCanonica(lista)
@@ -621,6 +642,9 @@ async function salvarLigados(body: any, supabase: any, responder: Responder): Pr
     const config = await lerLoja(supabase)
     if (!lidas.ok || !config) return responder({ success: false, error: FALHA_DE_LEITURA }, 503)
     const atual = conjuntoLigado(config, lidas.linhas)
+    if (conferirVistos && jsonCanonico(emOrdemCanonica(vistos)) !== jsonCanonico(emOrdemCanonica(atual.ligados))) {
+        return responder({ success: false, motivo: MOTIVO_LIGADOS_MUDARAM, error: MENSAGEM_LIGADOS_MUDARAM })
+    }
 
     for (const p of ligados) {
         const credenciais = lidas.linhas.get(p)?.credentials

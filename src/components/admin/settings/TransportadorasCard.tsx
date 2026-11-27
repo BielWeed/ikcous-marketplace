@@ -140,6 +140,31 @@ const AVISO_ID_EXIGE_AGENCIA =
 // externos. Só encerra a espera da tela, não a gravação no servidor.
 const PRAZO_DE_SALVAR_TRANSPORTADORAS_MS = 30_000;
 
+// Caça 27/11: `save_active_providers` recusa com este motivo quando a lista
+// que o aparelho VIU (`ligadosVistos`) já não é a do banco — outro aparelho
+// salvou no meio. A frase é da tela (não do servidor) para valer igual em
+// qualquer versão da edge.
+const MOTIVO_LIGADOS_MUDARAM = "ligados_mudaram";
+const AVISO_LIGADOS_MUDARAM =
+  "As transportadoras foram mudadas em outro aparelho. Conferimos a lista de novo — revise e salve outra vez.";
+
+/**
+ * Reaplica a escolha da lojista por cima da lista que o servidor acabou de
+ * devolver: o que ela LIGOU (escolhido e não visto) entra, o que ela DESLIGOU
+ * (visto e não escolhido) sai, o resto segue o servidor. Assim o "salve outra
+ * vez" depois do aviso não desliga o que o outro aparelho ligou.
+ */
+function reaplicarEscolha(
+  vistos: ReadonlySet<ProvedorFrete>,
+  escolhidos: ReadonlySet<ProvedorFrete>,
+  doServidor: ReadonlySet<ProvedorFrete>,
+): ReadonlySet<ProvedorFrete> {
+  const proximo = new Set(doServidor);
+  for (const p of escolhidos) if (!vistos.has(p)) proximo.add(p);
+  for (const p of vistos) if (!escolhidos.has(p)) proximo.delete(p);
+  return proximo;
+}
+
 /**
  * Chama uma ação da edge `calculate-shipping` e devolve o corpo da
  * resposta — nunca lança para quem chama tratar erro de rede como qualquer
@@ -555,7 +580,9 @@ export const TransportadorasSection = memo(function TransportadorasSection({
   // leituras falhas ficam como CONJUNTO (não sobem para "tudo").
   const resetPendenteRef = useRef<ReinicioDeRascunhos | null>(null);
   const carregar = useCallback(
-    async (resetarRascunhoDe: "tudo" | ProvedorFrete | "nenhum" = "tudo") => {
+    async (
+      resetarRascunhoDe: "tudo" | ProvedorFrete | "nenhum" = "tudo",
+    ): Promise<boolean> => {
       setErroCarga(false);
       setLeiturasPendentes((total) => total + 1);
       const resultado = await buscarConfiguracaoDeFrete();
@@ -568,7 +595,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       if (!resultado.ok) {
         resetPendenteRef.current = reinicio;
         setErroCarga(true);
-        return;
+        return false;
       }
       resetPendenteRef.current = null;
       const { config } = resultado;
@@ -634,6 +661,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         }
       }
       setCarregado(true);
+      return true;
     },
     [],
   );
@@ -1089,6 +1117,9 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     if (desabilitado || salvandoLigadosRef.current) return false;
     salvandoLigadosRef.current = true;
     const enviados = new Set(ligadosEscolhidos);
+    // A lista que esta tela MOSTRA como salva (última leitura ou gravação
+    // confirmada) — a edge recusa se o banco já não estiver assim.
+    const vistos = ligadosSalvosRef.current;
     setErroLigados(null);
     haptic.medium();
     try {
@@ -1096,6 +1127,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         chamarEdgeDeFrete({
           action: "save_active_providers",
           ligados: Array.from(enviados),
+          ligadosVistos: Array.from(vistos),
         }),
         PRAZO_DE_SALVAR_TRANSPORTADORAS_MS,
         () =>
@@ -1104,6 +1136,20 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           ),
       );
       if (error) throw error;
+      if (!data?.success && data?.motivo === MOTIVO_LIGADOS_MUDARAM) {
+        haptic.error();
+        // Nada gravou. Relê a lista do servidor e reaplica por cima dela o
+        // que a lojista mudou — a escolha dela continua visível.
+        if (await carregar("nenhum")) {
+          const doServidor = ligadosSalvosRef.current;
+          setLigadosEscolhidos((atual) =>
+            reaplicarEscolha(vistos, atual, doServidor),
+          );
+        }
+        setErroLigados({ mensagem: AVISO_LIGADOS_MUDARAM });
+        toast.error(AVISO_LIGADOS_MUDARAM);
+        return false;
+      }
       if (!data?.success) {
         haptic.error();
         // R1-8 (ANOTADO): `data.servicosTestados` vem quando a recusa foi
@@ -1189,7 +1235,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     } finally {
       salvandoLigadosRef.current = false;
     }
-  }, [ligadosEscolhidos, desabilitado]);
+  }, [ligadosEscolhidos, desabilitado, carregar]);
 
   const ligadosMudou = useMemo(() => {
     if (ligadosEscolhidos.size !== ligadosSalvos.size) return true;
