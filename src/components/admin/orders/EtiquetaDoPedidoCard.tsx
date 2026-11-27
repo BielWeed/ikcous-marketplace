@@ -70,6 +70,21 @@ type CompraFase = "ocioso" | "confirmar" | "gerando";
 const MENSAGEM_COMPRA_DA_ETIQUETA_NAO_CONFIRMADA =
   "Não foi possível confirmar a compra da etiqueta. Confira o pedido antes de tentar de novo.";
 
+// PRAZOS DAS OUTRAS ESPERAS DO CARTÃO (27/11/2026): rede "pendurada" conecta e
+// não responde. "Salvar CPF" ficava em "Salvando…" para sempre (e a trava por
+// pedido deixava o clique mudo ao voltar para a ficha); a leitura do pedido
+// deixava o esqueleto cinza sem "Tentar de novo". Os mesmos prazos que o cartão
+// já pratica: a edge que grava, o da compra (30 s); ler, o do rastreio (15 s,
+// por consulta). Só encerram a ESPERA DA TELA: o CPF pode ter sido gravado.
+const PRAZO_DE_SALVAR_O_CPF_MS = PRAZO_DA_COMPRA_DA_ETIQUETA_MS;
+const PRAZO_DA_LEITURA_DO_PEDIDO_MS = PRAZO_DA_CONSULTA_DO_RASTREIO_MS;
+// Estourou o "Salvar CPF" e a releitura disse o que achou (repetir é seguro: a
+// edge grava o mesmo CPF de novo).
+const MENSAGEM_CPF_AINDA_NAO_APARECE =
+  "Sem resposta da rede e o CPF ainda não aparece no pedido. Toque em Salvar CPF para tentar de novo.";
+const MENSAGEM_CPF_SEM_RESPOSTA =
+  "Sem resposta da rede. Não dá para saber se o CPF foi salvo. Confira o pedido ou toque em Salvar CPF de novo.";
+
 interface MensagemResultado {
   // `sem_resposta`: não houve resposta conclusiva. A etiqueta pode ter sido
   // comprada (ver handleGerarEtiqueta).
@@ -272,8 +287,10 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     };
   }, [orderId]);
 
+  // Devolve a linha que a tela aplicou, ou `null` quando não aplicou nada
+  // (falhou, estourou o prazo, pedido sumiu, ou outra leitura passou na frente).
   const fetchPedido = useCallback(
-    async (opcoes?: OpcoesDeLeitura) => {
+    async (opcoes?: OpcoesDeLeitura): Promise<PedidoParaEtiqueta | null> => {
       const silencioso = opcoes?.silencioso === true;
       const minhaGeracao = ++geracaoRef.current;
       if (!silencioso) setCargaFase("carregando");
@@ -284,22 +301,30 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           ? setCargaFase((atual) => (atual === "carregando" ? "erro" : atual))
           : setCargaFase("erro");
       try {
-        const { data, error } = await supabase
-          .from("marketplace_orders")
-          .select(
-            "id, status, payment_status, shipping, shipping_cost, tracking_code, shipping_label_id, shipping_label_url, notes, customer_data->>shipping_option_id, customer_data->>cpf",
-          )
-          .eq("id", orderId)
-          .maybeSingle();
-        if (geracaoRef.current !== minhaGeracao) return;
+        // Prazo: estourou = a falha comum da leitura (o `catch`), com
+        // "Tentar de novo"; a resposta tardia é descartada. Não grava nada.
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("marketplace_orders")
+              .select(
+                "id, status, payment_status, shipping, shipping_cost, tracking_code, shipping_label_id, shipping_label_url, notes, customer_data->>shipping_option_id, customer_data->>cpf",
+              )
+              .eq("id", orderId)
+              .maybeSingle(),
+          ),
+          PRAZO_DA_LEITURA_DO_PEDIDO_MS,
+          () => erroDeConsultaSemResposta(),
+        );
+        if (geracaoRef.current !== minhaGeracao) return null;
         if (error) {
           console.error("[EtiquetaDoPedido] Erro ao carregar o pedido:", error);
           falhou();
-          return;
+          return null;
         }
         if (!data) {
           setCargaFase("vazio");
-          return;
+          return null;
         }
         const linha = data as unknown as PedidoParaEtiqueta;
         // A leitura é separada: falha no histórico não tira a URL de quem já
@@ -307,13 +332,21 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         let situacaoDaCompra: PedidoParaEtiqueta["situacao_da_compra"];
         if (linha.shipping_label_id) {
           try {
-            const { data: eventos, error: eventosError } = await supabase
-              .from("order_shipping_events")
-              .select(
-                "event_type, payload, error_message, created_at, tracking_code",
-              )
-              .eq("order_id", orderId);
-            if (geracaoRef.current !== minhaGeracao) return;
+            // Estourou = a mesma falha de leitura do histórico (abaixo).
+            const { data: eventos, error: eventosError } =
+              await aguardarComPrazo(
+                Promise.resolve(
+                  supabase
+                    .from("order_shipping_events")
+                    .select(
+                      "event_type, payload, error_message, created_at, tracking_code",
+                    )
+                    .eq("order_id", orderId),
+                ),
+                PRAZO_DA_LEITURA_DO_PEDIDO_MS,
+                () => erroDeConsultaSemResposta(),
+              );
+            if (geracaoRef.current !== minhaGeracao) return null;
             if (eventosError) {
               console.error(
                 "[EtiquetaDoPedido] Erro ao ler o histórico de envio:",
@@ -326,7 +359,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               );
             }
           } catch (errEventos) {
-            if (geracaoRef.current !== minhaGeracao) return;
+            if (geracaoRef.current !== minhaGeracao) return null;
             console.error(
               "[EtiquetaDoPedido] Exceção ao ler o histórico de envio:",
               errEventos,
@@ -345,10 +378,12 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               : situacaoDaCompra,
         }));
         setCargaFase("ok");
+        return linha;
       } catch (err) {
-        if (geracaoRef.current !== minhaGeracao) return;
+        if (geracaoRef.current !== minhaGeracao) return null;
         console.error("[EtiquetaDoPedido] Exceção ao carregar o pedido:", err);
         falhou();
+        return null;
       }
     },
     [orderId],
@@ -603,7 +638,8 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         // `fetchPedido` aqui é o da MESMA renderização deste handler — ligado
         // ao `orderIdDoClique` (a checagem acima já provou que ele ainda é o
         // pedido atual); chamar sem essa checagem buscaria o pedido ERRADO
-        // se a ficha já tivesse trocado.
+        // se a ficha já tivesse trocado. A leitura tem prazo próprio: rede
+        // pendurada cai no erro com "Tentar de novo" e solta a trava abaixo.
         await fetchPedido();
         if (orderIdAtualRef.current !== orderIdDoClique) return;
         setCompraFase("ocioso");
@@ -620,7 +656,14 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
 
   const handleSalvarCpf = useCallback(async () => {
     const orderIdDoClique = orderId;
-    if (isOffline || !pedido || cpfEmVoo.has(orderIdDoClique)) {
+    if (isOffline || !pedido) return;
+    // Salvamento deste pedido ainda em voo (lojista saiu e voltou para a
+    // ficha no meio dele): não invoca de novo e AVISA, como o "Gerar
+    // etiqueta" — o clique mudo deixava a lojista sem saber o que houve.
+    if (cpfEmVoo.has(orderIdDoClique)) {
+      toast.info(
+        "O CPF deste pedido ainda está sendo salvo — aguarde alguns segundos e reabra o pedido.",
+      );
       return;
     }
     const digitos = somenteDigitos(cpfInput);
@@ -629,19 +672,33 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       return;
     }
     cpfEmVoo.add(orderIdDoClique);
+    // A trava sai UMA vez só: no estouro (antes da releitura) ou no `finally`.
+    // Sem o marcador, o `finally` apagaria a trava de um salvamento NOVO do
+    // mesmo pedido começado (em outra montagem do cartão) durante a releitura.
+    let travaSolta = false;
+    const soltarTrava = () => {
+      if (travaSolta) return;
+      travaSolta = true;
+      cpfEmVoo.delete(orderIdDoClique);
+    };
     setCpfSalvando(true);
     setCpfErro(null);
     haptic.medium();
+    // Guardada fora do `try` para o estouro ouvir a resposta TARDIA (só relê).
+    let invocacao: Promise<unknown> | undefined;
     try {
-      const { error } = await supabase.functions.invoke(
-        "melhor-envio-etiqueta",
-        {
-          body: {
-            action: "definir_cpf_destinatario",
-            orderId: orderIdDoClique,
-            cpf: digitos,
-          },
+      const pedidoDoCpf = supabase.functions.invoke("melhor-envio-etiqueta", {
+        body: {
+          action: "definir_cpf_destinatario",
+          orderId: orderIdDoClique,
+          cpf: digitos,
         },
+      });
+      invocacao = pedidoDoCpf;
+      const { error } = await aguardarComPrazo(
+        pedidoDoCpf,
+        PRAZO_DE_SALVAR_O_CPF_MS,
+        () => erroDeConsultaSemResposta(MENSAGEM_CPF_SEM_RESPOSTA),
       );
       // Ficha trocou de pedido enquanto salvava — a resposta de A não pode
       // mexer no CPF/estado que a tela está mostrando de B.
@@ -659,11 +716,45 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       await fetchPedido();
     } catch (err) {
       if (orderIdAtualRef.current !== orderIdDoClique) return;
+      if (ehConsultaSemResposta(err)) {
+        // Estourou: a edge PODE ter gravado (a resposta é que não chegou).
+        // Solta a trava (repetir grava o mesmo CPF), relê o pedido COM prazo
+        // e diz o que o servidor mostra — nunca "salvo" nem "falhou" no chute.
+        console.error("[EtiquetaDoPedido] CPF sem resposta no prazo:", err);
+        soltarTrava();
+        const relido = await fetchPedido({ silencioso: true });
+        if (orderIdAtualRef.current !== orderIdDoClique) return;
+        // A resposta tardia da chamada abandonada nunca é aplicada: só relê.
+        const reler = () => {
+          if (orderIdAtualRef.current === orderIdDoClique) {
+            void fetchPedido({ silencioso: true });
+          }
+        };
+        void invocacao?.then(reler, reler);
+        if (relido && somenteDigitos(relido.cpf ?? "") === digitos) {
+          setCpfInput("");
+          haptic.success();
+          toast.success("CPF salvo!");
+          return;
+        }
+        const aviso = relido
+          ? MENSAGEM_CPF_AINDA_NAO_APARECE
+          : MENSAGEM_CPF_SEM_RESPOSTA;
+        setCpfErro(aviso);
+        haptic.error();
+        toast.warning(aviso, { duration: 15_000 });
+        return;
+      }
       console.error("[EtiquetaDoPedido] Erro ao salvar CPF:", err);
-      const { mensagem } = await mensagemDeErroInvocacao(err, {
-        mensagemGenerica:
-          "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
-      });
+      // A invocação terminou com erro HTTP, mas o corpo pode ficar pendurado:
+      // passou do prazo de leitura, vale a frase genérica.
+      const generica =
+        "Não foi possível falar com o servidor de etiquetas. Tente de novo.";
+      const { mensagem } = await aguardarComPrazo(
+        mensagemDeErroInvocacao(err, { mensagemGenerica: generica }),
+        PRAZO_DE_LER_O_CORPO_DO_ERRO_MS,
+        () => new Error("corpo do erro sem resposta"),
+      ).catch(() => ({ mensagem: generica }));
       if (orderIdAtualRef.current !== orderIdDoClique) return;
       const motivoPorStatus = traducaoDaRecusaPorStatus(mensagem);
       const detalhe = motivoPorStatus ?? mensagem;
@@ -676,7 +767,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       haptic.error();
       toast.error(detalhe);
     } finally {
-      cpfEmVoo.delete(orderIdDoClique);
+      soltarTrava();
       // `cpfSalvando` é um `boolean` ÚNICO (não isolado por pedido, como o
       // `Set` acima) — só zera se ainda for o pedido que estava salvando;
       // senão apagaria o `true` de um salvamento genuíno de OUTRO pedido
