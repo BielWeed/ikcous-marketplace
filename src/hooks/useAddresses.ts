@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
+import { ehConexaoCaiuSemResposta } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { ufBrasileiraValida } from "@/lib/uf-brasileira";
 import type { Address } from "@/types";
@@ -25,6 +26,9 @@ export const PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS = 15_000;
 // lista antes de repetir -- repetir às cegas duplica o endereço.
 const MENSAGEM_ENDERECO_SEM_RESPOSTA =
   "A conexão está lenta e não sabemos se o endereço foi salvo. Confira a lista de endereços antes de tentar de novo, para não repetir.";
+// A conexão CAIU no meio (iPhone trocando de app): tão incerto quanto o prazo.
+const MENSAGEM_ENDERECO_CONEXAO_CAIU =
+  "A conexão caiu e não sabemos se o endereço foi salvo. Confira a lista de endereços antes de tentar de novo, para não repetir.";
 const MENSAGEM_EDICAO_SEM_RESPOSTA =
   "A conexão está lenta e não sabemos se a alteração foi salva. Confira o endereço na lista antes de tentar de novo.";
 const MENSAGEM_EXCLUSAO_SEM_RESPOSTA =
@@ -457,6 +461,12 @@ export function useAddresses() {
         toast.error(MENSAGEM_ENDERECO_SEM_RESPOSTA, {
           duration: DURACAO_DO_AVISO_LONGO_MS,
         });
+      } else if (ehConexaoCaiuSemResposta(error)) {
+        // Não há resposta tardia que reconcilie: relê já, como o prazo faria.
+        toast.error(MENSAGEM_ENDERECO_CONEXAO_CAIU, {
+          duration: DURACAO_DO_AVISO_LONGO_MS,
+        });
+        void fetchAddresses();
       } else {
         toast.error(
           mensagemDeErroDeSessaoDoPainel(error)

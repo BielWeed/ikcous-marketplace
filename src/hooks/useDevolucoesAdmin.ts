@@ -20,6 +20,7 @@ import { fraseDasPecasSemTamanho } from "@/lib/pecas-sem-tamanho";
 import {
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
+  ehConexaoCaiuSemResposta,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
@@ -666,6 +667,9 @@ export function useDevolucaoAdmin(
         PRAZO_DA_EDGE_MS,
         () => erroDeConsultaSemResposta(),
       );
+      // A conexão que CAI no meio (FunctionsFetchError: iPhone trocando de
+      // app) é tão incerta quanto o prazo: segue o mesmo ramo, no `catch`.
+      if (ehConexaoCaiuSemResposta(error)) throw error;
       // Fora de 2xx o corpo vem em `error.context`; em 2xx, em `data`. Os
       // dois passam pelo mesmo leitor — `resgate` pode vir em qualquer um.
       const corpo = error ? await corpoDoErroDaEdge(error) : data;
@@ -709,7 +713,7 @@ export function useDevolucaoAdmin(
       aoMudarRef.current?.();
       return true;
     } catch (e) {
-      if (ehConsultaSemResposta(e)) {
+      if (ehConsultaSemResposta(e) || ehConexaoCaiuSemResposta(e)) {
         // A compra do código pode ter saído (e ter sido cobrada): a ficha é
         // relida (o código pode ter sido gravado) e o lojista confere antes
         // de repetir. Nunca "não foi feito".
