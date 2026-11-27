@@ -57,12 +57,14 @@ const ID_FORM = "fin-novo-lancamento";
 /** O campo vazio mostra isto; não é uma opção que se possa escolher. */
 const PLACEHOLDER_DA_ESCOLHA = "Escolha…";
 
-// 48 opções: a lista liga a busca sozinha (10 ou mais).
-const OPCOES_DE_PARCELAS: readonly OpcaoDaLista[] = Array.from(
+// 48 opções: a lista liga a busca sozinha (10 ou mais). O rótulo usa o sinal de vezes
+// ("12×"), que ninguém digita: os `termos` acham por "12x", "12 x" e "12 vezes".
+export const OPCOES_DE_PARCELAS: readonly OpcaoDaLista[] = Array.from(
   { length: MAXIMO_DE_PARCELAS },
   (_, i) => ({
     valor: String(i + 1),
     rotulo: i === 0 ? "À vista (1×)" : `${i + 1}×`,
+    termos: `${i + 1}x ${i + 1} x ${i + 1} vezes`,
   }),
 );
 

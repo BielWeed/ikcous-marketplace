@@ -130,16 +130,26 @@ function grafiasDoCodigoCitado(codigo: string): string[] {
  * vence; a sem acento só vale se a citada não existir. O código GRAVADO não
  * perde o acento (o servidor compara sem ignorá-lo): "VERAO10" no texto não
  * acha um cupom antigo "VERÃO10", e a cliente também não acharia.
+ *
+ * O servidor só acha cupom ATIVO: a grafia citada desligada responde "Cupom
+ * inválido ou expirado" e o checkout tenta a sem acento. Então a primeira
+ * grafia ATIVA vence; só sem nenhuma ativa volta a primeira achada, para o
+ * aviso de "desativado". Vencido ou esgotado não pesa aqui: o servidor responde
+ * outra frase ("expirou", "limite") e o checkout não tenta a outra grafia.
  */
 export function cupomDoCodigoCitado(
   codigo: string,
   cupons: readonly CupomDaLoja[],
 ): CupomDaLoja | undefined {
-  for (const grafia of grafiasDoCodigoCitado(codigo)) {
-    const cupom = cupons.find((c) => c.code.toUpperCase() === grafia);
-    if (cupom) return cupom;
+  const grafias = grafiasDoCodigoCitado(codigo);
+  let primeiroAchado: CupomDaLoja | undefined;
+  for (const grafia of grafias) {
+    const daGrafia = cupons.filter((c) => c.code.toUpperCase() === grafia);
+    const ativo = daGrafia.find((c) => c.active !== false);
+    if (ativo) return ativo;
+    primeiroAchado ??= daGrafia[0];
   }
-  return undefined;
+  return primeiroAchado;
 }
 
 /** Só as colunas de `coupons` que a conferência lê. */

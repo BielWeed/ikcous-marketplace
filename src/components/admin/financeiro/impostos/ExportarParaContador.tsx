@@ -59,10 +59,11 @@ const MESES = [
 ] as const;
 
 // Na lista o mês abre com maiúscula ("Março"); na frase do aviso fica minúsculo
-// ("março de 2026"). O valor é o `MM` do período.
-const OPCOES_DO_MES: readonly OpcaoDaLista[] = MESES.map((nome, i) => ({
+// ("março de 2026"). O valor é o `MM` do período; os `termos` acham pelo número ("3", "03").
+export const OPCOES_DO_MES: readonly OpcaoDaLista[] = MESES.map((nome, i) => ({
   valor: String(i + 1).padStart(2, "0"),
   rotulo: nome.charAt(0).toUpperCase() + nome.slice(1),
+  termos: `${i + 1} ${String(i + 1).padStart(2, "0")}`,
 }));
 
 const QUANTOS_ANOS_PARA_TRAS = 5;

@@ -1102,6 +1102,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente",
   "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado",
   "196b-antes-a-loja-pausa-o-pedido-novo-ausente",
+  "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
+  "197b-antes-o-catalogo-chega-ao-vivo-ausente",
   "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
   "198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente",
   "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",

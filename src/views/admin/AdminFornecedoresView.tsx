@@ -122,9 +122,10 @@ export const AdminFornecedoresView = memo(function AdminFornecedoresView({
         // A folha guarda o fornecedor de QUANDO ABRIU, e a lista não se relê sozinha. A edição
         // manda só o que a lojista mexeu nela: um WhatsApp (ou estrela) que mudou nesse meio
         // tempo em outro aparelho não é desfeito sem aviso por um valor velho. Nada mexido:
-        // fecha sem gravar.
+        // fecha sem gravar — pelo `fecharFolha`, que relê a lista se uma gravação anterior
+        // desta folha estourou o prazo (o banco pode ter ficado com o valor que ela desfez).
         if (mexidos.length === 0) {
-          setFolha(null);
+          fecharFolha();
           return;
         }
         const mudanca: Partial<DadosDoFornecedor> = Object.fromEntries(

@@ -80,3 +80,57 @@ describe("cupom antigo gravado com acento", () => {
     );
   });
 });
+
+// O servidor só acha cupom ATIVO (`active = true`): com a grafia citada desligada ele responde
+// "Cupom inválido ou expirado" e o checkout tenta a outra grafia. O painel acusava "desativado"
+// de um código que a cliente usa com desconto.
+describe("duas grafias, uma desligada: vale a que o checkout aplica", () => {
+  it('"VERÃO10" desligado e "VERAO10" ativo: o citado alcança o ativo e não acusa nada', () => {
+    const comAcento = cupom({
+      id: "com-acento",
+      code: "VERÃO10",
+      active: false,
+    });
+    const semAcento = cupom({ id: "sem-acento", code: "VERAO10" });
+    expect(cupomDoCodigoCitado("VERÃO10", [comAcento, semAcento])?.id).toBe(
+      "sem-acento",
+    );
+    expect(
+      problemaDoCupom("VERÃO10", [comAcento, semAcento], agora),
+    ).toBeNull();
+  });
+
+  it("as duas desligadas: devolve a primeira grafia e o aviso de desativado continua", () => {
+    const comAcento = cupom({
+      id: "com-acento",
+      code: "VERÃO10",
+      active: false,
+    });
+    const semAcento = cupom({
+      id: "sem-acento",
+      code: "VERAO10",
+      active: false,
+    });
+    expect(cupomDoCodigoCitado("VERÃO10", [semAcento, comAcento])?.id).toBe(
+      "com-acento",
+    );
+    expect(problemaDoCupom("VERÃO10", [semAcento, comAcento], agora)).toBe(
+      "desativado",
+    );
+  });
+
+  it("a citada ativa porém vencida continua vencendo: o servidor diz 'expirou' e o checkout não tenta a outra", () => {
+    const comAcento = cupom({
+      id: "com-acento",
+      code: "VERÃO10",
+      valid_until: "2026-11-01T00:00:00Z",
+    });
+    const semAcento = cupom({ id: "sem-acento", code: "VERAO10" });
+    expect(cupomDoCodigoCitado("VERÃO10", [semAcento, comAcento])?.id).toBe(
+      "com-acento",
+    );
+    expect(problemaDoCupom("VERÃO10", [semAcento, comAcento], agora)).toBe(
+      "vencido",
+    );
+  });
+});

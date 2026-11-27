@@ -16539,6 +16539,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado",
     // 20261600000000: a loja pausa o pedido novo.
     "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado",
+    // 20261610000000: o catalogo e a configuracao chegam ao vivo em toda loja.
+    "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
     // 20261620000000: a soma das categorias fecha com o faturamento no centavo.
     "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
     // 20261630000000: a loja ja suspensa tambem pausa.
