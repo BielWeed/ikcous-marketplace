@@ -36,8 +36,8 @@ import {
   METODOS_LOCAIS,
   METODOS_NACIONAIS,
 } from "./devolucao";
+import { PREFIXO_DO_RASCUNHO_DA_DEVOLUCAO as PREFIXO } from "./limpar-rascunhos-da-devolucao";
 
-const PREFIXO = "ikcous:rascunho-da-devolucao:";
 // Escolher as fotos leva minutos; duas horas cobrem a volta e não deixam um
 // rascunho esquecido reabrindo a folha no dia seguinte (mesma régua do
 // rascunho do checkout).
@@ -191,3 +191,7 @@ export function limparRascunhoDaDevolucao(
     // idem acima
   }
 }
+
+// No "Sair": todos os rascunhos da aba. Mora num módulo pequeno para o
+// AuthContext não carregar `devolucao.ts` (ver o arquivo).
+export { limparTodosOsRascunhosDaDevolucao } from "./limpar-rascunhos-da-devolucao";
