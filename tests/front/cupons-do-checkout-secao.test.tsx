@@ -130,8 +130,12 @@ describe("CuponsDoCheckout", () => {
     const vip = botao("Aplicar o cupom VIP15")!;
     // PASSO A3: o cartão inteiro é o botão — o "Aplicando…" fica DENTRO dele.
     expect(vip.textContent).toContain("Aplicando…");
-    expect(vip.disabled).toBe(true);
-    expect(botao("Aplicar o cupom VITRINE10")!.disabled).toBe(true);
+    // Trava passageira: `aria-disabled`, não `disabled` (que tira o foco).
+    expect(vip.getAttribute("aria-disabled")).toBe("true");
+    expect(vip.disabled).toBe(false);
+    expect(
+      botao("Aplicar o cupom VITRINE10")!.getAttribute("aria-disabled"),
+    ).toBe("true");
   });
 
   it("'Ver mais' mostra o resto", () => {

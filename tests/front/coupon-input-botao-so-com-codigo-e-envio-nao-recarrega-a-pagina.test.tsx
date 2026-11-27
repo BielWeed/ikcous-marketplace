@@ -81,7 +81,8 @@ describe("CouponInput: o botão Aplicar e o envio do formulário", () => {
   it("com código, mas aplicando ou travado: o botão fica apagado", async () => {
     await render({ onApply: vi.fn(), onRemove: vi.fn(), aplicando: true });
     await digitar("PROMO10");
-    expect(botaoAplicar()?.disabled).toBe(true);
+    // Aplicando é passageiro: `aria-disabled` (mantém o foco); travado é `disabled`.
+    expect(botaoAplicar()?.getAttribute("aria-disabled")).toBe("true");
     await render({ onApply: vi.fn(), onRemove: vi.fn(), travado: true });
     expect(botaoAplicar()?.disabled).toBe(true);
   });
