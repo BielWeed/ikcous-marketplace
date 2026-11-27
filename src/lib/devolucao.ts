@@ -434,6 +434,29 @@ export function tipoPrevisto(
 }
 
 /**
+ * O aviso das categorias "sem troca", ANTES do envio. O banco
+ * (`solicitar_devolucao`, corpo da 20261405400000) só confere
+ * `categorias_sem_troca` quando o pedido é TROCA de política (fora da
+ * desistência e sem defeito) e então recusa o envio inteiro se algum item é de
+ * uma delas. Na desistência e no defeito a categoria não conta: sem aviso.
+ */
+export function avisoDasCategoriasSemTroca(
+  tipo: TipoDevolucao | null,
+  politica: Pick<PoliticaDevolucao, "categorias_sem_troca">,
+): string | null {
+  if (tipo !== "troca") return null;
+  const categorias = politica.categorias_sem_troca
+    .map((c) => c.trim())
+    .filter((c) => c.length > 0);
+  if (categorias.length === 0) return null;
+  if (categorias.length === 1) {
+    return `A loja não troca por tamanho ou gosto produtos da categoria ${categorias[0]}. Se algum item escolhido for dela, o pedido será recusado.`;
+  }
+  const lista = `${categorias.slice(0, -1).join(", ")} e ${categorias[categorias.length - 1]}`;
+  return `A loja não troca por tamanho ou gosto produtos das categorias ${lista}. Se algum item escolhido for de uma delas, o pedido será recusado.`;
+}
+
+/**
  * Por que um motivo está indisponível (texto curto para a opção). O servidor
  * só calcula `troca_ate` quando a loja faz troca por gosto, e abre o
  * arrependimento (`arrependimento_ate`) em toda compra online: sem

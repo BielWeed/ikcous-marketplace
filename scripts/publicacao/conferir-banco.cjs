@@ -3710,7 +3710,19 @@ const ROL_DA_203B = [
   "as cinco listas: formas_pagamento_entrega (text[]) e home_sections (jsonb) em store_config; metodos_locais, metodos_nacionais e categorias_sem_troca (text[]) em politica_devolucao",
   "is_admin() e is_admin_atual() existem",
 ];
+// Lote 205 (20261645000000, o aviso do vale-troca diz que a loja combina: SO o corpo de devolucao_avisa_o_cliente muda, a frase do
+// ramo vale). Somente catalogo: nenhuma le devolucao nem aviso. A 205a espera o corpo desta (md5); a 205b, o vigente (20261241000000)
+// ou o desta (reaplicacao idempotente). Rol de 3, o mesmo nas duas.
+const ROL_DA_205 = [
+  "devolucao_avisa_o_cliente: corpo exato (md5), o aviso do vale diz que a loja combina",
+  "devolucao_avisa_o_cliente: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno trigger, search_path=public, sem EXECUTE de PUBLIC, anon nem authenticated",
+  "tr_devolucao_avisa_o_cliente: em devolucoes, ligado, chama a funcao",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado":
+    ROL_DA_205,
+  "205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente":
+    ROL_DA_205,
   "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado":
     ROL_DA_201,
   "201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente":

@@ -39,6 +39,7 @@ import {
   MAXIMO_DE_FOTOS,
   TAMANHO_MAXIMO_DA_FOTO,
   TIPOS_DE_FOTO,
+  avisoDasCategoriasSemTroca,
   devolveFreteDeIda,
   enderecoParaDevolver,
   erroDaResolucao,
@@ -510,6 +511,9 @@ function FluxoDaDevolucao({
   const tipo = motivo ? tipoPrevisto(motivo, janelas) : null;
   const permitidas = resolucoesPermitidas(motivo, janelas, politica);
   const exigeFotos = fotosObrigatorias(motivo, politica);
+  // A troca de política recusa no banco o item de categoria "sem troca": a
+  // cliente fica sabendo aqui, antes de preencher o resto.
+  const avisoSemTroca = avisoDasCategoriasSemTroca(tipo, politica);
   const valor = valorDaSelecao(itens, selecao);
   const enderecoParaEntregar = enderecoParaDevolver(politica, enderecoDaLoja);
 
@@ -845,6 +849,15 @@ function FluxoDaDevolucao({
                 })}
               </fieldset>
             ))}
+
+            {avisoSemTroca && (
+              <p
+                data-testid="aviso-categorias-sem-troca"
+                className="rounded-2xl bg-muted/50 p-3 text-xs leading-relaxed text-foreground/70"
+              >
+                {avisoSemTroca}
+              </p>
+            )}
 
             <div className="space-y-1.5">
               <label

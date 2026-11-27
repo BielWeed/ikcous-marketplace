@@ -448,6 +448,49 @@ describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
     );
   });
 
+  // O banco (solicitar_devolucao) só confere as categorias "sem troca" na TROCA
+  // de política (fora da desistência, sem defeito) e recusa o envio inteiro. A
+  // folha avisa no passo do motivo, antes de a cliente preencher o resto; na
+  // desistência e no defeito a categoria não conta e não há aviso.
+  const COM_CATEGORIAS_SEM_TROCA = {
+    ...ELEGIBILIDADE,
+    politica: {
+      ...ELEGIBILIDADE.politica,
+      categorias_sem_troca: ["Calcinhas", " Brincos "],
+    },
+  };
+  const avisoSemTroca = () =>
+    folha()?.querySelector('[data-testid="aviso-categorias-sem-troca"]')
+      ?.textContent ?? null;
+
+  it("troca de política com categorias sem troca: avisa no passo do motivo que o pedido será recusado", async () => {
+    await montar({
+      ...COM_CATEGORIAS_SEM_TROCA,
+      janelas: { arrependimento: false, troca: true, vicio: true },
+    });
+    await clicar(botao("Aumentar Tênis"));
+    await clicar(botao("Continuar"));
+    expect(avisoSemTroca()).toBeNull();
+    await clicar(radio("nao_gostei"));
+    expect(avisoSemTroca()).toBe(
+      "A loja não troca por tamanho ou gosto produtos das categorias Calcinhas e Brincos. Se algum item escolhido for de uma delas, o pedido será recusado.",
+    );
+    // Motivo de problema: a categoria não conta, o aviso some.
+    await clicar(radio("defeito"));
+    expect(avisoSemTroca()).toBeNull();
+  });
+
+  it("dentro da desistência a categoria sem troca não conta: nenhum aviso de recusa", async () => {
+    await montar(COM_CATEGORIAS_SEM_TROCA);
+    await clicar(botao("Aumentar Tênis"));
+    await clicar(botao("Continuar"));
+    await clicar(radio("nao_gostei"));
+    expect(avisoSemTroca()).toBeNull();
+    await clicar(botao("Continuar"));
+    expect(radio("troca")).toBeTruthy();
+    expect(folha()?.textContent).not.toContain("será recusado");
+  });
+
   it("fora do arrependimento, 'mudei de ideia' só oferece troca ou vale", async () => {
     await montar({
       ...ELEGIBILIDADE,
