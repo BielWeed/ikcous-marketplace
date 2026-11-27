@@ -406,6 +406,82 @@ describe("useCategories — renomear passa SÓ pela porta do banco", () => {
     t.desmontar();
   });
 
+  it("nome só de outro alfabeto ('Одежда'): renomear diz a MESMA frase de criar, e o banco nem é chamado", async () => {
+    const t = await montar();
+    // O dublê responde como o banco de verdade (20261237000000): endereço vazio
+    // vira 22023 com a frase "sem letra", que é falsa para quem digitou letras.
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: {
+        code: "22023",
+        message:
+          "O nome da categoria precisa ter pelo menos uma letra ou um número.",
+      },
+    });
+    const tentar = async (fazer: () => Promise<unknown>) => {
+      let erro: unknown;
+      await act(async () => {
+        try {
+          await fazer();
+        } catch (e) {
+          erro = e;
+        }
+      });
+      return erro;
+    };
+    for (const [nome, frase] of [
+      [
+        "Одежда",
+        "Use pelo menos uma letra do alfabeto comum (A a Z) ou um número no nome da categoria.",
+      ],
+      [
+        "  Ἑλλάς  ",
+        "Use pelo menos uma letra do alfabeto comum (A a Z) ou um número no nome da categoria.",
+      ],
+      [
+        "###",
+        "O nome da categoria precisa ter pelo menos uma letra ou um número.",
+      ],
+      [
+        "🙂🙂",
+        "O nome da categoria precisa ter pelo menos uma letra ou um número.",
+      ],
+      ["x".repeat(81), "O nome da categoria pode ter no máximo 80 letras."],
+    ] as const) {
+      const noRenomear = await tentar(() =>
+        t.hook().renameCategory("c1", nome),
+      );
+      const noCriar = await tentar(() =>
+        t
+          .hook()
+          .addCategory({ name: nome, description: "", isActive: true }, true),
+      );
+      expect(noRenomear, nome).toBeInstanceOf(t.ErroDeCategoria);
+      expect((noRenomear as Error).message, nome).toBe(frase);
+      expect((noRenomear as Error).message, nome).toBe(
+        (noCriar as Error).message,
+      );
+      expect((noRenomear as { code?: string }).code, nome).toBe("22023");
+    }
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(escritasNaTabela).toEqual([]);
+    expect(t.linhas()).toEqual(["Brinquedo|brinquedo|true", "Cama|cama|true"]);
+    expect(t.eventos).toEqual([]);
+    t.desmontar();
+  });
+
+  it("letra de outro alfabeto COM letra comum ou número ('Одежда 2') ainda vai ao banco", async () => {
+    const t = await montar();
+    await act(async () => {
+      await t.hook().renameCategory("c1", "Одежда 2");
+    });
+    expect(rpcMock).toHaveBeenCalledWith("renomear_categoria", {
+      p_id: "c1",
+      p_novo_nome: "Одежда 2",
+    });
+    t.desmontar();
+  });
+
   it("avisa as outras telas (filtro lembrado da lista, campo do formulário) com o nome antigo e o novo", async () => {
     const t = await montar();
     await act(async () => {
