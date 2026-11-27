@@ -255,6 +255,43 @@ export function variacoesExcluidasNoRascunho(
 }
 
 /**
+ * O rascunho que o CADASTRO levou para a edição: o produto foi criado e a grade
+ * ficou sem resposta ou foi recusada (`variacoesPendentes`). Ele não tem
+ * produto-base, porque nasceu em "Novo produto" — o salvamento automático da
+ * edição sempre grava a base, então pendente sem base é sempre este.
+ */
+export function ehRascunhoPendenteDoCadastro(rascunho: object): boolean {
+  const { variacoesPendentes, baseDoRascunho: base } = rascunho as {
+    variacoesPendentes?: unknown;
+    baseDoRascunho?: unknown;
+  };
+  return variacoesPendentes === true && !(base && typeof base === "object");
+}
+
+/**
+ * Dá ao rascunho do cadastro a base que ele de fato tem: o produto no instante
+ * em que nasceu, SEM nenhuma variação no banco. Sem base, a grade que gravou
+ * mesmo sem resposta sumia da tela ao restaurar (sem ir para a exclusão) e o
+ * Salvar inseria P/M/G de novo: o dobro à venda.
+ *
+ * Com a base vazia, toda variação do banco é algo que este rascunho nunca viu:
+ * vai para `manter` (`variacoesExcluidasNoRascunho`) e a junção de
+ * combinações descarta a `temp-…` do rascunho que o banco já tem. Nada vira
+ * exclusão (a base não tem variação para "ela ter tirado"). Os demais campos
+ * não estão na base, então voltam como ela digitou, igual a antes.
+ *
+ * NÃO se usa o banco de hoje como base: aí toda variação do banco ausente do
+ * rascunho viraria exclusão dela, e a de outro aparelho seria apagada.
+ */
+export function comABaseDoCadastro<R extends object>(
+  rascunho: R,
+): R & { baseDoRascunho?: unknown } {
+  return ehRascunhoPendenteDoCadastro(rascunho)
+    ? { ...rascunho, baseDoRascunho: { variants: [] } }
+    : rascunho;
+}
+
+/**
  * O recado de que variação que ela excluiu foi mexida em outro aparelho e, por
  * isso, voltou para a lista em vez de ir para a exclusão. `null` sem nenhuma.
  */
