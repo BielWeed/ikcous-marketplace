@@ -38,6 +38,9 @@
  * USO:
  *   node scripts/db-check-objetos-do-codigo.mjs            (lê .env.local/.env)
  *   DATABASE_URL=... node scripts/db-check-objetos-do-codigo.mjs
+ *   <segredoDoToken da loja>=... node scripts/db-check-objetos-do-codigo.mjs --loja <nome>
+ *     (loja ASSINANTE de scripts/frota/lojas.json; o ref e o NOME do segredo vêm
+ *     só do cadastro; workflow objetos-da-frota.yml)
  *
  * LIMITAÇÕES (documentadas, não escondidas):
  *   * só audita nomes LITERAIS — chamadas com nome em VARIÁVEL (hoje: o
@@ -411,6 +414,37 @@ export async function lerCatalogoPelaApi({
   return montarCatalogo(relacoes, funcoes, buckets);
 }
 
+/**
+ * `--loja <nome>` (27/11/2026, a conferência de objetos para QUALQUER loja
+ * assinante da frota): o ref sai SÓ de scripts/frota/lojas.json, e só de loja
+ * assinante. Sem argumento devolve `null` (o modo de sempre: SUPABASE_PROJECT_REF
+ * do job `objetos` do ci.yml, ou DATABASE_URL). Qualquer outra forma — loja
+ * legado ou desconhecida, ref cru, `--loja=x`, argumento a mais — LANÇA, antes
+ * de qualquer fetch. O leitor do cadastro só é carregado com `--loja`: o modo de
+ * sempre não ganha dependência nova. Exportada para teste.
+ */
+export function lojaDosArgumentos(args, cadastro) {
+  const recusar = (motivo) => new Error(`::error::Destino recusado: ${motivo}`);
+  if (!Array.isArray(args) || args.length === 0) return null;
+  if (args.length !== 2 || args[0] !== "--loja")
+    throw recusar(
+      "use --loja <nome de loja assinante de scripts/frota/lojas.json> (ou nenhum argumento); nenhum ref livre.",
+    );
+  const lojas = require("./frota/lojas.cjs");
+  const loja = lojas.lojaDoProjeto(args[1], cadastro ?? lojas.carregarLojas());
+  if (!loja)
+    throw recusar(
+      `loja desconhecida: ${lojas.textoSeguro(args[1])} (não está em scripts/frota/lojas.json).`,
+    );
+  if (loja.classe !== "assinante")
+    throw recusar(
+      `${loja.projeto} não é loja assinante (a conferência da frota só vale para loja assinante).`,
+    );
+  // `segredo`: o NOME do segredo da loja (`segredoDoToken`); o token lido é SÓ
+  // esse, nunca outro (a regra de cada alvo enxergar só o seu segredo).
+  return { loja: loja.projeto, ref: loja.ref, segredo: loja.segredoDoToken };
+}
+
 function lerDatabaseUrlDeArquivo() {
   for (const arquivo of [".env.local", ".env"]) {
     const caminho = path.join(PROJECT_ROOT, arquivo);
@@ -459,6 +493,35 @@ export function formatarDinamicas(dinamicas) {
 }
 
 async function main() {
+  const pedida = lojaDosArgumentos(process.argv.slice(2));
+  if (pedida) {
+    // O token é o do segredo QUE O CADASTRO NOMEIA para a loja (o mesmo que o
+    // bloco LOJAS-SEGREDOS do workflow entrega ao passo); SUPABASE_ACCESS_TOKEN
+    // genérico não serve, e o de outra loja também não.
+    const tokenDaLoja = (process.env[pedida.segredo] ?? "").trim();
+    // --loja: SEMPRE pela API, no ref do cadastro. Nunca inerte (não há PR de
+    // fork aqui: quem pede uma loja pede a conferência), nunca DATABASE_URL, e
+    // um SUPABASE_PROJECT_REF junto seria um segundo destino — ambíguo, recusa.
+    if ((process.env.SUPABASE_PROJECT_REF ?? "").trim() !== "") {
+      console.error(
+        "::error::--loja e SUPABASE_PROJECT_REF juntos: o ref vem só do cadastro; tire o SUPABASE_PROJECT_REF.",
+      );
+      process.exit(1);
+    }
+    if (!tokenDaLoja) {
+      console.error(
+        `::error::--loja ${pedida.loja}: sem ${pedida.segredo} — a conferência desta loja não roda.`,
+      );
+      process.exit(1);
+    }
+    console.log(
+      `Catálogo lido pela API de gestão do Supabase, endpoint somente leitura (loja ${pedida.loja}, projeto ${pedida.ref}).`,
+    );
+    await conferirCatalogo(
+      await lerCatalogoPelaApi({ token: tokenDaLoja, ref: pedida.ref }),
+    );
+    return;
+  }
   // Fonte do catálogo. API de gestão (token + ref do projeto) tem prioridade:
   // é o caminho do CI. Sem ela, a conexão direta por DATABASE_URL de sempre.
   const ref = (process.env.SUPABASE_PROJECT_REF ?? "").trim();
@@ -492,10 +555,14 @@ async function main() {
       }
     }
   }
+  await conferirCatalogo(
+    viaApi ? await lerCatalogoPelaApi({ token, ref }) : await lerCatalogo(url),
+  );
+}
+
+/** O veredito, igual para toda fonte de catálogo (sai 0 ou 1). */
+async function conferirCatalogo(catalogo) {
   const { referencias, dinamicas } = extrairDoRepo();
-  const catalogo = viaApi
-    ? await lerCatalogoPelaApi({ token, ref })
-    : await lerCatalogo(url);
   if (!catalogo.bucketsAcessivel) {
     console.warn(
       "::warning::Sem acesso a storage.buckets — a checagem de BUCKET está cega nesta rodada (tabelas e funções seguem conferidas).",

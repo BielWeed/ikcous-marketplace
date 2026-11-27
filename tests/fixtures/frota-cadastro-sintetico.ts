@@ -40,6 +40,20 @@ export function segredoSintetico(i: number): string {
   return `SUPABASE_ACCESS_TOKEN_${sufixo}`;
 }
 
+/**
+ * O mesmo cadastro, mas com TODAS as `n` lojas no segredo da org central
+ * (`segredo`, o `segredoDoGitHub` de scripts/frota/org-central.json): o modelo
+ * de 01/12/2026, em que a loja nova nasce na org e divide o token dela.
+ */
+export function cadastroSinteticoNaOrg(
+  n: number,
+  segredo: string,
+): { lojas: Record<string, any> } {
+  const bruto = cadastroSintetico(n);
+  for (const l of Object.values(bruto.lojas)) l.segredoDoToken = segredo;
+  return bruto;
+}
+
 /** `{ lojas: { … } }` com `n` assinantes sintéticas, na ordem do índice. */
 export function cadastroSintetico(n: number): { lojas: Record<string, any> } {
   const lojas: Record<string, any> = {};

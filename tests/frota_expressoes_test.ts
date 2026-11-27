@@ -25,7 +25,10 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { cadastroSintetico } from "./fixtures/frota-cadastro-sintetico.ts";
+import {
+  cadastroSintetico,
+  cadastroSinteticoNaOrg,
+} from "./fixtures/frota-cadastro-sintetico.ts";
 
 const require = createRequire(import.meta.url);
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
@@ -49,6 +52,16 @@ const EXPRESSOES_QUE_CRESCEM = ["LOJAS-SEGREDO-UNICO"];
 
 const CADASTRO_REAL = lojasMod.carregarLojas();
 const CADASTRO_300 = lojasMod.validarCadastro(cadastroSintetico(LOJAS_NA_META));
+// O modelo da org central (01/12/2026): as 300 no MESMO segredo, o da org.
+const SEGREDO_DA_ORG = require(
+  join(RAIZ, "scripts/frota/org-central.cjs"),
+).carregarOrgCentral().segredoDoGitHub;
+const CADASTRO_300_NA_ORG = lojasMod.validarCadastro(
+  cadastroSinteticoNaOrg(LOJAS_NA_META, SEGREDO_DA_ORG),
+);
+const CADASTRO_2_NA_ORG = lojasMod.validarCadastro(
+  cadastroSinteticoNaOrg(2, SEGREDO_DA_ORG),
+);
 
 function workflows(): string[] {
   return [...Deno.readDirSync(DIR_WF)]
@@ -211,3 +224,64 @@ Deno.test("com 300 lojas, cada linha por loja do bloco LOJAS-SEGREDOS tem até 3
   }
   assert(vistas > 0, "nenhum bloco LOJAS-SEGREDOS encontrado");
 });
+
+// ---------------------------------------------------------------------------
+// 5. A org central: 300 lojas no MESMO segredo (o da org) e nenhuma expressão
+//    cresce — nem a cadeia única, que aqui não precisa da exceção
+// ---------------------------------------------------------------------------
+Deno.test("org central: com 300 lojas no segredo da org, NENHUMA expressão passa de 8.000 caracteres (sem exceção nenhuma)", () => {
+  assertEquals(Object.keys(CADASTRO_300_NA_ORG.lojas).length, LOJAS_NA_META);
+  assert(
+    Object.values(CADASTRO_300_NA_ORG.lojas).every(
+      (l) => l.segredoDoToken === SEGREDO_DA_ORG,
+    ),
+  );
+  const estouros = [];
+  let vistas = 0;
+  for (const n of workflows()) {
+    for (const e of expressoesRegeradas(n, CADASTRO_300_NA_ORG).expressoes) {
+      if (e.bloco === "LOJAS-SEGREDOS" || e.bloco === "LOJAS-SEGREDO-UNICO")
+        vistas++;
+      if (e.texto.length > TETO_EXPRESSAO)
+        estouros.push(
+          `${n} (bloco ${e.bloco ?? "fora de bloco"}): ${e.texto.length}`,
+        );
+    }
+  }
+  assertEquals(estouros, [], estouros.join("\n"));
+  assert(vistas > 0, "nenhuma expressão de segredo regerada");
+});
+
+Deno.test("org central: as expressões de segredo são IDÊNTICAS com 2 e com 300 lojas na org (tamanho fixo), e o bloco LOJAS-SEGREDOS tem UMA linha", () => {
+  const deSegredo = (cad) =>
+    workflows().flatMap((n) =>
+      expressoesRegeradas(n, cad)
+        .expressoes.filter(
+          (e) =>
+            e.bloco === "LOJAS-SEGREDOS" || e.bloco === "LOJAS-SEGREDO-UNICO",
+        )
+        .map((e) => `${n}: ${e.texto}`),
+    );
+  const com2 = deSegredo(CADASTRO_2_NA_ORG);
+  assert(com2.length > 0);
+  assertEquals(deSegredo(CADASTRO_300_NA_ORG), com2);
+  for (const e of com2) {
+    assert(!e.includes("inputs.projeto"), `guarda por loja: ${e}`);
+    assert(e.includes(`secrets.${SEGREDO_DA_ORG}`), e);
+  }
+  let blocos = 0;
+  for (const n of workflows()) {
+    const texto = gerador.sincronizar(textoDe(n), CADASTRO_300_NA_ORG);
+    for (const f of blocosDeSegredos(texto)) {
+      blocos++;
+      const linhas = texto.slice(f.ini, f.fim).split(/\r?\n/).slice(1, -1);
+      assertEquals(linhas.length, 1, `${n}: uma linha só para a org`);
+      assert(linhas[0].length <= TETO_LINHA_POR_LOJA, linhas[0]);
+    }
+  }
+  assert(blocos > 0, "nenhum bloco LOJAS-SEGREDOS encontrado");
+});
+
+/** Só os blocos LOJAS-SEGREDOS do texto. */
+const blocosDeSegredos = (texto: string) =>
+  blocos(texto).filter((b) => b.nome === "LOJAS-SEGREDOS");

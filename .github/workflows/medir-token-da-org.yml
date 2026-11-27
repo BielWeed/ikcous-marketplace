@@ -1,0 +1,87 @@
+# PROVA, SÓ LEITURA, que o segredo da org central do Supabase
+# (SUPABASE_ACCESS_TOKEN_LOJAS, o `segredoDoGitHub` de
+# scripts/frota/org-central.json) enxerga SÓ a org "IKCOUS Lojas". Nasceu em
+# 27/11/2026 (A20 do plano da org central, com o ADENDO da revisão Opus de
+# 26/11): um token PESSOAL do dono alcança a CONTA inteira, e guardado como o
+# segredo da org daria a todo run de toda loja da org o alcance dos bancos da
+# IKCOUS, da Savy e de qualquer outro projeto do dono. A guarda dos outros
+# workflows decide QUAL segredo chega ao passo; não limita o que ele alcança.
+#
+# O QUE FAZ: duas leituras GET na Management API (`/v1/organizations` e
+# `/v1/projects`) e o veredito. VERDE só com EXATAMENTE uma org, com o slug de
+# org-central.json, e todo projeto dela. Qualquer org ou projeto a mais deixa
+# o run VERMELHO com "o segredo é amplo demais"; 401/403 param fechado. A
+# lógica mora em scripts/frota/medir-token-da-org.cjs (NÃO em `node -e`); o
+# cabeçalho dele diz a fonte da API, o veredito e o que vai para o log (nunca
+# o token, nunca nome ou ref de org/projeto alheio, nunca o corpo cru).
+#
+# QUANDO RODAR: B3 (logo depois de gravar o segredo: o esperado é a org
+# central e 0 projetos) e B5 (depois de transferir a IKCOUS: o esperado é a
+# IKCOUS visível, prova de que o token enxerga projeto que chegou depois dele).
+# Sem o `slug` gravado em org-central.json (B2), o run sai vermelho sem rede.
+#
+# CREDENCIAL: o segredo da org, e só ele. Sem menu de loja: a prova é da org
+# inteira, não de uma loja. O segredo só existe no ÚLTIMO passo (o do script);
+# o do `expected_sha` e o checkout não o veem, e nenhum passo imprime o
+# ambiente.
+#
+# GATILHO: só `workflow_dispatch`. Nenhum `pull_request_target`, nenhum código
+# de PR roda aqui com o segredo. `expected_sha` é OBRIGATÓRIO (40 hex, igual
+# ao SHA do run) e é conferido no PRIMEIRO passo, antes do checkout e de
+# qualquer rede.
+#
+# USO (gh):
+#   gh workflow run medir-token-da-org.yml --repo BielWeed/ikcous-marketplace \
+#     --ref <ramo> -f expected_sha=<SHA completo do topo do ramo>
+#
+# Testado por tests/ci_medir_token_da_org_test.ts.
+
+name: Medir o token da org central
+run-name: "medir o token da org central"
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "OBRIGATORIO: o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: medir-token-da-org
+  cancel-in-progress: false
+
+jobs:
+  medir:
+    name: Prova o escopo do segredo da org central
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # PRIMEIRO passo, antes de checkout e de qualquer requisição: expected_sha
+      # completo e igual ao GITHUB_SHA (o mesmo padrão de medir-auth-da-loja.yml).
+      # Não vê segredo.
+      - name: Confere o alvo (expected_sha completo e igual ao do run)
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+            echo "::error::a prova do token da org exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Só `fetch` do próprio Node: nenhum `npm ci` aqui.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      # O ÚNICO passo com segredo. O script lê SÓ o segredo da org (o nome vem
+      # de org-central.json) e PARA sem ele.
+      - name: Prova que o segredo enxerga só a org central (só leitura)
+        env:
+          SUPABASE_ACCESS_TOKEN_LOJAS: ${{ secrets.SUPABASE_ACCESS_TOKEN_LOJAS }}
+        run: node scripts/frota/medir-token-da-org.cjs

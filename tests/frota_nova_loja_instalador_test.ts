@@ -51,9 +51,31 @@ import {
   arquivosDoRepo,
   ddlDoLedger,
   envelopeDoArquivo,
-  instalar,
+  instalar as instalarDeVerdade,
   planejarInstalacao,
 } from "../scripts/frota/instalador-banco.mjs";
+
+/** Relógio falso do RITMO: esperar avança o tempo, nada espera de verdade. */
+function relogioFalso() {
+  const r = { t: 0, esperas: [] };
+  r.agora = () => r.t;
+  r.esperar = async (ms) => {
+    r.esperas.push(ms);
+    r.t += ms;
+  };
+  return r;
+}
+
+/** Os testes de T8 rodam com o ritmo de verdade (600 ms entre pedidos), mas
+ * num relógio falso: nenhum espera de fato. Os testes do RITMO chamam
+ * instalarDeVerdade com o relógio deles. */
+const instalar = (cliente, plano, opcoes?) => {
+  const { agora, esperar } = relogioFalso();
+  return instalarDeVerdade(cliente, plano, {
+    ...(opcoes ?? {}),
+    ritmo: { agora, esperar },
+  });
+};
 
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
 const { comandosDosPrivilegiosPadrao, SQL_CONFERIR_PRIVILEGIOS_PADRAO } =
@@ -1070,6 +1092,191 @@ Deno.test("T8 + T6: retomada depois do timeout pega a partir do ledger (a versã
   assertEquals(r.estado, "OK", r.mensagem);
   assertEquals(r.aplicados, EM_ORDEM.slice(2));
   assertEquals(b.marca, "concluida");
+});
+
+// ─── RITMO: o limite da Management API (120 pedidos/min por projeto) ─────────
+
+/** 290 migrations: o tamanho da fila real (276) com folga. */
+const REPO_GRANDE = Array.from({ length: 290 }, (_v, i) =>
+  arq(`20260101${String(i).padStart(6, "0")}_m${i}.sql`),
+);
+
+/** O 429 como o nova-loja.mjs o entrega ao instalador: erro de transporte. */
+const erro429 = () =>
+  Object.assign(
+    new Error(
+      "Gestão Supabase: POST /v1/projects/{ref}/database/query respondeu HTTP 429.",
+    ),
+    { tipo: "transporte", codigo: "HTTP" },
+  );
+const erro500 = () =>
+  Object.assign(
+    new Error(
+      "Gestão Supabase: POST /v1/projects/{ref}/database/query respondeu HTTP 500.",
+    ),
+    { tipo: "transporte", codigo: "HTTP" },
+  );
+
+/** Dublê do gateway na frente do bancoFalso: anota quando cada pedido sai e
+ * quando a resposta volta (a resposta leva `latenciaMs` no relógio falso) e,
+ * com `limite`, faz o que a Management API faz: mais de `limite` pedidos em
+ * 60 s (janela DESLIZANTE, mais dura que a do servidor) = 429, sem executar. */
+function gatewayFalso(b, rel, { latenciaMs = 0, limite = null } = {}) {
+  const g = { envios: [], respostas: [], recusas: 0 };
+  g.consultar = async (sql) => {
+    const t = rel.agora();
+    g.envios.push(t);
+    if (limite !== null) {
+      const naJanela = g.envios.filter((x) => x > t - 60_000).length;
+      if (naJanela > limite) {
+        g.recusas += 1;
+        throw erro429();
+      }
+    }
+    rel.t += latenciaMs;
+    try {
+      return await b.consultar(sql);
+    } finally {
+      g.respostas.push(rel.agora());
+    }
+  };
+  return g;
+}
+
+/** Maior número de envios em qualquer janela de 60 s. */
+function picoPorMinuto(envios) {
+  let pico = 0;
+  for (const t of envios) {
+    const n = envios.filter((x) => x >= t && x < t + 60_000).length;
+    if (n > pico) pico = n;
+  }
+  return pico;
+}
+
+Deno.test("RITMO: 290 migrations contra um dublê com o limite da Management API (120/min) instalam ATÉ O FIM, sem nenhum 429", async () => {
+  const rel = relogioFalso();
+  const b = bancoFalso();
+  const g = gatewayFalso(b, rel, { limite: 120 });
+  const r = await instalarDeVerdade(g, planejarInstalacao(VAZIO, REPO_GRANDE), {
+    aplicar: true,
+    ritmo: { agora: rel.agora, esperar: rel.esperar },
+  });
+  assertEquals(r.estado, "OK", r.mensagem);
+  assertEquals(r.aplicados.length, 290);
+  assertEquals(g.recusas, 0, "nenhum pedido passou do limite");
+  assert(
+    picoPorMinuto(g.envios) <= 101,
+    `no máximo ~100 por minuto (pico ${picoPorMinuto(g.envios)})`,
+  );
+  assertEquals(b.marca, "concluida");
+});
+
+Deno.test("RITMO: entre o FIM de uma resposta e o envio seguinte passam ao menos 600 ms, em TODAS as chamadas (leituras inclusive)", async () => {
+  const rel = relogioFalso();
+  const b = bancoFalso();
+  // a resposta demora 250 ms: medir do ENVIO anterior daria só 350 ms de vão
+  const g = gatewayFalso(b, rel, { latenciaMs: 250 });
+  const r = await instalarDeVerdade(g, planejarInstalacao(VAZIO, REPO), {
+    aplicar: true,
+    ritmo: { agora: rel.agora, esperar: rel.esperar },
+  });
+  assertEquals(r.estado, "OK", r.mensagem);
+  assertEquals(g.envios.length, b.chamadas.length);
+  assert(g.envios.length > REPO.length + 3, "leituras e escritas passaram");
+  for (let i = 1; i < g.envios.length; i += 1) {
+    assert(
+      g.envios[i] - g.respostas[i - 1] >= 600,
+      `pedido ${i + 1}: só ${g.envios[i] - g.respostas[i - 1]} ms depois da resposta anterior`,
+    );
+  }
+  assertEquals(
+    rel.esperas.every((ms) => ms > 0 && ms <= 600),
+    true,
+    JSON.stringify(rel.esperas),
+  );
+});
+
+Deno.test("RITMO: o 429 NÃO se repete (a doc não garante que ele chega antes de executar), nem o 500: ESTADO DESCONHECIDO e nada depois dele", async () => {
+  const alvo = EM_ORDEM[2];
+  for (const falha of [
+    { quando: "antes", erro: erro429() },
+    { quando: "antes", erro: erro500() },
+    { quando: "depois", erro: erro500() },
+  ]) {
+    const rel = relogioFalso();
+    const b = bancoFalso({ falhas: { [alvo]: falha } });
+    const r = await instalarDeVerdade(b, planejarInstalacao(VAZIO, REPO), {
+      aplicar: true,
+      ritmo: { agora: rel.agora, esperar: rel.esperar },
+    });
+    const caso = `${falha.quando} ${falha.erro.message}`;
+    assertEquals(r.estado, "ESTADO_DESCONHECIDO", caso);
+    assertEquals(r.arquivo, alvo, caso);
+    assertEquals(r.aplicados, EM_ORDEM.slice(0, 2), caso);
+    const doAlvo = b.chamadas.filter(
+      (s) => ehEnvelope(s) && s.includes(`'${alvo.split("_")[0]}'`),
+    );
+    assertEquals(doAlvo.length, 1, `${caso}: enviado UMA vez`);
+    assertEquals(b.chamadas.at(-1), doAlvo[0], `${caso}: nada depois dele`);
+    assertStringIncludes(r.mensagem, "Nada foi repetido");
+  }
+});
+
+Deno.test("RITMO: relógio que volta para trás espera no máximo 600 ms; ritmo torto nunca fica MAIS RÁPIDO; intervaloMs 0 = sem espera (banco local)", async () => {
+  // A hora do FIM do 3º pedido sai 1 hora adiantada e, na leitura seguinte, o
+  // relógio volta (ajuste do relógio do PC): a conta ingênua mandaria esperar
+  // 1 h + 600 ms.
+  const rel = relogioFalso();
+  const b = bancoFalso();
+  let n = 0;
+  let desvio = 0;
+  const agora = () => {
+    const v = rel.t + desvio;
+    desvio = 0;
+    return v;
+  };
+  const volta = {
+    async consultar(sql) {
+      n += 1;
+      const linhas = await b.consultar(sql);
+      if (n === 3) desvio = 3_600_000;
+      return linhas;
+    },
+  };
+  const r = await instalarDeVerdade(volta, planejarInstalacao(VAZIO, REPO), {
+    aplicar: true,
+    ritmo: { agora, esperar: rel.esperar },
+  });
+  assertEquals(r.estado, "OK", r.mensagem);
+  assert(n > 4, "o pedido depois do salto aconteceu");
+  assert(
+    rel.esperas.every((ms) => ms > 0 && ms <= 600),
+    `espera fora de (0, 600]: ${JSON.stringify(rel.esperas)}`,
+  );
+
+  for (const intervaloMs of [-5, "0", 1.5, Number.NaN, null]) {
+    const relTorto = relogioFalso();
+    const bt = bancoFalso();
+    const rt = await instalarDeVerdade(bt, planejarInstalacao(VAZIO, REPO), {
+      aplicar: true,
+      ritmo: { intervaloMs, agora: relTorto.agora, esperar: relTorto.esperar },
+    });
+    assertEquals(rt.estado, "OK", String(intervaloMs));
+    assertEquals(relTorto.esperas.length, bt.chamadas.length - 1);
+    assert(
+      relTorto.esperas.every((ms) => ms === 600),
+      `${String(intervaloMs)}: ${JSON.stringify(relTorto.esperas)}`,
+    );
+  }
+
+  const relZero = relogioFalso();
+  const bz = bancoFalso();
+  const rz = await instalarDeVerdade(bz, planejarInstalacao(VAZIO, REPO), {
+    aplicar: true,
+    ritmo: { intervaloMs: 0, agora: relZero.agora, esperar: relZero.esperar },
+  });
+  assertEquals(rz.estado, "OK", rz.mensagem);
+  assertEquals(relZero.esperas, []);
 });
 
 // ─── T9 (registro): a prova viva roda no db-ci e dispara quando o instalador muda ───

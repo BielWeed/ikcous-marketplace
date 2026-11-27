@@ -282,6 +282,22 @@ jobs:
             echo "::endgroup::"
           done
 
+      # A prova somente leitura do dinheiro (27/11/2026; antes só a CAF tinha):
+      # corpo e permissões das funções de cobrança, colunas do pedido e a config
+      # do cartão, comparados com as migrations revisadas, ANTES de publicar
+      # function de dinheiro na Savy e em toda loja nova. `--loja` leva só o
+      # NOME (por env, nunca interpolado no script); o ref sai do cadastro dentro
+      # do script, que recusa loja legado ou desconhecida antes de qualquer
+      # fetch. Mesmo token do deploy. Se falha, o deploy (sem `always()`) não roda.
+      - name: Prova somente leitura do banco da loja assinante antes de publicar
+        if: inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'loja' && inputs.projeto != 'sandbox' && steps.alvo.outputs.modo != 'listar'
+        env:
+          # LOJAS-SEGREDO-UNICO-INICIO (idem)
+          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          # LOJAS-SEGREDO-UNICO-FIM
+          PROJETO: ${{ inputs.projeto }}
+        run: node scripts/publicacao/verificar-pagamentos-ikcous.cjs --loja "$PROJETO"
+
       - name: Publica loja assinante, uma function por vez
         if: inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'loja' && inputs.projeto != 'sandbox'
         env:
