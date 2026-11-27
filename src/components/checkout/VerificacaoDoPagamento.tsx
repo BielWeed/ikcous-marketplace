@@ -9,6 +9,7 @@ import {
   urlDoDesafioValida,
 } from "./PagamentoComCartao";
 import { comTempoLimite } from "./PagamentoOnline";
+import { TituloQueRecebeOFoco } from "./TituloQueRecebeOFoco";
 
 /**
  * C4 (M1, 02/10/2026) — a retomada de um pedido de CARTÃO EM DÚVIDA (a vaga
@@ -86,10 +87,10 @@ export type PontoDePartidaDaVerificacao =
   | { readonly verificacao: "indisponivel" };
 
 type Situacao =
-  // C5 (revisão, a11y): o primeiro quadro de uma verificação aberta com
-  // ponto de partida — a região de status nasce montada e VAZIA, e o ponto de
-  // partida entra logo depois (o leitor de tela só anuncia mudança em região
-  // que já existia). Sem texto, sem botão.
+  // C5 (revisão, a11y): o primeiro quadro de toda verificação — a região de
+  // status nasce montada e VAZIA, e o ponto de partida (ou o "Consultando…")
+  // entra logo depois (o leitor de tela só anuncia mudança em região que já
+  // existia). Sem texto, sem botão.
   | { readonly tipo: "abrindo" }
   | { readonly tipo: "consultando" }
   | { readonly tipo: "sem_registro"; readonly cancelamento: string | null }
@@ -263,11 +264,11 @@ export function VerificacaoDoPagamento({
   onPagarComPix?: () => void;
 }>) {
   const { criarPagamento } = useOrders(false, false);
-  // Com ponto de partida, o primeiro quadro é "abrindo" (região vazia); o
-  // efeito de montagem, abaixo, aplica o ponto de partida.
-  const [situacao, setSituacao] = useState<Situacao>(() =>
-    pontoDePartida ? { tipo: "abrindo" } : { tipo: "consultando" },
-  );
+  // O primeiro quadro é sempre "abrindo" (região vazia): com ponto de
+  // partida, o efeito de montagem, abaixo, o aplica; sem ele, a consulta da
+  // montagem põe "Consultando…" — e a frase ENTRA numa região que já existia,
+  // que é o que o leitor de tela anuncia (caça de leitor de tela, 27/11/2026).
+  const [situacao, setSituacao] = useState<Situacao>({ tipo: "abrindo" });
   // Lido só na montagem (o pai não troca o ponto de partida de uma tela já
   // aberta; trocar exigiria remontar).
   const pontoDePartidaRef = useRef(pontoDePartida);
@@ -388,9 +389,15 @@ export function VerificacaoDoPagamento({
 
   return (
     <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4 lg:min-h-0">
-      <h1 className="text-lg font-bold text-foreground">
+      {/* Esta tela substitui a do cartão (o formulário some com o foco): o
+          título recebe o foco, como nas outras telas de pagamento. */}
+      <TituloQueRecebeOFoco
+        nivel={1}
+        semFocoNaAbertura
+        className="text-lg font-bold text-foreground"
+      >
         Situação do pagamento
-      </h1>
+      </TituloQueRecebeOFoco>
 
       {/* Região viva sempre montada: o leitor de tela só anuncia mudança em
           região que já existia. As falhas vão no `role="alert"` abaixo. */}

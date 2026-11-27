@@ -167,7 +167,13 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
         // e nos valores do pedido (recebem foco por programa, tabIndex -1); nenhuma
         // classe de layout mudou. E a região `sr-only` que fala o total ao leitor
         // de tela (fora do fluxo, sem altura): 1 literal entrou, nada saiu.
-        "4f4d53597a986e0ef761615ea2e3626ee8917a4ba3ebace54884d63e6d35b822",
+        // 27/11/2026 (pagamento fala com o leitor de tela): `outline-none` no
+        // texto do erro vermelho e no do âmbar (recebem foco por programa,
+        // tabIndex -1); a região `sr-only` da troca de forma de pagamento entrou;
+        // o `outline-none` do TituloQueRecebeOFoco saiu com ele para
+        // src/components/checkout/TituloQueRecebeOFoco.tsx. 409 → 409 literais,
+        // nenhuma classe de layout mudou (conferido contra a base 34c1d6c08).
+        "270f9b94241d3f3314b1276be1df2d1ae97a1acff2d956d772e2bb99700fbd21",
       ],
       [
         caminhos.favoritos,

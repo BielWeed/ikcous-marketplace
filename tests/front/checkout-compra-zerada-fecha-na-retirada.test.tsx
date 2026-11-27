@@ -685,4 +685,48 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
     ).toBeNull();
     expect(document.body.textContent).not.toContain(SEM_VALOR);
   });
+
+  // Caça de leitor de tela (27/11/2026): as duas trocas sem toque (o cupom
+  // zera e marca a forma da entrega; tirar o cupom devolve o app) eram mudas.
+  it("as trocas sozinhas do total zero são ditas na região do grupo de pagamento", async () => {
+    await montar();
+    const aviso = () =>
+      document.getElementById("checkout-aviso-da-forma-de-pagamento")
+        ?.textContent;
+    await act(async () => {
+      botaoPorTexto("Pagar agora com PIX")!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(aviso()).toBe("");
+
+    await act(async () => {
+      digitar("coupon-code-input", "CUPOM100");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      botaoPorTexto("Aplicar")!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await esperar(50);
+    expect(aviso()).toBe("Forma de pagamento alterada para Pix na Entrega.");
+
+    // Tocar na própria forma já marcada cala o aviso — e a volta do app,
+    // depois, ainda é uma troca sem toque que precisa ser dita.
+    await act(async () => {
+      botaoPorTexto("Pix na Entrega")!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(aviso()).toBe("");
+
+    await act(async () => {
+      document
+        .querySelector<HTMLButtonElement>('[aria-label="Remover cupom"]')!
+        .click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await esperar(50);
+    expect(aviso()).toBe(
+      "Forma de pagamento alterada para Pagar agora com PIX.",
+    );
+  });
 });

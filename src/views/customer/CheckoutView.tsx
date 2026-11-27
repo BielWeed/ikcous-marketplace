@@ -10,6 +10,7 @@ import {
   type CategoriaErroPagamento,
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
+import { TituloQueRecebeOFoco } from "@/components/checkout/TituloQueRecebeOFoco";
 import {
   type DesfechoQueLiberaARetomada,
   type PontoDePartidaDaVerificacao,
@@ -240,7 +241,6 @@ import {
 } from "lucide-react";
 import {
   type ComponentType,
-  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -2107,8 +2107,9 @@ export function CheckoutViewDaConta({
     semCobranca: boolean;
     // Lacuna L1 (02/10/2026): o erro que NASCE de uma leitura do banco (sem
     // toque nenhum do cliente) troca a tela sozinho — ele vai num
-    // `role="alert"` para o leitor de tela anunciar a troca. Os outros erros
-    // seguem como sempre foram.
+    // `role="alert"` para o leitor de tela anunciar a troca. Caça de leitor
+    // de tela (27/11/2026): o erro do formulário (PIX/cartão) também troca a
+    // tela inteira e passou a ser anunciado.
     anunciar?: boolean;
   } | null>(null);
   // Achado 1 (BLOQUEANTE, rodada 3 da revisão de risco pré-publicação,
@@ -2261,6 +2262,17 @@ export function CheckoutViewDaConta({
   // perdido: quem foi para outro lugar enquanto esperava não é puxado de volta.
   const caixaDoErroRef = useRef<HTMLDivElement>(null);
   const botaoCancelarRef = useRef<HTMLButtonElement>(null);
+  // Caça de leitor de tela (27/11/2026): o erro do pagamento SUBSTITUI o
+  // formulário (ou o "Tentar de novo" que a pessoa acabou de tocar) e o foco
+  // caía no corpo da página. O texto do erro (caixa vermelha ou âmbar) vira o
+  // alvo. Só se o foco estava perdido: mesma regra do cancelar, abaixo.
+  const textoDoErroDoPagamentoRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!erroPagamento) return;
+    const ativo = document.activeElement;
+    if (ativo && ativo !== document.body && document.contains(ativo)) return;
+    textoDoErroDoPagamentoRef.current?.focus({ preventScroll: true });
+  }, [erroPagamento]);
   const devolverFocoDoCancelarRef = useRef(false);
   // Conta cada tentativa: sem rede o erro nasce no mesmo gesto do clique, e
   // limpar e repor a MESMA frase não muda nada na tela — o leitor de tela só fala
@@ -3787,6 +3799,12 @@ export function CheckoutViewDaConta({
     metodoOnline: MetodoOnline;
     marcada: PaymentMethod;
   } | null>(null);
+  // Caça de leitor de tela (27/11/2026): os três efeitos abaixo trocam a
+  // forma de pagamento SEM toque da cliente, e a troca era muda. Ligado aqui,
+  // a região do grupo de pagamento diz a forma marcada agora; o toque da
+  // própria cliente numa opção desliga (ela sabe o que escolheu). Só o aviso:
+  // a regra de cada efeito não muda.
+  const [formaTrocadaSemToque, setFormaTrocadaSemToque] = useState(false);
   useEffect(() => {
     if (totalZero.zerado) {
       if (totalZero.meioParaMarcar === null) return;
@@ -3803,6 +3821,8 @@ export function CheckoutViewDaConta({
           marcada: totalZero.meioParaMarcar,
         };
       }
+      if (paymentMethod !== totalZero.meioParaMarcar)
+        setFormaTrocadaSemToque(true);
       setPaymentMethod(totalZero.meioParaMarcar);
       return;
     }
@@ -3811,6 +3831,7 @@ export function CheckoutViewDaConta({
     escolhaAntesDoTotalZeroRef.current = null;
     if (paymentMethod !== antes.marcada) return;
     if (authLoading || !user || !pagamentoOnlineLigado()) return;
+    setFormaTrocadaSemToque(true);
     setPaymentMethod("online");
     setMetodoOnline(antes.metodoOnline);
   }, [
@@ -3851,6 +3872,7 @@ export function CheckoutViewDaConta({
     // Total zero (14/10/2026): não existe PIX de R$ 0,00 para selecionar — o
     // Finalizar trava com a explicação própria (`totalZero.travaPor`).
     if (totalZero.zerado) return;
+    setFormaTrocadaSemToque(true);
     setPaymentMethod("online");
     // Auto-seleção é sempre o PIX.
     setMetodoOnline("pix");
@@ -3899,6 +3921,7 @@ export function CheckoutViewDaConta({
       logado: !!user,
     });
     if (proxima) {
+      setFormaTrocadaSemToque(true);
       setPaymentMethod(proxima);
       if (proxima === "online") setMetodoOnline("pix");
     }
@@ -6475,7 +6498,12 @@ export function CheckoutViewDaConta({
               {/* C5 (front B2): sem order confirmada na tela, nunca "em
                   análise pelo banco". O não terminal só chega aqui em modo
                   PIX (em modo cartão a dúvida é a verificação, acima). */}
-              <p className="text-sm font-medium text-amber-800">
+              <p
+                ref={textoDoErroDoPagamentoRef}
+                role="alert"
+                tabIndex={-1}
+                className="text-sm font-medium text-amber-800 outline-none"
+              >
                 {erroPagamento.categoria === "terminal"
                   ? erroPagamento.mensagem
                   : "Não conseguimos confirmar se a tentativa de pagamento com cartão deste pedido foi cobrada. Para não cobrar duas vezes, o PIX só é gerado depois dessa confirmação."}
@@ -6545,8 +6573,10 @@ export function CheckoutViewDaConta({
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
               <p
+                ref={textoDoErroDoPagamentoRef}
                 role={erroPagamento.anunciar ? "alert" : undefined}
-                className="min-w-0 break-words text-sm font-medium text-red-700"
+                tabIndex={-1}
+                className="min-w-0 break-words text-sm font-medium text-red-700 outline-none"
               >
                 {erroPagamento.mensagem}
               </p>
@@ -6878,6 +6908,7 @@ export function CheckoutViewDaConta({
                       categoria,
                       cartaoEmAnalise: cartaoTalvezEmCurso,
                       semCobranca: sinal === "semCobranca",
+                      anunciar: true,
                     },
               );
             }}
@@ -7088,6 +7119,19 @@ export function CheckoutViewDaConta({
     ...opcoesNoApp,
     ...(podePagarNaEntrega ? opcoesNaEntrega : []),
   ];
+  // A forma que a troca automática marcou, dita com o rótulo da tela (ver
+  // `formaTrocadaSemToque`).
+  const opcaoMarcadaSemToque = formaTrocadaSemToque
+    ? opcoesDePagamentoVisiveis.find(
+        (opcao) =>
+          paymentMethod === opcao.value &&
+          (opcao.metodoOnline === undefined ||
+            opcao.metodoOnline === metodoOnlineEfetivo),
+      )
+    : undefined;
+  const avisoDaFormaTrocada = opcaoMarcadaSemToque
+    ? `Forma de pagamento alterada para ${opcaoMarcadaSemToque.label}.`
+    : "";
   // Sem seleção habilitada, Tab ainda precisa alcançar o grupo — inclusive
   // a opção bloqueada que leva o convidado a entrar/criar conta.
   const opcaoDePagamentoTabulavel =
@@ -7147,6 +7191,7 @@ export function CheckoutViewDaConta({
             return;
           }
           if (option.value !== paymentMethod) atualizarTroco(null);
+          setFormaTrocadaSemToque(false);
           setPaymentMethod(option.value);
           if (option.metodoOnline) setMetodoOnline(option.metodoOnline);
         }}
@@ -8348,6 +8393,15 @@ export function CheckoutViewDaConta({
                 Meio de pagamento
               </h2>
             </div>
+            {/* Sempre montada (o leitor de tela só fala o que entra numa
+                região que já existia): diz a troca de forma feita sem toque. */}
+            <p
+              id="checkout-aviso-da-forma-de-pagamento"
+              role="status"
+              className="sr-only"
+            >
+              {avisoDaFormaTrocada}
+            </p>
             {/* Laudo de acessibilidade 03/09, achado 3: as opções de pagamento
               são uma escolha ÚNICA, mas nada anunciava qual estava marcada —
               o "check" era só um desenho. `radiogroup` + `radio` com
@@ -9488,40 +9542,6 @@ function rotuloDaFormaNaTelaDeSucesso(
 ): string {
   const rotulo = rotuloDaFormaDoPedido({ paymentMethod });
   return ehRetirada ? rotulo.replace(" na entrega", " na retirada") : rotulo;
-}
-
-// Acessibilidade (lote r64-a): "Pedido recebido!", "Pagamento Confirmado!" e
-// "Finalize o pagamento" SUBSTITUEM a tela inteira, e o botão que tinha o foco
-// (Finalizar, "Copiar código Pix") some junto — o foco caía no corpo da página
-// e o leitor de tela ficava em silêncio. O título recebe o foco UMA vez, quando
-// a tela aparece (efeito sem dependência de render): o leitor fala o título e o
-// teclado recomeça dali; redesenhos seguintes não puxam o foco de volta, para
-// não tirar a pessoa do "Copiar código Pix". `semFocoNaAbertura` poupa quem só
-// abriu/recarregou a página sem tocar em nada (mesma regra do foco do <main>
-// no App.tsx: não atropelar o "Pular para o conteúdo").
-function TituloQueRecebeOFoco({
-  nivel,
-  semFocoNaAbertura = false,
-  className,
-  children,
-}: Readonly<{
-  nivel: 1 | 2;
-  semFocoNaAbertura?: boolean;
-  className: string;
-  children: ReactNode;
-}>) {
-  const ref = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    if (semFocoNaAbertura && navigator.userActivation?.hasBeenActive === false)
-      return;
-    ref.current?.focus({ preventScroll: true });
-  }, [semFocoNaAbertura]);
-  const Titulo = nivel === 1 ? "h1" : "h2";
-  return (
-    <Titulo ref={ref} tabIndex={-1} className={cn(className, "outline-none")}>
-      {children}
-    </Titulo>
-  );
 }
 
 // O RECIBO (12/11/2026): as telas que dizem "o pedido está feito" ("Pedido
