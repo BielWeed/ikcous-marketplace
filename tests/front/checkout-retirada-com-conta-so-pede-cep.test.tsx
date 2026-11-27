@@ -417,10 +417,15 @@ describe("CheckoutView — retirada com conta pede só o CEP", () => {
     expect(espelho.selecionada?.id).toBe("local-delivery");
     await clicar(botao("Dinheiro na Entrega"));
 
+    // 27/11/2026: o Finalizar apaga na entrega (antes acendia e só o toque
+    // recusava com o aviso) — ver
+    // checkout-conta-sem-endereco-nao-finaliza-a-entrega.test.tsx.
+    expect(botaoFinalizar().disabled).toBe(true);
     await clicar(botaoFinalizar());
 
     expect(createOrder).not.toHaveBeenCalled();
-    expect(toastError).toHaveBeenCalledWith(AVISO_ENDERECO_DE_ENTREGA);
+    // O toque no botão apagado nem chega à guarda do envio.
+    expect(toastError).not.toHaveBeenCalledWith(AVISO_ENDERECO_DE_ENTREGA);
   });
 
   it("controle — conta COM endereço: sem campo de CEP, a cotação segue o CEP do endereço (mesmo com outro CEP guardado no aparelho)", async () => {

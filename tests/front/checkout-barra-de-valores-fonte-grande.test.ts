@@ -67,7 +67,10 @@ describe("barra de valores do checkout — fonte grande do sistema", () => {
     // A classe está no elemento que contém o grupo dos valores (e o botão).
     const ancestral = checkout.lastIndexOf('className="checkout-barra', grupo);
     expect(ancestral).toBeGreaterThan(-1);
-    expect(grupo - ancestral).toBeLessThan(900);
+    // O grupo fica DENTRO da barra: nenhum `</div>` fecha a barra antes dele.
+    // (Medir distância em caracteres quebrava a cada comentário ou região
+    // `sr-only` nova entre os dois, sem mudar a estrutura.)
+    expect(checkout.slice(ancestral, grupo)).not.toContain("</div>");
   });
 
   it("o limite é em rem (acompanha a fonte do sistema), nunca em px: em px a barra não perceberia a fonte grande", () => {

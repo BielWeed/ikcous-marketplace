@@ -73,8 +73,9 @@ function endereco(id: string, cep: string, principal: boolean) {
 }
 
 // A lista que a conta tem AGORA: o teste a troca no meio (endereço apagado).
+// `carregando` imita o hook real: leitura em andamento tem `loading` verdadeiro.
 const { lista } = vi.hoisted(() => ({
-  lista: { atual: [] as Array<Record<string, unknown>> },
+  lista: { atual: [] as Array<Record<string, unknown>>, carregando: false },
 }));
 vi.mock("@/hooks/useAddresses", () => ({
   useAddresses: () =>
@@ -82,7 +83,7 @@ vi.mock("@/hooks/useAddresses", () => ({
       addresses: lista.atual,
       addAddress: vi.fn(),
       updateAddress: vi.fn(),
-      loading: false,
+      loading: lista.carregando,
     }),
 }));
 
@@ -208,6 +209,7 @@ describe("CheckoutView — endereço escolhido que foi apagado", () => {
   };
 
   beforeEach(async () => {
+    lista.carregando = false;
     const { _limparCacheDeEconomiaDoFreteParaTeste } = await import(
       "@/hooks/useEconomiaDoFreteExibida"
     );
@@ -297,9 +299,13 @@ describe("CheckoutView — endereço escolhido que foi apagado", () => {
     lista.atual = [endereco("addr-1", "01310-100", true)];
     await desenhar();
     await esperar(420);
+    // "Ainda não carregou" de verdade: lista vazia COM a leitura em andamento
+    // (no hook real, lista vazia sem `loading` é o servidor confirmando vazio).
+    lista.carregando = true;
     lista.atual = [];
     await desenhar();
     await esperar(50);
+    lista.carregando = false;
     // Quando a lista volta, o PRINCIPAL já é outro: se a lista vazia tivesse
     // apagado a escolha, o efeito assumiria esse principal em vez do addr-1.
     lista.atual = [

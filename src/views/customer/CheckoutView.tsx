@@ -1915,6 +1915,11 @@ export function CheckoutViewDaConta({
     paymentMethod === "online" && metodoOnline === "cartao" && cartaoDisponivel
       ? "cartao"
       : "pix";
+  // A forma de pagamento VIVA (eixo + submétodo), atualizada a cada render —
+  // irmã de `freteVivoRef`, abaixo: o envio leva a forma do clique, e um efeito
+  // (a loja desligou a forma, a sessão caiu) pode trocá-la durante a espera.
+  const formaVivaRef = useRef("");
+  formaVivaRef.current = `${paymentMethod}:${metodoOnlineEfetivo}`;
   const [notes, setNotes] = useState("");
   const valorParaTroco = troco?.valor ?? null;
   const trocoVivoRef = useRef<string | null>(null);
@@ -1940,6 +1945,57 @@ export function CheckoutViewDaConta({
     );
   /** Ver `criarTravaDeEnvio`: fecha o botao no tique do clique (#27). */
   const travaDeEnvioRef = useRef(criarTravaDeEnvio());
+  // FOCO DEPOIS DA RECUSA (27/11/2026): o "Finalizar" fica `disabled` durante
+  // o envio, e o navegador devolve ao <body> o foco de um botão que apaga.
+  // Recusado DEPOIS de uma espera, o teclado e o leitor de tela ficavam sem
+  // lugar. O envio marca aqui para onde o foco vai — o que explica o problema
+  // — e o efeito abaixo o leva lá depois que `isSubmitting` desliga e a tela
+  // nova existe. Objeto novo a cada recusa: duas iguais seguidas disparam.
+  type AlvoDoFocoDaRecusa =
+    | "recusa"
+    | "valores"
+    | "pagamento"
+    | "troco"
+    | "dados";
+  const [focoAposRecusa, setFocoAposRecusa] = useState<{
+    alvo: AlvoDoFocoDaRecusa;
+  } | null>(null);
+  const levarFocoAoProblema = (alvo: AlvoDoFocoDaRecusa) =>
+    setFocoAposRecusa({ alvo });
+  useEffect(() => {
+    if (!focoAposRecusa || isSubmitting) return;
+    setFocoAposRecusa(null);
+    // Só resgata o foco PERDIDO (no <body>, ou ainda no Finalizar): quem já
+    // foi para outro campo durante a espera fica onde está.
+    const ativo = document.activeElement;
+    if (
+      ativo &&
+      ativo !== document.body &&
+      ativo.getAttribute("aria-label") !== "Finalizar pedido"
+    )
+      return;
+    const { alvo } = focoAposRecusa;
+    // A forma marcada agora (ou, sem nenhuma, a opção que o Tab alcança).
+    const formaDePagamento = () =>
+      document.querySelector<HTMLElement>(
+        '[role="radiogroup"][aria-label="Meio de pagamento"] [role="radio"][aria-checked="true"]',
+      ) ??
+      document.querySelector<HTMLElement>(
+        '[role="radiogroup"][aria-label="Meio de pagamento"] [role="radio"][tabindex="0"]',
+      );
+    const destino =
+      alvo === "recusa"
+        ? document.getElementById("checkout-saida-da-recusa")
+        : alvo === "valores"
+          ? document.getElementById("checkout-valores-do-pedido")
+          : alvo === "dados"
+            ? document.getElementById("cabecalho-dados-e-entrega")
+            : alvo === "troco"
+              ? (document.getElementById("checkout-valor-para-troco") ??
+                formaDePagamento())
+              : formaDePagamento();
+    destino?.focus();
+  }, [focoAposRecusa, isSubmitting]);
   // A CHAVE DA COMPRA (laudo 31/08, A1 — metade cliente da idempotência do
   // pedido; a metade servidor é a migration 20261038000000). Gera um uuid
   // POR COMPRA — impressão digital de itens+frete+cupom+total+CEP — repete
@@ -2823,6 +2879,12 @@ export function CheckoutViewDaConta({
   // Quem tem o cartão "Seu CEP" no resumo: a visitante, e a conta sem endereço
   // salvo que vai retirar (o resto da conta usa o endereço salvo).
   const resumoSoComCep = !user || (contaSemEnderecoSalvo && ehRetirada);
+  // ENTREGA SEM ENDEREÇO NA CONTA (27/11/2026): o CEP digitado da conta sem
+  // endereço cota o frete para ela poder RETIRAR (#1966), e a cotação marca a
+  // entrega sozinha — o Finalizar acendia para uma casa que ela não cadastrou
+  // e o toque só devolvia "adicione um endereço". Na entrega, conta sem
+  // endereço na lista não finaliza: o resumo pede o cadastro e o botão apaga.
+  const entregaSemEnderecoDaConta = !!user && !ehRetirada && !enderecoEfetivo;
 
   // CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
   // Endereços" viraram UMA seção só ("Seus dados e entrega"), com resumo
@@ -3624,6 +3686,12 @@ export function CheckoutViewDaConta({
     ? descontoDoCupom
     : Math.min(descontoDoCupom, subtotal);
   const finalTotal = arredondarParaCentavos(total - discount);
+  // A compra VIVA (linhas do carrinho + total em centavos), atualizada a cada
+  // render — irmã de `freteVivoRef`: o carrinho muda por baixo do checkout
+  // quando a cliente mexe nele em outra aba ou aparelho (evento `storage`,
+  // aviso ao vivo), e o envio roda na closure do clique.
+  const compraVivaRef = useRef("");
+  compraVivaRef.current = `${assinaturaDosItens(cart)}#${Math.round(finalTotal * 100)}`;
 
   // Laudo 31/08 (B2): a guarda migrou para `finalizarBloqueadoPorFrete`
   // (src/lib/guarda-de-frete.ts); o motivo e a história dela estão no
@@ -3639,6 +3707,36 @@ export function CheckoutViewDaConta({
       shipping,
       temOpcaoSelecionada: !!selectedShippingOption,
     });
+
+  // O TOTAL PARA O LEITOR DE TELA (27/11/2026): o frete se recota, o cupom
+  // entra, e o Total da barra muda em silêncio — ele não é região viva. Mesma
+  // régua do carrinho (`CartView`, `role="status"` só no valor), SEM spam: o
+  // texto só troca quando há um total FECHADO diferente do último; "a
+  // calcular" não fala, e a recotação que volta ao mesmo valor também não.
+  // Enquanto recota, a região ESVAZIA (esvaziar não é anunciado): o total de
+  // antes não pode ficar legível como se valesse — o preço pode ter mudado.
+  // Ajuste de estado no render — o padrão do React para estado derivado, sem
+  // efeito de um quadro atrasado.
+  const totalFechadoParaLeitorDeTela = semFreteSelecionado
+    ? null
+    : `Total do pedido: ${reais(finalTotal)}. ${
+        // A retirada não fala "entrega" (a linha da barra também não).
+        ehRetirada && shipping === 0
+          ? "Retirada na loja"
+          : `Entrega: ${shipping > 0 ? reais(shipping) : "Grátis"}`
+      }.`;
+  const [anuncioDoTotal, setAnuncioDoTotal] = useState(() => ({
+    ultimo: totalFechadoParaLeitorDeTela ?? "",
+    visivel: totalFechadoParaLeitorDeTela !== null,
+  }));
+  if (
+    totalFechadoParaLeitorDeTela !== null &&
+    totalFechadoParaLeitorDeTela !== anuncioDoTotal.ultimo
+  )
+    setAnuncioDoTotal({ ultimo: totalFechadoParaLeitorDeTela, visivel: true });
+  else if (totalFechadoParaLeitorDeTela === null && anuncioDoTotal.visivel)
+    setAnuncioDoTotal({ ultimo: anuncioDoTotal.ultimo, visivel: false });
+  const totalAnunciado = anuncioDoTotal.visivel ? anuncioDoTotal.ultimo : "";
 
   // CUPOM EM CONFERÊNCIA (dinheiro): o cupom da tela ainda não foi conferido
   // para o subtotal e a conta de AGORA — restaurado do rascunho com desconto 0,
@@ -4036,6 +4134,15 @@ export function CheckoutViewDaConta({
       handleSelectAddress(defaultAddr);
     }
   }, [addresses, selectedAddressId, handleSelectAddress]);
+  // A LISTA CONFIRMADA VAZIA (27/11/2026): o efeito de cima não age com a
+  // lista vazia ("ainda não sei"), mas `contaSemEnderecoSalvo` só é true
+  // quando o SERVIDOR confirmou a lista vazia — aí o id é de um endereço
+  // apagado (outro aparelho) e não pode ir no pedido. O #1960 fazia isto no
+  // envio da retirada; o #1966 tirou esse bloco, e a entrega ficou com o id
+  // velho (o banco recusava com "Endereço inválido...").
+  useEffect(() => {
+    if (contaSemEnderecoSalvo && selectedAddressId) setSelectedAddressId(null);
+  }, [contaSemEnderecoSalvo, selectedAddressId, setSelectedAddressId]);
 
   // CHECKOUT-090: verificação periódica do pagamento. Nasceu como "rede de
   // segurança" contra o WebSocket do realtime cair sem avisar, mas o achado
@@ -4603,6 +4710,7 @@ export function CheckoutViewDaConta({
   // exigência entra num lugar, não em dois.
   const botaoFinalizarDesabilitado =
     buscandoEnderecoDaEntrega ||
+    entregaSemEnderecoDaConta ||
     cart.length === 0 ||
     !!aplicandoCupom ||
     cupomEmConferencia ||
@@ -4966,7 +5074,9 @@ export function CheckoutViewDaConta({
     // Só a ENTREGA exige endereço salvo de quem tem conta: na retirada o
     // pedido não leva endereço de casa (26/11/2026) — a cotação já saiu do CEP
     // e o banco grava o endereço da loja.
-    if (user && !ehRetirada && !selectedAddressId) {
+    // Id que não está na lista (apagado em outro aparelho, ainda não limpo)
+    // conta como ausente: `enderecoEfetivo` só existe com endereço na lista.
+    if (user && !ehRetirada && (!selectedAddressId || !enderecoEfetivo)) {
       toast.error("Por favor, adicione ou selecione um endereço de entrega.");
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -5121,6 +5231,7 @@ export function CheckoutViewDaConta({
           setSelectedShippingOption(null);
           setForcarNovaCotacaoEm((n) => n + 1);
         }
+        levarFocoAoProblema("valores");
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
         return;
@@ -5139,6 +5250,7 @@ export function CheckoutViewDaConta({
           );
           setSelectedShippingOption(null);
           setForcarNovaCotacaoEm((n) => n + 1);
+          levarFocoAoProblema("valores");
           setIsSubmitting(false);
           travaDeEnvioRef.current.liberar();
           return;
@@ -5276,6 +5388,7 @@ export function CheckoutViewDaConta({
           : { acao: "entrar_na_conta", mensagem: MENSAGEM_SESSAO_EXPIRADA };
         toast.error(recusa.mensagem);
         setRecusaDoUltimoClique(recusa);
+        levarFocoAoProblema("recusa");
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
         return;
@@ -5302,6 +5415,7 @@ export function CheckoutViewDaConta({
       if (!enderecosConfirmados) {
         toast.error(RECUSA_ENDERECO_NAO_CONFIRMADO.mensagem);
         setRecusaDoUltimoClique(RECUSA_ENDERECO_NAO_CONFIRMADO);
+        levarFocoAoProblema("recusa");
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
         return;
@@ -5317,6 +5431,7 @@ export function CheckoutViewDaConta({
         toast.error(
           "O endereço de entrega foi alterado em outro aparelho. Confira o novo endereço e finalize de novo.",
         );
+        levarFocoAoProblema("dados");
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
         return;
@@ -5342,6 +5457,42 @@ export function CheckoutViewDaConta({
       toast.error(
         "A forma de entrega mudou enquanto o pedido era enviado. Confira o total e finalize.",
       );
+      levarFocoAoProblema("valores");
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
+    // O CARRINHO DO CLIQUE × O CARRINHO DE AGORA (27/11/2026): com o checkout
+    // aberto em duas abas (ou o carrinho mexido em outro aparelho), o contexto
+    // entrega o carrinho novo durante a espera e a tela já mostra outros itens
+    // e outro total. O servidor recalcula o preço, mas dos itens que RECEBE —
+    // os do clique. Mudou a linha, a quantidade ou o total: nada sai, e a
+    // cliente confere o que está na tela antes de finalizar de novo.
+    if (
+      compraVivaRef.current !==
+      `${assinaturaDosItens(cart)}#${Math.round(finalTotal * 100)}`
+    ) {
+      toast.error(
+        "O carrinho mudou enquanto o pedido era enviado (em outra aba ou aparelho). Confira os itens e o total e finalize de novo.",
+      );
+      levarFocoAoProblema("valores");
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
+    // A FORMA DO CLIQUE × A FORMA DE AGORA (27/11/2026): as opções ficam
+    // travadas durante o envio, mas um efeito (a loja desligou a forma na
+    // entrega, a sessão caiu) ainda pode trocar a escolha na tela. O pedido
+    // leva `paymentMethod` do clique; se a tela já mostra outra forma, nada
+    // sai. Antes do troco: trocar a forma também zera o troco, e a frase
+    // certa aqui é a da forma.
+    if (formaVivaRef.current !== `${paymentMethod}:${metodoOnlineEfetivo}`) {
+      toast.error(
+        "A forma de pagamento mudou enquanto o pedido era enviado. Confira o pagamento e finalize de novo.",
+      );
+      levarFocoAoProblema("pagamento");
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
       return;
@@ -5351,6 +5502,7 @@ export function CheckoutViewDaConta({
     // durante as conferências, o pedido não sai com o troco do clique antigo.
     if (trocoVivoRef.current !== trocoNesteRender) {
       toast.error("O troco mudou. Confira o pagamento e finalize de novo.");
+      levarFocoAoProblema("troco");
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
       return;
@@ -5416,6 +5568,7 @@ export function CheckoutViewDaConta({
       console.error("Falha inesperada no checkout:", error);
       const saida = decidirSaidaDoCheckout(error);
       setRecusaDoUltimoClique(saida);
+      levarFocoAoProblema("recusa");
       toast.error(mensagemDoAvisoDePedido(saida));
     });
   };
@@ -5647,6 +5800,7 @@ export function CheckoutViewDaConta({
         toast.error("O frete mudou, calcule de novo.");
         setSelectedShippingOption(null);
         setForcarNovaCotacaoEm((n) => n + 1);
+        levarFocoAoProblema("valores");
         // `setIsSubmitting`/`liberar` ficam para o `finally` logo abaixo —
         // convenção de `travaDeEnvio.ts`: "vai no finally, nunca antes".
         return;
@@ -5702,6 +5856,7 @@ export function CheckoutViewDaConta({
       // 28/08/2026 só existia o toast, ele sumia sozinho e não levava a lugar
       // nenhum, e a pessoa ficava parada no último clique com o dinheiro na mão.
       setRecusaDoUltimoClique(saida);
+      levarFocoAoProblema("recusa");
     } finally {
       if (montadoRef.current) setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -6973,7 +7128,15 @@ export function CheckoutViewDaConta({
         aria-checked={isSelected && !bloqueadaPorFaltaDeConta}
         tabIndex={option === opcaoDePagamentoTabulavel ? 0 : -1}
         data-pagamento-bloqueado={bloqueadaPorFaltaDeConta || undefined}
+        // PEDIDO EM ENVIO (27/11/2026): o pedido já leva a forma do clique;
+        // trocar agora só mudaria a tela. `aria-disabled` (não `disabled`): a
+        // opção pode estar com o foco, e `disabled` o jogaria no vazio. As
+        // setas do grupo já pulam o que é `aria-disabled`.
+        aria-disabled={isSubmitting || undefined}
         onClick={() => {
+          // Trava síncrona, não o estado: cobre o toque que chega antes de
+          // `isSubmitting` pintar a tela (mesma régua de `envioEmCurso`).
+          if (envioEmCurso()) return;
           if (bloqueadaPorFaltaDeConta) {
             entrarParaPagarNoApp();
             return;
@@ -8850,10 +9013,24 @@ export function CheckoutViewDaConta({
                           ? "Enviando pedido…"
                           : avisoDoFreteParaLeitorDeTela}
                       </span>
+                      {/* O total, para o leitor de tela (`totalAnunciado`):
+                          região à parte, DEPOIS da de cima — fala só quando o
+                          valor fechado muda. */}
+                      <span
+                        role="status"
+                        aria-atomic="true"
+                        className="sr-only"
+                      >
+                        {totalAnunciado}
+                      </span>
                       <div
                         role="group"
                         aria-label="Valores do pedido"
-                        className="checkout-values"
+                        // Recebe o foco quando o envio é recusado por algo que
+                        // muda o total ("confira o total e finalize").
+                        id="checkout-valores-do-pedido"
+                        tabIndex={-1}
+                        className="checkout-values outline-none"
                       >
                         <div>
                           <div>
@@ -9243,7 +9420,13 @@ export function CheckoutViewDaConta({
                       // Fica ao lado do botão que acabou de falhar, de
                       // propósito: é onde a pessoa está olhando no instante da
                       // recusa. O toast avisa; este painel é o que dá a saída.
-                      <div className="mx-auto max-w-md">
+                      // `tabIndex={-1}`: recebe o foco quando o envio é recusado
+                      // (`levarFocoAoProblema`), sem entrar na ordem do Tab.
+                      <div
+                        id="checkout-saida-da-recusa"
+                        tabIndex={-1}
+                        className="mx-auto max-w-md outline-none"
+                      >
                         <SaidaDaRecusa
                           recusa={recusaDoUltimoClique}
                           // Só esta recusa é anterior ao envio: o novo clique

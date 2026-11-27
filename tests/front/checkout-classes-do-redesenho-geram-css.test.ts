@@ -169,6 +169,12 @@ const NAO_E_CLASSE = new Set([
   // id do campo de CEP da conta sem endereço salvo (CAMPO_DO_INPUT e o foco
   // da pendência da barra), não classe
   "checkout-cep-conta",
+  // ids para onde o foco vai quando o Finalizar é recusado
+  // (`levarFocoAoProblema`, 27/11/2026), não classes
+  "checkout-saida-da-recusa",
+  "checkout-valores-do-pedido",
+  "cabecalho-dados-e-entrega",
+  "checkout-valor-para-troco",
   "calculate-shipping",
   "sem-destino",
   "cupom-aplicado",

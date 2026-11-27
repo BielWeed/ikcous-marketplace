@@ -354,7 +354,12 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
     },
   );
 
-  it("não envia o troco antigo se a forma de pagamento mudar antes do envio", async () => {
+  // 27/11/2026: a forma de pagamento fica TRAVADA durante o envio (ver
+  // checkout-forma-de-pagamento-travada-durante-o-envio.test.tsx). Antes, o
+  // toque em "Pix na Entrega" no meio do envio trocava a tela e o troco caía
+  // pela guarda do troco; agora o toque não troca nada e o pedido sai com a
+  // forma e o troco que a cliente viu ao tocar em Finalizar.
+  it("tocar em outra forma durante o envio não troca nada: o pedido sai em dinheiro com o troco do clique", async () => {
     await montar();
     await pedirTroco("100");
     let liberarSessao: (vale: boolean) => void = () => {};
@@ -371,6 +376,37 @@ describe("CheckoutView — troco para pagamento em dinheiro", () => {
     expect(createOrder).not.toHaveBeenCalled();
 
     act(() => botao("Pix na Entrega").click());
+    expect(botao("Dinheiro na Entrega").getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    await act(async () => liberarSessao(true));
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    const pedido = createOrder.mock.calls[0][0];
+    expect(pedido.paymentMethod).toBe("cash");
+    expect(pedido.notes ?? "").toContain("Troco para");
+  });
+
+  // A troca que a trava da tela não alcança: a loja desliga o dinheiro no
+  // meio do envio e o efeito de fallback marca outra forma sozinho.
+  it("não envia o troco antigo se a forma de pagamento mudar antes do envio (efeito, sem toque)", async () => {
+    await montar();
+    await pedirTroco("100");
+    let liberarSessao: (vale: boolean) => void = () => {};
+    sessaoAindaEhDoDono.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        liberarSessao = resolve;
+      }),
+    );
+    await act(async () => {
+      finalizar().click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(sessaoAindaEhDoDono).toHaveBeenCalledTimes(1);
+    expect(createOrder).not.toHaveBeenCalled();
+
+    formas = ["pix"];
+    await renderizar();
+    expect(botao("Pix na Entrega").getAttribute("aria-checked")).toBe("true");
     await act(async () => liberarSessao(true));
     expect(createOrder).not.toHaveBeenCalled();
     const pedido = await enviar();
