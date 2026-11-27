@@ -12,7 +12,19 @@ import {
 } from "@/lib/datas-do-banner";
 import { describe, expect, it } from "vitest";
 
-const FIM = new Date(2026, 10, 24, 12, 0, 0, 0); // 24/11/2026 12:00:00.000, relógio local
+// Dia e hora do relógio de BRASÍLIA (UTC-03:00, sem horário de verão), mês de
+// 0 a 11: o texto do fim usa o calendário da loja em qualquer aparelho.
+const brasilia = (
+  ano: number,
+  mes0: number,
+  dia: number,
+  hora = 0,
+  minuto = 0,
+  segundo = 0,
+  ms = 0,
+) => new Date(Date.UTC(ano, mes0, dia, hora + 3, minuto, segundo, ms));
+
+const FIM = brasilia(2026, 10, 24, 12, 0, 0, 0); // 24/11/2026 12:00:00.000 de Brasília
 const FIM_ISO = FIM.toISOString();
 const NO_INSTANTE_DO_FIM = new Date(FIM.getTime());
 const UM_MS_DEPOIS = new Date(FIM.getTime() + 1);

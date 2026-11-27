@@ -996,7 +996,7 @@ describe("useAvisosDoLojista — cancelamento do cliente", () => {
     ).toHaveLength(1);
   });
 
-  it("a consulta le SO cancelamentos das ultimas 24 h, com autor, e os papeis dos autores", async () => {
+  it("a consulta le SO cancelamentos das ultimas 36 h (24 h do sino + 12 h de folga do relogio), com autor, e os papeis dos autores", async () => {
     RESPOSTA_CANCELAMENTOS = { data: [linhaDoHistorico()], error: null };
     RESPOSTA_PERFIS = {
       data: [{ id: CLIENTE, role: "customer" }],
@@ -1020,8 +1020,9 @@ describe("useAvisosDoLojista — cancelamento do cliente", () => {
     const gte = FILTROS_DO_HISTORICO.find((f) => f[0] === "gte");
     expect(gte?.[1]).toBe("created_at");
     const desde = Date.parse(String(gte?.[2]));
-    // 24 h antes de "agora", com folga de alguns segundos de relogio de teste.
-    expect(Math.abs(antes - 24 * 3600 * 1000 - desde)).toBeLessThan(10_000);
+    // 36 h antes de "agora" (janela de 24 h + 12 h de relogio adiantado da
+    // lojista), com folga de alguns segundos de relogio de teste.
+    expect(Math.abs(antes - 36 * 3600 * 1000 - desde)).toBeLessThan(10_000);
     expect(tabelasConsultadas).toContain("profiles");
   });
 

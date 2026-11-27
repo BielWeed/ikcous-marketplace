@@ -52,10 +52,14 @@ import {
   templateTypeDoModelo,
 } from "@/lib/catalogo-de-banners";
 import { cortarTexto } from "@/lib/cortar-texto";
+import { dataNoFusoDaLoja, formatarDataHoraBrasilia } from "@/lib/data-da-loja";
 import {
   MENSAGEM_FIM_ANTES_DO_INICIO,
+  campoDoBannerDoInstante,
   estaNoAr,
   fimDoBannerEmTexto,
+  instanteDoCampoDoBanner,
+  periodoDoAtalhoDoBanner,
   problemaDasDatas,
 } from "@/lib/datas-do-banner";
 import {
@@ -163,15 +167,6 @@ const getLuminance = (hex: string): number => {
     return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
   });
   return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
-};
-
-const toLocalDatetimeLocal = (isoString?: string | null): string => {
-  if (!isoString) return "";
-  const d = new Date(isoString);
-  if (Number.isNaN(d.getTime())) return "";
-  const offset = d.getTimezoneOffset();
-  const localDate = new Date(d.getTime() - offset * 60 * 1000);
-  return localDate.toISOString().slice(0, 16);
 };
 
 const blendColors = (
@@ -2001,48 +1996,8 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const handleApplyDatePreset = (preset: "24h" | "weekend" | "7d" | "30d") => {
-    const now = new Date();
-    let start = new Date();
-    let end = new Date();
-
-    if (preset === "24h") {
-      end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    } else if (preset === "weekend") {
-      const currentDay = now.getDay();
-      const daysToSaturday = (6 - currentDay + 7) % 7;
-      if (currentDay === 6 || currentDay === 0) {
-        start = now;
-      } else {
-        start = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate() + daysToSaturday,
-          0,
-          0,
-          0,
-        );
-      }
-      const sundayDate =
-        currentDay === 0
-          ? now
-          : new Date(
-              now.getFullYear(),
-              now.getMonth(),
-              now.getDate() + daysToSaturday + 1,
-            );
-      end = new Date(
-        sundayDate.getFullYear(),
-        sundayDate.getMonth(),
-        sundayDate.getDate(),
-        23,
-        59,
-        59,
-      );
-    } else if (preset === "7d") {
-      end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    } else if (preset === "30d") {
-      end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    }
+    // Calendário de Brasília, em qualquer aparelho (`datas-do-banner.ts`).
+    const { inicio: start, fim: end } = periodoDoAtalhoDoBanner(preset);
 
     setFormData((prev) => ({
       ...prev,
@@ -2051,7 +2006,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     }));
 
     toast.success("Programação de campanha aplicada!", {
-      description: `Período: ${start.toLocaleDateString("pt-BR")} a ${end.toLocaleDateString("pt-BR")}`,
+      description: `Período: ${dataNoFusoDaLoja(start)} a ${dataNoFusoDaLoja(end)}`,
       icon: "📅",
     });
   };
@@ -3492,36 +3447,36 @@ export const AdminBannersView = memo(function AdminBannersView({
                             ))}
                           </div>
                           <Label htmlFor="banner-start-date">
-                            Data/Hora de Início
+                            Data/Hora de Início (horário de Brasília)
                           </Label>
                           <Input
                             id="banner-start-date"
                             type="datetime-local"
                             className="min-h-11 border-admin-border bg-admin-bg text-white"
-                            value={toLocalDatetimeLocal(formData.startDate)}
+                            value={campoDoBannerDoInstante(formData.startDate)}
                             onChange={(e) =>
                               setFormData((prev) => ({
                                 ...prev,
-                                startDate: e.target.value
-                                  ? new Date(e.target.value).toISOString()
-                                  : null,
+                                startDate: instanteDoCampoDoBanner(
+                                  e.target.value,
+                                ),
                               }))
                             }
                           />
                           <Label htmlFor="banner-end-date">
-                            Data/Hora de Fim (Expiração)
+                            Data/Hora de Fim (horário de Brasília)
                           </Label>
                           <Input
                             id="banner-end-date"
                             type="datetime-local"
                             className="min-h-11 border-admin-border bg-admin-bg text-white"
-                            value={toLocalDatetimeLocal(formData.endDate)}
+                            value={campoDoBannerDoInstante(formData.endDate)}
                             onChange={(e) =>
                               setFormData((prev) => ({
                                 ...prev,
-                                endDate: e.target.value
-                                  ? new Date(e.target.value).toISOString()
-                                  : null,
+                                endDate: instanteDoCampoDoBanner(
+                                  e.target.value,
+                                ),
                               }))
                             }
                           />
@@ -4047,9 +4002,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                 "Banner sem título"}
               ”?
               {bannerEmExclusao?.startDate &&
-                ` De ${new Date(bannerEmExclusao.startDate).toLocaleString("pt-BR")}.`}
+                ` De ${formatarDataHoraBrasilia(bannerEmExclusao.startDate)}.`}
               {bannerEmExclusao?.endDate &&
-                ` Até ${new Date(bannerEmExclusao.endDate).toLocaleString("pt-BR")}.`}{" "}
+                ` Até ${formatarDataHoraBrasilia(bannerEmExclusao.endDate)}.`}{" "}
               A campanha sairá do catálogo. As artes de celular e computador que
               não estiverem em uso em outro banner também poderão ser apagadas.
               Não dá para desfazer.

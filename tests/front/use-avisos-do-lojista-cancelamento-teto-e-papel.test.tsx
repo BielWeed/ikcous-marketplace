@@ -178,6 +178,46 @@ describe("useAvisosDoLojista — cancelamento do cliente: teto e quem e excluido
     expect(limite?.[1]).toBe(100);
   });
 
+  // 27/11/2026: a janela de 24 h e contada no banco a partir de um `desde` que
+  // o APARELHO calcula. Com o relogio da lojista 3 h adiantado, o `desde`
+  // ficava 3 h no futuro e os cancelamentos de pedido pago feitos entre 21 h e
+  // 24 h atras sumiam do sino. A resposta nao traz a hora do servidor, entao a
+  // leitura pede 12 h a mais: um relogio adiantado ate 12 h nao esconde nada.
+  it.each([
+    ["certo", 0],
+    ["3 h adiantado", 3],
+    ["12 h adiantado", 12],
+  ])(
+    "relogio %s: o cancelamento de 23 h 59 atras (hora real) continua na leitura",
+    async (_nome, adiantadoHoras) => {
+      const HORA = 3600 * 1000;
+      const agoraReal = Date.parse("2026-11-27T15:00:00.000Z");
+      const cancelouHa23h59 = agoraReal - 24 * HORA + 60 * 1000;
+      try {
+        vi.setSystemTime(agoraReal + adiantadoHoras * HORA);
+        await montar();
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const gte = chamadasDoHistorico.find((c) => c[0] === "gte");
+      expect(gte?.[1]).toBe("created_at");
+      expect(Date.parse(String(gte?.[2]))).toBeLessThanOrEqual(cancelouHa23h59);
+    },
+  );
+
+  it("a folga e de 12 h, nao uma leitura sem fim: o desde e agora - 36 h", async () => {
+    const agora = Date.parse("2026-11-27T15:00:00.000Z");
+    try {
+      vi.setSystemTime(agora);
+      await montar();
+    } finally {
+      vi.useRealTimers();
+    }
+    const gte = chamadasDoHistorico.find((c) => c[0] === "gte");
+    expect(gte?.[2]).toBe(new Date(agora - 36 * 3600 * 1000).toISOString());
+  });
+
   // 27/11/2026: o aviso fala da etiqueta ja paga (`etiquetaPaga`) so se a
   // leitura trouxer a coluna; sem ela o pedido chega sem etiqueta e o aviso
   // volta a dizer so "o reembolso e automatico".

@@ -26,10 +26,13 @@ import {
   escolherImagemPropria,
 } from "./helpers/editor-de-banner";
 
-// Datas de calendário LOCAL: o teste vale em qualquer fuso.
+// Datas do calendário de BRASÍLIA (UTC-03:00, sem horário de verão), o da
+// programação do banner desde 27/11/2026: o teste vale em qualquer fuso.
+const brasilia = (a: number, m: number, d: number, h = 12, min = 0) =>
+  new Date(Date.UTC(a, m - 1, d, h + 3, min));
 const local = (a: number, m: number, d: number, h = 12, min = 0) =>
-  new Date(a, m - 1, d, h, min).toISOString();
-const AGORA = new Date(2026, 9, 14, 12, 0); // 14/10/2026 12:00
+  brasilia(a, m, d, h, min).toISOString();
+const AGORA = brasilia(2026, 10, 14, 12, 0); // 14/10/2026 12:00
 
 describe("problemaDasDatas", () => {
   it.each([
@@ -176,9 +179,9 @@ function botaoComTexto(raiz: ParentNode, texto: string) {
   ) as HTMLButtonElement | undefined;
 }
 
+// O campo mostra e lê o horário de Brasília: o instante como o relógio da loja.
 function emCampoLocal(d: Date) {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  return new Date(d.getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 16);
 }
 
 function digitar(el: HTMLInputElement, valor: string) {
@@ -341,12 +344,57 @@ describe("AdminBannersView: datas sem sentido", () => {
   }
 
   it("ligar a programação MOSTRA que o fim ficou para amanhã, com a hora", async () => {
-    // Meio-dia local numa data fixa, longe da virada do dia.
-    vi.setSystemTime(new Date(2026, 1, 10, 12, 30));
+    // Meio-dia de Brasília numa data fixa, longe da virada do dia.
+    vi.setSystemTime(brasilia(2026, 2, 10, 12, 30));
     await abrirBannerNovoNoPasso3();
     expect(textoDaTela()).not.toMatch(/Termina amanhã/);
     await ligarProgramacao();
     expect(textoDaTela()).toContain("Termina amanhã às 12:30.");
+  });
+
+  it("computador em Tóquio: o campo lê e mostra o horário de Brasília, e o rótulo diz isso", async () => {
+    // 27/11/2026: lido no fuso do aparelho, "28/11 00:00" num computador em
+    // outro fuso virava outro instante, e o campo devolvia o mesmo texto
+    // digitado — a lojista não percebia.
+    const fusoAntes =
+      process.env.TZ ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    process.env.TZ = "Asia/Tokyo";
+    try {
+      vi.setSystemTime(brasilia(2026, 11, 27, 12, 0));
+      await abrirBannerNovoNoPasso3();
+      await ligarProgramacao();
+      for (const id of ["banner-start-date", "banner-end-date"]) {
+        const rotulo = document.querySelector(`label[for="${id}"]`);
+        expect(rotulo?.textContent).toContain("(horário de Brasília)");
+      }
+      await act(async () => {
+        digitar(
+          document.getElementById("banner-start-date") as HTMLInputElement,
+          "2026-11-28T00:00",
+        );
+        digitar(
+          document.getElementById("banner-end-date") as HTMLInputElement,
+          "2026-11-29T23:30",
+        );
+      });
+      expect(
+        (document.getElementById("banner-start-date") as HTMLInputElement)
+          .value,
+      ).toBe("2026-11-28T00:00");
+      expect(textoDaTela()).toContain("Termina em 29/11 às 23:30.");
+      await salvar();
+
+      expect(addBanner).toHaveBeenCalledTimes(1);
+      const enviado = addBanner.mock.calls[0][0] as {
+        startDate: string;
+        endDate: string;
+      };
+      // 28/11 00:00 de Brasília = 03:00 UTC; 29/11 23:30 = 30/11 02:30 UTC.
+      expect(enviado.startDate).toBe("2026-11-28T03:00:00.000Z");
+      expect(enviado.endDate).toBe("2026-11-30T02:30:00.000Z");
+    } finally {
+      process.env.TZ = fusoAntes;
+    }
   });
 
   it("sem imagem: leva ao envio da foto e não salva", async () => {

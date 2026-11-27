@@ -327,7 +327,7 @@ export interface EntradaDeAvisos {
    */
   devolucoesSolicitadas?: number;
   /**
-   * Pedidos que o cliente cancelou depois de pagar, nas ultimas 24 h (ja
+   * Pedidos que o cliente cancelou depois de pagar, na janela do sino (36 h) (ja
    * filtrados por `selecionarCancelamentosDoCliente`). Opcional: ausente = a
    * fonte nao entrou nesta rodada.
    */
