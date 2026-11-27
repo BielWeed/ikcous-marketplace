@@ -72,9 +72,11 @@ const CAMINHO_CSS = "src/components/admin/pdv/pdv.css";
 // Assinatura (sha256, fim de linha LF) do pdv.css de a69e9e6ba, ANTES do bloco.
 // Refeita em 27/11/2026 por uma mudança DE CELULAR, fora do bloco: o rótulo
 // do desconto sobe para cima do campo em tela estreita
-// (`tests/e2e/jornada-balcao-desconto-no-celular.spec.ts`).
+// (`tests/e2e/jornada-balcao-desconto-no-celular.spec.ts`). Refeita de novo
+// no mesmo dia, outra vez DE CELULAR: total do rodapé, aviso de limpar a venda
+// (`tests/e2e/jornada-balcao-textos-no-celular.spec.ts`).
 const ASSINATURA_DO_CSS_ORIGINAL =
-  "fc666b90f189c17e99c3306843ec3404abc89e306ab7cd50a0d464d6b6e4adb0";
+  "e7ce3e128c8261649db0f20d922ef26c960fcdc7bccb9cfc359e1f77b857e426";
 const PARAMS_DO_BLOCO = "(min-width: 1280px)";
 const RAIZ = '.pdv[data-etapa="cupom"]';
 
