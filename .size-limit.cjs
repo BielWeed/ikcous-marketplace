@@ -379,7 +379,10 @@ module.exports = [
     // regiao que anuncia a mudanca de status. Degrau de 4 kB (o de sempre) porque os lotes do
     // balcao e do caixa que vem atras tambem crescem o painel. Nada trocado por codigo mais
     // arriscado. A vitrine NAO mexeu (704,62 de 708 kB). Regra do dono: o teto sobe.
-    limit: "596 kB",
+    // 27/11/2026 (peca que volta sem tamanho, PR #2028): 596 -> 600 kB. O painel mediu 596,01 kB
+    // no CI (6 B acima): o aviso da peca sem tamanho na tela do produto e o selo no cartao. Degrau
+    // de 4 kB. Nada trocado por codigo mais arriscado. Regra do dono: o teto sobe.
+    limit: "600 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },
