@@ -39,6 +39,7 @@ import {
 } from "vitest";
 
 import { carregarSdkMercadoPago } from "@/components/checkout/sdk-mercado-pago";
+import { avisoFalado } from "./helpers/aviso-falado";
 
 const createOrder = vi.fn();
 const updateOrderStatus = vi.fn();
@@ -657,7 +658,7 @@ describe("Lacuna L2 — reload no meio do 3DS com o id real da order na vaga", (
     };
     await verificacaoPeriodica();
 
-    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+    expect(avisoFalado(hospedeiro)).toBe(
       "O pagamento com cartão não foi concluído, e o prazo para pagar este pedido acabou.",
     );
     expect(chamadasPorMetodo()).toEqual(["verificar", "cartao"]);

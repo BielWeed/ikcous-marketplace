@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { formatarInteiro } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Paginação única do painel — Missão 06, C2 (aprovada pelo dono): substitui os
@@ -30,6 +31,21 @@ export function PaginacaoAdmin({
   className?: string;
   aparencia?: "clientes";
 }) {
+  const anteriorRef = useRef<HTMLButtonElement>(null);
+  const proximoRef = useRef<HTMLButtonElement>(null);
+  // Chegar na borda pelo botão o deixa `disabled` com o foco dentro (o Chrome
+  // joga o foco no <body>): depois da troca, o foco vai ao botão do outro lado.
+  const focarDepoisRef = useRef<HTMLButtonElement | null>(null);
+  // Só a troca pelos botões é anunciada: filtro e busca mudam o contador
+  // também, e anunciar cada um encheria o leitor de tela.
+  const [aviso, setAviso] = useState("");
+  const paginaPedida = Math.min(pagina, Math.max(0, totalPaginas - 1));
+  useEffect(() => {
+    const alvo = focarDepoisRef.current;
+    focarDepoisRef.current = null;
+    if (alvo && !alvo.disabled) alvo.focus();
+  }, [paginaPedida]);
+
   if (totalItens <= 0) return null;
 
   // Defesa de 1 frame (achado 2, revisão 5.3): quando a lista encolhe e a
@@ -38,6 +54,23 @@ export function PaginacaoAdmin({
   const paginaEfetiva = Math.min(pagina, Math.max(0, totalPaginas - 1));
   const primeiro = paginaEfetiva * itensPorPagina + 1;
   const ultimo = Math.min((paginaEfetiva + 1) * itensPorPagina, totalItens);
+
+  const irPara = (
+    nova: number,
+    botao: HTMLButtonElement,
+    outroLado: HTMLButtonElement | null,
+  ) => {
+    if (ocupada || nova === paginaEfetiva) return;
+    const naBorda = nova === 0 || nova >= totalPaginas - 1;
+    focarDepoisRef.current =
+      naBorda && document.activeElement === botao ? outroLado : null;
+    const de = nova * itensPorPagina + 1;
+    const ate = Math.min((nova + 1) * itensPorPagina, totalItens);
+    setAviso(
+      `Página ${nova + 1} de ${totalPaginas}. Exibindo ${formatarInteiro(de)} - ${formatarInteiro(ate)} de ${formatarInteiro(totalItens)}`,
+    );
+    aoMudar(nova);
+  };
 
   return (
     <div
@@ -75,9 +108,14 @@ export function PaginacaoAdmin({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              if (!ocupada) aoMudar(Math.max(0, paginaEfetiva - 1));
-            }}
+            ref={anteriorRef}
+            onClick={(evento) =>
+              irPara(
+                Math.max(0, paginaEfetiva - 1),
+                evento.currentTarget,
+                proximoRef.current,
+              )
+            }
             aria-disabled={ocupada || undefined}
             disabled={!ocupada && paginaEfetiva === 0}
             className={cn(
@@ -96,10 +134,14 @@ export function PaginacaoAdmin({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              if (!ocupada)
-                aoMudar(Math.min(totalPaginas - 1, paginaEfetiva + 1));
-            }}
+            ref={proximoRef}
+            onClick={(evento) =>
+              irPara(
+                Math.min(totalPaginas - 1, paginaEfetiva + 1),
+                evento.currentTarget,
+                anteriorRef.current,
+              )
+            }
             aria-disabled={ocupada || undefined}
             disabled={!ocupada && paginaEfetiva >= totalPaginas - 1}
             className={cn(
@@ -121,6 +163,9 @@ export function PaginacaoAdmin({
               : "Última página · Próximo indisponível"}
           </p>
         )}
+      <p role="status" aria-atomic="true" className="sr-only">
+        {aviso}
+      </p>
     </div>
   );
 }
