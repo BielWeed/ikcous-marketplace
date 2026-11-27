@@ -338,6 +338,8 @@ describe("Q7 remover: o que a tela faz depois da resposta", () => {
 
   it("a pergunta de remover avisa que param o pedido, o cadastro e a recuperação de senha (inclusive a da dona), e o botão continua o mesmo", async () => {
     definirStatus(SALVO);
+    // o componente lê `resultado.ok`: sem resposta, a promessa estoura depois do teste
+    fns.remover.mockResolvedValue({ ok: true });
     await montar();
     await clicar("Remover o Gmail");
     expect(texto()).toContain(PERGUNTA_DE_REMOVER);
