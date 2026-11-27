@@ -212,6 +212,41 @@ Deno.test("ativar: idempotente para origem que já está na lista, inclusive lis
     if (lista?.includes("/**")) assertEquals(entradas, lista.split(","));
   }
 });
+// 27/11/2026: com a confirmação de e-mail desligada (mailer_autoconfirm=true),
+// quem cadastra o e-mail de outra pessoa com senha já nasce confirmado, e a
+// entrada dela pelo Google liga as duas identidades na mesma conta (o Auth só
+// remove as NÃO confirmadas: supabase.com/docs/guides/auth/identities). Ligar
+// o Google exige a confirmação provada ligada; medir e desativar não mudam.
+for (const [nome, valor] of [
+  ["desligada", true],
+  ["desconhecida (null)", null],
+  ["ausente", undefined],
+  ["de tipo inesperado", "false"],
+])
+  Deno.test(`ativar: confirmação de e-mail ${nome} recusa ligar o Google, sem PATCH`, async () => {
+    const c = cenario({ config: { mailer_autoconfirm: valor } });
+    assertEquals(await c.rodar(), 1);
+    assertEquals(
+      c.chamadas.map((r) => r.init.method),
+      ["GET"],
+    );
+    assertStringIncludes(c.tudo(), "confirmação de e-mail");
+    assertStringIncludes(c.tudo(), "ligue a confirmação");
+    assert(!c.tudo().includes(SECRET));
+  });
+Deno.test("medir e desativar seguem funcionando com a confirmação de e-mail desligada", async () => {
+  const m = cenario({ config: { mailer_autoconfirm: true } });
+  assertEquals(await m.rodar("medir"), 0);
+  const d = cenario({
+    config: { mailer_autoconfirm: true, external_google_enabled: true },
+    env: { GOOGLE_OAUTH_SECRET_TURMA_1: "", CLIENT_ID: "", ORIGENS: "" },
+  });
+  assertEquals(await d.rodar("desativar"), 0);
+  assertEquals(
+    patches(d).map((r) => r.body),
+    [{ external_google_enabled: false }],
+  );
+});
 Deno.test("desativar: apenas enabled=false, preserva id, segredo e lista sem exigir segredo novo", async () => {
   const c = cenario({
     config: {

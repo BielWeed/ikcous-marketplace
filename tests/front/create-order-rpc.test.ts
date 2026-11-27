@@ -213,11 +213,102 @@ describe("total do pagamento vem do pedido gravado", () => {
       }
     },
   );
+});
 
-  it("pedido na entrega não faz a leitura adicional", async () => {
+/**
+ * TOTAL NA ENTREGA/RETIRADA (caça 27/11/2026): o banco aceita até R$ 0,05 de
+ * diferença do total enviado e grava SEMPRE o dele. 3 × R$ 19,90 na tela e o
+ * lojista mudando para R$ 19,91 antes de o carrinho reler: o banco grava
+ * R$ 59,73 e a tela de sucesso dizia R$ 59,70 (recibo, e-mail e Financeiro
+ * dizem 59,73). Aqui o pedido JÁ nasceu e vale: a leitura só corrige o número
+ * da tela, e qualquer falha dela mantém o comportamento de antes.
+ */
+describe("pedido na entrega devolve o total que o banco gravou", () => {
+  const NA_ENTREGA = { ...DADOS_MINIMOS, totalAmount: 59.7 };
+
+  beforeEach(() => {
+    vi.mocked(supabase.rpc).mockClear();
+    vi.mocked(supabase.functions.invoke).mockClear();
+  });
+
+  it.each([59.73, "59.73"])(
+    "relê o total do ID devolvido pela RPC: %s",
+    async (total) => {
+      lerPedido.mockResolvedValueOnce({ data: { total }, error: null });
+      const { createOrder } = useOrders(false, false);
+      const pedido = await createOrder(NA_ENTREGA);
+      expect(pedido.totalAmount).toBe(59.73);
+      expect(supabase.from).toHaveBeenCalledWith("marketplace_orders");
+      expect(selecionarPedido).toHaveBeenCalledWith("total");
+      expect(filtrarPedido).toHaveBeenCalledWith("id", "ped-1");
+      // A RPC mandou o total da tela, como sempre: a leitura vem depois.
+      expect(
+        (vi.mocked(supabase.rpc).mock.calls[0]?.[1] as Record<string, unknown>)
+          .p_total_amount,
+      ).toBe(59.7);
+    },
+  );
+
+  it("pedido de R$ 0,00 (cupom de 100%) é total válido na entrega", async () => {
+    lerPedido.mockResolvedValueOnce({ data: { total: 0 }, error: null });
     const { createOrder } = useOrders(false, false);
-    await createOrder(DADOS_MINIMOS);
-    expect(lerPedido).not.toHaveBeenCalled();
+    // A tela mandou R$ 0,04 (dentro da tolerância): vale o R$ 0,00 do banco.
+    const pedido = await createOrder({ ...NA_ENTREGA, totalAmount: 0.04 });
+    expect(pedido.totalAmount).toBe(0);
+  });
+
+  it.each([
+    ["sem linha (convidado não lê pela RLS)", null, { code: "PGRST116" }],
+    ["erro do banco", null, { message: "sem conexão" }],
+    ["sem total", {}, null],
+    ["total nulo", { total: null }, null],
+    ["total vazio", { total: "" }, null],
+    ["total inválido", { total: "inválido" }, null],
+    ["total negativo", { total: -1 }, null],
+  ])(
+    "leitura sem total válido (%s) mantém o total da tela, sem desfazer o pedido",
+    async (_nome, data, error) => {
+      lerPedido.mockResolvedValueOnce({ data, error });
+      const { createOrder } = useOrders(false, false);
+      const pedido = await createOrder(NA_ENTREGA);
+      expect(pedido).toMatchObject({ id: "ped-1", totalAmount: 59.7 });
+      expect(supabase.rpc).toHaveBeenCalledTimes(1);
+      expect(supabase.functions.invoke).toHaveBeenCalledWith(
+        "notify-new-order",
+        { body: { orderId: "ped-1" } },
+      );
+    },
+  );
+
+  it("leitura que lança (rede) mantém o total da tela", async () => {
+    lerPedido.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const { createOrder } = useOrders(false, false);
+    const pedido = await createOrder(NA_ENTREGA);
+    expect(pedido.totalAmount).toBe(59.7);
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("leitura pendurada não segura a tela: em 5 s fica o total da tela", async () => {
+    vi.useFakeTimers();
+    try {
+      lerPedido.mockReturnValueOnce(new Promise(() => {}));
+      const { createOrder } = useOrders(false, false);
+      let pedido: { totalAmount: number } | undefined;
+      const envio = createOrder(NA_ENTREGA).then((p) => {
+        pedido = p;
+      });
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(pedido).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      await envio;
+      expect(pedido?.totalAmount).toBe(59.7);
+      expect(supabase.functions.invoke).toHaveBeenCalledWith(
+        "notify-new-order",
+        { body: { orderId: "ped-1" } },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

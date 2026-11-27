@@ -146,7 +146,7 @@ it.each(["vazia", "falha"] as const)(
     });
     expect(rede.consultas).toHaveLength(2);
     expect(host.textContent).not.toContain("Nenhum pedido");
-    expect(host.textContent).not.toContain("Que tal começar a comprar");
+    expect(host.textContent).not.toContain("Comprou sem entrar na conta");
     await act(async () => {
       rede.consultas[1]({
         data: desfecho === "vazia" ? [] : null,
