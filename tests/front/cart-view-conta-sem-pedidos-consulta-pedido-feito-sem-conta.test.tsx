@@ -13,6 +13,12 @@
 // ao sair da conta, ao fechar e depois de 15 minutos (o mesmo prazo do
 // retrato de quem consulta sem conta).
 //
+// 27/11/2026 (2): a consulta só acha pedido com e-mail (o gravado nele ou o da
+// conta que comprou); a compra SEM conta não grava e-mail. O botão passa a ser
+// "Consultar pedido feito em outra conta (outro e-mail)", a frase diz que o
+// pedido feito sem conta não aparece nem na consulta, e o caminho fica num
+// rodapé fixo também quando a conta TEM pedidos.
+//
 // Dublê: só o OrderSearch (botão que dispara `onOrdersFound` e expõe as props);
 // a OrderList é a de verdade — é nela que mora a frase e o botão.
 import { act } from "react";
@@ -112,7 +118,9 @@ vi.mock("@/components/ui/custom/OrderSearch", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const RETRATO = "guest_tracked_orders";
-const CONSULTAR = "Consultar pedido feito sem conta";
+const CONSULTAR = "Consultar pedido feito em outra conta (outro e-mail)";
+const FRASE_DO_PEDIDO_SEM_CONTA =
+  "Comprou sem entrar na conta? Esse pedido não aparece aqui nem na consulta: fale com a loja informando o número do pedido.";
 const FRASE_FALSA = "Comprou com outro e-mail? Entre com o usado na compra.";
 const achadoSemConta = {
   id: "00000000-0000-0000-0000-0000000abc12",
@@ -223,10 +231,15 @@ describe("CartView — conta sem pedidos consulta o pedido feito sem conta", () 
     expect(texto()).not.toContain(FRASE_FALSA);
     expect(texto()).not.toContain("Você ainda não fez nenhum pedido");
     expect(texto()).toContain("Nenhum pedido feito nesta conta");
-    expect(texto()).toContain(
-      "Comprou sem entrar na conta, ou com outro e-mail? Esse pedido não aparece aqui.",
-    );
+    expect(texto()).toContain(FRASE_DO_PEDIDO_SEM_CONTA);
+    expect(texto()).not.toContain("Consultar pedido feito sem conta");
     expect(busca()).toBeNull();
+    // Um caminho só: a lista vazia já o oferece, o rodapé não repete.
+    expect(
+      Array.from(hospedeiro.querySelectorAll("button")).filter(
+        (b) => b.textContent?.trim() === CONSULTAR,
+      ),
+    ).toHaveLength(1);
 
     await clicar(botao(CONSULTAR));
 
@@ -320,10 +333,43 @@ describe("CartView — conta sem pedidos consulta o pedido feito sem conta", () 
     expect(busca()).not.toBeNull();
   });
 
+  it("conta COM pedidos: o rodapé fixo diz a verdade e abre a mesma consulta", async () => {
+    duble.pedidosDoHook = [
+      {
+        ...achadoSemConta,
+        id: "00000000-0000-0000-0000-0000000def34",
+        status: "processing",
+      },
+    ];
+    await renderizar();
+
+    expect(texto()).toContain(FRASE_DO_PEDIDO_SEM_CONTA);
+    expect(busca()).toBeNull();
+
+    await clicar(botao(CONSULTAR));
+
+    expect(busca()).not.toBeNull();
+    expect(busca().dataset.somenteRastreio).toBe("true");
+    // Com a consulta aberta o rodapé sai (ela já está na tela) e o foco vai
+    // para ela, não para o corpo da página.
+    expect(botao(CONSULTAR)).toBeUndefined();
+    expect(document.activeElement?.contains(busca())).toBe(true);
+    expect(
+      hospedeiro.querySelector(
+        'section[aria-label="Consultar pedido feito em outra conta"]',
+      ),
+    ).not.toBeNull();
+
+    await clicar(botao("Fechar consulta"));
+    expect(busca()).toBeNull();
+    expect(botao(CONSULTAR)).toBeDefined();
+  });
+
   it("quem está fora da conta não ganha o botão: a busca já está aberta acima da lista", async () => {
     duble.usuario = null;
     await renderizar();
     expect(botao(CONSULTAR)).toBeUndefined();
+    expect(texto()).not.toContain(FRASE_DO_PEDIDO_SEM_CONTA);
     expect(busca()?.dataset.somenteRastreio).toBe("false");
   });
 });

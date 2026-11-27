@@ -190,9 +190,11 @@ describe("ficha do pedido — reenviar comprovante só com conta", () => {
     expect(botao("Reenviar comprovante")).toBeUndefined();
   });
 
-  it("controle: com conta aberta, o MESMO pedido oferece 'Reenviar comprovante'", async () => {
+  it("controle: com conta aberta e o pedido na lista DELA, o MESMO pedido oferece 'Reenviar comprovante'", async () => {
+    // 27/11/2026: retrato com a conta aberta é pedido de OUTRA conta (a
+    // consulta dentro da conta): o controle usa a lista da própria conta.
     estado.user = { id: "u-1" };
-    guardarRetratoDoConvidado(pedido());
+    fetchUserOrders.mockResolvedValue([pedido()]);
 
     await abrir();
 
