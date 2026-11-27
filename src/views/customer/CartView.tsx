@@ -78,6 +78,7 @@ import {
 } from "@/components/ui/custom/FreeShippingBlock";
 import { OrderList } from "@/components/ui/custom/OrderList";
 import { OrderSearch } from "@/components/ui/custom/OrderSearch";
+import { PedidoQueNaoApareceAqui } from "@/components/ui/custom/PedidoQueNaoApareceAqui";
 import {
   ShippingCalculator,
   type StatusDaCotacao,
@@ -1947,6 +1948,7 @@ function ConteudoDoCarrinho({
                         loadError={user ? (erroDosPedidos ?? null) : null}
                         onRetry={tentarCarregarPedidosDeNovo}
                         hasAnyOrders={orders.length > 0}
+                        whatsappDaLoja={config.whatsappNumber}
                         onConsultarSemConta={
                           user
                             ? () => {
@@ -1992,6 +1994,23 @@ function ConteudoDoCarrinho({
                   </motion.div>
                 </AnimatePresence>
               </div>
+
+              {/* Rodapé fixo da conta COM pedidos (27/11/2026): o pedido que
+                  não aparece na lista tem caminho também aqui, não só na
+                  lista vazia (que já o oferece — sem repetir). Fica fora das
+                  abas: não some ao trocar "Em andamento"/"Histórico". Com a
+                  consulta aberta ele sai: ela já está na tela. */}
+              {user && orders.length > 0 && !consultaSemContaAberta && (
+                <p className="mx-auto mt-6 max-w-[300px] text-center text-sm leading-relaxed text-muted-foreground">
+                  <PedidoQueNaoApareceAqui
+                    whatsappDaLoja={config.whatsappNumber}
+                    onConsultarOutraConta={() => {
+                      haptic.light();
+                      setConsultaAbertaPara(user.id);
+                    }}
+                  />
+                </p>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

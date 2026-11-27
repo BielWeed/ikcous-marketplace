@@ -19,6 +19,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * rastreio) e o que ela acha aparece como o rastreio de fora da conta: um
  * retrato com o horário da consulta, que sai da tela em 15 minutos.
  *
+ * A busca só acha pedido com e-mail (o gravado nele ou o da conta que
+ * comprou): é o caminho do pedido feito em OUTRA conta. A compra sem conta
+ * não grava e-mail e não aparece aqui — a tela manda falar com a loja.
+ *
  * Quem monta (CartView) dá `key` com o id da conta: trocar ou sair da conta
  * desmonta tudo, e nada do que foi achado aparece para a próxima pessoa.
  */
@@ -97,7 +101,7 @@ export function ConsultaSemContaNaConta({
     <section
       ref={regiao}
       tabIndex={-1}
-      aria-label="Consultar pedido feito sem conta"
+      aria-label="Consultar pedido feito em outra conta"
       className="mb-4 focus:outline-none"
     >
       {saiuDaTela && !achados && (

@@ -393,6 +393,13 @@ describe("ficha do pedido — anotação interna salva de dois aparelhos", () =>
     vi.useFakeTimers();
     outroAparelhoSalva("A", "Nota original");
     await mostrar(pedido("A"));
+    // A ficha aberta com o foco no <body> foca o título "Pedido #N" (lote
+    // 487), e o `focus()` do jsdom agenda um `selectionchange` com atraso 0
+    // (Selection-impl.js `_associateRange`). Esse relógio é do jsdom, não da
+    // ficha: dispara aqui para a contagem abaixo medir só os prazos dela.
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
     await abrirEditor("Editar notas");
     digitar("Nota enviada");
     let liberar!: () => void;

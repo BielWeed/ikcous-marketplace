@@ -169,10 +169,13 @@ describe("ficha do pedido do convidado — sem 'Cancelar Pedido'", () => {
   );
 
   it.each(["pending", "processing", "shipping"] as const)(
-    "controle '%s': com conta aberta, o MESMO retrato mostra 'Cancelar Pedido' e o toque abre a caixa",
+    "controle '%s': com conta aberta e o pedido na lista DELA, 'Cancelar Pedido' aparece e o toque abre a caixa",
     async (status) => {
+      // 27/11/2026: o retrato com a conta aberta é pedido de OUTRA conta (a
+      // consulta dentro da conta) e não mostra ações da dona — o controle
+      // passa a usar a lista da própria conta.
       estado.user = { id: "u-1" };
-      guardarRetratoDoConvidado(status);
+      fetchUserOrders.mockResolvedValue([pedidoComStatus(status)]);
 
       await abrir();
 

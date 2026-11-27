@@ -1,4 +1,5 @@
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
+import { PedidoQueNaoApareceAqui } from "@/components/ui/custom/PedidoQueNaoApareceAqui";
 import { avisoDeCartaoNoPedidoVencido } from "@/lib/aviso-de-cartao-no-pedido-vencido";
 import { AVISO_DE_PEDIDOS_SALVOS } from "@/lib/aviso-de-pedidos-salvos";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
@@ -313,10 +314,13 @@ interface OrderListProps {
    */
   hasAnyOrders?: boolean;
   /**
-   * Abre, dentro da conta, a consulta do pedido feito sem conta (a mesma de
-   * quem está fora dela). Sem ele, a conta sem pedidos não mostra o botão.
+   * Abre, dentro da conta, a consulta por e-mail + código (a mesma de quem
+   * está fora dela): o caminho do pedido feito em OUTRA conta. Sem ele, a
+   * conta sem pedidos não mostra o botão.
    */
   onConsultarSemConta?: () => void;
+  /** WhatsApp da loja, para quem comprou sem conta (o pedido não aparece aqui). */
+  whatsappDaLoja?: string | null;
 }
 
 export const OrderList = memo(function OrderList({
@@ -333,6 +337,7 @@ export const OrderList = memo(function OrderList({
   onRetry,
   hasAnyOrders,
   onConsultarSemConta,
+  whatsappDaLoja,
 }: Readonly<OrderListProps>) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -465,8 +470,10 @@ export const OrderList = memo(function OrderList({
         {!isGuest && !temPedidosEmMemoria && !emptyDescription && (
           <>
             <br />
-            Comprou sem entrar na conta, ou com outro e-mail? Esse pedido não
-            aparece aqui.
+            <PedidoQueNaoApareceAqui
+              whatsappDaLoja={compact ? null : whatsappDaLoja}
+              onConsultarOutraConta={compact ? undefined : onConsultarSemConta}
+            />
           </>
         )}
         {!compact && (emptyAction || !isGuest) && (
@@ -480,21 +487,6 @@ export const OrderList = memo(function OrderList({
             </button>
           </span>
         )}
-        {!compact &&
-          !isGuest &&
-          !temPedidosEmMemoria &&
-          !emptyDescription &&
-          onConsultarSemConta && (
-            <span className="mt-3 block">
-              <button
-                type="button"
-                onClick={onConsultarSemConta}
-                className="min-h-11 px-2 text-sm font-semibold text-foreground underline underline-offset-4"
-              >
-                Consultar pedido feito sem conta
-              </button>
-            </span>
-          )}
       </EstadoDaLista>
     );
   }

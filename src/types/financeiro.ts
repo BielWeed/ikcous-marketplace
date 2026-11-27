@@ -225,6 +225,12 @@ export interface SessaoDeCaixa {
   readonly status: string;
 }
 
+/**
+ * O caixa visto de fora do Financeiro (balcão): `nunca_aberto` é a loja que
+ * nunca usou o caixa — diferente de `fechado`, que já teve sessão.
+ */
+export type SituacaoDoCaixa = "aberto" | "fechado" | "nunca_aberto";
+
 export interface ResultadoDoMovimentoDeCaixa {
   readonly id: string;
   readonly replay: boolean;
@@ -237,6 +243,11 @@ export interface FechamentoDeCaixa {
   readonly esperado: number;
   readonly contado: number;
   readonly diferenca: number;
+  /**
+   * O banco achou este MESMO fechamento já feito (mesma pessoa, valor e
+   * observação) e devolveu os números de quando fechou: nada fechou agora.
+   */
+  readonly replay: boolean;
 }
 
 /** Corpo de `fin_lancamento_salvar(p jsonb)` — contrato do plano. */
