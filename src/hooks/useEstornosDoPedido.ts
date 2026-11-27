@@ -58,6 +58,10 @@ export interface LinhaEstornoDoPedido {
   /** Servidor: o reembolso manual tomou o lugar desta linha. */
   substituida_por_manual: boolean;
   eh_pix: boolean;
+  /** A chave da intenção com que a linha nasceu (`solicitar_estorno_com_chave`,
+   * 20261640000000); `null` nas das outras portas e nas de antes. Opcional só
+   * para quem monta a linha à mão (o hook sempre a lê). */
+  chave_da_solicitacao?: string | null;
 }
 
 /** Colunas de exibição lidas de `order_refunds` (texto da linha). */
@@ -241,7 +245,7 @@ export function useEstornosDoPedido(
           supabase
             .from("order_refunds")
             .select(
-              "id, amount, status, solicitado_por, mp_status, mp_status_detail, tentativas, ultimo_erro, motivo, created_at, concluido_em",
+              "id, amount, status, solicitado_por, mp_status, mp_status_detail, tentativas, ultimo_erro, motivo, created_at, concluido_em, chave_da_solicitacao",
             )
             .eq("order_id", orderId)
             .order("created_at", { ascending: true }),
@@ -342,15 +346,26 @@ export function useEstornosDoPedido(
       // A chave da INTENÇÃO (pedido + valor), a mesma em toda retentativa dela — inclusive depois do
       // "não dá para saber", de reabrir a ficha ou de recarregar a página (20261640000000). O servidor
       // devolve a linha que já tem a chave em vez de criar outra. O "Tentar de novo" não leva chave: o
-      // servidor já reconhece a linha falhada que se repete.
-      const chave = repetindo ? null : chaveDaDevolucao(orderId, amount);
+      // servidor já reconhece a linha falhada que se repete. Se a lista em tela JÁ mostra a linha da chave
+      // guardada, a intenção chegou (a resposta é que se perdeu) e a lojista a vê: este toque é uma devolução
+      // A MAIS e leva chave nova — repetir a velha faria o servidor responder "já registrada" e o cliente
+      // deixaria de receber. Lista que ainda não a mostra = retentativa: repete a chave.
+      const confirmadas = new Set<string>();
+      for (const linha of linhasRef.current) {
+        if (linha.chave_da_solicitacao) {
+          confirmadas.add(linha.chave_da_solicitacao);
+        }
+      }
+      const chave = repetindo
+        ? null
+        : chaveDaDevolucao(orderId, amount, Date.now(), confirmadas);
       // O servidor confirmou a intenção (linha criada ou já registrada): a próxima é intenção nova.
       const encerrarIntencao = (dados: unknown) => {
         if (
           chave &&
           (dados as { refund_id?: string } | null | undefined)?.refund_id
         ) {
-          encerrarChaveDaDevolucao(orderId, chave);
+          encerrarChaveDaDevolucao(orderId, amount, chave);
         }
       };
       try {

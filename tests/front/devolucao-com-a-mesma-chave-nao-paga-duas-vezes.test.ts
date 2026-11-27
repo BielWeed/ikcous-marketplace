@@ -39,13 +39,17 @@ const h = vi.hoisted(() => ({
   chamadas: [] as Chamada[],
   leituras: 0,
   leiturasNoAviso: [] as number[],
+  colunasLidas: [] as string[],
 }));
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => {
       const builder: Record<string, unknown> = {};
-      builder.select = () => builder;
+      builder.select = (colunas: string) => {
+        h.colunasLidas.push(colunas);
+        return builder;
+      };
       builder.eq = () => builder;
       builder.order = () => {
         h.leituras += 1;
@@ -90,6 +94,7 @@ const PEDIDO = "pedido-1640";
 
 interface Leitura {
   enviando: boolean;
+  recarregar: () => void;
   solicitarEstorno: (args: {
     amount: number;
     motivo: string;
@@ -137,6 +142,23 @@ function pendurada() {
   return { promessa, resolver };
 }
 
+function linhaDaLista({ id, chave }: { id: string; chave: string | null }) {
+  return {
+    id,
+    amount: 50,
+    status: "solicitado",
+    solicitado_por: "lojista",
+    mp_status: null,
+    mp_status_detail: null,
+    tentativas: 0,
+    ultimo_erro: null,
+    motivo: "devolvi",
+    created_at: "2026-11-27T10:00:00Z",
+    concluido_em: null,
+    chave_da_solicitacao: chave,
+  };
+}
+
 const devolucoes = () =>
   h.chamadas.filter(
     (c) => c.tipo === "rpc" && c.nome === "solicitar_estorno_com_chave",
@@ -164,6 +186,7 @@ beforeEach(() => {
   h.chamadas = [];
   h.leituras = 0;
   h.leiturasNoAviso = [];
+  h.colunasLidas = [];
   toastMock.warning.mockImplementation(() => {
     h.leiturasNoAviso.push(h.leituras);
   });
@@ -222,17 +245,20 @@ describe("useEstornosDoPedido — a mesma intenção leva a mesma chave", () => 
     expect(b).toBe(a);
   });
 
-  it("outro valor é outra intenção: chave nova (e a de antes deixa de valer)", async () => {
+  it("CASO 2: outro valor é outra intenção (chave nova), mas NÃO apaga a de antes: voltar a R$ 50 repete a chave de R$ 50", async () => {
+    // R$ 50 (K1) presa na trava, R$ 60 (K2), R$ 50 de novo: se a K1 ainda gravar e a terceira levasse chave
+    // nova, nasceriam duas linhas de R$ 50 — o cliente receberia R$ 100.
     h.respostaRpc = () => pendurada().promessa;
     const { atual } = await montarSonda();
     await devolver(atual, 50, { esperarPrazo: true });
-    await devolver(atual, 30, { esperarPrazo: true });
+    await devolver(atual, 60, { esperarPrazo: true });
     await devolver(atual, 50, { esperarPrazo: true });
 
+    expect(devolucoes()).toHaveLength(3);
     const [a, b, c] = chaves();
+    expect(a).toEqual(expect.any(String));
     expect(b).not.toBe(a);
-    expect(c).not.toBe(a);
-    expect(c).not.toBe(b);
+    expect(c).toBe(a);
   });
 
   it("50 e 50,00 são o mesmo valor (centavos), 50,01 não é", async () => {
@@ -370,6 +396,79 @@ describe("useEstornosDoPedido — a mesma intenção leva a mesma chave", () => 
     const [a, b] = chaves();
     expect(a).toEqual(expect.any(String));
     expect(b).toBe(a);
+  });
+
+  it("a leitura da lista traz a chave de cada linha (é ela que mostra que a intenção já chegou)", async () => {
+    await montarSonda();
+    expect(h.colunasLidas.length).toBeGreaterThan(0);
+    for (const colunas of h.colunasLidas) {
+      expect(colunas.split(",").map((c) => c.trim())).toContain(
+        "chave_da_solicitacao",
+      );
+    }
+  });
+
+  it("CASO 1: estourou, a resposta se perdeu, a LISTA já mostra a linha da chave → a segunda devolução de igual valor é pedida DE VERDADE (chave nova)", async () => {
+    h.respostaRpc = () => pendurada().promessa; // a resposta nunca chega
+    const { atual } = await montarSonda();
+    await devolver(atual, 50, { esperarPrazo: true });
+    const [k] = chaves();
+    expect(k).toEqual(expect.any(String));
+
+    // O servidor gravou a linha com a chave K; a lista relida a mostra.
+    h.linhas = [linhaDaLista({ id: "refund-1", chave: k as string })];
+    h.saldo = { ...SALDO_PADRAO, em_voo: 50, disponivel: 150 };
+    await act(async () => {
+      atual().recarregar();
+    });
+    await passar(0);
+
+    // Outro item, mesmo valor: intenção NOVA — o servidor cria a segunda linha.
+    h.respostaRpc = null;
+    await devolver(atual, 50);
+    expect(devolucoes()).toHaveLength(2);
+    const [, segunda] = chaves();
+    expect(segunda).toEqual(expect.any(String));
+    expect(segunda).not.toBe(k);
+    expect(
+      h.chamadas.filter((c) => c.nome === "estornar-pagamento"),
+    ).toHaveLength(1);
+  });
+
+  it("a lista ainda NÃO mostra a linha da chave (o servidor segue esperando): a mesma devolução repete a chave", async () => {
+    h.respostaRpc = () => pendurada().promessa;
+    const { atual } = await montarSonda();
+    await devolver(atual, 50, { esperarPrazo: true });
+    // A lista mostra OUTRAS linhas (outra porta, outra chave) — não a desta intenção.
+    h.linhas = [
+      linhaDaLista({ id: "refund-cancelamento", chave: null }),
+      linhaDaLista({ id: "refund-outra", chave: "outra-chave" }),
+    ];
+    await act(async () => {
+      atual().recarregar();
+    });
+    await passar(0);
+    await devolver(atual, 50, { esperarPrazo: true });
+    const [a, b] = chaves();
+    expect(a).toEqual(expect.any(String));
+    expect(b).toBe(a);
+  });
+
+  it("a linha confirmada de R$ 50 na lista não gira a chave da intenção de R$ 30 em curso", async () => {
+    h.respostaRpc = () => pendurada().promessa;
+    const { atual } = await montarSonda();
+    await devolver(atual, 50, { esperarPrazo: true });
+    await devolver(atual, 30, { esperarPrazo: true });
+    const [k50] = chaves();
+    h.linhas = [linhaDaLista({ id: "refund-50", chave: k50 as string })];
+    await act(async () => {
+      atual().recarregar();
+    });
+    await passar(0);
+    await devolver(atual, 30, { esperarPrazo: true });
+    const [, k30, k30DeNovo] = chaves();
+    expect(k30).toEqual(expect.any(String));
+    expect(k30DeNovo).toBe(k30);
   });
 
   it("o aviso do estouro não afirma que a lista foi atualizada antes de reler", async () => {
