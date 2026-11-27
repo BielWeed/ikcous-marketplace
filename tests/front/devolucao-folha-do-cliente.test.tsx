@@ -96,8 +96,14 @@ beforeEach(() => {
   raiz = createRoot(hospedeiro);
 });
 
-afterEach(() => {
+afterEach(async () => {
   act(() => raiz.unmount());
+  // O FocusScope do Radix devolve o foco num setTimeout(0) ao desmontar. Sem
+  // esperar, o do último teste dispara depois que o jsdom do arquivo saiu e o
+  // `dispatchEvent` recusa o evento ("parameter 1 is not of type 'Event'").
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
   hospedeiro.remove();
   document.body.innerHTML = "";
 });
