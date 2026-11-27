@@ -106,6 +106,7 @@ function SheetContent({
   gavetaNoComputador = true,
   showCloseButton = true,
   overlayClassName,
+  onPointerDownCapture,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
@@ -128,6 +129,14 @@ function SheetContent({
   // O fecho oficial da folha (o onOpenChange do consumidor), lido pelo
   // guardião do clique pós-fecho no caminho de toque.
   const fecharFolha = React.useContext(ContextoFechoDaFolha);
+  // O gesto começou num descendente REACT deste content que mora em OUTRO
+  // portal (a lista de escolha do painel, um popover, um diálogo aberto de
+  // dentro da folha)? O DOM diz "fora" (o portal está no body), mas o Radix
+  // diz "dentro" (o evento borbulha na árvore React) e não fecha a folha —
+  // o guardião tem de concordar com ele. Defeito de 27/11/2026: tocar numa
+  // opção da Categoria no "Novo lançamento" fechava a folha inteira (toque)
+  // ou não escolhia nada (mouse), porque o guardião engolia o click.
+  const gestoPelaArvoreRef = React.useRef(false);
 
   // GUARDIÃO DO CLIQUE PÓS-FECHO (14/09 — "clicar fora tem que SÓ fechar",
   // relato do dono ao vivo, reproduzido com espião: o clique que fechava a
@@ -190,6 +199,9 @@ function SheetContent({
       if (guardiao) return; // um guardião por gesto
       guardiao = (evento) => {
         destruirGuardiao();
+        // 0) gesto que nasceu num portal filho desta folha (na árvore React
+        //    dela, fora do DOM dela) é clique de dentro, como o Radix o trata.
+        if (gestoPelaArvoreRef.current) return;
         const alvo = evento.target;
         // 1) clique dentro de qualquer folha viva não é coisa de fecho.
         if (
@@ -238,6 +250,10 @@ function SheetContent({
     };
 
     const noGesto = (evento: Event) => {
+      // Captura no document roda ANTES do React: zera aqui, e o
+      // `onPointerDownCapture` do content liga de novo se o gesto passar
+      // pela árvore dele.
+      if (evento.type === "pointerdown") gestoPelaArvoreRef.current = false;
       gestoDeToque =
         (evento as PointerEvent).pointerType === "touch" ? true : gestoDeToque;
       if (evento.target instanceof Node && !el.contains(evento.target)) {
@@ -263,6 +279,14 @@ function SheetContent({
       <SheetPrimitive.Content
         ref={setNoConteudo}
         data-slot="sheet-content"
+        onPointerDownCapture={(evento) => {
+          // Só o que mora em OUTRO portal: o gesto que nasce no DOM da própria
+          // folha (a alça arrastada e solta fora) segue sob o guardião.
+          gestoPelaArvoreRef.current =
+            evento.target instanceof Node &&
+            !evento.currentTarget.contains(evento.target);
+          onPointerDownCapture?.(evento);
+        }}
         className={cn(
           "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-[130] flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
           side === "right" &&
