@@ -398,6 +398,17 @@ describe("Trocas e devoluções — usa o que a lojista configurou", () => {
     expect(sem).not.toContain("Rua das Flores");
   });
 
+  it("categorias sem troca: só valem fora da desistência, como o banco recusa", () => {
+    const doc = montarPolitica("trocas", LOJA, {
+      ...POLITICA,
+      categorias_sem_troca: ["Calcinhas", "Brincos"],
+    });
+    const secao = doc.secoes.find((s) => s.id === "sem-troca");
+    expect(secao?.paragrafos).toEqual([
+      "Fora do prazo de desistência da compra, estes itens não têm troca por preferência: Calcinhas e Brincos. Dentro desse prazo, e quando o produto tem defeito, eles seguem as regras acima.",
+    ]);
+  });
+
   it("o texto que a lojista escreveu vem inteiro, em seção própria", () => {
     const doc = montarPolitica("trocas", LOJA, {
       ...POLITICA,

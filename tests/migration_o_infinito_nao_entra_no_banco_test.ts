@@ -69,6 +69,12 @@ const SUCESSORAS = [
     consulta:
       "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
   },
+  // 20261645000000: o aviso do vale-troca diz que a loja combina.
+  {
+    versao: "20261645000000",
+    consulta:
+      "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

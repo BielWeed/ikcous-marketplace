@@ -584,6 +584,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
     // 20261641000000: uma avaliacao por cliente e produto, e a media do painel so das publicadas.
     "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
+    // 20261645000000: o aviso do vale-troca diz que a loja combina.
+    "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

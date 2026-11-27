@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   acoesDoCliente,
   acoesDoLojista,
+  avisoDasCategoriasSemTroca,
   caminhoDaFoto,
   centavosDosItensQueNaoVieram,
   contagemDe,
@@ -1245,5 +1246,32 @@ describe("centavosDosItensQueNaoVieram — a parte do que não veio no valor do 
       2000,
     );
     expect(centavosDosItensQueNaoVieram(99, [a], [a])).toBe(99);
+  });
+});
+
+describe("avisoDasCategoriasSemTroca — só a troca de política recusa a categoria", () => {
+  it("troca: uma categoria, várias, e espaços/vazias fora", () => {
+    expect(
+      avisoDasCategoriasSemTroca("troca", {
+        categorias_sem_troca: ["Brincos"],
+      }),
+    ).toBe(
+      "A loja não troca por tamanho ou gosto produtos da categoria Brincos. Se algum item escolhido for dela, o pedido será recusado.",
+    );
+    expect(
+      avisoDasCategoriasSemTroca("troca", {
+        categorias_sem_troca: [" A ", "", "B", "C"],
+      }),
+    ).toContain("das categorias A, B e C.");
+    expect(
+      avisoDasCategoriasSemTroca("troca", { categorias_sem_troca: [" ", ""] }),
+    ).toBeNull();
+  });
+
+  it("desistência, defeito e motivo ainda não escolhido: o banco não confere a categoria", () => {
+    const politica = { categorias_sem_troca: ["Brincos"] };
+    expect(avisoDasCategoriasSemTroca("arrependimento", politica)).toBeNull();
+    expect(avisoDasCategoriasSemTroca("vicio", politica)).toBeNull();
+    expect(avisoDasCategoriasSemTroca(null, politica)).toBeNull();
   });
 });

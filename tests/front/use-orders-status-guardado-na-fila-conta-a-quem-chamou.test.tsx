@@ -122,6 +122,20 @@ describe("useOrders.updateOrderStatus — conta a quem chamou que a mudança foi
     );
   });
 
+  it("sem rede: o aviso diz QUAL pedido ficou guardado (nota da 1.5.245)", async () => {
+    const { toast } = await import("sonner");
+    const atualizar = await montarPainel();
+    vi.stubGlobal("navigator", { ...navigator, onLine: false });
+
+    await atualizar("shipping", "processing");
+
+    // "pedido-1" -> os 6 últimos, em maiúsculas, como o painel mostra o número.
+    expect(toast.info).toHaveBeenCalledWith(
+      "Alteração de status do pedido #DIDO-1 guardada offline.",
+      expect.objectContaining({ description: expect.any(String) }),
+    );
+  });
+
   it("controle: com rede grava no banco e não diz que foi para a fila", async () => {
     const atualizar = await montarPainel();
 

@@ -416,7 +416,10 @@ function montarTrocas(
         id: "sem-troca",
         titulo: "Sem troca por preferência",
         paragrafos: [
-          `Estes itens não têm troca por preferência: ${listaEmTexto(categorias)}.`,
+          // O banco (`solicitar_devolucao`) só confere estas categorias na
+          // troca por preferência FORA da desistência; na desistência e no
+          // defeito elas não contam.
+          `Fora do prazo de desistência da compra, estes itens não têm troca por preferência: ${listaEmTexto(categorias)}. Dentro desse prazo, e quando o produto tem defeito, eles seguem as regras acima.`,
         ],
       });
     }

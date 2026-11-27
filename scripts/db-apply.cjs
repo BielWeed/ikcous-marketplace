@@ -483,6 +483,29 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261645000000: o aviso do vale-troca diz que a loja combina. UMA funcao (a do gatilho tr_devolucao_avisa_o_cliente), so a
+  // frase do ramo vale muda; o resto do corpo e' o da 20261241000000 (o aviso do reembolso em processamento segue uma vez). O corpo
+  // exato (md5), os atributos e a ACL sao da consulta 205a; o comportamento, da prova viva.
+  "20261645000000_o_aviso_do_vale_troca_diz_que_a_loja_combina.sql": [
+    {
+      funcao: "devolucao_avisa_o_cliente",
+      esperado: [
+        {
+          texto:
+            "' foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja.'",
+          vezes: 1,
+        },
+        {
+          texto: "-- 20261645000000: o app NÃO emite vale-troca",
+          vezes: 1,
+        },
+        {
+          texto: "A loja está confirmando sua devolução com o Mercado Pago.",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261399993000: o CRM e a lista de clientes nao contam a mesma pessoa duas vezes. DUAS funcoes, uma checagem cada. crm__nunca_comprou ganha SO a
   // CTE wa_nao_pagos (le crm__pedidos_nao_pagos, user_id nulo, o 55 cortado como em wa_pagos) e o terceiro NOT EXISTS; get_admin_customers_paged troca SO
   // o LEFT JOIN de user_addresses por UM endereco principal (LATERAL ... LIMIT 1) antes de juntar os pedidos. As travas de admin, a busca, o GROUP BY e o

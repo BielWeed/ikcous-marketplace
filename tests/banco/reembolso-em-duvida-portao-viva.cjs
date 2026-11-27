@@ -136,6 +136,11 @@ let PORTAO;
 async function noEstado(montar, consultas = [A, B]) {
   await C.query("BEGIN");
   try {
+    // A 20261645000000 (o aviso do vale-troca) sucede o devolucao_avisa_o_cliente da 20261241000000: o clone mede a
+    // 241 com o corpo dela (DEPOIS e o rollback dela exigem esse corpo). Sai antes, só se no ar.
+    await require("./o-aviso-do-vale-troca-posterior.cjs").desfazerAvisoDoValeTrocaNaTransacao(
+      C,
+    );
     await require("./reembolso-manual-reserva-posterior.cjs").desfazerReembolsoManualReservaNaTransacao(
       C,
     );
