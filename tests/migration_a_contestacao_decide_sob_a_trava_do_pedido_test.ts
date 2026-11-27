@@ -807,6 +807,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-endereco-antigo-encaminha-viva.cjs",
     // 20261590: a loja guarda o dia da pausa do teste (pausa_em opcional na porta do cartao; gestao velha e nova; recuo da porta velha; mutantes; rollback comum e destrutivo; consultas 150c/195a/195b).
     "tests/banco/a-loja-guarda-o-dia-da-pausa-do-teste-viva.cjs",
+    // 20261600: a loja pausa o pedido novo (regra das datas com pausa_em; marca do dia da suspensa; motivo; recusa do pedido online v23/v24 com balcao livre; manutencao so o admin de agora; painel; mutantes; rollback comum e destrutivo; consultas 196a/196b).
+    "tests/banco/a-loja-pausa-o-pedido-novo-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
     "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

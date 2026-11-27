@@ -34,6 +34,9 @@ const P = require("./prova-de-objeto-novo.cjs");
 const { assert, prova, md5, sha256 } = P;
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
+const {
+  desfazerAPausaDeVendas,
+} = require("./a-loja-pausa-o-pedido-novo-posterior.cjs");
 
 const NOME = "20261590000000_a_loja_guarda_o_dia_da_pausa_do_teste.sql";
 const MIGRATION = P.lerMigration(NOME);
@@ -1130,6 +1133,9 @@ prova(
 (async () => {
   await P.conectar();
   try {
+    // A sucessora 20261600000000 le pausa_em: sai do clone ANTES (o destrutivo daqui recusa com PAUSA_EM_USO enquanto ela esta no ar).
+    if (await desfazerAPausaDeVendas(P.conexao()))
+      console.log("  (a sucessora 20261600000000 foi desfeita no clone)");
     await P.executar("a-loja-guarda-o-dia-da-pausa-do-teste");
   } finally {
     await P.conexao()

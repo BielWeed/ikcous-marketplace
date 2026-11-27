@@ -422,6 +422,9 @@ on:
           - 194b-antes-o-endereco-antigo-encaminha-ausente
           - 195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado
           - 195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente
+          - 196a-conferir-a-loja-pausa-o-pedido-novo-aplicado
+          - 196b-antes-a-loja-pausa-o-pedido-novo-ausente
+          - 196m-medir-quem-cria-pedido
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

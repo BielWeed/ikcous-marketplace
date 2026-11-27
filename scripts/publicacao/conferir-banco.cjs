@@ -3584,7 +3584,35 @@ const ROL_DA_195B = [
   "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 (md5; a premissa do pre-voo)",
   "assinatura_da_loja_definir_chave: intacta, com o corpo da 20261399998000 (md5)",
 ];
+// Lote 196 (20261600000000, a loja pausa o pedido novo: a tabela pausa_de_vendas, 5 funcoes e 2 gatilhos; aditiva, exige a 20261197000000, a
+// 20261399998000 e a 20261590000000, e NAO redefine v23 nem v24). Somente catalogo: a 196a nao le nenhuma linha e nao chama funcao; prova a tabela fechada,
+// as 5 funcoes (md5, atributos, EXECUTE por papel) e os 2 gatilhos ligados (10); antes do apply responde "nao", nunca erro. A 196b prova a ausencia de
+// tudo, as premissas do pre-voo e UMA contagem de dado: nenhuma loja em manutencao hoje (8).
+const ROL_DA_196A = [
+  "controle: catalogo publico visivel",
+  "pausa_de_vendas: tabela de linha unica com as 4 colunas, RLS ligada e nenhuma politica",
+  "pausa_de_vendas: nenhum privilegio (tabela ou coluna) para anon, authenticated nem service_role",
+  "data_da_pausa_de_vendas: uma so, corpo da 20261600000000 (md5), SQL IMMUTABLE com search_path fixo, EXECUTE de ninguem",
+  "marcar_suspensa_desde: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "motivo_da_loja_nao_aceitar_pedido: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "a_loja_aceita_pedido_novo: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "situacao_das_vendas_da_loja: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE so de authenticated",
+  "tr_a_loja_aceita_pedido_novo: BEFORE INSERT por linha em marketplace_orders, com o WHEN do balcao, ligado",
+  "tr_assinatura_marca_suspensa_desde: AFTER INSERT OR UPDATE OF status por linha em assinatura_da_loja, ligado",
+];
+const ROL_DA_196B = [
+  "controle: catalogo publico visivel",
+  "pausa_de_vendas: ainda NAO existe",
+  "as 5 funcoes da 20261600000000: nenhuma existe ainda (com qualquer assinatura)",
+  "os 2 gatilhos da 20261600000000: nenhum existe ainda",
+  "premissa: marketplace_orders.canal (text NOT NULL) e idempotency_key (uuid); store_config.manutencao (boolean NOT NULL)",
+  "premissa: is_admin() e is_admin_atual() existem (20261197000000)",
+  "premissa: o cartao com as 14 colunas da 20261590000000 (com pausa_em) e a tabela da chave da 20261399998000",
+  "store_config: nenhuma linha com manutencao = true hoje (se houver, a loja passa a recusar pedido online no apply: avisar o dono antes)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado": ROL_DA_196A,
+  "196b-antes-a-loja-pausa-o-pedido-novo-ausente": ROL_DA_196B,
   "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado": ROL_DA_195A,
   "195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente": ROL_DA_195B,
   "194a-conferir-o-endereco-antigo-encaminha-aplicado": ROL_DA_194A,
