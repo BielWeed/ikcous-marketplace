@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ErroDosFornecedores } from "@/hooks/useFornecedores";
 import type { DadosDoFornecedor, Fornecedor } from "@/lib/fornecedores";
+import { escolherNaLista, valorDaLista } from "./helpers/lista-de-escolha";
 
 const criar = vi.fn();
 const editar = vi.fn();
@@ -211,22 +212,15 @@ describe("AdminFornecedoresView (E1)", () => {
     expect(el).toBeDefined();
     await act(async () => (el as HTMLElement).click());
   };
-  function digitar(
-    el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
-    valor: string,
-  ) {
+  // O Estado é a lista de escolha do painel (lista premium, 26/11/2026): ele
+  // se escolhe pelo helper `escolherNaLista`, não por aqui.
+  function digitar(el: HTMLInputElement | HTMLTextAreaElement, valor: string) {
     const proto =
       el instanceof HTMLTextAreaElement
         ? HTMLTextAreaElement.prototype
-        : el instanceof HTMLSelectElement
-          ? HTMLSelectElement.prototype
-          : HTMLInputElement.prototype;
+        : HTMLInputElement.prototype;
     Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, valor);
-    el.dispatchEvent(
-      new Event(el instanceof HTMLSelectElement ? "change" : "input", {
-        bubbles: true,
-      }),
-    );
+    el.dispatchEvent(new Event("input", { bubbles: true }));
   }
   const campo = (rotulo: RegExp) => {
     const label = [...document.body.querySelectorAll("label")].find((l) =>
@@ -235,7 +229,7 @@ describe("AdminFornecedoresView (E1)", () => {
     const id = label?.getAttribute("for");
     const el = id ? document.getElementById(id) : null;
     if (!el) throw new Error(`campo ${rotulo} não encontrado`);
-    return el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    return el as HTMLInputElement | HTMLTextAreaElement;
   };
   const cartoes = () => [
     ...document.body.querySelectorAll<HTMLElement>("[data-fornecedor-id]"),
@@ -471,7 +465,7 @@ describe("AdminFornecedoresView (E1)", () => {
       await act(async () => digitar(campo(/Instagram/), "@novo.atacado"));
       await act(async () => digitar(campo(/Site/), "novo.fixture.invalid"));
       await act(async () => digitar(campo(/Cidade/), "Goiânia"));
-      await act(async () => digitar(campo(/Estado/), "GO"));
+      await act(async () => escolherNaLista(campo(/Estado/).id, "GO"));
       await act(async () => digitar(campo(/Observa/), "Entrega em 3 dias"));
       await clicar(botao("Salvar fornecedor"));
       expect(criar).toHaveBeenCalledTimes(1);
@@ -490,6 +484,60 @@ describe("AdminFornecedoresView (E1)", () => {
       );
       expect(toastSucesso).toHaveBeenCalled();
       expect(document.querySelector('[role="dialog"]')).toBeNull();
+    });
+
+    it("Estado: a lista busca pelo nome; RJ grava 'RJ' e o campo mostra a sigla", async () => {
+      await montar();
+      await abrirNovo();
+      await act(async () => digitar(campo(/Nome/), "Novo"));
+      const estado = campo(/Estado/) as unknown as HTMLButtonElement;
+      expect(estado.getAttribute("aria-haspopup")).toBe("listbox");
+      expect(document.querySelector("select")).toBeNull();
+      // Novo fornecedor: "Não informar" é a escolha de partida.
+      expect(valorDaLista(estado.id)).toBe("");
+      expect(estado.textContent).toContain("Não informar");
+      await act(async () => estado.click());
+      const busca = document.querySelector<HTMLInputElement>(
+        '[role="combobox"]',
+      ) as HTMLInputElement;
+      expect(busca).not.toBeNull();
+      await act(async () => digitar(busca, "rio"));
+      const achadas = [
+        ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+      ].map((o) => o.dataset.valor);
+      expect(achadas).toEqual(["RJ", "RN", "RS"]);
+      expect(document.body.textContent).toContain("3 resultados");
+      const rj = document.querySelector<HTMLElement>(
+        '[role="option"][data-valor="RJ"]',
+      ) as HTMLElement;
+      expect(rj.textContent).toContain("Rio de Janeiro");
+      await act(async () => rj.click());
+      expect(valorDaLista(estado.id)).toBe("RJ");
+      // Fechado, o campo mostra a sigla (o selo "RJ").
+      expect(
+        [...estado.querySelectorAll("span")].some(
+          (s) => s.textContent === "RJ",
+        ),
+      ).toBe(true);
+      await clicar(botao("Salvar fornecedor"));
+      expect(criar).toHaveBeenCalledWith(
+        "00000000-0000-4000-8000-000000000001",
+        expect.objectContaining({ uf: "RJ" }),
+      );
+    });
+
+    it("Estado: 'Não informar' é opção de verdade e apaga o estado já gravado", async () => {
+      await montar();
+      await clicar(botao("Editar Atacado Fixture"));
+      const id = campo(/Estado/).id;
+      expect(valorDaLista(id)).toBe("SP");
+      await act(async () => escolherNaLista(id, ""));
+      expect(valorDaLista(id)).toBe("");
+      await clicar(botao("Salvar fornecedor"));
+      expect(editar).toHaveBeenCalledWith(
+        "a",
+        expect.objectContaining({ uf: null }),
+      );
     });
 
     it("dois toques rápidos em Salvar gravam UMA vez só", async () => {
@@ -583,16 +631,9 @@ describe("AdminFornecedoresView (E1)", () => {
       await act(async () => digitar(campo(/Cidade/), "Campinas"));
       await clicar(botao("Salvar fornecedor"));
       expect(criar).not.toHaveBeenCalled();
-      expect(editar).toHaveBeenCalledWith(
-        "a",
-        expect.objectContaining({
-          nome: "Atacado Fixture",
-          cidade: "Campinas",
-        }),
-      );
-      // A estrela NÃO foi tocada na folha: a edição não a manda (a folha guarda o valor de quando
-      // abriu, que pode já estar velho se a estrela da lista mudou nesse meio tempo).
-      expect(editar.mock.calls[0][1]).not.toHaveProperty("favorito");
+      // Só a cidade foi mexida: a edição manda só ela. Nem a estrela nem o resto (a folha guarda os
+      // valores de quando abriu, que podem já estar velhos se outro aparelho mudou nesse meio tempo).
+      expect(editar).toHaveBeenCalledWith("a", { cidade: "Campinas" });
     });
 
     it("estrela mexida DENTRO da folha é uma escolha do lojista: vai na edição", async () => {

@@ -581,6 +581,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/cancelar-pedido-do-painel-confere-a-etapa-portao-viva.cjs",
     "tests/banco/o-cupom-que-nao-da-desconto-portao-viva.cjs",
     "tests/banco/o-relatorio-de-categorias-sem-produto-portao-viva.cjs",
+    // 20261620000000: o portao das consultas 198a/198b (a soma das categorias fecha no centavo).
+    "tests/banco/a-soma-das-categorias-fecha-no-centavo-portao-viva.cjs",
     // 20261251: lucro por variante e cobertura do custo do estoque.
     "tests/banco/lucro-do-estoque-viva.cjs",
     // 20261250: faturamento do estoque e compatibilidade dos portões ancestrais.
@@ -807,6 +809,16 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-loja-grande-nao-trava-o-balcao-viva.cjs",
     // 20261550: o admin copia e apaga as fotos da loja (politicas SELECT so do admin de agora em products/banners; DELETE RETURNING 1/0; cliente e visitante 0; Public Display convive; reaplicar; rollback; consultas 192a/192b).
     "tests/banco/o-admin-copia-e-apaga-as-fotos-viva.cjs",
+    // 20261560: o infinito nao entra no banco (CHECKs novos contra Infinity e -Infinity na taxa local, na variacao e no cupom; todas as portas; sem a 400; NaN segue da 400; linha antiga recusa; mutantes; rollback; consultas 193a/193b).
+    "tests/banco/o-infinito-nao-entra-no-banco-viva.cjs",
+    // 20261570: o endereco antigo encaminha para o novo (tabela fechada, gatilho do principal, porta de leitura com o bloco da chave da v2, porta de troca so do dono com 19 recusas, falha no meio, duas conexoes, rollbacks, pre-voo).
+    "tests/banco/o-endereco-antigo-encaminha-viva.cjs",
+    // 20261590: a loja guarda o dia da pausa do teste (pausa_em opcional na porta do cartao; gestao velha e nova; recuo da porta velha; mutantes; rollback comum e destrutivo; consultas 150c/195a/195b).
+    "tests/banco/a-loja-guarda-o-dia-da-pausa-do-teste-viva.cjs",
+    // 20261600: a loja pausa o pedido novo (regra das datas com pausa_em; marca do dia da suspensa; motivo; recusa do pedido online v23/v24 com balcao livre; manutencao so o admin de agora; painel; mutantes; rollback comum e destrutivo; consultas 196a/196b).
+    "tests/banco/a-loja-pausa-o-pedido-novo-viva.cjs",
+    // 20261610: o catalogo e a configuracao chegam ao vivo em toda loja (as 10 tabelas na publicacao do realtime, coupons fora; IKCOUS no-op; pre-voo; rollback com confirmacao; politicas de SELECT; trava; consultas 197a/197b).
+    "tests/banco/o-catalogo-chega-ao-vivo-em-toda-loja-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
     "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

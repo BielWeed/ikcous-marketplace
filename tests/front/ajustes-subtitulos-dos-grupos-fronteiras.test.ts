@@ -40,6 +40,7 @@ function subtitulos(
     formasNaEntrega?: readonly string[];
     nivelDoPix?: NivelDoPixEmAjustes;
     nomesLigados?: readonly string[] | null;
+    cartaoLigado?: boolean | null;
   } = {},
 ) {
   const entrada = {
@@ -65,6 +66,9 @@ function subtitulos(
     formasNaEntrega: resto.formasNaEntrega ?? ["cash"],
     nivelDoPix: resto.nivelDoPix ?? "ok",
     nomesLigados: resto.nomesLigados === undefined ? [] : resto.nomesLigados,
+    ...(resto.cartaoLigado === undefined
+      ? {}
+      : { cartaoLigado: resto.cartaoLigado }),
   } as unknown as Entrada;
   return subtitulosDosGrupos(entrada);
 }
@@ -189,6 +193,38 @@ describe("subtitulosDosGrupos — o que entra na conta de cada grupo", () => {
         "pagamentos",
       ),
     ).toBe("Na entrega · PIX sem chave");
+  });
+
+  // Pedido do dono (26/11/2026): a loja também recebe no cartão pelo app, e
+  // o resumo só dizia "Na entrega + PIX". Cartão ligado entra no resumo; sem
+  // a leitura do cartão (null) o resumo não chuta.
+  it("Pagamentos: cartão pelo app ligado entra no resumo", () => {
+    const pag = (resto: Parameters<typeof subtitulos>[1]) =>
+      subtitulos({}, resto).get("pagamentos");
+    expect(
+      pag({ formasNaEntrega: ["cash"], nivelDoPix: "ok", cartaoLigado: true }),
+    ).toBe("Na entrega + PIX + cartão");
+    expect(
+      pag({ formasNaEntrega: [], nivelDoPix: "ok", cartaoLigado: true }),
+    ).toBe("PIX + cartão");
+    expect(
+      pag({ formasNaEntrega: ["cash"], nivelDoPix: "ok", cartaoLigado: false }),
+    ).toBe("Na entrega + PIX");
+    expect(
+      pag({ formasNaEntrega: ["cash"], nivelDoPix: "ok", cartaoLigado: null }),
+    ).toBe("Na entrega + PIX");
+    // Sem a chave, o cartão (que usa as mesmas chaves) também não funciona.
+    expect(
+      pag({
+        formasNaEntrega: ["cash"],
+        nivelDoPix: "alerta",
+        cartaoLigado: true,
+      }),
+    ).toBe("Na entrega · PIX e cartão sem chave");
+    // PIX pelo app desligado: o cartão não aparece para a cliente.
+    expect(
+      pag({ formasNaEntrega: ["cash"], nivelDoPix: "off", cartaoLigado: true }),
+    ).toBe("Na entrega");
   });
 
   it("PIX ligado sem chave e nada na entrega não é jeito de receber: 'Falta: Como você recebe'", () => {

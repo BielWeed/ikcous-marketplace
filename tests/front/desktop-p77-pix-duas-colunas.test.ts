@@ -396,7 +396,7 @@ describe("P77 -- Pix em duas colunas no computador: só classes lg:, celular int
     });
 
     it("M5: texto da tela mexido", () => {
-      const m = troca(PIX, "Copiar código Pix", "Copiar o código Pix");
+      const m = trocaUltima(PIX, "Copiar código Pix", "Copiar o código Pix");
       expect(violacoes(m, CHECKOUT)).toContain("texto da seção mudou");
     });
 

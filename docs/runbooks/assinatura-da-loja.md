@@ -77,7 +77,8 @@ confirmar).
     sem chave definida) é o mesmo erro `nao_autorizado` (42501).
   - `p_dados` é um objeto com **exatamente** estas 10 chaves: `plano`, `status`,
     `ciclo`, `valor_mensal`, `inicio_em`, `teste_ate`, `proxima_cobranca_em`,
-    `suporte_whatsapp`, `gerenciar_url`, `atualizado_em`. Chave a mais:
+    `suporte_whatsapp`, `gerenciar_url`, `atualizado_em` (depois da 20261590000000,
+    mais a opcional `pausa_em`: veja a seção abaixo). Chave a mais:
     `campo_nao_permitido`; a menos: `campo_ausente`; valor fora da regra:
     `valor_invalido` (o `DETAIL` diz o campo). `null` apaga o valor nos campos
     que a tabela aceita nulo. **`recursos` e `observacao` nunca são tocados.**
@@ -92,7 +93,64 @@ confirmar).
     a loja certa.
 - **Desfazer:** `rollback-manual-20261399998000_...sql` apaga as duas funções e a
   tabela da chave. **O hash guardado se perde** (precisa definir de novo); o
-  cartão não é tocado.
+  cartão não é tocado. Com a 20261590000000 no ar, desfaça antes os dois degraus
+  dela (seção abaixo): o pré-voo deste rollback recusa a porta com o corpo novo.
+
+## A 11ª chave opcional `pausa_em` (migration 20261590000000)
+
+A lojista que só testou e não pagou não deve ser tratada como devedora. Para o
+painel mostrar "Teste encerrado" com o mesmo dia da mensagem de WhatsApp, a loja
+passa a guardar **o dia em que os pedidos pela loja pausam**: a coluna
+`assinatura_da_loja.pausa_em` (date, anulável, sem padrão; a linha que já existe
+fica com NULL e o cartão de hoje não muda).
+
+- **A chave na porta.** `pausa_em` é a **11ª chave, opcional**. As 10 de sempre
+  continuam obrigatórias e qualquer outra chave continua `campo_nao_permitido`.
+  Valor: `"AAAA-MM-DD"` de dia real, ou `null`; qualquer outra coisa
+  (`infinity`, `2026-02-31`, `20261207`, texto solto) é `valor_invalido` com
+  `DETAIL` `campo: pausa_em`. **Chave ausente grava NULL**: apaga o dia que estava
+  guardado. Por isso o app de gestão velho (10 chaves) continua gravando, e
+  sempre limpa o dia.
+- **O sinal.** Para a loja antiga em teste, o app de gestão manda `pausa_em` junto
+  com o sinal do teste encerrado sem pagamento: `status` `atrasada` com `teste_ate` igual a
+  `proxima_cobranca_em` (o fim do teste) e `pausa_em` depois desse dia. Fora
+  disso e do caso da pagante abaixo, a chave não vai no corpo. O painel só mostra o cartão "Teste encerrado"
+  com o sinal completo e coerente; sinal torto cai no cartão de sempre.
+- **A pagante atrasada (desde 26/11/2026, decisão "sem teste grátis").**
+  `pausa_em` também chega para a lojista que entrou pagando e atrasou a
+  mensalidade: `status` `atrasada`, `teste_ate` **nulo** e `pausa_em` depois de
+  `proxima_cobranca_em` (o vencimento + 11 dias corridos, empurrado enquanto cair
+  em sexta, sábado, domingo, feriado nacional ou véspera; a conta é do app de
+  gestão). O painel troca "Atrasada" por **"Mensalidade em aberto"** com o mesmo
+  prazo da mensagem de WhatsApp (`avisoDaMensalidadeEmAberto`, em
+  `src/lib/crm.ts`). Savy e IKCOUS nunca recebem o dia: sem `pausa_em` o cartão
+  continua "Atrasada" com "Regularize". Com `teste_ate` preenchido vale o "Teste
+  encerrado" de cima. **A porta e a migration 20261590000000 NÃO mudam**: a chave,
+  o tipo e o recuo são os mesmos. O `COMMENT` da coluna ainda diz que ela "só vem
+  com o sinal do teste encerrado"; isso ficou desatualizado, e quem manda é esta
+  seção.
+- **O recuo (qualquer ordem de publicação é segura).** A porta de uma loja ainda
+  sem a migration recusa o corpo novo com HTTP 400 e
+  `{code: "22023", message: "campo_nao_permitido", details: "campo: pausa_em"}`,
+  sem gravar nada. Ao ver exatamente esse erro, o app de gestão **reenvia uma
+  vez** o mesmo corpo sem `pausa_em`; a loja fica com o cartão de hoje até o
+  banco dela migrar. Qualquer outro erro continua sendo erro.
+- **Ordem de publicação recomendada:** 1) o painel; 2) a migration no banco de
+  CADA loja (195b antes, 195a depois); 3) o app de gestão. As outras ordens
+  também funcionam por causa do recuo.
+- **Desfazer, em dois degraus:**
+  1. `rollback-manual-20261590000000_a_loja_guarda_o_dia_da_pausa_do_teste.sql`
+     devolve a porta da 20261399998000 byte a byte (md5 `565f82cb…`) e
+     **mantém** a coluna com os dias guardados. A porta velha não lê nem grava a
+     coluna; o app de gestão novo volta a usar o recuo.
+  2. `rollback-manual-destrutivo-20261590000000_a_loja_guarda_o_dia_da_pausa_do_teste.sql`,
+     **só com o dono** e só depois do 1): apaga a coluna. Exige
+     `SET LOCAL app.confirmo_apagar_pausa_em = 'APAGAR'` na mesma transação e
+     recusa se alguma função ainda citar `pausa_em`. Os dias guardados se perdem
+     (o app de gestão os regrava se a migration voltar). Só é preciso para
+     reaplicar a 20261399998000.
+- **Conferir:** consulta 195a (depois; 6 itens) e 195b (antes; 4 itens). A 150c
+  aceita o corpo novo da porta como sucessor.
 
 ## Como o hash da chave entra no banco de cada loja
 

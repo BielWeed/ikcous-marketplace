@@ -367,7 +367,13 @@ module.exports = [
     // acima do teto, e a base mediu 576,47 kB; a tela carrega so quando aberta, nada dela entra na vitrine). Medido nos
     // dois lados com o mesmo comando. O teto da vitrine NAO mexeu (704 kB): ela foi de 698,79 para 699,35 kB, os 0,56 kB
     // do registro da tela nos cinco pontos do roteador. Regra do dono: o teto sobe.
-    limit: "586 kB",
+    // 27/11/2026 (lista premium do painel, aprovada pelo dono em 26/11): 586 -> 592 kB. O <select> nativo
+    // de 8 telas virou a lista de escolha (folha no celular, popover no computador); o painel
+    // cresceu ~5,2 kB (590,45 contra 585,25 da base): 590,45 kB no build local, 585,25 kB da base
+    // no CI. Subo 6 kB (um degrau de 4 nao cobre os 4,45 kB acima) e nada foi trocado por codigo
+    // mais arriscado para caber. A vitrine NAO mexeu (704 kB): foi de 700,21 para 701,03 kB, o Radix
+    // Popover que o vite.config.ts poe no vendor-inicio. Regra do dono: o teto sobe.
+    limit: "592 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

@@ -214,6 +214,7 @@ export type Database = {
           id: number;
           inicio_em: string | null;
           observacao: string | null;
+          pausa_em: string | null;
           plano: string;
           proxima_cobranca_em: string | null;
           recursos: string[];
@@ -229,6 +230,7 @@ export type Database = {
           id?: number;
           inicio_em?: string | null;
           observacao?: string | null;
+          pausa_em?: string | null;
           plano: string;
           proxima_cobranca_em?: string | null;
           recursos?: string[];
@@ -244,6 +246,7 @@ export type Database = {
           id?: number;
           inicio_em?: string | null;
           observacao?: string | null;
+          pausa_em?: string | null;
           plano?: string;
           proxima_cobranca_em?: string | null;
           recursos?: string[];
@@ -4190,6 +4193,10 @@ export type Database = {
       set_my_cpf: {
         Args: { p_cpf: string };
         Returns: undefined;
+      };
+      situacao_das_vendas_da_loja: {
+        Args: never;
+        Returns: Json;
       };
       solicitar_devolucao: {
         Args: {

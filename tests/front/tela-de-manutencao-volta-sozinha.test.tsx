@@ -6,7 +6,8 @@
 // aberto continuava vendo o aviso de manutenção com a loja já aberta.
 //
 // O que este arquivo prova, com relógio falso e sem rede:
-//   - pergunta à ficha atual a cada 45 s ENQUANTO a tela existe (e só);
+//   - pergunta à ficha atual na abertura e a cada 45 s ENQUANTO a tela existe
+//     (e só);
 //   - ficha dizendo "voltou" => apaga a cópia guardada e navega, uma vez;
 //   - ficha dizendo "manutenção"/erro => não faz nada;
 //   - NÃO HÁ LAÇO: se a página nova ainda disser "manutenção" e a pergunta
@@ -105,7 +106,9 @@ afterEach(async () => {
 describe("tela de manutenção — o que a pessoa vê", () => {
   it("mostra o aviso e o botão 'Tentar de novo'", async () => {
     await montar();
-    expect(hospedeiro.textContent).toContain("Servidor em Manutenção");
+    expect(hospedeiro.textContent).toContain("Loja em manutenção");
+    // A cliente não conhece "servidor": o título fala da loja.
+    expect(hospedeiro.textContent).not.toMatch(/servidor/i);
     expect(hospedeiro.textContent).not.toMatch(
       /alguns minutos|otimizando nossa infraestrutura|atualizando banco de dados/i,
     );
@@ -137,16 +140,17 @@ describe("tela de manutenção — orientação sobre pagamento", () => {
 });
 
 describe("tela de manutenção — checagem automática", () => {
-  it("não pergunta nada antes do primeiro intervalo", async () => {
+  it("pergunta UMA vez na abertura (a página aberta pelo ícone pode ser a cópia guardada da manutenção) e não repete antes do primeiro intervalo", async () => {
     await montar();
     await passar(INTERVALO_DA_CHECAGEM_MS - 1);
-    expect(buscar).not.toHaveBeenCalled();
+    expect(buscar).toHaveBeenCalledTimes(1);
   });
 
   it("a cada intervalo pergunta à ficha atual (sem cache) e, em manutenção, não faz mais nada", async () => {
     await montar();
     await passar(INTERVALO_DA_CHECAGEM_MS * 3);
-    expect(buscar).toHaveBeenCalledTimes(3);
+    // 1 na abertura + 1 por intervalo.
+    expect(buscar).toHaveBeenCalledTimes(4);
     expect(buscar).toHaveBeenCalledWith("/identidade.json", {
       cache: "no-store",
       signal: expect.any(AbortSignal),
@@ -193,7 +197,9 @@ describe("tela de manutenção — checagem automática", () => {
     });
     buscar.mockImplementation(async () => resposta(false));
     await montar();
-    await passar(INTERVALO_DA_CHECAGEM_MS);
+    await passar(0);
+    // A pergunta da abertura falhou na rede.
+    expect(buscar).toHaveBeenCalledTimes(1);
     expect(navegar).not.toHaveBeenCalled();
     await passar(INTERVALO_DA_CHECAGEM_MS);
     expect(navegar).toHaveBeenCalledTimes(1);
@@ -201,8 +207,8 @@ describe("tela de manutenção — checagem automática", () => {
 
   it("aba escondida não gasta rede; ao voltar a ficar visível pergunta na hora", async () => {
     buscar.mockImplementation(async () => resposta(false));
-    await montar();
     estadoDaAba = "hidden";
+    await montar();
     await passar(INTERVALO_DA_CHECAGEM_MS * 4);
     expect(buscar).not.toHaveBeenCalled();
 
@@ -231,13 +237,56 @@ describe("tela de manutenção — checagem automática", () => {
   });
 });
 
-describe("tela de manutenção — a checagem para quando a tela sai do ar", () => {
-  it("depois de desmontar, nenhuma pergunta nova e nenhuma navegação", async () => {
+describe("tela de manutenção — a pergunta na abertura", () => {
+  // O service worker abre o app pela cópia guardada da página, e a cópia
+  // pode ter sido guardada durante a manutenção (o porteiro a serve com 200).
+  // Sem perguntar na abertura, a cliente ficava 45 s vendo "manutenção" com a
+  // loja já aberta.
+  it("abre com a loja já aberta: pergunta na hora e volta para a loja, sem esperar o intervalo", async () => {
     buscar.mockImplementation(async () => resposta(false));
     await montar();
+    await passar(0);
+    expect(buscar).toHaveBeenCalledTimes(1);
+    expect(apagouDoCache).toHaveBeenCalledWith("https://loja.exemplo.com/");
+    expect(navegar).toHaveBeenCalledTimes(1);
+  });
+
+  it("abre com a loja ainda em manutenção: pergunta na hora, a tela fica, e o intervalo segue normal", async () => {
+    await montar();
+    await passar(0);
+    expect(buscar).toHaveBeenCalledTimes(1);
+    expect(navegar).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("Loja em manutenção");
+
+    await passar(INTERVALO_DA_CHECAGEM_MS - 1);
+    expect(buscar).toHaveBeenCalledTimes(1);
+    await passar(1);
+    expect(buscar).toHaveBeenCalledTimes(2);
+    expect(navegar).not.toHaveBeenCalled();
+  });
+
+  it("abertura logo depois de uma recarga feita pelo próprio hook não pergunta de novo: sem laço", async () => {
+    // A ficha diz "voltou", mas cada página nova insiste em "manutenção": cada
+    // recarga monta a tela de novo na hora, com o sessionStorage da aba intacto.
+    buscar.mockImplementation(async () => resposta(false));
+    for (let pagina = 0; pagina < 10; pagina++) {
+      await montar();
+      await passar(0);
+      await desmontar();
+    }
+    expect(navegar).toHaveBeenCalledTimes(1);
+    expect(buscar).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("tela de manutenção — a checagem para quando a tela sai do ar", () => {
+  it("depois de desmontar, nenhuma pergunta nova e nenhuma navegação", async () => {
+    await montar();
     await desmontar();
+    buscar.mockImplementation(async () => resposta(false));
     await passar(INTERVALO_DA_CHECAGEM_MS * 10);
-    expect(buscar).not.toHaveBeenCalled();
+    // Só a pergunta da abertura (em manutenção, sem navegar).
+    expect(buscar).toHaveBeenCalledTimes(1);
     expect(navegar).not.toHaveBeenCalled();
   });
 
@@ -264,8 +313,10 @@ describe("tela de manutenção — a checagem para quando a tela sai do ar", () 
 
   it("o ouvinte de visibilidade também sai junto", async () => {
     buscar.mockImplementation(async () => resposta(false));
+    estadoDaAba = "hidden";
     await montar();
     await desmontar();
+    estadoDaAba = "visible";
     await act(async () => {
       document.dispatchEvent(new Event("visibilitychange"));
       await vi.advanceTimersByTimeAsync(0);
@@ -342,6 +393,9 @@ describe("tela de manutenção — NÃO HÁ LAÇO DE RECARGA", () => {
 describe("tela de manutenção — botão 'Tentar de novo'", () => {
   it("apaga a cópia guardada e navega, sem esperar a checagem", async () => {
     await montar();
+    await passar(0);
+    // A pergunta da abertura já saiu (em manutenção); o toque não pergunta.
+    const perguntasAntesDoToque = buscar.mock.calls.length;
     const botao = hospedeiro.querySelector("button") as HTMLButtonElement;
     await act(async () => {
       botao.click();
@@ -349,7 +403,7 @@ describe("tela de manutenção — botão 'Tentar de novo'", () => {
     });
     expect(apagouDoCache).toHaveBeenCalledWith("https://loja.exemplo.com/");
     expect(navegar).toHaveBeenCalledTimes(1);
-    expect(buscar).not.toHaveBeenCalled();
+    expect(buscar).toHaveBeenCalledTimes(perguntasAntesDoToque);
   });
 
   it("funciona mesmo com as 3 recargas automáticas já gastas", async () => {

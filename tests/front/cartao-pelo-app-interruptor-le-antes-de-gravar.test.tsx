@@ -46,6 +46,7 @@ vi.mock("sonner", () => ({
 
 import { FormasDePagamentoSection } from "@/components/admin/settings/FormasDePagamentoCard";
 import { PRAZO_DA_CONSULTA_DO_PAINEL_MS } from "@/lib/prazo-da-requisicao";
+import { escolherNaLista, valorDaLista } from "./helpers/lista-de-escolha";
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -120,10 +121,18 @@ describe("Cartão pelo app — grava só o que a lojista tocou, sobre a linha de
   }
   const credito = () => interruptor("Cartão de crédito pelo app");
   const debito = () => interruptor("Cartão de débito pelo app");
-  const seletorDeParcelas = () =>
-    [...hospedeiro.querySelectorAll("select")].find((s) =>
-      s.labels?.[0]?.textContent?.includes("Parcelar em até"),
-    ) as HTMLSelectElement | undefined;
+  // O "Parcelar em até" é a lista de escolha do painel (lista premium,
+  // 26/11/2026): o botão do campo, achado pelo rótulo `<label for>`.
+  const seletorDeParcelas = () => {
+    const rotulo = [...hospedeiro.querySelectorAll("label")].find(
+      (l) => l.textContent === "Parcelar em até",
+    );
+    const campo = rotulo ? document.getElementById(rotulo.htmlFor) : null;
+    return campo instanceof HTMLButtonElement &&
+      campo.getAttribute("aria-haspopup") === "listbox"
+      ? campo
+      : undefined;
+  };
 
   async function clicar(el: HTMLElement) {
     await act(async () => {
@@ -132,16 +141,12 @@ describe("Cartão pelo app — grava só o que a lojista tocou, sobre a linha de
     await esperar();
   }
   async function escolherParcelas(valor: string) {
-    const seletor = seletorDeParcelas()!;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(
-        HTMLSelectElement.prototype,
-        "value",
-      )!.set!.call(seletor, valor);
-      seletor.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherNaLista(seletorDeParcelas()!.id, valor);
     });
     await esperar();
   }
+  const parcelasNaTela = () => valorDaLista(seletorDeParcelas()!.id);
 
   it("leitura inicial pendurada sai da espera e avisa como tentar de novo", async () => {
     vi.useFakeTimers();
@@ -362,7 +367,7 @@ describe("Cartão pelo app — grava só o que a lojista tocou, sobre a linha de
       expect(hospedeiro.querySelector(".animate-spin")).toBeNull();
       expect(credito().getAttribute("data-state")).toBe("checked");
       expect(debito().getAttribute("data-state")).toBe("unchecked");
-      expect(seletorDeParcelas()!.value).toBe("6");
+      expect(parcelasNaTela()).toBe("6");
       expect(toastErro).toHaveBeenCalledWith(
         "Não deu para confirmar se salvou o cartão pelo app. Confira o estado abaixo.",
       );
@@ -383,7 +388,7 @@ describe("Cartão pelo app — grava só o que a lojista tocou, sobre a linha de
   it("ligar o débito não desfaz o 3x que o celular escolheu depois que a tela abriu", async () => {
     await montar();
     // A tela abriu vendo 6x; o celular muda para 3x sem a tela saber.
-    expect(seletorDeParcelas()!.value).toBe("6");
+    expect(parcelasNaTela()).toBe("6");
     banco.linha = { credito: true, debito: false, parcelas_max: 3 };
 
     await clicar(debito());
@@ -395,7 +400,7 @@ describe("Cartão pelo app — grava só o que a lojista tocou, sobre a linha de
       p_parcelas_max: 3,
     });
     expect(debito().getAttribute("data-state")).toBe("checked");
-    expect(seletorDeParcelas()!.value).toBe("3");
+    expect(parcelasNaTela()).toBe("3");
   });
 
   it("desligar o crédito mantém o débito que o outro aparelho ligou", async () => {
@@ -426,7 +431,7 @@ describe("Cartão pelo app — grava só o que a lojista tocou, sobre a linha de
       p_parcelas_max: 2,
     });
     expect(debito().getAttribute("data-state")).toBe("checked");
-    expect(seletorDeParcelas()!.value).toBe("2");
+    expect(parcelasNaTela()).toBe("2");
   });
 
   it("se não conseguir ler a linha de agora, não grava nada, avisa e destrava a tela", async () => {

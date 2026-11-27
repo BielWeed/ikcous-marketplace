@@ -4,6 +4,7 @@ import {
   buscarConfiguracaoDeFrete,
 } from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import {
   motivoDaCotacao,
   nomeDoProvedorNoHistorico,
@@ -292,7 +293,7 @@ export const HistoricoCotacoesSection = memo(
                           {...papel("cell")}
                           className="col-start-1 row-start-1 block whitespace-nowrap font-mono text-[11px] text-zinc-400 sm:table-cell sm:p-2.5"
                         >
-                          {new Date(log.created_at).toLocaleString("pt-BR", {
+                          {dataNoFusoDaLoja(new Date(log.created_at), {
                             day: "2-digit",
                             month: "2-digit",
                             hour: "2-digit",

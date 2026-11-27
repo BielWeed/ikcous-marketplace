@@ -1983,6 +1983,36 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    loja inteira sem resposta, ou endereco que a Vercel nao liga ao deployment promovido — isso
    sai 1 (FALHOU).
 
+   **Banco da loja fora do ar (`BANCO_INDISPONIVEL`).** O porteiro responde a pagina inicial com
+   HTTP 503 e `x-ikcous-porteiro: banco-indisponivel` (com `x-ikcous-caderneta: hit`) quando
+   conhece a loja mas o banco Supabase DELA nao respondeu: projeto pausado pelo Supabase ou
+   incidente. A conferencia da frota chama isso de `BANCO_INDISPONIVEL`, nunca de
+   `LOJA_TROCADA`. So o trio exato conta: um 503 sem esse marcador (a Vercel caindo, outro
+   motivo, a caderneta fora) continua como antes.
+   - **Antes do promote** (ensaio ou `--promover`): BLOQUEIA. A loja NAO e pulada, porque ela
+     voltaria com o front novo sobre o banco velho. Saidas: restaurar o projeto ("Restore
+     project" no painel do Supabase; para loja OAuth, `node scripts/frota/acordar-projeto.mjs`)
+     e rodar o ensaio de novo; ou, so para loja que NAO e a IKCOUS nem a Savy, adormece-la pela
+     caderneta (`node scripts/frota/estado-da-loja.mjs --adormecer ...`, decisao do socio; veja
+     [estado de vida da loja](estado-de-vida-da-loja.md)).
+   - **Depois do promote** o 503 sozinho nao basta: o porteiro e o middleware do MESMO
+     deployment promovido, e um defeito dele (montar a ficha, ler a configuracao da loja)
+     tambem responde `banco-indisponivel`. Por isso o portao pergunta ao banco DIRETO, sem o
+     porteiro: `GET https://<ref>.supabase.co/rest/v1/v_store_config?select=dominio_publico&id=eq.1`
+     com a chave publicavel da ficha de ANTES do promote (so leitura, 5 s, no maximo 1 nova
+     tentativa; a chave nunca sai no relatorio nem no `--json`).
+     - Erro de rede, tempo esgotado ou HTTP 5xx (540 = projeto pausado, 503 inclusive): Saida 3
+       (**INCERTO**), sem "FALHOU." e sem a ordem de rollback, desde que o resto esteja provado
+       (a Vercel liga o endereco ao deployment promovido, o `version.json` dele e o da release
+       e nao ha outro achado). O front novo esta no ar; restaure o banco e rode a conferencia de
+       novo (o relatorio imprime o comando). Rollback da frota nao traz o banco de volta.
+     - O banco respondeu (200 ou 4xx): o banco esta no ar e quem nao monta a loja e o front novo.
+       Saida 1 (**FALHOU**) com o [rollback](#rollback) da frota inteira.
+     - A sonda nao rodou (ficha de antes sem a chave publicavel, endereco que nao era de loja
+       nenhuma antes): Saida 1 (**FALHOU**) com o rollback, como sempre foi.
+   - `LOJA_TROCADA` de verdade (pagina com a ficha ou o ref de OUTRA loja, ou ficha que muda
+     entre amostras) continua sendo rollback ja, mesmo que outra loja esteja com o banco fora.
+
    Saida 1 com a secao "PRIORIDADE ALTA — loja que acordou durante a publicação" (texto exato do relatorio) NAO pede
    rollback da frota: uma loja que estava fora do ar acordou no meio da publicacao e nao passou
    pela prontidao desta release. Rode, para cada loja listada, o
@@ -2007,8 +2037,9 @@ node scripts/frota/conferir-frota.mjs --sha <sha40> --vercel
 ```
 
 Classes: `OK`, `ENDERECO_ANTIGO` (aponta para outro deployment: recuperar com o passo 4, nunca
-`alias set`), `LOJA_TROCADA` / `SUSPEITA_ISOLAMENTO` (isolamento: rollback ja), `CANONICO_INVALIDO`,
-`BUILD_DIVERGENTE`, `INALCANCAVEL`, `ESTADO_INESPERADO`. No GitHub: workflow `frota-conferir.yml`
+`alias set`), `LOJA_TROCADA` / `SUSPEITA_ISOLAMENTO` (isolamento: rollback ja),
+`BANCO_INDISPONIVEL` (o banco da loja caiu: restaurar o banco, nunca rollback do front; ver o passo
+4), `CANONICO_INVALIDO`, `BUILD_DIVERGENTE`, `INALCANCAVEL`, `ESTADO_INESPERADO`. No GitHub: workflow `frota-conferir.yml`
 (sem segredo; inventario PARCIAL porque o CI nao le a Vercel). Nao ha vigia agendado: o ramo
 padrao do GitHub e `develop`, e agendamento so dispara de la.
 
@@ -2452,6 +2483,13 @@ O cadastro de UMA vez, na entrada do cliente:
   `variacoes_independentes`, sem nomes nem estoque. Use os mesmos alvos e parametros da 45m, uma loja por
   execucao. Se algum indicador de RLS for 1, o total pode estar incompleto. So leitura, sem dados de
   clientes. Nao e portao.
+- **`193m-medir-infinitos-guardados`** (26/11/2026): conta, em cada loja assinante e ANTES de aplicar a
+  `20261560000000` (o infinito nao entra no banco), quantas linhas ja guardam `Infinity` ou `-Infinity` na taxa
+  de entrega local, no preco proprio da variacao e no valor do cupom (a mesma regra da guarda da migration). Rol
+  fechado de 4 linhas com `ok`: o controle (a RLS nao vale para quem leu) e uma contagem por coluna, `ok` so com 0.
+  Qualquer `ok=false` numa contagem = a migration se recusaria nessa loja: ela sai da release
+  (`migrationsForaDaRelease`) ate a lojista corrigir o valor. Os mesmos alvos e parametros da 45m, uma loja por
+  execucao. So contagens, nenhum dado de linha. Nao e portao.
 
 ## Fora da release, de proposito
 

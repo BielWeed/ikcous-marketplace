@@ -45,6 +45,7 @@ import {
   MARCADOR_DO_CUPOM,
   MODELOS_DE_CAMPANHA,
   codigosDeCupomCitados,
+  cupomDoCodigoCitado,
   filtroDosCodigosCitados,
   mensagemDoProblemaDoCupom,
   problemaDoCupom,
@@ -438,7 +439,7 @@ async function avisosDosCuponsCitados(
     const agora = new Date();
     const avisos: string[] = [];
     for (const codigo of codigos) {
-      const cupom = cupons.find((c) => c.code.toUpperCase() === codigo);
+      const cupom = cupomDoCodigoCitado(codigo, cupons);
       let clienteNaListaDoCupom: boolean | undefined;
       if (targetUserId && cupom?.alcance === "exclusivo") {
         if (!cupom.id)

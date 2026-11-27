@@ -234,22 +234,28 @@ describe("dispararPagamentoPix — o que chega ao pai quando há QR", () => {
     });
   });
 
-  it("status 'pago' COM QR ainda desenha o QR, mas `aguardando` é false (o dinheiro já entrou)", async () => {
+  // Caça de 26/11/2026: 'pago' COM QR desenhava o QR (com `aguardando`
+  // false) — "Copiar código Pix" de um PIX já pago. Agora é confirmação.
+  it("status 'pago' COM QR não desenha o QR: é confirmação (o dinheiro já entrou)", async () => {
     const modulo = await importarLimpo();
     const onPix = vi.fn();
+    const onErro = vi.fn();
+    const onConfirmado = vi.fn();
 
     modulo.dispararPagamentoPix({
       orderId: "ped-pago-com-qr",
       criarPagamento: vi
         .fn()
         .mockResolvedValue({ ...RESPOSTA_COM_QR, statusPagamento: "pago" }),
-      onErro: vi.fn(),
+      onErro,
       onPix,
+      onConfirmado,
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(onPix).toHaveBeenCalledTimes(1);
-    expect(onPix.mock.calls[0][0].aguardando).toBe(false);
+    expect(onConfirmado).toHaveBeenCalledTimes(1);
+    expect(onPix).not.toHaveBeenCalled();
+    expect(onErro).not.toHaveBeenCalled();
   });
 
   for (const [rotulo, parcial] of [

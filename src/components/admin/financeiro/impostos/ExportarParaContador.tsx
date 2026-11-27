@@ -10,6 +10,8 @@
 import { Download, Loader2, RefreshCw } from "lucide-react";
 import { type RefObject, useEffect, useId, useRef, useState } from "react";
 
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
+import type { OpcaoDaLista } from "@/components/admin/primitivos/lista-de-escolha/tipos";
 import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import {
   type EntradaDoCsvDoContador,
@@ -18,12 +20,7 @@ import {
 } from "@/lib/fiscal/csv-do-contador";
 import { cn } from "@/lib/utils";
 
-import {
-  CLASSE_BOTAO_SECUNDARIO,
-  CLASSE_CAMPO,
-  Campo,
-  CartaoSecao,
-} from "../partes";
+import { CLASSE_BOTAO_SECUNDARIO, CartaoSecao } from "../partes";
 
 /** O período pedido: `AAAA-MM` no modo mensal, `AAAA` no anual (a mesma referência do gerador). */
 export interface PeriodoDoCsv {
@@ -60,6 +57,13 @@ const MESES = [
   "novembro",
   "dezembro",
 ] as const;
+
+// Na lista o mês abre com maiúscula ("Março"); na frase do aviso fica minúsculo
+// ("março de 2026"). O valor é o `MM` do período.
+const OPCOES_DO_MES: readonly OpcaoDaLista[] = MESES.map((nome, i) => ({
+  valor: String(i + 1).padStart(2, "0"),
+  rotulo: nome.charAt(0).toUpperCase() + nome.slice(1),
+}));
 
 const QUANTOS_ANOS_PARA_TRAS = 5;
 
@@ -199,9 +203,12 @@ export function ExportarParaContador({ buscarLinhas, agora }: Props) {
     void exportar(periodo);
   }
 
-  const anos = Array.from(
+  const opcoesDoAno: OpcaoDaLista[] = Array.from(
     { length: QUANTOS_ANOS_PARA_TRAS + 1 },
-    (_, i) => anoAtual - i,
+    (_, i) => {
+      const a = String(anoAtual - i);
+      return { valor: a, rotulo: a };
+    },
   );
 
   return (
@@ -211,34 +218,20 @@ export function ExportarParaContador({ buscarLinhas, agora }: Props) {
     >
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-3">
-          <Campo id={idMes} rotulo="Mês">
-            <select
-              id={idMes}
-              value={mes}
-              onChange={(e) => setMes(e.target.value)}
-              className={CLASSE_CAMPO}
-            >
-              {MESES.map((nome, i) => (
-                <option key={nome} value={String(i + 1).padStart(2, "0")}>
-                  {nome}
-                </option>
-              ))}
-            </select>
-          </Campo>
-          <Campo id={idAno} rotulo="Ano">
-            <select
-              id={idAno}
-              value={ano}
-              onChange={(e) => setAno(e.target.value)}
-              className={CLASSE_CAMPO}
-            >
-              {anos.map((a) => (
-                <option key={a} value={String(a)}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          </Campo>
+          <CampoDeEscolha
+            id={idMes}
+            rotulo="Mês"
+            opcoes={OPCOES_DO_MES}
+            valor={mes}
+            aoMudar={setMes}
+          />
+          <CampoDeEscolha
+            id={idAno}
+            rotulo="Ano"
+            opcoes={opcoesDoAno}
+            valor={ano}
+            aoMudar={setAno}
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">

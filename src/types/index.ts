@@ -262,6 +262,13 @@ export interface Order {
   /** O endereço da loja no momento da compra (retrato, aparado). */
   enderecoDeRetirada?: string | null;
   /**
+   * Retirada SEM cópia do endereço de casa no pedido (a RPC não copia em
+   * `store-pickup`, migration 20261399997000): o endereço em `customer` veio
+   * do cadastro ATUAL da conta (JOIN `user_addresses`), não da compra. A ficha
+   * o rotula como atual e o recibo não o imprime. Ausente = como antes.
+   */
+  enderecoDoCadastroAtual?: boolean;
+  /**
    * Achado 1 da revisão de risco de 26/09/2026 (rodada 2): soma dos
    * reembolsos de devoluções JÁ CONCLUÍDAS com `reembolso_manual = true`
    * deste pedido — dinheiro que já saiu da loja pelo caminho da devolução,

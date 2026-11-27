@@ -1514,6 +1514,12 @@ async function main() {
         "20261412000000_o_crm_ignora_reembolso_integral.sql",
         "public.get_admin_user_detail(uuid)",
       ],
+      // A 1620 só arredonda o relatório por categoria (sucede a 1409); a 17a não lê
+      // get_category_analytics. Fica no fim: a lista comparada vem ordenada pelo nome.
+      [
+        "20261620000000_a_soma_das_categorias_fecha_com_o_faturamento_no_centavo.sql",
+        "public.get_category_analytics(timestamp with time zone,timestamp with time zone)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

@@ -203,15 +203,25 @@ function classificarRespostaPagamento(
       categoria: "terminal",
     };
   }
+  // 'pago' é confirmação, com QR ou sem — o dinheiro já entrou.
+  //
+  // B4 da revisão de risco pré-publicação (26/09/2026): 'pago' SEM QR não é
+  // falha nenhuma — é o cliente pedindo PIX com um cartão que a edge já
+  // aprovou (ex.: saiu do desafio 3DS e tocou "Pagar com PIX" antes do
+  // webhook confirmar). Dizer "Não foi possível gerar o QR code" seria um
+  // erro falso sobre um pagamento que deu certo.
+  //
+  // Caça de 26/11/2026: 'pago' COM QR também. A reconsulta da edge
+  // (criar-pagamento, ramo (a)/(e)) devolve 'pago' — só com prova do banco —
+  // JUNTO com o QR da mesma cobrança: a cliente pagou, a confirmação atrasou
+  // e ela voltou por "Retomar pagamento". Desenhar o PIX ali mostrava
+  // "Copiar código Pix" e o passo a passo de um PIX já pago, até o
+  // CheckoutView trocar a tela — tempo de sobra para pagar de novo.
+  //
+  // Quem confirma de vez continua sendo o webhook/CheckoutView — aqui só se
+  // evita o susto (sem QR) e o pagamento em dobro (com QR).
+  if (r.statusPagamento === "pago") return { tipo: "confirmado" };
   if (!r.qrCode && !r.qrCodeBase64) {
-    // B4 da revisão de risco pré-publicação (26/09/2026): 'pago' SEM QR não
-    // é falha nenhuma — é o cliente pedindo PIX com um cartão que a edge já
-    // aprovou (ex.: saiu do desafio 3DS e tocou "Pagar com PIX" antes do
-    // webhook confirmar). Não existe cobrança PIX para desenhar porque o
-    // dinheiro já entrou; dizer "Não foi possível gerar o QR code" seria um
-    // erro falso sobre um pagamento que deu certo. Quem confirma de vez
-    // continua sendo o webhook/CheckoutView — aqui só se evita o susto.
-    if (r.statusPagamento === "pago") return { tipo: "confirmado" };
     // Sem isso: nunca sinaliza sucesso sem QR de verdade — sem QR o cliente
     // ficaria preso numa tela vazia, sem volta, com o pedido morrendo em 30
     // min de reserva. Recuperável: a cobrança em si não existe de forma
@@ -227,6 +237,10 @@ function classificarRespostaPagamento(
     tipo: "pix",
     pix: {
       paymentId: r.paymentId,
+      // Desde 26/11/2026 só 'aguardando' chega aqui ('pago' saiu acima como
+      // confirmação). O campo fica como segunda trava do "Já paguei —
+      // verificar": uma refatoração que volte a deixar 'pago' passar não
+      // reabre o botão de conferir um PIX já pago.
       aguardando: r.statusPagamento === "aguardando",
       qrCodeBase64: r.qrCodeBase64,
       qrCode: r.qrCode,
@@ -706,6 +720,8 @@ function VerificarPix({
   );
   const [verificando, setVerificando] = useState(false);
   const [semConfirmacao, setSemConfirmacao] = useState(false);
+  const idAviso = useId();
+  const idEspera = useId();
   const montadoRef = useRef(false);
   useEffect(() => {
     montadoRef.current = true;
@@ -768,27 +784,44 @@ function VerificarPix({
   };
 
   const esgotou = total >= LIMITE_VERIFICACOES_PIX;
+  const avisoEsgotado = esgotou && !verificando;
+  const esperandoIntervalo = !verificando && !esgotou && liberaEm !== 0;
+  // Leitor de tela (27/11/2026): o botão desabilitado aponta para o motivo.
+  // "Verificando…" já é o próprio motivo; esgotado aponta para o aviso; no
+  // intervalo, um texto só para o leitor diz quando libera. O motivo do
+  // intervalo fica FORA da região viva: é lido ao chegar no botão, sem
+  // anúncio a cada consulta.
+  const motivoDesabilitado = avisoEsgotado
+    ? idAviso
+    : esperandoIntervalo
+      ? idEspera
+      : undefined;
   return (
     <div className="lg:col-start-1">
       <button
         type="button"
         onClick={verificar}
         disabled={verificando || liberaEm !== 0 || esgotou}
+        aria-describedby={motivoDesabilitado}
         className="min-h-11 w-full rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
       >
         {verificando ? "Verificando…" : "Já paguei — verificar"}
       </button>
-      <p aria-live="polite" className="text-sm text-zinc-600">
+      {esperandoIntervalo && (
+        <span id={idEspera} className="sr-only">
+          {`Aguarde até ${INTERVALO_VERIFICAR_PIX_MS / 1000} segundos para verificar de novo.`}
+        </span>
+      )}
+      {/* O aviso de esgotado mora na MESMA região viva, já montada: antes ele
+        entrava num parágrafo à parte, fora dela, e a última consulta
+        terminava em silêncio para o leitor de tela. */}
+      <p id={idAviso} aria-live="polite" className="text-sm text-zinc-600">
         {semConfirmacao &&
           !esgotou &&
           "Ainda não confirmado. Se você já pagou no banco, não pague de novo: aguarde aqui ou confira em Meus pedidos, na aba Em andamento ou no Histórico."}
+        {avisoEsgotado &&
+          "As verificações manuais deste Pix acabaram. Acompanhe a confirmação nesta tela ou em Meus pedidos."}
       </p>
-      {esgotou && !verificando && (
-        <p className="text-sm text-zinc-600">
-          As verificações manuais deste Pix acabaram. Acompanhe a confirmação
-          nesta tela ou em Meus pedidos.
-        </p>
-      )}
     </div>
   );
 }
@@ -831,8 +864,8 @@ function PagamentoComPix({
   const [pix, setPix] = useState<(DadosDoPix & { orderId: string }) | null>(
     null,
   );
-  // B4: PIX pedido com o cartão já aprovado — a edge devolve 'pago' sem QR
-  // (ver `classificarRespostaPagamento`, acima). Estado final e exclusivo
+  // B4: a edge devolveu 'pago' — sem QR (cartão já aprovado) ou com o QR de
+  // um PIX já pago (ver `classificarRespostaPagamento`, acima). Estado final e exclusivo
   // com `pix`: quem confirma de vez continua sendo o webhook/CheckoutView,
   // esta tela só troca o erro falso de QR por um aviso honesto.
   const [confirmado, setConfirmado] = useState(false);

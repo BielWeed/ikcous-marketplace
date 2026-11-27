@@ -1014,6 +1014,112 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261590000000: a loja guarda o dia da pausa do teste. SUCESSORA da porta da 20261399998000: assinatura_da_loja_gravar ganha a 11a chave OPCIONAL pausa_em (ausente grava NULL) e a
+  // coluna assinatura_da_loja.pausa_em. Os marcadores da 20261399998000 (autentica pelo hash antes de olhar p_dados, lista branca, mais velho ignorado) continuam valendo uma vez cada,
+  // mais os da chave opcional: a lista branca com v_opcionais, a data ausente que vira NULL no mesmo laco das outras e o UPDATE que reescreve pausa_em. A coluna, o corpo exato (md5), a
+  // ACL e o leitor intacto sao da consulta 195a e da prova viva.
+  "20261590000000_a_loja_guarda_o_dia_da_pausa_do_teste.sql": [
+    {
+      funcao: "assinatura_da_loja_gravar",
+      esperado: [
+        {
+          texto:
+            "v_enviado := encode(sha256(convert_to(COALESCE(p_chave, ''), 'UTF8')), 'hex');",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF v_guardado IS NULL OR p_chave IS NULL OR p_chave = '' OR v_enviado <> v_guardado THEN",
+          vezes: 1,
+        },
+        {
+          texto: "RAISE EXCEPTION 'nao_autorizado' USING ERRCODE = '42501';",
+          vezes: 1,
+        },
+        {
+          texto:
+            "RAISE EXCEPTION 'campo_nao_permitido' USING ERRCODE = '22023', DETAIL = 'campo: ' || left(v_campo, 40);",
+          vezes: 1,
+        },
+        {
+          texto: "IF v_instante > clock_timestamp() + interval '1 day' THEN",
+          vezes: 1,
+        },
+        {
+          texto: "WHERE a.atualizado_em <= EXCLUDED.atualizado_em;",
+          vezes: 1,
+        },
+        {
+          texto: "WHERE k <> ALL (v_chaves || v_opcionais) ORDER BY k LIMIT 1;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF (p_dados -> v_campo) IS NULL OR jsonb_typeof(p_dados -> v_campo) = 'null' THEN",
+          vezes: 1,
+        },
+        { texto: "pausa_em = EXCLUDED.pausa_em,", vezes: 1 },
+      ],
+    },
+  ],
+  // 20261600000000: a loja pausa o pedido novo. Funcoes NOVAS (nenhuma sucessora): sem esta entrada a migration saia PULADA (saida 2). Os marcadores sao as
+  // decisoes que, tiradas, voltam a vender com a loja pausada ou pausam antes da hora: o sinal do teste sem pausa_em nao pausa, o inicio nunca antes de
+  // pausa_em, o motivo so a partir do inicio, as duas recusas do gatilho e o admin de AGORA na manutencao e no painel. A tabela, o corpo exato (md5), a ACL
+  // e os 2 gatilhos sao da consulta 196a e da prova viva.
+  "20261600000000_a_loja_pausa_o_pedido_novo.sql": [
+    {
+      funcao: "data_da_pausa_de_vendas",
+      esperado: [
+        {
+          texto:
+            "WHEN p_teste_ate IS NOT NULL AND p_teste_ate = p_proxima AND p_pausa_em IS NULL THEN NULL",
+          vezes: 1,
+        },
+        { texto: "p_suspensa_desde, p_pausa_em) AS inicio", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "motivo_da_loja_nao_aceitar_pedido",
+      esperado: [
+        {
+          texto:
+            "v_inicio := public.data_da_pausa_de_vendas(v_teste_ate, v_proxima, v_suspensa_desde, v_pausa_em);",
+          vezes: 1,
+        },
+        { texto: "IF v_inicio IS NULL OR v_hoje < v_inicio THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "a_loja_aceita_pedido_novo",
+      esperado: [
+        {
+          texto:
+            "v_admin_atual := COALESCE(public.is_admin() AND public.is_admin_atual(), false);",
+          vezes: 1,
+        },
+        {
+          texto:
+            "RAISE EXCEPTION 'A loja está em manutenção. Tente de novo mais tarde.' USING ERRCODE = 'P0001';",
+          vezes: 1,
+        },
+        {
+          texto:
+            "RAISE EXCEPTION 'Esta loja não está aceitando pedidos agora.' USING ERRCODE = 'P0001';",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "situacao_das_vendas_da_loja",
+      esperado: [
+        {
+          texto:
+            "IF NOT COALESCE(public.is_admin() AND public.is_admin_atual(), false) THEN",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261399997000: o pedido guarda quem vai receber. create_marketplace_order_v23 e v24 ganham UMA chave na copia do endereco salvo para dentro do pedido (bloco 6-bis): o nome que a cliente
   // digitou em "Quem vai receber" (user_addresses.recipient_name, aparado; vazio vira NULL e some). Cada marcador aparece UMA vez em cada corpo. A consulta 150a confere o corpo exato (md5), os
   // atributos e a ACL; a prova viva faz o comportamento (com nome, sem nome, sem conta, retirada, endereco digitado, pedido antigo).
@@ -1196,6 +1302,32 @@ const VERIFICACOES = {
             vezes: 1,
           },
           { texto: "FOR UPDATE OF v", vezes: 1 },
+        ],
+      },
+    ],
+  // 20261620000000: a soma das categorias fecha com o faturamento no centavo. get_category_analytics troca SO a saida: cada
+  // categoria em centavos pelo maior resto e a media a partir do valor arredondado. Os marcadores sao o centavo do maior
+  // resto, a media, o filtro de dinheiro reconhecido e a guarda do admin de AGORA (as duas ultimas nao podem sumir no REPLACE).
+  // O corpo exato (md5) e do preflight da propria migration; o comportamento e da prova viva analise-por-categoria-so-conta-pedido-pago.
+  "20261620000000_a_soma_das_categorias_fecha_com_o_faturamento_no_centavo.sql":
+    [
+      {
+        funcao: "get_category_analytics",
+        esperado: [
+          {
+            texto: "CASE WHEN c.fila_do_resto <= c.faltam THEN 1 ELSE 0 END",
+            vezes: 1,
+          },
+          {
+            texto: "ROUND(r.valor_total / r.num_pedidos, 2) AS ticket_medio",
+            vezes: 1,
+          },
+          {
+            texto:
+              "AND (o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega'))",
+            vezes: 1,
+          },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
         ],
       },
     ],

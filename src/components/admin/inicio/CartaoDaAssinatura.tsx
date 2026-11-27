@@ -2,8 +2,11 @@ import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { useAgoraDoPainel } from "@/hooks/useAgoraDoPainel";
 import {
+  avisoDaMensalidadeEmAberto,
+  avisoDoTesteEncerrado,
   contagemDoTeste,
   formatarData,
+  formatarDiaEMes,
   formatarMoeda,
   fraseDoCiclo,
   infoDoStatusDaAssinatura,
@@ -108,28 +111,52 @@ export function CartaoDaAssinatura({
         <p className="text-base font-bold text-white">
           Seu plano vai aparecer aqui
         </p>
+        {/* Sem "nada muda na sua loja": o teste pode acabar sem pagamento e a
+            loja pausar os pedidos antes de o cartão chegar (26/11/2026). */}
         <p className="text-sm leading-relaxed text-zinc-400">
-          Estamos ligando a sua assinatura a este painel. Nada muda na sua loja
-          enquanto isso.
+          Estamos ligando a sua assinatura a este painel.
         </p>
       </section>
     );
   }
 
-  const estado = estadoDoPlano(assinatura.status);
+  // Teste que acabou sem pagamento NÃO é dívida: com o sinal completo da
+  // gestão o cartão diz "Teste encerrado" e o prazo; sinal torto → cartão de
+  // hoje (`avisoDoTesteEncerrado` devolve null).
+  const aviso = avisoDoTesteEncerrado(assinatura, new Date(agora));
+  // A pagante atrasada com o dia da pausa da gestão: "Mensalidade em aberto" e
+  // o prazo. O aviso do teste tem prioridade; sem `pausa_em` (Savy, IKCOUS) o
+  // cartão continua o de hoje.
+  const avisoPagante = aviso
+    ? null
+    : avisoDaMensalidadeEmAberto(assinatura, new Date(agora));
+  const prazo = aviso ?? avisoPagante;
+  const estado: { tom: TomDeEstado; texto: string } = aviso
+    ? { tom: "atencao", texto: "Teste encerrado" }
+    : avisoPagante
+      ? { tom: "atencao", texto: "Mensalidade em aberto" }
+      : estadoDoPlano(assinatura.status);
   const suporte = linkWhatsappDoCliente(assinatura.suporteWhatsapp);
   const recursosVisiveis = assinatura.recursos.slice(0, MAXIMO_DE_RECURSOS);
   const recursosEscondidos =
     assinatura.recursos.length - recursosVisiveis.length;
   const precisaRegularizar =
-    assinatura.status === "atrasada" ||
-    assinatura.status === "suspensa" ||
-    assinatura.status === "pendente";
+    !prazo &&
+    (assinatura.status === "atrasada" ||
+      assinatura.status === "suspensa" ||
+      assinatura.status === "pendente");
   // Em teste o preço não é destaque: vira a linha pequena "Depois, ...".
   const emTeste = assinatura.status === "teste";
   const contagem = emTeste
     ? contagemDoTeste(assinatura.testeAte, new Date(agora))
     : null;
+  // No teste encerrado e na mensalidade em aberto somem "Em aberto desde" e
+  // "Teste até": fica só "Cliente desde", montada direto de `inicioEm`.
+  const linhasDeDatas = prazo
+    ? assinatura.inicioEm
+      ? [{ rotulo: "Cliente desde", data: assinatura.inicioEm }]
+      : []
+    : linhasDeDatasDaAssinatura(assinatura);
 
   return (
     <section
@@ -149,7 +176,7 @@ export function CartaoDaAssinatura({
         </p>
       ) : null}
       <dl className="space-y-3 text-sm">
-        {linhasDeDatasDaAssinatura(assinatura).map(({ rotulo, data }) => (
+        {linhasDeDatas.map(({ rotulo, data }) => (
           <div
             key={rotulo}
             className="flex flex-wrap justify-between gap-x-3 gap-y-1"
@@ -172,6 +199,26 @@ export function CartaoDaAssinatura({
           Depois, {formatarMoeda(assinatura.valorMensal)}
           {fraseDoCiclo(assinatura.ciclo)}
         </p>
+      ) : null}
+      {prazo ? (
+        <>
+          <p className="text-sm font-medium leading-relaxed text-white">
+            {aviso
+              ? `Seu teste grátis acabou. A primeira mensalidade, de ${formatarMoeda(prazo.valorMensal)}, venceu em ${formatarDiaEMes(prazo.venceuEm)}.`
+              : `A mensalidade de ${formatarMoeda(prazo.valorMensal)} venceu em ${formatarDiaEMes(prazo.venceuEm)}.`}
+          </p>
+          <p
+            className={cn("text-sm leading-relaxed", classeDoTexto("atencao"))}
+          >
+            {prazo.pagueAte && prazo.pausaEm
+              ? `Para continuar vendendo, pague até ${formatarDiaEMes(prazo.pagueAte)}. Sem o pagamento, os pedidos pela loja ficam pausados a partir de ${formatarDiaEMes(prazo.pausaEm)}.`
+              : "Para continuar vendendo, pague a mensalidade."}
+          </p>
+          <p className="text-sm leading-relaxed text-zinc-400">
+            Já pagou? Assim que confirmarmos o pagamento, este aviso some
+            sozinho.
+          </p>
+        </>
       ) : null}
       {precisaRegularizar ? (
         <p

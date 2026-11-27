@@ -24,6 +24,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { taxaDeResposta } from "@/lib/taxa-de-resposta";
 import { TETO_DA_RESPOSTA_DA_LOJA } from "@/lib/teto-da-resposta-da-loja";
+import { prepararTextoDeBuscaDoPainel } from "@/lib/texto-de-busca-do-painel";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type { Database } from "@/types/database.types";
 import {
@@ -211,7 +212,12 @@ export function useQuestions() {
   const allQuestionsAbortControllerRef = useRef<AbortController | null>(null);
 
   const getQuestionsByProduct = useCallback(
-    async (productId: string, opcoes?: { silencioso?: boolean }) => {
+    // `mensagemDaFalha`: o "Ver mais" é silencioso para a lista (a que está
+    // na tela fica), mas a cliente tocou no botão e precisa saber que falhou.
+    async (
+      productId: string,
+      opcoes?: { silencioso?: boolean; mensagemDaFalha?: string },
+    ) => {
       if (
         latestProductIdRef.current !== productId ||
         contaDoLimiteRef.current !== user?.id
@@ -527,6 +533,7 @@ export function useQuestions() {
           questionIdsDoProdutoRef.current = null;
           if (!opcoes?.silencioso)
             setError("Não conseguimos carregar as perguntas deste produto.");
+          if (opcoes?.mensagemDaFalha) toast.error(opcoes.mensagemDaFalha);
         }
       } finally {
         // A recarga do mesmo produto também cancela a consulta anterior.
@@ -562,7 +569,11 @@ export function useQuestions() {
       setCarregandoMaisPerguntas(true);
       limiteDaListaRef.current += PERGUNTAS_POR_LEITURA;
       try {
-        await getQuestionsByProduct(productId, { silencioso: true });
+        await getQuestionsByProduct(productId, {
+          silencioso: true,
+          mensagemDaFalha:
+            "Não foi possível carregar mais perguntas. Tente de novo.",
+        });
       } finally {
         if (carregandoMaisRef.current === vez) {
           carregandoMaisRef.current = null;
@@ -777,7 +788,8 @@ export function useQuestions() {
           const { data, error } = await aguardarComPrazo(
             Promise.resolve(
               (supabase.rpc as any)("get_admin_questions_paged", {
-                p_search: search || "",
+                // ILIKE com escape padrão (\) no banco: `%` e `_` vão escapados, igual às outras buscas do painel.
+                p_search: prepararTextoDeBuscaDoPainel(search || ""),
                 p_filter: filter,
                 p_page: page,
                 p_page_size: pageSize,

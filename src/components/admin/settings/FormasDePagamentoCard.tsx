@@ -11,6 +11,8 @@ import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
 import { IconePix } from "@/components/admin/primitivos/IconePix";
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
+import type { OpcaoDaLista } from "@/components/admin/primitivos/lista-de-escolha/tipos";
 import { Switch } from "@/components/ui/switch";
 import {
   type ConfigDoCartao,
@@ -309,9 +311,15 @@ export function FormasDePagamentoSection({
   );
 }
 
-const OPCOES_DE_PARCELAS = Array.from(
+// Só o 1x leva a linha de baixo. Nada de "sem juros": os juros das parcelas
+// ficam com o cliente (`CARTAO_PELO_APP.parcelas`).
+const OPCOES_DE_PARCELAS: readonly OpcaoDaLista[] = Array.from(
   { length: PARCELAS_MAX_TETO },
-  (_, i) => i + 1,
+  (_, i) => ({
+    valor: String(i + 1),
+    rotulo: `${i + 1}x`,
+    ...(i === 0 ? { subinfo: "à vista" } : {}),
+  }),
 );
 
 type LeituraDoCartao =
@@ -349,12 +357,21 @@ export function CartaoPeloAppBloco({
     controles: React.ReactNode,
     estado: LeituraDoCartao["estado"],
     ligado: boolean,
+    /** Crédito ou débito ligado na última leitura CONFIRMADA; `null` antes
+     * da primeira. Não volta a `null` durante uma releitura. */
+    ligadoConfirmado: boolean | null,
   ) => React.ReactNode;
   readonly relerGatilho?: number;
 }) {
   const [leitura, setLeitura] = useState<LeituraDoCartao>({
     estado: "carregando",
   });
+  // Stale-while-revalidate: a releitura (reabrir a seção, voltar à aba) põe
+  // `leitura` em "carregando" e, sem isto, o aviso de "ao ligar" e o "+ cartão"
+  // do subtítulo piscavam até a resposta. Só muda com resposta do banco; uma
+  // releitura que FALHA mantém o último confirmado (o servidor confere de novo
+  // na hora de cobrar).
+  const [confirmada, setConfirmada] = useState<ConfigDoCartao | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [avisoDeGravacao, setAvisoDeGravacao] = useState<string | null>(null);
   const idDasParcelas = useId();
@@ -371,6 +388,7 @@ export function CartaoPeloAppBloco({
           ? { estado: "ok", config: resultado.config }
           : { estado: "falhou" },
       );
+      if (resultado.ok) setConfirmada(resultado.config);
     });
     return () => {
       vivo = false;
@@ -403,6 +421,7 @@ export function CartaoPeloAppBloco({
         ...mudanca,
       });
       setLeitura({ estado: "ok", config: gravada });
+      setConfirmada(gravada);
       setAvisoDeGravacao(null);
       toast.success(sucesso);
     } catch (err) {
@@ -416,9 +435,11 @@ export function CartaoPeloAppBloco({
         // O valor anterior deixou de ser confirmação. Solta o botão já, e
         // confere o banco sem esperar a resposta da gravação pendurada.
         setLeitura({ estado: "falhou" });
+        setConfirmada(null);
         buscarConfigDoCartao().then((resultado) => {
           if (resultado.ok) {
             setLeitura({ estado: "ok", config: resultado.config });
+            setConfirmada(resultado.config);
           }
         });
       }
@@ -531,39 +552,24 @@ export function CartaoPeloAppBloco({
           )}
           {config.credito && (
             <div className="space-y-1">
-              <div className="space-y-2 rounded-2xl border border-admin-border-strong bg-admin-raised p-3">
-                <label
-                  htmlFor={idDasParcelas}
-                  className="text-xs text-zinc-300"
-                >
-                  Parcelar em até
-                </label>
-                <select
-                  id={idDasParcelas}
-                  value={config.parcelasMax}
-                  disabled={!podeMexer}
-                  onChange={(e) => {
-                    const parcelasMax = Number(e.target.value);
-                    salvar(
-                      { parcelasMax },
-                      parcelasMax === 1
-                        ? "Crédito só à vista"
-                        : `Crédito em até ${parcelasMax}x`,
-                    );
-                  }}
-                  className="min-h-11 w-full rounded-lg border border-admin-border bg-zinc-900 px-3 py-2 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:opacity-50"
-                >
-                  {OPCOES_DE_PARCELAS.map((n) => (
-                    <option
-                      key={n}
-                      value={n}
-                      className="bg-zinc-900 text-white"
-                    >
-                      {n === 1 ? "1x (à vista)" : `${n}x`}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Sem busca, como a tela 2 aprovada (lista premium, 26/11). */}
+              <CampoDeEscolha
+                id={idDasParcelas}
+                rotulo="Parcelar em até"
+                opcoes={OPCOES_DE_PARCELAS}
+                busca={false}
+                valor={String(config.parcelasMax)}
+                desabilitado={!podeMexer}
+                aoMudar={(valor) => {
+                  const parcelasMax = Number(valor);
+                  salvar(
+                    { parcelasMax },
+                    parcelasMax === 1
+                      ? "Crédito só à vista"
+                      : `Crédito em até ${parcelasMax}x`,
+                  );
+                }}
+              />
               <p className="text-[11px] leading-relaxed text-zinc-500">
                 {CARTAO_PELO_APP.parcelas}
               </p>
@@ -578,10 +584,16 @@ export function CartaoPeloAppBloco({
           {CARTAO_PELO_APP.semPix}
         </p>
       )}
-      <p className="flex items-start gap-2 rounded-xl border border-orange-500/20 bg-orange-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-orange-200/90">
-        <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-orange-400" />
-        {CARTAO_PELO_APP.testeAntes}
-      </p>
+      {/* Só sai quando a leitura CONFIRMA crédito ou débito ligado (pedido
+          do dono, 26/11/2026). Sem nenhuma confirmação ainda (carregando ou
+          com a leitura falha) não se sabe se o cartão está no ar: o aviso
+          continua. Numa releitura vale o último confirmado, sem piscar. */}
+      {(!confirmada || (!confirmada.credito && !confirmada.debito)) && (
+        <p className="flex items-start gap-2 rounded-xl border border-orange-500/20 bg-orange-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-orange-200/90">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-orange-400" />
+          {CARTAO_PELO_APP.testeAntes}
+        </p>
+      )}
     </div>
   );
 
@@ -627,5 +639,6 @@ export function CartaoPeloAppBloco({
     controles,
     leitura.estado,
     Boolean(config?.credito || config?.debito),
+    confirmada === null ? null : confirmada.credito || confirmada.debito,
   );
 }

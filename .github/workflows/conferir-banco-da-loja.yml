@@ -415,6 +415,20 @@ on:
           - 190b-antes-a-loja-grande-nao-trava-o-balcao-ausente
           - 192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado
           - 192b-antes-o-admin-copia-e-apaga-as-fotos-ausente
+          - 193a-conferir-o-infinito-nao-entra-no-banco-aplicado
+          - 193b-antes-o-infinito-nao-entra-no-banco-ausente
+          - 193m-medir-infinitos-guardados
+          - 194a-conferir-o-endereco-antigo-encaminha-aplicado
+          - 194b-antes-o-endereco-antigo-encaminha-ausente
+          - 195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado
+          - 195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente
+          - 196a-conferir-a-loja-pausa-o-pedido-novo-aplicado
+          - 196b-antes-a-loja-pausa-o-pedido-novo-ausente
+          - 196m-medir-quem-cria-pedido
+          - 197a-conferir-o-catalogo-chega-ao-vivo-aplicado
+          - 197b-antes-o-catalogo-chega-ao-vivo-ausente
+          - 198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado
+          - 198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

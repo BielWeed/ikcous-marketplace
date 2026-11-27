@@ -3,7 +3,7 @@ import { recarregarComPaginaNova } from "@/lib/volta-da-manutencao";
 import { useState } from "react";
 
 /**
- * Tela "Servidor em Manutenção". Mora FORA do App.tsx de propósito: ela tem
+ * Tela "Loja em manutenção". Mora FORA do App.tsx de propósito: ela tem
  * relógio e estado próprios, e um componente declarado dentro do App é
  * recriado a cada renderização dele (a tela seria desmontada e o relógio
  * zerado a cada vez).
@@ -61,7 +61,7 @@ export function MaintenanceView() {
       </div>
 
       <h1 className="mb-3 text-2xl font-black uppercase tracking-tighter text-foreground md:text-3xl">
-        Servidor em Manutenção
+        Loja em manutenção
       </h1>
 
       <p className="mb-8 max-w-sm text-sm leading-relaxed text-muted-foreground">

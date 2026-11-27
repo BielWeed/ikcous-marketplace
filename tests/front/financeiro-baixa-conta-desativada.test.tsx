@@ -30,6 +30,11 @@ import {
   CONTA_CAIXA_DA_LOJA,
   type ContaFinanceira,
 } from "@/types/financeiro";
+import {
+  escolherNaLista,
+  opcoesDaLista,
+  valorDaLista,
+} from "./helpers/lista-de-escolha";
 
 const HOJE = "2026-11-06";
 const CONTA_VELHA = "00000000-0000-4000-8000-0000000000aa";
@@ -80,11 +85,23 @@ function folha(): HTMLElement {
   return el as HTMLElement;
 }
 
-const seletor = () =>
-  document.getElementById("fin-baixa-conta") as HTMLSelectElement;
+// A conta é a lista de escolha do painel (o lugar do `<select>`): o helper
+// toca no campo e na opção, como a lojista.
+const CAMPO = "fin-baixa-conta";
 
-const opcoes = () =>
-  [...seletor().options].map((o) => [o.value, normalizar(o.textContent)]);
+const valor = () => valorDaLista(CAMPO);
+
+/** O que o campo fechado mostra (o rótulo da escolhida ou o placeholder). */
+const textoDoCampo = () =>
+  normalizar(document.getElementById(`${CAMPO}-valor`)?.textContent);
+
+function opcoes(): string[][] {
+  let lidas: ReturnType<typeof opcoesDaLista> = [];
+  act(() => {
+    lidas = opcoesDaLista(CAMPO);
+  });
+  return lidas.map((o) => [o.valor, o.rotulo]);
+}
 
 function confirmar(): HTMLButtonElement {
   const el = [...folha().querySelectorAll("button")].find(
@@ -95,14 +112,7 @@ function confirmar(): HTMLButtonElement {
 }
 
 async function escolher(valor: string) {
-  const el = seletor();
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(
-      HTMLSelectElement.prototype,
-      "value",
-    )?.set?.call(el, valor);
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  await act(async () => escolherNaLista(CAMPO, valor));
 }
 
 async function clicar(el: HTMLElement) {
@@ -161,7 +171,7 @@ describe("Financeiro — dar baixa com a conta do lançamento desativada", () =>
     it("o campo começa vazio, sem a conta inativa e sem 'A conta do lançamento'", async () => {
       await abrir(alvoInativo, CONTAS);
 
-      expect(seletor().value).toBe("");
+      expect(valor()).toBe("");
       expect(opcoes()).toEqual([
         ["", "Escolha uma conta ativa…"],
         [CONTA_CAIXA_DA_LOJA, "Caixa da loja"],
@@ -170,6 +180,19 @@ describe("Financeiro — dar baixa com a conta do lançamento desativada", () =>
       expect(normalizar(folha().textContent)).not.toContain(
         "A conta do lançamento",
       );
+      // O campo fechado diz o que falta, não uma conta.
+      expect(textoDoCampo()).toBe("Escolha uma conta ativa…");
+    });
+
+    it("tocar de novo em 'Escolha uma conta ativa…' não libera a baixa nem suja a folha", async () => {
+      await abrir(alvoInativo, CONTAS);
+      await escolher("");
+
+      expect(valor()).toBe("");
+      expect(confirmar().disabled).toBe(true);
+      expect(aoMudarSujo).toHaveBeenLastCalledWith(false);
+      await clicar(confirmar());
+      expect(rpcFalso).not.toHaveBeenCalled();
     });
 
     it("explica que a conta original está desativada e como sair", async () => {
@@ -233,7 +256,7 @@ describe("Financeiro — dar baixa com a conta do lançamento desativada", () =>
     it("o campo já vem com a conta do lançamento e a confirmação está liberada", async () => {
       await abrir(ALVO, CONTAS);
 
-      expect(seletor().value).toBe(CONTA_BANCARIA);
+      expect(valor()).toBe(CONTA_BANCARIA);
       expect(confirmar().disabled).toBe(false);
       expect(opcoes()).toEqual([
         ["", "A conta do lançamento"],
@@ -263,13 +286,55 @@ describe("Financeiro — dar baixa com a conta do lançamento desativada", () =>
 
       expect(opcoes().map(([valor]) => valor)).not.toContain(CONTA_VELHA);
     });
+
+    it("'A conta do lançamento' (valor vazio) é opção de verdade: escolhida, vai sem conta e o servidor usa a do lançamento", async () => {
+      await abrir(ALVO, CONTAS);
+      await escolher(CONTA_CAIXA_DA_LOJA);
+      expect(textoDoCampo()).toBe("Caixa da loja");
+      await escolher("");
+
+      expect(valor()).toBe("");
+      expect(textoDoCampo()).toBe("A conta do lançamento");
+      await clicar(confirmar());
+      expect(rpcFalso).toHaveBeenCalledWith("fin_lancamento_baixar", {
+        p_id: "lancamento-1",
+        p_data: HOJE,
+        p_conta_id: null,
+      });
+    });
+
+    it("enquanto a baixa grava, a conta não se troca", async () => {
+      let soltar!: (r: { data: unknown; error: null }) => void;
+      rpcFalso.mockReturnValueOnce(
+        new Promise((resolve) => {
+          soltar = resolve;
+        }),
+      );
+      await abrir(ALVO, CONTAS);
+      await act(async () => {
+        confirmar().click();
+      });
+
+      const campo = document.getElementById(CAMPO) as HTMLButtonElement;
+      expect(campo.disabled).toBe(true);
+      expect(() => escolherNaLista(CAMPO, CONTA_CAIXA_DA_LOJA)).toThrowError(
+        /desabilitada/,
+      );
+      await act(async () => {
+        soltar({
+          data: { id: "lancamento-1", status: "realizado" },
+          error: null,
+        });
+      });
+      expect(rpcFalso).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("sem a lista de contas (ainda não carregou)", () => {
     it("lançamento sem conta e lista vazia continua confirmável, como antes", async () => {
       await abrir({ ...ALVO, contaId: null }, []);
 
-      expect(seletor().value).toBe("");
+      expect(valor()).toBe("");
       expect(confirmar().disabled).toBe(false);
       expect(normalizar(folha().textContent)).not.toContain("desativada");
 
@@ -286,6 +351,15 @@ describe("Financeiro — dar baixa com a conta do lançamento desativada", () =>
 
       expect(confirmar().disabled).toBe(false);
       expect(normalizar(folha().textContent)).not.toContain("desativada");
+      // Fora da lista, o campo mostra o que vai acontecer: a conta do
+      // lançamento (o `<select>` mostrava a primeira opção, a mesma frase).
+      expect(textoDoCampo()).toBe("A conta do lançamento");
+      await clicar(confirmar());
+      expect(rpcFalso).toHaveBeenCalledWith("fin_lancamento_baixar", {
+        p_id: "lancamento-1",
+        p_data: HOJE,
+        p_conta_id: "outra-que-nao-veio",
+      });
     });
   });
 });

@@ -3,7 +3,7 @@ import {
   CartaoDoCrm,
   EstadoVazioDoCrm,
 } from "@/components/admin/crm/PecasDoCrm";
-import { formatarPercentual } from "@/lib/financeiro";
+import { formatarPercentual, paraCentavos } from "@/lib/financeiro";
 import { formatCurrency } from "@/lib/utils";
 import { memo, useMemo, useState } from "react";
 
@@ -64,21 +64,26 @@ export const StrategicIntelligenceBlocks = memo(
             index >= PREMIUM_PALETTE.length
               ? index + Math.floor(index / PREMIUM_PALETTE.length)
               : index;
+          // Cada linha em centavos inteiros: é o que a lojista lê na tela. O
+          // banco já devolve centavos (maior resto, 20261620000000); isto só
+          // pesa para um valor antigo, sem arredondar, guardado no aparelho.
+          const centavos = paraCentavos(Number(item.value) || 0);
           return {
             ...item,
             name: item.name
               ? item.name.charAt(0).toUpperCase() + item.name.slice(1)
               : "",
-            value: Number(item.value) || 0,
+            value: centavos / 100,
+            centavos,
             cor: CORES[safeIndex % PREMIUM_PALETTE.length],
           };
         }),
       [categoryData],
     );
-    const totalRevenue = safeCategoryData.reduce(
-      (acc, curr) => acc + (curr.value || 0),
-      0,
-    );
+    // A soma das linhas mostradas, em centavos inteiros: o rodapé nunca
+    // contradiz a lista (3 x R$ 3,33 não pode dar "R$ 10,00").
+    const totalRevenue =
+      safeCategoryData.reduce((acc, curr) => acc + curr.centavos, 0) / 100;
     return (
       <CartaoDoCrm
         id="crm-categorias"

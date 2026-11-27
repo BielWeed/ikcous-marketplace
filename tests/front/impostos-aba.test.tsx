@@ -183,6 +183,8 @@ import { ContextoDoCacheFinanceiro } from "@/hooks/useFinanceiro";
 import { CATEGORIA_DE_IMPOSTOS_ID } from "@/lib/fiscal/receita-do-mes";
 import { TEXTOS_DO_MEDIDOR_DO_MEI } from "@/lib/fiscal/textos";
 
+import { escolherNaLista } from "./helpers/lista-de-escolha";
+
 // O aviso fixo do medidor do MEI (só nas telas COM número), palavra por palavra.
 const AVISO_DO_MEDIDOR =
   "Este número só tem as vendas registradas no app. O que você vendeu sem registrar aqui (Instagram, WhatsApp, feira) também conta para o limite do MEI: some por sua conta.";
@@ -1123,7 +1125,12 @@ describe("I — a estimativa fica fora do caderno e nunca vira lançamento", () 
 describe("J — arquivo para o contador: lê o período e confere a sessão", () => {
   let arquivos: Blob[];
 
+  // O seletor de ano lista o ano atual e os 5 anteriores pelo relógio de verdade
+  // (a aba monta o arquivo sem `agora`); estes testes escolhem 2026. Só o Date
+  // fica falso, no mesmo dia de HOJE: temporizadores e o waitFor seguem reais.
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(`${HOJE}T12:00:00-03:00`));
     arquivos = [];
     URL.createObjectURL = vi.fn((blob: Blob) => {
       arquivos.push(blob);
@@ -1164,20 +1171,22 @@ describe("J — arquivo para o contador: lê o período e confere a sessão", ()
     });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Escolhe na lista como a lojista e espera a lista fechar (o foco volta depois). */
   async function escolher(rotulo: string, valor: string) {
     const label = [...host.querySelectorAll("label")].find(
       (l) => l.textContent === rotulo,
     );
-    const select = document.getElementById(
-      label?.htmlFor ?? "",
-    ) as HTMLSelectElement | null;
-    if (!select) throw new Error(`campo não achado: ${rotulo}`);
+    if (!label?.htmlFor) throw new Error(`campo não achado: ${rotulo}`);
+    const id = label.htmlFor;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(
-        HTMLSelectElement.prototype,
-        "value",
-      )?.set?.call(select, valor);
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherNaLista(id, valor);
+    });
+    await act(async () => {
+      await new Promise((resolver) => setTimeout(resolver, 0));
     });
   }
 

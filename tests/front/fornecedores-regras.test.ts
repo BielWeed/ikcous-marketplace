@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   type FormularioDoFornecedor,
+  NOME_DA_UF,
   UFS,
   linkDoInstagram,
   linkDoSite,
@@ -240,6 +241,19 @@ describe("cidade, UF, observações e favorito", () => {
     expect(validarFornecedor(form({ uf: "XX" })).ok).toBe(false);
     expect(validarFornecedor(form({ uf: "sp" })).ok).toBe(false);
     expect(validarFornecedor(form({ cidade: "a".repeat(81) })).ok).toBe(false);
+  });
+
+  it("cada uma das 27 siglas tem o nome do estado (a lista de escolha busca por ele)", () => {
+    expect(Object.keys(NOME_DA_UF).sort()).toEqual([...UFS].sort());
+    for (const uf of UFS) {
+      // eslint-disable-next-line security/detect-object-injection -- uf vem da lista fixa UFS.
+      expect(NOME_DA_UF[uf].trim().length, uf).toBeGreaterThan(3);
+    }
+    expect(NOME_DA_UF.RJ).toBe("Rio de Janeiro");
+    expect(NOME_DA_UF.DF).toBe("Distrito Federal");
+    expect(NOME_DA_UF.SP).toBe("São Paulo");
+    // Nomes distintos: nenhum estado copiado no lugar de outro.
+    expect(new Set(Object.values(NOME_DA_UF)).size).toBe(27);
   });
 
   it("observações: 500 passam, 501 não; quebra de linha é mantida", () => {

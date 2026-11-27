@@ -750,6 +750,18 @@ describe("segmentos RFM e WhatsApp", () => {
     }
   });
 
+  it("o nome que o balcão grava para quem não tem nome ('Venda no balcão') abre como nome vazio", () => {
+    expect(
+      mensagemDoSegmento("novos", { nome: "Venda no balcão", loja: "Loja X" }),
+    ).toMatch(/^Oi! Aqui é da Loja X\./);
+    expect(
+      mensagemDoSegmento("novos", {
+        nome: "  Venda no balcão ",
+        loja: "Loja X",
+      }),
+    ).toMatch(/^Oi! Aqui é da Loja X\./);
+  });
+
   it("novos: o segmento sai das notas de frequência e valor, não de ter 1 compra só; nem a mensagem nem a legenda dizem 'primeira'", () => {
     // Quem tem 2 compras pagas recentes e receita baixa também cai em "novos":
     // dizer "primeira compra" a essa cliente é falso.

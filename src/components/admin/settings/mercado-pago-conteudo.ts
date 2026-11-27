@@ -253,8 +253,12 @@ export const CARTAO_PELO_APP = {
   // O interruptor liga o cartão para a loja INTEIRA, e com a chave de produção
   // o Mercado Pago recusa cartão de teste: mandar "fazer um pedido de teste com
   // cartão de teste" antes de ligar faria o cartão parecer quebrado.
+  // Pagar a si mesma (26/11/2026): a compra de conferência feita com o e-mail
+  // da conta que recebe é recusada pelo Mercado Pago (a mesma conta não paga e
+  // recebe) — a lojista via o erro e achava que o app não funciona. A frase
+  // casa com a que `criar-pagamento` devolve nesse caso.
   testeAntes:
-    "Ao ligar, o cartão já aparece para todos os clientes. Para conferir, faça uma compra de valor baixo com um cartão seu e devolva o valor depois, no Mercado Pago. Cartão de teste só funciona com a chave de teste; com a chave de produção ele é recusado.",
+    "Ao ligar, o cartão já aparece para todos os clientes. Para conferir, faça uma compra de valor baixo e devolva o valor depois, no Mercado Pago. Atenção: o Mercado Pago não deixa a mesma conta pagar e receber. O Mercado Pago compara a conta de quem paga, que é ligada ao e-mail: por isso, entre na loja com OUTRO e-mail, que não seja o da sua conta do Mercado Pago. Cartão de teste só funciona com a chave de teste; com a chave de produção ele é recusado.",
   semPix:
     "Deixe o pagamento pelo app liberado antes (seção Mercado Pago: as três chaves salvas e testadas): o cartão usa as mesmas chaves e só aparece para o cliente com o pagamento pelo app ligado.",
   leituraFalhou:

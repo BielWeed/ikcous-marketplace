@@ -5,6 +5,7 @@ import {
 import { branding } from "@/config/branding";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
+import { nomeDaClienteNoPedido } from "@/lib/nome-da-cliente-no-balcao";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { observacaoDaClienteNoRecibo } from "@/lib/observacao-da-cliente-no-recibo";
 import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
@@ -58,10 +59,6 @@ function reais(valor: number): string {
   });
 }
 
-// O literal que o banco grava em `customer_name` numa venda de balcão sem
-// cliente (migration do balcão, COALESCE final) — o mesmo de `ReciboDaVenda`.
-const NOME_DE_VENDA_SEM_CLIENTE = "Venda no balcão";
-
 export const OrderReceipt = memo(function OrderReceipt({
   order,
   storeName: storeNameProp,
@@ -110,14 +107,7 @@ export const OrderReceipt = memo(function OrderReceipt({
   // sem cliente (e quando a cliente cadastrada não tem nome no perfil). Ele não
   // é nome de gente quando não há conta nem WhatsApp no pedido. Com conta,
   // diz "Cliente"; com WhatsApp de um avulso, preserva o nome que foi digitado.
-  const nomeNoPapel =
-    presencial && order.customer.name?.trim() === NOME_DE_VENDA_SEM_CLIENTE
-      ? order.userId
-        ? "Cliente"
-        : order.customer.whatsapp?.trim()
-          ? order.customer.name
-          : ""
-      : order.customer.name;
+  const nomeNoPapel = nomeDaClienteNoPedido(order);
   // Compra para presente ou entrega na portaria: a ficha mostra "Recebe: X" e o
   // papel que vai com o entregador tambem precisa do nome de quem esta na porta.
   const quemRecebe = presencial
@@ -158,11 +148,14 @@ export const OrderReceipt = memo(function OrderReceipt({
             {order.customer.whatsapp && (
               <p className="break-words">{order.customer.whatsapp}</p>
             )}
-            {linhasDoEndereco(order.customer).map((linha) => (
-              <p key={linha} className="break-words text-xs">
-                {linha}
-              </p>
-            ))}
+            {/* Retirada sem cópia no pedido: o endereço é o do cadastro de
+                HOJE, não o da compra, e retirada não precisa dele no papel. */}
+            {!order.enderecoDoCadastroAtual &&
+              linhasDoEndereco(order.customer).map((linha) => (
+                <p key={linha} className="break-words text-xs">
+                  {linha}
+                </p>
+              ))}
           </div>
         )}
 

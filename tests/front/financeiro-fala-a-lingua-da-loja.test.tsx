@@ -44,6 +44,7 @@ import {
   type ContaFinanceira,
 } from "@/types/financeiro";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 const HOJE = "2026-09-26";
 
@@ -125,14 +126,10 @@ async function digitar(id: string, valor: string) {
   });
 }
 
+/** Escolhe como a lojista: toca no campo e na opção da lista de escolha. */
 async function escolher(id: string, valor: string) {
-  const el = document.getElementById(id) as HTMLSelectElement;
   await act(async () => {
-    Object.getOwnPropertyDescriptor(
-      HTMLSelectElement.prototype,
-      "value",
-    )?.set?.call(el, valor);
-    el.dispatchEvent(new Event("change", { bubbles: true }));
+    escolherNaLista(id, valor);
   });
 }
 

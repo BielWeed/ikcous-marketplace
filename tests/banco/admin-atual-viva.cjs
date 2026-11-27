@@ -86,6 +86,9 @@ const {
   FOTOS_DA_LOJA,
 } = require("./o-admin-copia-e-apaga-as-fotos-posterior.cjs");
 const {
+  PAUSA_DE_VENDAS,
+} = require("./a-loja-pausa-o-pedido-novo-posterior.cjs");
+const {
   PRECO_HISTORICO,
 } = require("./o-preco-do-produto-deixa-historico-posterior.cjs");
 const {
@@ -456,6 +459,10 @@ const POSTERIORES_A_97 = [
   // entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual dela so tira as duas politicas. Definicao unica em
   // tests/banco/o-admin-copia-e-apaga-as-fotos-posterior.cjs. No FIM da lista de proposito.
   FOTOS_DA_LOJA,
+  // 20261600000000: o gatilho a_loja_aceita_pedido_novo e a leitura situacao_das_vendas_da_loja chamam is_admin_atual(): sem esta entrada o
+  // rollback da 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual (comum) dela tira os 2 gatilhos e as 5 funcoes e DEIXA a tabela
+  // pausa_de_vendas. Definicao unica em tests/banco/a-loja-pausa-o-pedido-novo-posterior.cjs. No FIM da lista de proposito.
+  PAUSA_DE_VENDAS,
 ];
 
 // As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar

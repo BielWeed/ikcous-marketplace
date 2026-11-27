@@ -12,6 +12,7 @@ import {
   abrirNovoBannerPelaBarra,
   escolherImagemPropria,
 } from "./helpers/editor-de-banner";
+import { escolherNaLista, valorDaLista } from "./helpers/lista-de-escolha";
 
 const addBanner = vi.fn();
 const updateBanner = vi.fn();
@@ -182,9 +183,7 @@ describe("AdminBannersView - Novo banner pelo evento usa o estado ATUAL", () => 
     await escolherImagemPropria();
     await abrirMaisOpcoes();
 
-    const posicao =
-      document.querySelector<HTMLSelectElement>("#banner-position");
-    expect(posicao?.value).toBe("home_middle");
+    expect(valorDaLista("banner-position")).toBe("home_middle");
     const ordem = document.querySelector<HTMLInputElement>(
       "#banner-order, #banner-simple-order",
     );
@@ -200,12 +199,9 @@ describe("AdminBannersView - Novo banner pelo evento usa o estado ATUAL", () => 
     expect(editar).toBeTruthy();
     await act(async () => editar!.click());
     await abrirMaisOpcoes();
-    const posicao =
-      document.querySelector<HTMLSelectElement>("#banner-position")!;
     for (const valor of ["home_top", "home_middle"]) {
       await act(async () => {
-        posicao.value = valor;
-        posicao.dispatchEvent(new Event("change", { bubbles: true }));
+        escolherNaLista("banner-position", valor);
       });
     }
     expect(

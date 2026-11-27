@@ -1,11 +1,12 @@
 import {
   CAMPO,
-  FOCO,
   INTERRUPTOR,
   PRIMARIO,
   SECUNDARIO,
 } from "@/components/admin/coupons/apresentacao";
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
+import type { OpcaoDaLista } from "@/components/admin/primitivos/lista-de-escolha/tipos";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,19 +21,34 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { ErroDosFornecedores } from "@/hooks/useFornecedores";
 import {
   type DadosDoFornecedor,
   type ErrosDoFornecedor,
   type FormularioDoFornecedor,
   type Fornecedor,
   LIMITE_DAS_OBSERVACOES,
+  NOME_DA_UF,
   UFS,
   validarFornecedor,
 } from "@/lib/fornecedores";
 import { Factory } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
-const SELECT = `${CAMPO} border px-3 ${FOCO}`;
+/**
+ * O Estado na lista de escolha do painel: "Não informar" é opção de verdade
+ * (grava vazio) e cada estado leva a sigla no selo; a busca acha pelo nome
+ * ("rio") e pela sigla.
+ */
+const OPCOES_DA_UF: readonly OpcaoDaLista[] = [
+  { valor: "", rotulo: "Não informar" },
+  ...UFS.map((uf) => ({
+    valor: uf,
+    // eslint-disable-next-line security/detect-object-injection -- uf vem so da lista fixa UFS.
+    rotulo: NOME_DA_UF[uf],
+    sigla: uf,
+  })),
+];
 
 function formularioInicial(f: Fornecedor | null): FormularioDoFornecedor {
   return {
@@ -46,6 +62,33 @@ function formularioInicial(f: Fornecedor | null): FormularioDoFornecedor {
     favorito: f?.favorito ?? false,
   };
 }
+
+const CAMPOS_DO_FORMULARIO = [
+  "nome",
+  "whatsapp",
+  "instagram",
+  "site",
+  "cidade",
+  "uf",
+  "observacoes",
+  "favorito",
+] as const satisfies ReadonlyArray<keyof FormularioDoFornecedor>;
+
+/**
+ * O que a lojista mexeu: o campo cujo TEXTO difere do que a folha mostrou ao abrir.
+ * Compara antes de normalizar: um valor gravado que a validação reescreveria (barra no
+ * fim do site, espaço sobrando) não conta como mexido. A mesma régua decide o "sujo".
+ */
+function camposMexidos(
+  form: FormularioDoFornecedor,
+  inicial: FormularioDoFornecedor,
+): Array<keyof DadosDoFornecedor> {
+  // eslint-disable-next-line security/detect-object-injection -- c vem so da lista literal CAMPOS_DO_FORMULARIO.
+  return CAMPOS_DO_FORMULARIO.filter((c) => form[c] !== inicial[c]);
+}
+
+const FRASE_TALVEZ_SALVO =
+  "A conexão está lenta e o fornecedor pode ter sido salvo. Toque em Salvar fornecedor de novo: repetir não cria outro.";
 
 /**
  * A folha de cadastro e edição de fornecedor. Quem decide se ela está aberta e
@@ -72,7 +115,11 @@ export function FolhaDoFornecedor({
   readonly fornecedor: Fornecedor | null;
   readonly offline: boolean;
   readonly aoFechar: () => void;
-  readonly aoSalvar: (dados: DadosDoFornecedor) => Promise<unknown>;
+  /** `mexidos`: os campos que a lojista mudou nesta folha (a edição manda só eles). */
+  readonly aoSalvar: (
+    dados: DadosDoFornecedor,
+    mexidos: ReadonlyArray<keyof DadosDoFornecedor>,
+  ) => Promise<unknown>;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const idBase = useId();
@@ -83,8 +130,10 @@ export function FolhaDoFornecedor({
   const [erroDoServidor, setErroDoServidor] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [perguntandoDescarte, setPerguntandoDescarte] = useState(false);
+  // Uma gravação desta abertura estourou o prazo: pode ter sido salva (muda o aviso de descartar).
+  const [podeTerSalvo, setPodeTerSalvo] = useState(false);
   const gravandoRef = useRef(false);
-  const inicial = useRef(JSON.stringify(formularioInicial(fornecedor)));
+  const inicial = useRef(formularioInicial(fornecedor));
 
   // Cada abertura começa do zero (cadastro novo) ou do fornecedor escolhido.
   useEffect(() => {
@@ -95,11 +144,12 @@ export function FolhaDoFornecedor({
     setErroDoServidor(null);
     setSalvando(false);
     setPerguntandoDescarte(false);
+    setPodeTerSalvo(false);
     gravandoRef.current = false;
-    inicial.current = JSON.stringify(base);
+    inicial.current = base;
   }, [aberta, fornecedor]);
 
-  const sujo = aberta && JSON.stringify(form) !== inicial.current;
+  const sujo = aberta && camposMexidos(form, inicial.current).length > 0;
   useEffect(() => {
     aoMudarSujo(sujo);
   }, [sujo, aoMudarSujo]);
@@ -151,12 +201,16 @@ export function FolhaDoFornecedor({
     setSalvando(true);
     setErroDoServidor(null);
     try {
-      await aoSalvar(resultado.dados);
+      await aoSalvar(resultado.dados, camposMexidos(form, inicial.current));
     } catch (e) {
+      const semResposta = e instanceof ErroDosFornecedores && e.semResposta;
+      if (semResposta) setPodeTerSalvo(true);
       setErroDoServidor(
-        e instanceof Error
-          ? e.message
-          : "Não deu certo agora. Tente de novo em instantes.",
+        semResposta
+          ? FRASE_TALVEZ_SALVO
+          : e instanceof Error
+            ? e.message
+            : "Não deu certo agora. Tente de novo em instantes.",
       );
     } finally {
       gravandoRef.current = false;
@@ -275,41 +329,16 @@ export function FolhaDoFornecedor({
             inputMode: "url",
             dica: "Ex.: www.exemplo.com.br",
           })}
-          <div className="grid grid-cols-[1fr_7rem] gap-3">
-            {campoDeTexto("cidade", "Cidade (opcional)")}
-            <div className="space-y-1.5">
-              <Label
-                htmlFor={id("uf")}
-                className="text-sm font-semibold text-zinc-200"
-              >
-                Estado
-              </Label>
-              <select
-                id={id("uf")}
-                value={form.uf}
-                onChange={(e) => mudar("uf", e.target.value)}
-                aria-invalid={erros.uf ? true : undefined}
-                aria-describedby={erros.uf ? id("uf-erro") : undefined}
-                className={SELECT}
-              >
-                <option value="">—</option>
-                {UFS.map((uf) => (
-                  <option key={uf} value={uf}>
-                    {uf}
-                  </option>
-                ))}
-              </select>
-              {erros.uf && (
-                <p
-                  id={id("uf-erro")}
-                  role="alert"
-                  className="text-sm font-semibold text-red-300"
-                >
-                  {erros.uf}
-                </p>
-              )}
-            </div>
-          </div>
+          {campoDeTexto("cidade", "Cidade (opcional)")}
+          {/* Largura cheia: o campo mostra o selo da sigla e o nome do estado. */}
+          <CampoDeEscolha
+            id={id("uf")}
+            rotulo="Estado"
+            opcoes={OPCOES_DA_UF}
+            valor={form.uf}
+            aoMudar={(uf) => mudar("uf", uf)}
+            erro={erros.uf}
+          />
           <div className="space-y-1.5">
             <Label
               htmlFor={id("observacoes")}
@@ -374,8 +403,9 @@ export function FolhaDoFornecedor({
               Descartar o que você escreveu?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
-              O fornecedor ainda não foi salvo. Se sair agora, o que você
-              escreveu se perde.
+              {podeTerSalvo
+                ? "A conexão demorou e o fornecedor pode não ter sido salvo. Se sair agora, a lista é atualizada para você conferir antes de cadastrar de novo."
+                : "O fornecedor ainda não foi salvo. Se sair agora, o que você escreveu se perde."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">

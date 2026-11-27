@@ -30,6 +30,7 @@ import {
   idEhClassico,
   limiteInferiorDoSentinela,
   MAPA_STATUS_ORDER,
+  MENSAGEM_PAGAR_A_SI_MESMA,
   mapearStatus,
   mapearStatusOrder,
   MARGEM_LIBERAR_APOS_LIMITE_MS,
@@ -48,6 +49,7 @@ import {
   orderEhDeCartao,
   parcelasDaOrder,
   recusaLiberaAVaga,
+  recusaPorPagarASiMesma,
   resolverSentinela,
   TEMPO_LIMITE_MS,
   tipoDoPagamentoDaOrder,
@@ -2939,6 +2941,33 @@ Deno.test("dividirNomeDoPagador: primeiro nome vira first_name e o RESTO vira la
   assertEquals(dividirNomeDoPagador("Ana-Clara D'Ávila Jr."), { first_name: "Ana-Clara", last_name: "D'Ávila Jr." });
 });
 
+// Caça de 26/11/2026: acento DECOMPOSTO (NFD — "e" + U+0301, o que sai de
+// copiar e colar de alguns teclados e sistemas) é `\p{M}`, não `\p{L}`: o
+// nome inteiro virava "lixo" e o cartão saía SEM nome do pagador para o
+// antifraude. Os literais vão em escape para o editor não recompor o texto.
+Deno.test("dividirNomeDoPagador: acento decomposto (NFD) vale e sai composto (NFC); NFC segue igual", () => {
+  const joseNfd = "Jose\u0301 Silva";
+  const joseNfc = "José Silva";
+  assertEquals(joseNfd === joseNfc, false);
+  assertEquals(dividirNomeDoPagador(joseNfd), { first_name: "José", last_name: "Silva" });
+  assertEquals(dividirNomeDoPagador(joseNfc), { first_name: "José", last_name: "Silva" });
+  // Sobrenome decomposto também: o que vai ao MP é sempre a forma composta.
+  const resultado = dividirNomeDoPagador("Ana Conceic\u0327a\u0303o D'A\u0301vila");
+  assertEquals(resultado, { first_name: "Ana", last_name: "Conceição D'Ávila" });
+  assertEquals(resultado.last_name === resultado.last_name?.normalize("NFC"), true);
+  // Lixo continua lixo, com ou sem acento decomposto.
+  for (const ruim of ["Jose\u0301 2", "Jose\u0301 <b>", "Jose\u0301@exemplo.com"]) {
+    assertEquals(dividirNomeDoPagador(ruim), {}, JSON.stringify(ruim));
+  }
+});
+
+Deno.test("montarCorpoCartaoOrders com nome em NFD manda first_name/last_name compostos (NFC)", () => {
+  const corpo = montarCorpoCartaoOrders(argsCartao({ nome: "Jose\u0301 da Conceic\u0327a\u0303o" }));
+  const payer = corpo.payer as Record<string, unknown>;
+  assertEquals(payer.first_name, "José");
+  assertEquals(payer.last_name, "da Conceição");
+});
+
 Deno.test("dividirNomeDoPagador: ausente, vazio ou com cara de lixo (dígito, símbolo, e-mail, comprido demais) NÃO manda nome nenhum", () => {
   for (const ruim of [undefined, null, 42, "", "   ", "Maria 2", "maria@exemplo.com", "<b>Maria</b>", "Maria\nSilva", "x".repeat(101)]) {
     assertEquals(dividirNomeDoPagador(ruim), {}, JSON.stringify(ruim));
@@ -3206,4 +3235,97 @@ Deno.test("R9 - consultarPagamento 2xx SEM id com o pagador no corpo: o log diz 
   semDadoPessoalR9(log, cru);
   assertStringIncludes(log, "mercadopago: resposta 2xx sem id");
   assertStringIncludes(log, "200");
+});
+
+// ── Pagar a si mesma (26/11/2026) ────────────────────────────────────────────
+// A lojista testa a loja comprando dela mesma, com o MESMO e-mail da conta do
+// MP que recebe, e o MP recusa. Os sinais aceitos são texto do erro; o código
+// 2062 da Payments API NÃO entra (a referência oficial o documenta como
+// "Invalid card token" — reconhecê-lo diria "mesma conta" a quem só tem um
+// token vencido).
+
+Deno.test("pagar a si mesma: a frase que volta ao app é a combinada, em português simples", () => {
+  assertEquals(
+    MENSAGEM_PAGAR_A_SI_MESMA,
+    "O Mercado Pago não deixa a mesma conta pagar e receber. Para testar, entre na loja com outro e-mail e pague com outra conta.",
+  );
+});
+
+for (
+  const [rotulo, corpo] of [
+    ["Orders: errors[].message 'Invalid users involved'", { errors: [{ code: "invalid_users", message: "Invalid users involved" }] }],
+    ["Orders: errors[].details com 'invalid users involved' em minúsculas", { errors: [{ code: "bad_request", details: ["invalid users involved"] }] }],
+    ["Payments: message de topo 'Invalid users involved.'", { message: "Invalid users involved.", error: "bad_request", status: 400, cause: [{ code: 2034 }] }],
+    ["Payments: cause[].description com collector + customer", { message: "bad request", cause: [{ code: 2062, description: "customer can't be equal to the collector" }] }],
+    ["message de topo com COLLECTOR + PAYER em caixa alta", { message: "PAYER AND COLLECTOR CANNOT BE THE SAME USER" }],
+    ["Orders: errors[].details com payer + collector", { errors: [{ code: "property_value", details: ["The payer and the collector must be different users"] }] }],
+    ["message 'payer must be different from collector'", { message: "payer must be different from collector" }],
+    ["message em espanhol com 'mismo'", { message: "el payer y el collector no pueden ser el mismo usuario" }],
+  ] as const
+) {
+  Deno.test(`pagar a si mesma: reconhece ${rotulo}`, () => {
+    for (const status of [400, 402, 404, 422]) {
+      assertEquals(recusaPorPagarASiMesma(status, corpo, { sandbox: false }), true, `status ${status}`);
+    }
+  });
+}
+
+for (
+  const [rotulo, corpo] of [
+    // A referência oficial de POST /v1/payments: 2062 = "Invalid card token".
+    ["2062 'Invalid card token' (Payments)", { message: "Invalid card token", cause: [{ code: 2062, description: "Invalid card token" }] }],
+    ["invalid_card_token (Orders)", { errors: [{ code: "invalid_card_token", message: "invalid card token" }] }],
+    ["'Collector not allowed to operate' (sem payer/customer)", { message: "Collector not allowed to operate" }],
+    ["payer.email recusado (sem collector)", { errors: [{ code: "property_value", message: "The domain provided in payer.email is not allowed" }] }],
+    ["collector_id como CHAVE, não como frase", { message: "invalid access token", collector_id: "conta-1", payer: { email: "a@b.c" } }],
+    ["'collector' e 'payer' em frases DIFERENTES", { errors: [{ code: "x", details: ["collector inválido", "payer.email ausente"] }] }],
+    // Ressalva 1 da revisão Opus: collector + payer SEM palavra de identidade
+    // (same/equal/different/igual/mism) não diz "a mesma conta".
+    ["collector + payer sem palavra de identidade", { message: "card token does not belong to the collector of this payer" }],
+    ["collector + customer sem palavra de identidade", { errors: [{ code: "x", details: ["customer not found for this collector"] }] }],
+    // Última ressalva da revisão Opus: "mism" casava com "mismatch".
+    ["'mismatch' não é 'mismo/misma'", { message: "collector mismatch for this payer" }],
+  ] as const
+) {
+  Deno.test(`pagar a si mesma: NÃO reconhece ${rotulo}`, () => {
+    assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: false }), false);
+  });
+}
+
+Deno.test("pagar a si mesma: status de credencial, ambíguo, 5xx, rede e 2xx ficam como hoje, mesmo com o sinal no corpo", () => {
+  const corpo = { errors: [{ code: "invalid_users", message: "Invalid users involved" }] };
+  for (const status of [0, 200, 201, 401, 403, 408, 409, 423, 429.5, 500, 502, 503]) {
+    assertEquals(recusaPorPagarASiMesma(status, corpo, { sandbox: false }), false, `status ${status}`);
+  }
+});
+
+Deno.test("pagar a si mesma: corpo ausente, não-objeto ou lista não reconhece e não lança", () => {
+  for (const corpo of [undefined, null, "Invalid users involved", 2062, [], [{ message: "Invalid users involved" }]]) {
+    assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: false }), false, String(corpo));
+  }
+  // Campos com tipo errado são ignorados, nunca lançam.
+  assertEquals(recusaPorPagarASiMesma(400, { errors: "x", cause: 3, message: 7 }, { sandbox: false }), false);
+  assertEquals(recusaPorPagarASiMesma(400, { errors: [null, 3, { details: [null, 5] }], cause: [null, "x"] }, { sandbox: false }), false);
+});
+
+// Ressalva 2 da revisão Opus: com MP_SANDBOX_PAYER_EMAIL ligada, o pagador é
+// um usuário de TESTE — "Invalid users involved" ali é, pela doc (145/2034),
+// a mistura teste/real, não a mesma conta. Fica a frase genérica de hoje.
+Deno.test("pagar a si mesma: em sandbox, 'Invalid users involved' NÃO reconhece (a causa provável é teste misturado com real)", () => {
+  for (
+    const corpo of [
+      { errors: [{ code: "invalid_users", message: "Invalid users involved" }] },
+      { message: "Invalid users involved.", cause: [{ code: 2034 }] },
+      { errors: [{ code: "invalid_users", details: ["invalid users involved"] }] },
+    ]
+  ) {
+    assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: true }), false, JSON.stringify(corpo));
+    assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: false }), true, JSON.stringify(corpo));
+  }
+});
+
+Deno.test("pagar a si mesma: em sandbox, a frase EXPLÍCITA de mesma conta (collector + payer + same) continua reconhecida", () => {
+  const corpo = { message: "Payer and collector cannot be the same user" };
+  assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: true }), true);
+  assertEquals(recusaPorPagarASiMesma(400, corpo, { sandbox: false }), true);
 });

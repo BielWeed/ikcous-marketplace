@@ -384,10 +384,17 @@ describe("CheckoutView — a retirada na loja não fala em entrega de endereço"
       "Por favor, adicione ou selecione um endereço de entrega.",
     );
 
+    // Desde 26/11/2026 a retirada não exige endereço de quem tem conta
+    // (checkout-retirada-com-conta-so-pede-cep.test.tsx): nenhum aviso de
+    // endereço, nem o "de entrega" nem o sem ele.
     estado.opcao = OPCAO.retirada;
+    toastError.mockClear();
     await renderizar();
     await tocarEmFinalizar();
-    expect(toastError).toHaveBeenLastCalledWith(
+    expect(toastError).not.toHaveBeenCalledWith(
+      "Por favor, adicione ou selecione um endereço de entrega.",
+    );
+    expect(toastError).not.toHaveBeenCalledWith(
       "Por favor, adicione ou selecione um endereço.",
     );
   });

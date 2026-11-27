@@ -1,4 +1,27 @@
 {
+  "1.5.242": {
+    "titulo": "Teste de pagamento explicado, retirada mais clara e valores mais seguros",
+    "novidades": [],
+    "correcoes": [
+      "Quando a lojista testa a própria loja pagando com a mesma conta do Mercado Pago que recebe, o PIX e o cartão agora explicam por que a cobrança foi recusada e o que fazer: entrar na loja com outro e-mail e pagar com outra conta.",
+      "No pedido de retirada, a ficha mostra o endereço do cadastro como o atual, e o recibo não imprime um endereço que não foi informado no pedido."
+    ],
+    "melhorias": [
+      "A taxa de entrega local, o preço próprio de uma variação e o valor de um cupom não aceitam mais números inválidos."
+    ]
+  },
+  "1.5.241": {
+    "titulo": "Loja fechada com “Tentar de novo” e mensagens do balcão mais certas",
+    "novidades": [],
+    "correcoes": [
+      "Quando a loja está temporariamente fechada, a página mostra o botão “Tentar de novo” e tenta abrir sozinha a cada 15 minutos. O aviso “Servidor em Manutenção” passa a dizer “Loja em manutenção”.",
+      "Se a loja falhar por um instante, quem já abriu a loja antes no celular continua vendo a loja guardada no aparelho em vez de uma página de erro.",
+      "Na mensagem de WhatsApp de um pedido de balcão sem nome de cliente, a saudação passa a ser “Olá Cliente!” em vez de “Olá Venda no balcão!”."
+    ],
+    "melhorias": [
+      "No início do painel, o cartão “Sua assinatura” deixa de dizer que nada muda na loja enquanto a assinatura é ligada ao painel."
+    ]
+  },
   "1.5.240": {
     "titulo": "Teste grátis mais claro no painel e loja que não fica travada quando demora",
     "novidades": [],

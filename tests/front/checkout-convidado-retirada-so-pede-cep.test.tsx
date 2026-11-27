@@ -14,7 +14,8 @@
 //   - visitante + entrega local: tudo como sempre (controle: o erro continua);
 //   - voltar da retirada para a entrega: os campos reaparecem PREENCHIDOS e
 //     voltam a ser exigidos (nada foi apagado);
-//   - quem TEM conta: nada muda (continua barrado sem endereço salvo);
+//   - quem TEM conta: desde 26/11/2026 a retirada também não exige endereço
+//     salvo (checkout-retirada-com-conta-so-pede-cep.test.tsx);
 //   - o resumo recolhido não aponta endereço pendente na retirada.
 //
 // A calculadora de frete é dublê (a opção escolhida vem do `useCart` de teste,
@@ -434,8 +435,8 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
     );
   });
 
-  // (d) controle: quem tem conta não mudou.
-  it("(d) controle: usuário COM conta + retirada, sem endereço salvo, continua barrado", async () => {
+  // (d) quem tem conta: desde 26/11/2026 a retirada não exige endereço salvo.
+  it("(d) usuário COM conta + retirada, sem endereço salvo: o pedido sai sem endereço de casa", async () => {
     estado.user = { id: "user-1" };
     estado.opcao = OPCAO.retirada;
     await renderizar();
@@ -443,8 +444,9 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
       "checkout-name": "Cliente Teste",
       "checkout-tel": "34999999999",
     });
-    // Quem tem conta não vê a frase nem perde nenhum campo: o endereço dela é
-    // o salvo, e a retirada ainda não o dispensa nesta rodada.
+    // A lista de endereços deste dublê nunca é confirmada pelo servidor
+    // (`fetchAddresses` não chama `aoLer`): sem o campo de CEP da conta, a
+    // frase da visitante não aparece aqui.
     expect(texto()).not.toContain(FRASE);
 
     const botao = botaoFinalizar();
@@ -459,10 +461,13 @@ describe("CheckoutView — visitante que retira na loja só informa nome, WhatsA
     });
     await esperar();
 
-    expect(createOrder).not.toHaveBeenCalled();
-    expect(toastError).toHaveBeenCalledWith(
+    expect(toastError).not.toHaveBeenCalledWith(
       expect.stringContaining("adicione ou selecione um endereço"),
     );
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    const [pedido] = createOrder.mock.calls[0];
+    expect(pedido.addressId).toBeNull();
+    expect(pedido.addressData).toBeNull();
   });
 
   // (e) o resumo recolhido.

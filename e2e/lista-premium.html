@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="pt-BR" class="admin-mode dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Bancada da lista de escolha do painel</title>
+  </head>
+  <body class="admin-mode">
+    <!--
+      Bancada do navegador real (tarefa 0.16 do plano da lista premium).
+      `dark` na raiz: o App sempre a põe nas telas do painel (App.tsx).
+      Fora do build, do tsconfig do app e do knip: só o `npx vite` a serve.
+      Abrir: /e2e/lista-premium.html?tema=escuro|claro|confortavel
+             &mae=painel|financeiro&abrir=<id do campo>
+    -->
+    <div id="raiz"></div>
+    <script type="module" src="./lista-premium-bancada.tsx"></script>
+  </body>
+</html>

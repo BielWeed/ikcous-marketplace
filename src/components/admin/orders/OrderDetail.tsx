@@ -53,6 +53,7 @@ import {
   linkDeRastreioDeCodigoValido,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
+import { nomeDaClienteNoPedido } from "@/lib/nome-da-cliente-no-balcao";
 import { nomeOuReserva } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
@@ -839,13 +840,23 @@ function OrderDeliveryCard({
   const ehBalcao = tipoDeEntregaDoPedido(order) === "balcao";
 
   // Visitante que RETIRA na loja é gravado sem endereço de casa (só CEP, nome
-  // e WhatsApp). Sem rua, bairro e cidade não há o que copiar nem apontar no
-  // mapa: a ficha diz isso em uma linha em vez de um bloco vazio.
+  // e WhatsApp), e quem tem conta pode ter apagado o do cadastro. Sem rua,
+  // bairro e cidade não há o que copiar nem apontar no mapa: a ficha diz só
+  // que ela retira, em uma linha, sem afirmar se informou ou não.
+  // RETIRADA COM CONTA (26/11/2026, retirada pede só o CEP): o pedido de
+  // retirada não leva mais endereço de casa. O pedido antigo que ainda aponta
+  // para o cadastro (Order.enderecoDoCadastroAtual) também diz só que ela
+  // retira — sem o endereço nem o CEP de HOJE, que não são os da compra. A
+  // cópia gravada NA compra (pedido antigo de visitante) continua como era.
   const semEnderecoDeCasa =
     order.retiradaNaLoja &&
-    [order.customer.address, order.customer.neighborhood, order.customer.city]
-      .map((parte) => (parte ?? "").trim())
-      .every((parte) => parte === "");
+    (!!order.enderecoDoCadastroAtual ||
+      [order.customer.address, order.customer.neighborhood, order.customer.city]
+        .map((parte) => (parte ?? "").trim())
+        .every((parte) => parte === ""));
+  const cepDaRetirada = order.enderecoDoCadastroAtual
+    ? ""
+    : (order.customer.cep ?? "").trim();
 
   const linhasDoEndereco = montarLinhasDoEndereco(order.customer);
 
@@ -908,11 +919,11 @@ function OrderDeliveryCard({
 
       {!ehBalcao && semEnderecoDeCasa && (
         <p className="border-t border-admin-border pt-4 text-sm leading-relaxed text-zinc-400">
-          Cliente retira na loja — não informou endereço de casa
-          {order.customer.cep?.trim() ? (
+          Cliente retira na loja.
+          {cepDaRetirada ? (
             <>
               <br />
-              CEP: {order.customer.cep.trim()}
+              CEP: {cepDaRetirada}
             </>
           ) : null}
         </p>
@@ -2743,7 +2754,7 @@ export const OrderDetail = memo(function OrderDetail({
 
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
-    const message = `Olá ${nomeOuReserva(order.customer?.name, "Cliente")}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
+    const message = `Olá ${nomeOuReserva(nomeDaClienteNoPedido(order), "Cliente")}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
     abrirWhatsapp(`${whatsappUrl}?text=${encodeURIComponent(message)}`);
   };
 

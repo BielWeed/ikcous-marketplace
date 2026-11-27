@@ -77,6 +77,16 @@ function deps(
 const pedido = (caminho = "/", init: RequestInit = {}) =>
   new Request(`https://loja-bela.exemplo${caminho}`, init);
 
+/** O botão "Tentar de novo" da loja adormecida: um link para a própria página
+ * (href vazio), como o da página de manutenção — recarrega sem script. */
+const BOTAO_TENTAR_DE_NOVO = /<a [^>]*href=""[^>]*>\s*Tentar de novo\s*<\/a>/;
+/** O mesmo, global: para contar e para tirar todos (`match`/`replace`). */
+const TODOS_OS_BOTOES = /<a [^>]*href=""[^>]*>\s*Tentar de novo\s*<\/a>/g;
+
+/** A página sem o botão "Tentar de novo": o que sobra de `<a` é o link de
+ * acordar (o único que depende de `IKCOUS_LINK_ACORDAR`). */
+const semOBotao = (html: string) => html.replace(TODOS_OS_BOTOES, "");
+
 describe("porteiro — loja ADORMECIDA: 503 próprio, sem tocar o banco da loja", () => {
   it("texto, status e cabeçalhos exatos; fetch e contador NUNCA chamados", async () => {
     const fetchImpl = fetchProibido();
@@ -109,7 +119,7 @@ describe("porteiro — loja ADORMECIDA: 503 próprio, sem tocar o banco da loja"
     expect(html).toContain("É a dona desta loja?");
     expect(html).toContain("Fale com a IKCOUS para reabrir");
     expect(html).not.toContain("<script");
-    expect(html).not.toContain("<a");
+    expect(semOBotao(html)).not.toContain("<a");
     expect(html).not.toContain("supabase.co");
     expect(html).not.toContain(REF);
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -188,7 +198,7 @@ describe("porteiro — o link 'Fale com a IKCOUS' só existe com IKCOUS_LINK_ACO
       "hit",
       valor,
     ).text();
-    expect(html).not.toContain("<a");
+    expect(semOBotao(html)).not.toContain("<a");
     expect(html).not.toContain("javascript");
     expect(html).toContain("Fale com a IKCOUS para reabrir");
   });
@@ -245,6 +255,78 @@ describe("porteiro — o nome da loja vem da caderneta e é ESCAPADO", () => {
       undefined,
     ).text();
     expect(html).toContain("Esta loja está fechada no momento.");
+  });
+});
+
+// A loja adormecida volta quando a conta acerta. No iPhone com o app
+// instalado não há barra nem "puxar para atualizar": sem botão nem recarga, a
+// cliente ficava presa nesta página até matar o app. Mesmo jeito da página de
+// manutenção (`pagina-de-manutencao-viewport-refresh-e-botao.test.ts`): link
+// para a própria página + `<meta http-equiv="refresh">`, SEM script (a CSP de
+// produção só libera 1 hash em script-src). Recarga a cada 15 min: a loja não
+// volta em instantes, e 15 min é mais cedo que o `retry-after` de 1 h sem
+// martelar o porteiro. A ENCERRADA não volta: nem botão, nem recarga.
+describe("porteiro — loja ADORMECIDA tem 'Tentar de novo' e recarga de 15 min; ENCERRADA não", () => {
+  const RECARGA = /<meta http-equiv="refresh" content="(\d+)"\s*\/?>/;
+  const TODAS_AS_RECARGAS = /<meta http-equiv="refresh" content="\d+"\s*\/?>/g;
+
+  it("adormecida: botão para a própria página e recarga a cada 900 s, sem script nem atributo de evento", async () => {
+    const html = await respostaForaDoAr(
+      { estado: "adormecida", nome: "Loja Bela", ref: REF },
+      "hit",
+      undefined,
+    ).text();
+    expect(html).toMatch(BOTAO_TENTAR_DE_NOVO);
+    expect(html.match(TODOS_OS_BOTOES)).toHaveLength(1);
+    expect(html.match(RECARGA)?.[1]).toBe("900");
+    expect(html.match(TODAS_AS_RECARGAS)).toHaveLength(1);
+    expect(html).toContain("Loja Bela está fechada no momento.");
+    expect(html).not.toContain("<script");
+    expect(html).not.toMatch(/\son[a-z]+\s*=/i);
+  });
+
+  it("adormecida pelo porteiro inteiro (documento): o botão e a recarga chegam à cliente", async () => {
+    const resp = await atenderPorteiro(
+      pedido("/produto/123", {
+        headers: { "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" },
+      }),
+      AMBIENTE,
+      deps(
+        fetchProibido() as unknown as typeof fetch,
+        cadernetaForaDoAr("adormecida"),
+      ),
+    );
+    expect(resp.status).toBe(503);
+    const html = await resp.text();
+    expect(html).toMatch(BOTAO_TENTAR_DE_NOVO);
+    expect(html.match(RECARGA)?.[1]).toBe("900");
+  });
+
+  it("adormecida COM o link de acordar: os dois convivem e o de acordar continua sendo o único com endereço", async () => {
+    const html = await respostaForaDoAr(
+      { estado: "adormecida", nome: "Loja Bela", ref: REF },
+      "hit",
+      "https://ikcous.exemplo/reabrir",
+    ).text();
+    expect(html).toMatch(BOTAO_TENTAR_DE_NOVO);
+    expect(semOBotao(html).match(/<a /g)).toHaveLength(1);
+    expect(semOBotao(html)).toContain(
+      '<a href="https://ikcous.exemplo/reabrir">Fale com a IKCOUS para reabrir</a>',
+    );
+  });
+
+  it("encerrada: nem botão, nem recarga, nem link para a própria página", async () => {
+    for (const link of [undefined, "https://ikcous.exemplo/reabrir"]) {
+      const html = await respostaForaDoAr(
+        { estado: "encerrada", nome: "Loja Bela", ref: REF },
+        "hit",
+        link,
+      ).text();
+      expect(html).not.toContain("Tentar de novo");
+      expect(html).not.toContain('href=""');
+      expect(html).not.toMatch(/http-equiv="refresh"/i);
+      expect(html).toContain("Loja Bela não está mais no ar.");
+    }
   });
 });
 

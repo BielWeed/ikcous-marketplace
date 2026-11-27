@@ -3170,7 +3170,7 @@ const ROL_DA_150C = [
   "controle: catalogo publico visivel",
   "assinatura_da_loja_definir_chave: uma so, com o corpo da 20261399998000 (md5)",
   "assinatura_da_loja_definir_chave: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna void) e EXECUTE so para service_role (anon, authenticated e PUBLIC nada)",
-  "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 (md5)",
+  "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 ou da sucessora 20261590000000 (md5)",
   "assinatura_da_loja_gravar: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna jsonb) e EXECUTE so para anon e authenticated (service_role e PUBLIC nada)",
   "assinatura_da_loja_chave: tabela comum com RLS ligada sem FORCE e nenhuma politica",
   "assinatura_da_loja_chave: nenhum privilegio para anon, authenticated, service_role e PUBLIC (tabela e coluna)",
@@ -3523,7 +3523,134 @@ const ROL_DA_192B = [
   "rls_admin_atual(): corpo da 20261197000000, SECURITY DEFINER, EXECUTE de authenticated e nao de anon (a base do pre-voo)",
   "storage.objects: existe com RLS ligada (a base do pre-voo)",
 ];
+// Lote 193 (20261560000000, o infinito nao entra no banco: CHECKs que recusam Infinity e -Infinity na taxa de entrega local, no preco
+// proprio da variacao e no valor do cupom, separados das restricoes da 20261400000000). A 193a prova as tres restricoes com a regra
+// exata (4 itens); a 193b prova que as tres ainda NAO existem e a base do pre-voo (as colunas numeric e preco_venda COM precisao) (5).
+// A 193m (medicao, so contagens, rol fechado com ok = contagem 0; NAO e' prova do portao) conta os infinitos JA GUARDADOS em cada
+// coluna, para rodar em cada loja ANTES do apply: contagem > 0 faz a guarda da migration recusar a loja (4 itens).
+const ROL_DA_193A = [
+  "controle: catalogo publico visivel",
+  "store_config: CHECK store_config_local_delivery_fee_finito (sem Infinity nem -Infinity na taxa de entrega local) existe",
+  "product_variants: CHECK product_variants_price_override_finito (sem Infinity nem -Infinity no preco proprio da variacao; NULL segue valendo) existe",
+  "coupons: CHECK coupons_value_finito (sem Infinity nem -Infinity no valor do cupom) existe",
+];
+const ROL_DA_193B = [
+  "controle: catalogo publico visivel",
+  "store_config.local_delivery_fee: e numeric e o CHECK store_config_local_delivery_fee_finito ainda NAO existe",
+  "product_variants.price_override: e numeric e o CHECK product_variants_price_override_finito ainda NAO existe",
+  "coupons.value: e numeric e o CHECK coupons_value_finito ainda NAO existe",
+  "produtos.preco_venda: e numeric COM precisao (o tipo ja recusa infinito; a base do pre-voo)",
+];
+const ROL_DA_193M = [
+  "controle: a RLS nao vale para quem leu em store_config, product_variants e coupons (a contagem e da loja inteira)",
+  "store_config.local_delivery_fee: linhas com Infinity ou -Infinity ja guardado",
+  "product_variants.price_override: linhas com Infinity ou -Infinity ja guardado (NULL nao conta)",
+  "coupons.value: linhas com Infinity ou -Infinity ja guardado",
+];
+// Lote 194 (20261570000000, o endereco antigo encaminha para o novo: a tabela frota_enderecos_que_encaminham, o gatilho que recusa o
+// endereco principal, a porta de leitura resolver_encaminhamento so do anon e a de troca frota_trocar_dominio so do dono). A 194a prova a
+// tabela com a forma exata e fechada, o gatilho e as duas portas pelo md5 (6 itens); a 194b prova que nada disso existe e a base do pre-voo
+// (a 20261490 aplicada; a chave e o CHECK de formato de frota_lojas) (5). As duas leem so o catalogo.
+const ROL_DA_194A = [
+  "controle: catalogo publico visivel",
+  "frota_enderecos_que_encaminham: as 5 colunas (host, loja_id, motivo, criado_em, quem), a chave em host, os CHECKs de formato do host e do motivo e a chave estrangeira para frota_lojas(id) ON DELETE CASCADE",
+  "frota_enderecos_que_encaminham: fechada (tabela comum, RLS ligada, nenhuma politica, nada para PUBLIC, anon, authenticated e service_role, nem em coluna) e com o dono de frota_lojas",
+  "frota_enderecos_que_encaminham_nao_e_principal: o gatilho BEFORE INSERT OR UPDATE OF host por linha, habilitado, na funcao com o corpo da 20261570000000 (md5) e EXECUTE so do dono",
+  "resolver_encaminhamento: uma so, com o corpo da 20261570000000 (md5), plpgsql, SECURITY DEFINER, VOLATILE, search_path vazio, TABLE(destino text), EXECUTE so do anon e o dono de frota_lojas",
+  "frota_trocar_dominio: uma so, com o corpo da 20261570000000 (md5), plpgsql, SECURITY INVOKER, search_path vazio, as 4 colunas de retorno e EXECUTE so do dono",
+];
+const ROL_DA_194B = [
+  "controle: catalogo publico visivel",
+  "frota_enderecos_que_encaminham e a funcao do gatilho dela ainda NAO existem",
+  "resolver_encaminhamento e frota_trocar_dominio ainda NAO existem",
+  "a 20261490000000 esta aplicada: frota_segredo com hash_rapido e hash_rapido_de, resolver_loja e resolver_loja_com_estado uma so cada com os corpos dela (md5)",
+  "frota_lojas: a chave em id (text) e o CHECK de formato do dominio_publico da 20261141000000 (a base do pre-voo)",
+];
+// Lote 195 (20261590000000, a loja guarda o dia da pausa do teste: a coluna assinatura_da_loja.pausa_em e a porta assinatura_da_loja_gravar com a 11a
+// chave opcional; aditiva, exige a 20261399998000). Somente catalogo: nenhuma linha do cartao nem da chave e' lida e nenhuma funcao e' chamada. A 195a
+// prova a coluna (date, anulavel, sem padrao), o corpo novo da porta (md5), os atributos e o EXECUTE, e definir_chave e o leitor intactos (6); antes do
+// apply responde "nao", nunca erro. A 195b prova a ausencia da coluna e as premissas do pre-voo (a porta da 20261399998000, definir_chave) (4).
+const ROL_DA_195A = [
+  "controle: catalogo publico visivel",
+  "assinatura_da_loja.pausa_em: date, anulavel e sem padrao",
+  "assinatura_da_loja_gravar: uma so, com o corpo da 20261590000000 (md5)",
+  "assinatura_da_loja_gravar: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna jsonb) e EXECUTE so para anon e authenticated (service_role e PUBLIC nada)",
+  "assinatura_da_loja_definir_chave: intacta, com o corpo da 20261399998000 (md5)",
+  "assinatura_da_loja_ler: intacto, com o corpo da 20261381000000 (md5)",
+];
+const ROL_DA_195B = [
+  "controle: catalogo publico visivel",
+  "assinatura_da_loja.pausa_em: ainda NAO existe (o cartao tem as 13 colunas da 20261177000000)",
+  "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 (md5; a premissa do pre-voo)",
+  "assinatura_da_loja_definir_chave: intacta, com o corpo da 20261399998000 (md5)",
+];
+// Lote 196 (20261600000000, a loja pausa o pedido novo: a tabela pausa_de_vendas, 5 funcoes e 2 gatilhos; aditiva, exige a 20261197000000, a
+// 20261399998000 e a 20261590000000, e NAO redefine v23 nem v24). Somente catalogo: a 196a nao le nenhuma linha e nao chama funcao; prova a tabela fechada,
+// as 5 funcoes (md5, atributos, EXECUTE por papel) e os 2 gatilhos ligados (10); antes do apply responde "nao", nunca erro. A 196b prova a ausencia de
+// tudo, as premissas do pre-voo e UMA contagem de dado: nenhuma loja em manutencao hoje (8).
+const ROL_DA_196A = [
+  "controle: catalogo publico visivel",
+  "pausa_de_vendas: tabela de linha unica com as 4 colunas, RLS ligada e nenhuma politica",
+  "pausa_de_vendas: nenhum privilegio (tabela ou coluna) para anon, authenticated nem service_role",
+  "data_da_pausa_de_vendas: uma so, corpo da 20261600000000 (md5), SQL IMMUTABLE com search_path fixo, EXECUTE de ninguem",
+  "marcar_suspensa_desde: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "motivo_da_loja_nao_aceitar_pedido: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "a_loja_aceita_pedido_novo: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "situacao_das_vendas_da_loja: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE so de authenticated",
+  "tr_a_loja_aceita_pedido_novo: BEFORE INSERT por linha em marketplace_orders, com o WHEN do balcao, ligado",
+  "tr_assinatura_marca_suspensa_desde: AFTER INSERT OR UPDATE OF status por linha em assinatura_da_loja, ligado",
+];
+const ROL_DA_196B = [
+  "controle: catalogo publico visivel",
+  "pausa_de_vendas: ainda NAO existe",
+  "as 5 funcoes da 20261600000000: nenhuma existe ainda (com qualquer assinatura)",
+  "os 2 gatilhos da 20261600000000: nenhum existe ainda",
+  "premissa: marketplace_orders.canal (text NOT NULL) e idempotency_key (uuid); store_config.manutencao (boolean NOT NULL)",
+  "premissa: is_admin() e is_admin_atual() existem (20261197000000)",
+  "premissa: o cartao com as 14 colunas da 20261590000000 (com pausa_em) e a tabela da chave da 20261399998000",
+  "store_config: nenhuma linha com manutencao = true hoje (se houver, a loja passa a recusar pedido online no apply: avisar o dono antes)",
+];
+// Lote 197 (20261610000000, o catalogo e a configuracao chegam ao vivo em toda loja: 10 tabelas entram na publicacao supabase_realtime; aditiva,
+// exige a 20261061000000). Somente catalogo, nenhuma linha de tabela lida. A 197a prova as 10 e as 3 da 20261061 na publicacao, nenhuma outra alem
+// de coupons (TOLERADA: a IKCOUS a tem, posta a mao) e a RLS ligada (6); positiva com 13 (Savy, loja nova) e com 14 (IKCOUS, ja antes do apply).
+// A 197b prova que pelo menos uma das 10 esta fora e as premissas do pre-voo (6).
+const ROL_DA_197A = [
+  "controle: catalogo publico visivel",
+  "a publicacao supabase_realtime existe, nao e FOR ALL TABLES e publica INSERT, UPDATE e DELETE",
+  "as 10 tabelas do catalogo e da configuracao estao na publicacao",
+  "as 3 tabelas da 20261061000000 (pedido, item do pedido, notificacao) continuam na publicacao",
+  "nenhuma outra tabela do esquema public esta na publicacao (so as 13 e coupons, tolerada)",
+  "as 10 tabelas existem com RLS ligada (e coupons, se publicada)",
+];
+const ROL_DA_197B = [
+  "controle: catalogo publico visivel",
+  "pelo menos uma das 10 tabelas ainda esta fora da publicacao",
+  "premissa: a publicacao supabase_realtime existe e nao e FOR ALL TABLES",
+  "premissa: as 10 tabelas existem com RLS ligada e identidade de replicacao utilizavel (chave primaria, FULL ou indice)",
+  "premissa: as 3 tabelas da 20261061000000 ja estao na publicacao",
+  "nenhuma tabela do esquema public alem das 13 e de coupons (tolerada) esta na publicacao",
+];
+// O rol das consultas do lote da 20261620000000 (a soma das categorias fecha com o faturamento no centavo): as MESMAS 2 linhas da 164 (so
+// get_category_analytics muda de corpo). Somente catalogo: nenhuma linha de pedido e lida e a funcao nao e chamada. A 198a espera o corpo
+// desta (md5); a 198b, o da 20261409000000 ou o desta (reaplicacao idempotente).
+const ROL_DA_198 = [
+  "get_category_analytics: corpo exato (md5)",
+  "get_category_analytics: assinatura e atributos conhecidos",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado": ROL_DA_198,
+  "198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente": ROL_DA_198,
+  "197a-conferir-o-catalogo-chega-ao-vivo-aplicado": ROL_DA_197A,
+  "197b-antes-o-catalogo-chega-ao-vivo-ausente": ROL_DA_197B,
+  "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado": ROL_DA_196A,
+  "196b-antes-a-loja-pausa-o-pedido-novo-ausente": ROL_DA_196B,
+  "195a-conferir-a-loja-guarda-o-dia-da-pausa-do-teste-aplicado": ROL_DA_195A,
+  "195b-antes-a-loja-guarda-o-dia-da-pausa-do-teste-ausente": ROL_DA_195B,
+  "194a-conferir-o-endereco-antigo-encaminha-aplicado": ROL_DA_194A,
+  "194b-antes-o-endereco-antigo-encaminha-ausente": ROL_DA_194B,
+  "193a-conferir-o-infinito-nao-entra-no-banco-aplicado": ROL_DA_193A,
+  "193b-antes-o-infinito-nao-entra-no-banco-ausente": ROL_DA_193B,
+  "193m-medir-infinitos-guardados": ROL_DA_193M,
   "192a-conferir-o-admin-copia-e-apaga-as-fotos-aplicado": ROL_DA_192A,
   "192b-antes-o-admin-copia-e-apaga-as-fotos-ausente": ROL_DA_192B,
   "188a-conferir-o-livro-de-registro-aplicado": ROL_DA_188A,

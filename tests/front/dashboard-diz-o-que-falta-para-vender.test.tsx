@@ -297,7 +297,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     {
       caso: "primeiro produto (só um inativo)",
       parcial: { produtos: [{ isActive: false }] },
-      texto: "Próximo passo: Cadastrar um produto ativo",
+      texto: "Próximo passo: Conferir e ativar o produto oculto",
       destino: "admin-products",
     },
   ] as const)(

@@ -138,6 +138,34 @@ export type ResultadoDoCadastroFiscal =
   | { ok: true; payload: PayloadDoCadastroFiscal }
   | { ok: false; erros: ErrosDoCadastroFiscal };
 
+/** Um campo do corpo de `fiscal_cadastro_salvar`. */
+export type CampoDoPayloadFiscal = keyof PayloadDoCadastroFiscal;
+
+/**
+ * Os campos que a folha mexeu por cima do cadastro de AGORA (relido logo antes de
+ * gravar). O banco recebe sempre a foto inteira e grava os quatro campos; mandar a
+ * foto de quando a folha abriu desfaria, sem aviso, o que outro aparelho gravou
+ * nesse meio tempo (o regime trocado no celular voltava ao antigo). Campo mexido
+ * vale o da folha, inclusive o vazio (apagar a data é mexer nela); o resto vem de
+ * `agora`. Sem cadastro agora (ou ilegível), vale a folha inteira.
+ */
+export function juntarAoCadastroDeAgora(
+  daFolha: PayloadDoCadastroFiscal,
+  mexidos: ReadonlyArray<CampoDoPayloadFiscal>,
+  agora: CadastroFiscal | null,
+): PayloadDoCadastroFiscal {
+  if (agora === null) return { ...daFolha };
+  const mexeu = (campo: CampoDoPayloadFiscal) => mexidos.includes(campo);
+  return {
+    regime: mexeu("regime") ? daFolha.regime : agora.regime,
+    atividade: mexeu("atividade") ? daFolha.atividade : agora.atividade,
+    aberta_em: mexeu("aberta_em") ? daFolha.aberta_em : agora.abertaEm,
+    vende_no_app_desde: mexeu("vende_no_app_desde")
+      ? daFolha.vende_no_app_desde
+      : agora.vendeNoAppDesde,
+  };
+}
+
 /**
  * Valida o formulário e monta o corpo de `fiscal_cadastro_salvar`. Recusa
  * antes de ir ao banco o que o banco recusaria (regime/atividade fora da

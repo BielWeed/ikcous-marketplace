@@ -62,6 +62,7 @@ import {
   precosDaVendaRecusada,
 } from "@/lib/erro-da-venda-presencial";
 import type { Leitura } from "@/lib/leitor/decodificador";
+import { NOME_DE_VENDA_SEM_CLIENTE } from "@/lib/nome-da-cliente-no-balcao";
 import {
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
@@ -526,11 +527,9 @@ export function AdminPdvView({
     readonly status?: string;
   }
 
-  // O literal que a migration grava em `customer_name` quando a venda nasce
-  // sem cliente (20261162000000:366-371, o COALESCE final) — o MESMO que
-  // `ReciboDaVenda.tsx` (`nomeDoCliente`) mostra para `sem_cliente`. Três
-  // lugares, um valor: a migration é a fonte; os outros dois copiam.
-  const NOME_DE_VENDA_SEM_CLIENTE = "Venda no balcão";
+  // `NOME_DE_VENDA_SEM_CLIENTE` (lib/nome-da-cliente-no-balcao): o literal
+  // que a migration grava em `customer_name` quando a venda nasce sem nome
+  // (20261162000000:366-371, o COALESCE final).
 
   // B2 do item 2 da fila do bastão (19/09): o cliente do recibo sai da
   // RESPOSTA do banco, não do que está na tela — `customer_name` /

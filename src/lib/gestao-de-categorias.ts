@@ -308,7 +308,8 @@ export const LIMITE_DO_NOME_DA_CATEGORIA = 80;
  * A régua do banco para um nome de categoria (a de `renomear_categoria`), para
  * quem CRIA usar a mesma: nome vazio, acima do limite, ou sem letra nem número
  * (só emoji ou símbolo: o endereço fica vazio e a segunda categoria assim
- * colidiria com a primeira). Devolve a frase para a lojista, ou `null` quando
+ * colidiria com a primeira; com letra só de outro alfabeto, a frase pede uma
+ * letra de A a Z). Devolve a frase para a lojista, ou `null` quando
  * o nome serve. O espaço repetido conta como um só, como no banco.
  */
 export function erroDoNomeDaCategoria(nome: string): string | null {
@@ -318,6 +319,11 @@ export function erroDoNomeDaCategoria(nome: string): string | null {
     return `O nome da categoria pode ter no máximo ${LIMITE_DO_NOME_DA_CATEGORIA} letras.`;
   }
   if (slugDaCategoria(limpo) === "") {
+    // Tem letra, mas nenhuma que o endereço guarde (cirílico, grego, árabe,
+    // ideograma): dizer "sem letra" seria falso para quem digitou letras.
+    if (/\p{L}/u.test(limpo)) {
+      return "Use pelo menos uma letra do alfabeto comum (A a Z) ou um número no nome da categoria.";
+    }
     return "O nome da categoria precisa ter pelo menos uma letra ou um número.";
   }
   return null;

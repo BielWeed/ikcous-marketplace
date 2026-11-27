@@ -47,7 +47,9 @@ function SheetPortal({
 
 // Régua de z da casa (medida em 13/09, peça do defeito da folha): barra do
 // topo 100 < BottomNav 120 < sheet modal 130 (o mesmo degrau do
-// ImageAdjuster) < barra de progresso 99999 — com UM degrau transitório:
+// ImageAdjuster) < lista de escolha do painel 135 (folha e popover de
+// `admin/primitivos/lista-de-escolha`, que abrem por cima de uma folha 130)
+// < barra de progresso 99999 — com UM degrau transitório:
 // enquanto um toast está ativo, o WRAPPER do header (BarraSuperiorCliente,
 // no App) sobe para 140 para limpar o modal e o aviso da cápsula pintar
 // acima do véu (revisão do bloqueante, 14/09). O degrau mora no WRAPPER e

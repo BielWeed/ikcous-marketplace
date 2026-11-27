@@ -2744,6 +2744,16 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
         "pagamento posterior cairia num pedido cancelado. Nada foi tocado",
     ],
     [
+      // Pagar a si mesma (26/11/2026): o MP recusou a REQUISIÇÃO (4xx, nada
+      // criado) porque quem paga é a mesma conta que recebe. Mesma categoria
+      // de "r.erro" no 400/4xx definitivo: 502 sem terminal, a reserva do
+      // cartão já foi solta; a frase diz como testar (outro e-mail na loja,
+      // outra conta pagando) e "Tentar de novo" não cobra nada.
+      "MENSAGEM_PAGAR_A_SI_MESMA",
+      "a conta que paga é a que recebe: o MP recusou a requisição sem criar " +
+        "nada; a frase diz como testar e o retry é seguro",
+    ],
+    [
       "Há um pagamento com cartão em análise para este pedido.",
       "o desfecho do cartão chega em minutos pelo webhook: aprovado, o " +
         "retry devolve 'pago'; recusado, a vaga é liberada e o PIX sai",
@@ -3135,7 +3145,11 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // 66, não mais 65: revisão do PR de pagamento (16/10/2026) — pedido de PIX com o
   // cartão da vaga pago no MP e sem prova no banco responde o mesmo 409 NÃO
   // terminal "em análise" do ramo (f) (na lista de recuperáveis, acima). 65 + 1 = 66.
-  assertEquals(achados, 66);
+  //
+  // 67, não mais 66: pagar a si mesma (26/11/2026) — o 502 NÃO terminal
+  // `MENSAGEM_PAGAR_A_SI_MESMA` (na lista de recuperáveis, acima), de UM ponto
+  // só (`respostaPagarASiMesma`), chamado pelo PIX e pelo cartão. 66 + 1 = 67.
+  assertEquals(achados, 67);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -5397,6 +5411,158 @@ for (
     assertEquals(alertas, 0);
   });
 }
+
+// Pagar a si mesma (26/11/2026): a lojista testa o cartão comprando dela
+// mesma, com o e-mail da conta do MP que recebe. Num 4xx DEFINITIVO (o MP
+// recusou a requisição inteira, nada criado) a frase diz o porquê; a saída é a
+// MESMA de hoje (502, reserva solta, nada de análise). Ambíguo, credencial e
+// dado do cartão continuam exatamente como eram.
+const FRASE_PAGAR_A_SI_MESMA =
+  "O Mercado Pago não deixa a mesma conta pagar e receber. Para testar, entre na loja com outro e-mail e pague com outra conta.";
+const CORPO_USUARIOS_INVALIDOS = { errors: [{ code: "invalid_users", message: "Invalid users involved" }] };
+
+for (
+  const caso of [
+    { nome: "400 'Invalid users involved'", status: 400, corpo: CORPO_USUARIOS_INVALIDOS },
+    { nome: "400 collector + payer nos details", status: 400, corpo: { errors: [{ code: "bad_request", details: ["The payer and the collector must be different users"] }] } },
+    { nome: "422 'Invalid users involved'", status: 422, corpo: CORPO_USUARIOS_INVALIDOS },
+  ]
+) {
+  Deno.test(`handler cartão: ${caso.nome} -> 502 com a frase de pagar a si mesma, reserva solta como hoje`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao();
+    const mp = fetchMP({ criar: { status: caso.status, corpo: caso.corpo } });
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 502);
+    assertEquals(corpo.error, FRASE_PAGAR_A_SI_MESMA);
+    assertEquals(corpo.terminal, undefined);
+    assertEquals(corpo.cartaoEmAnalise, undefined);
+    assertEquals(mp.criacoes().length, 1, "sem repetição");
+    assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: sentinelaDaReserva(registro) }]);
+  });
+}
+
+Deno.test("handler cartão CONTROLE: outro 400 (campo obrigatório) -> 502 com a frase genérica de hoje", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao();
+  const mp = fetchMP({ criar: { status: 400, corpo: { errors: [{ code: "property_value", message: "invalid value" }] } } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(corpo.error, "Não foi possível gerar a cobrança.");
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: sentinelaDaReserva(registro) }]);
+});
+
+Deno.test("handler cartão CONTROLE: 400 de dado do cartão vence o sinal de pagar a si mesma -> 200 'recusado' de sempre", async () => {
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP({
+    criar: { status: 400, corpo: { errors: [{ code: "invalid_card_token", message: "Invalid users involved" }] } },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "recusado");
+  assertEquals(corpo.motivoRecusa, "Confira os dados do cartão e tente de novo.");
+});
+
+for (
+  const caso of [
+    { status: 401, esperado: 503, terminal: true, emAnalise: undefined },
+    { status: 403, esperado: 503, terminal: true, emAnalise: undefined },
+    { status: 409, esperado: 502, terminal: undefined, emAnalise: true },
+    { status: 500, esperado: 502, terminal: undefined, emAnalise: true },
+  ]
+) {
+  Deno.test(`handler cartão CONTROLE: ${caso.status} com 'Invalid users involved' no corpo -> ${caso.esperado} como hoje, nunca a frase nova`, async () => {
+    const { supabase, chamadasRpc } = cenarioCartao();
+    const mp = fetchMP({ criar: { status: caso.status, corpo: CORPO_USUARIOS_INVALIDOS } });
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, caso.esperado);
+    assertEquals(corpo.terminal, caso.terminal);
+    assertEquals(corpo.cartaoEmAnalise, caso.emAnalise);
+    assertEquals(corpo.error === FRASE_PAGAR_A_SI_MESMA, false);
+    if (caso.terminal) assertEquals(corpo.error, MENSAGEM_CREDENCIAL_RECUSADA);
+    if (caso.emAnalise) assertEquals(chamadasRpc.length, 0, "ambíguo: a reserva fica");
+  });
+}
+
+// Ressalva 2 da revisão Opus: sandbox ligado (MP_SANDBOX_PAYER_EMAIL) ->
+// "Invalid users involved" é a mistura teste/real; a frase genérica de hoje.
+// O desligado é o caso "400 'Invalid users involved'" logo acima.
+for (const status of [400, 422]) {
+  Deno.test(`handler cartão sandbox LIGADO: ${status} 'Invalid users involved' -> 502 com a frase genérica de hoje, reserva solta`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao();
+    Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "test_payer_123@testuser.com");
+    try {
+      const mp = fetchMP({ criar: { status, corpo: CORPO_USUARIOS_INVALIDOS } });
+      const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+        supabase,
+        fetchImpl: mp.fn,
+      });
+      const corpo = await resposta.json();
+
+      assertEquals(resposta.status, 502);
+      assertEquals(corpo.error, "Não foi possível gerar a cobrança.");
+      assertEquals(corpo.cartaoEmAnalise, undefined);
+      assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: sentinelaDaReserva(registro) }]);
+    } finally {
+      Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+    }
+  });
+}
+
+Deno.test("handler cartão sandbox LIGADO: a frase EXPLÍCITA de mesma conta continua dando a frase nova", async () => {
+  const { supabase } = cenarioCartao();
+  Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "test_payer_123@testuser.com");
+  try {
+    const mp = fetchMP({ criar: { status: 400, corpo: { message: "Payer and collector cannot be the same user" } } });
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 502);
+    assertEquals(corpo.error, FRASE_PAGAR_A_SI_MESMA);
+  } finally {
+    Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  }
+});
+
+Deno.test("handler cartão CONTROLE: 400 'card token does not belong to the collector of this payer' -> frase genérica", async () => {
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP({
+    criar: { status: 400, corpo: { message: "card token does not belong to the collector of this payer" } },
+  });
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(corpo.error, "Não foi possível gerar a cobrança.");
+});
 
 Deno.test("handler cartão: token, CPF e e-mail NUNCA aparecem em log nem na resposta — nem na recusa 402 cujo corpo traz o pagador", async () => {
   const { supabase } = cenarioCartao({

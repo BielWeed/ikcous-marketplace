@@ -403,6 +403,7 @@ const CAMPO_DO_INPUT: ReadonlyMap<string, keyof CheckoutFormValues> = new Map([
   ["checkout-tel", "whatsapp"],
   ["checkout-cpf", "cpf"],
   ["guest-cep", "cep"],
+  ["checkout-cep-conta", "cep"],
   ["guest-number", "number"],
   ["guest-street", "street"],
   ["guest-neighborhood", "neighborhood"],
@@ -1221,6 +1222,29 @@ export function CheckoutViewDaConta({
     updateAddress,
     loading: addressesLoading,
   } = useAddresses();
+  // RETIRADA COM CONTA PEDE SÓ O CEP (26/11/2026, decisão do sócio a pedido do
+  // dono): a conta cuja lista de endereços o SERVIDOR confirmou vazia digita o
+  // CEP, como a visitante, para cotar o frete e poder retirar na loja. Lista
+  // vazia sem essa confirmação (leitura em voo, leitura que falhou, primeiro
+  // render antes dela) não prova que a conta não tem endereço: ali a tela segue
+  // como antes, e o CEP de um endereço que ainda vai chegar não é trocado.
+  const [enderecosLidosDaConta, setEnderecosLidosDaConta] = useState<
+    string | null
+  >(null);
+  const contaSemEnderecoSalvo =
+    !!user &&
+    enderecosLidosDaConta === user.id &&
+    addresses.length === 0 &&
+    !addressesLoading &&
+    !enderecosNaoCarregaram;
+  const lerEnderecosDaConta = useCallback(() => {
+    const idDaConta = user?.id;
+    return fetchAddresses({
+      aoLer: () => {
+        if (idDaConta) setEnderecosLidosDaConta(idDaConta);
+      },
+    });
+  }, [user?.id, fetchAddresses]);
 
   const formatWhatsApp = (value: string, anterior?: string) =>
     mascaraWhatsappBr(value, anterior);
@@ -1288,7 +1312,9 @@ export function CheckoutViewDaConta({
             path: ["cpf"],
           });
         }
-        if (!user) {
+        // A conta sem endereço salvo que vai RETIRAR informa o CEP no mesmo
+        // campo e com a mesma régua da visitante (`contaSemEnderecoSalvo`).
+        if (!user || (contaSemEnderecoSalvo && ehRetirada)) {
           // 8 DÍGITOS, não 8 caracteres: "1234-678" tem 8 caracteres e 7
           // dígitos — passava na régua antiga e virava endereço não
           // entregável no pedido (laudo caça-bugs 30/08, achado 11).
@@ -1374,7 +1400,7 @@ export function CheckoutViewDaConta({
           }
         }
       });
-  }, [user, exigeCpfDoDestinatario, ehRetirada]);
+  }, [user, exigeCpfDoDestinatario, ehRetirada, contaSemEnderecoSalvo]);
 
   const form = useForm<CheckoutFormValues>({
     resolver: zodResolver(dynamicSchema),
@@ -1445,6 +1471,8 @@ export function CheckoutViewDaConta({
   // RETIRADA NA LOJA (12/11/2026): `ehRetirada` entra na mesma conta pelo mesmo
   // motivo — para o visitante, marcar ou desmarcar a retirada liga/desliga a
   // exigência de rua, número, bairro, cidade e estado sem tocar nenhum campo.
+  // `contaSemEnderecoSalvo` idem: a confirmação da lista vazia liga a exigência
+  // do CEP da conta na retirada.
   const exigeCpfMontadoRef = useRef(false);
   useEffect(() => {
     // SÓ depois do primeiro paint: no MOUNT, `form.trigger()` validaria o
@@ -1457,7 +1485,7 @@ export function CheckoutViewDaConta({
       return;
     }
     form.trigger();
-  }, [exigeCpfDoDestinatario, ehRetirada, form]);
+  }, [exigeCpfDoDestinatario, ehRetirada, contaSemEnderecoSalvo, form]);
 
   // O CPF MORA NA CONTA (23/09/2026): logado, ao montar, se o campo ainda
   // está vazio, tenta preencher com o CPF já gravado na conta —
@@ -2786,9 +2814,15 @@ export function CheckoutViewDaConta({
     : undefined;
   const enderecoVivoRef = useRef(enderecoEfetivo);
   enderecoVivoRef.current = enderecoEfetivo;
+  // Conta sem endereço salvo (lista CONFIRMADA vazia): o CEP digitado, como o
+  // da visitante. Com endereço, o CEP dele continua sendo o destino.
   const cepDeEntrega = user
-    ? (enderecoEfetivo?.cep ?? null)
+    ? (enderecoEfetivo?.cep ??
+      (contaSemEnderecoSalvo ? cepDigitadoNoFormulario || null : null))
     : cepDigitadoNoFormulario || null;
+  // Quem tem o cartão "Seu CEP" no resumo: a visitante, e a conta sem endereço
+  // salvo que vai retirar (o resto da conta usa o endereço salvo).
+  const resumoSoComCep = !user || (contaSemEnderecoSalvo && ehRetirada);
 
   // CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
   // Endereços" viraram UMA seção só ("Seus dados e entrega"), com resumo
@@ -2813,6 +2847,7 @@ export function CheckoutViewDaConta({
   const faltaWhatsapp = !celularBrasileiroCompleto(whatsappAtual);
   // RETIRADA NA LOJA (12/11/2026): com a retirada marcada, o CEP completo é
   // tudo que o visitante precisa informar — a mesma régua do `dynamicSchema`.
+  // Vale igual para a conta de `resumoSoComCep` (aí `ehRetirada` é sempre true).
   const enderecoConvidadoCompleto =
     soDigitos(cepDigitadoNoFormulario ?? "").length === 8 &&
     (ehRetirada ||
@@ -3972,9 +4007,9 @@ export function CheckoutViewDaConta({
 
   useEffect(() => {
     if (user) {
-      fetchAddresses();
+      lerEnderecosDaConta();
     }
-  }, [user, fetchAddresses]);
+  }, [user, lerEnderecosDaConta]);
   // Outro aparelho pode ter editado ou apagado o endereço enquanto o app ficou
   // em segundo plano: relê ao voltar (o efeito abaixo ajusta a escolha). A tela
   // só existe montada quando é a visível, então `ativa` é sempre true.
@@ -4592,7 +4627,7 @@ export function CheckoutViewDaConta({
         ? "Informe seu WhatsApp para finalizar"
         : faltaCpf
           ? "Informe o CPF de quem recebe para finalizar"
-          : !user && !enderecoConvidadoCompleto
+          : resumoSoComCep && !enderecoConvidadoCompleto
             ? ehRetirada
               ? "Informe o CEP para finalizar"
               : "Complete o endereço de entrega para finalizar"
@@ -4928,12 +4963,11 @@ export function CheckoutViewDaConta({
       return;
     }
 
-    if (user && !selectedAddressId) {
-      toast.error(
-        ehRetirada
-          ? "Por favor, adicione ou selecione um endereço."
-          : "Por favor, adicione ou selecione um endereço de entrega.",
-      );
+    // Só a ENTREGA exige endereço salvo de quem tem conta: na retirada o
+    // pedido não leva endereço de casa (26/11/2026) — a cotação já saiu do CEP
+    // e o banco grava o endereço da loja.
+    if (user && !ehRetirada && !selectedAddressId) {
+      toast.error("Por favor, adicione ou selecione um endereço de entrega.");
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
       return;
@@ -5174,7 +5208,11 @@ export function CheckoutViewDaConta({
       destinationCep: shippingCep,
       shippingOptionId: selectedShippingOption?.id ?? null,
       paymentMethod,
-      addressId: user ? selectedAddressId : null,
+      // RETIRADA NA LOJA, com ou sem conta (26/11/2026): sem endereço de casa.
+      // O CEP já viaja em `destinationCep` e o banco usa o da cotação; o pedido
+      // guarda o endereço da LOJA (20261399997000). Na entrega, o endereço
+      // escolhido segue como antes.
+      addressId: user && !ehRetirada ? selectedAddressId : null,
       // Visitante que RETIRA na loja (12/11/2026): sem endereço de casa — o
       // CEP já viaja em `destinationCep` e o banco usa o da cotação (a retirada
       // nunca leva CPF, então não sobra chave nenhuma para mandar).
@@ -7196,26 +7234,28 @@ export function CheckoutViewDaConta({
               <CartaoDeResumo
                 rotulo={
                   ehRetirada
-                    ? user
-                      ? "Seu endereço"
-                      : "Seu CEP"
+                    ? resumoSoComCep
+                      ? "Seu CEP"
+                      : "Seu endereço"
                     : "Endereço de entrega"
                 }
                 icone={<MapPin className="size-5" />}
-                ok={user ? !!enderecoEfetivo : enderecoConvidadoCompleto}
+                ok={
+                  resumoSoComCep ? enderecoConvidadoCompleto : !!enderecoEfetivo
+                }
                 acao={
-                  user && !enderecoEfetivo ? undefined : (
+                  !resumoSoComCep && !enderecoEfetivo ? undefined : (
                     <AcaoDeResumo
-                      id={user ? "resumo-trocar-endereco" : undefined}
+                      id={resumoSoComCep ? undefined : "resumo-trocar-endereco"}
                       controla="secao-dados-e-entrega"
                       onClick={abrirPeloResumo}
                     >
-                      {user ? "Trocar" : "Editar"}
+                      {resumoSoComCep ? "Editar" : "Trocar"}
                     </AcaoDeResumo>
                   )
                 }
               >
-                {user && enderecoEfetivo ? (
+                {!resumoSoComCep && enderecoEfetivo ? (
                   <div className="min-w-0 space-y-0.5">
                     <p className="truncate text-base font-bold text-zinc-900">
                       {enderecoEfetivo.name}
@@ -7224,7 +7264,7 @@ export function CheckoutViewDaConta({
                       {resumoDoEndereco(enderecoEfetivo)}
                     </p>
                   </div>
-                ) : user ? (
+                ) : !resumoSoComCep ? (
                   <button
                     type="button"
                     onClick={abrirPeloResumo}
@@ -7889,7 +7929,11 @@ export function CheckoutViewDaConta({
                     <div className="flex items-center gap-2">
                       <MapPin className="size-4 text-zinc-400" />
                       <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">
-                        {ehRetirada ? "Seu endereço" : "Endereço de Entrega"}
+                        {ehRetirada
+                          ? contaSemEnderecoSalvo
+                            ? "Seu CEP"
+                            : "Seu endereço"
+                          : "Endereço de Entrega"}
                       </span>
                     </div>
                     <Button
@@ -7932,11 +7976,72 @@ export function CheckoutViewDaConta({
                       <p>Não conseguimos carregar seus endereços agora.</p>
                       <button
                         type="button"
-                        onClick={() => void fetchAddresses()}
+                        onClick={() => void lerEnderecosDaConta()}
                         className="mt-3 min-h-11 rounded-xl border border-solid border-red-300 bg-background px-4 font-semibold hover:bg-muted"
                       >
                         Tentar de novo
                       </button>
+                    </div>
+                  ) : contaSemEnderecoSalvo ? (
+                    // RETIRADA COM CONTA PEDE SÓ O CEP (26/11/2026): sem
+                    // endereço salvo, o CEP cota o frete, como o da visitante.
+                    // A entrega continua pedindo o endereço completo ("Novo").
+                    <div>
+                      <label
+                        htmlFor="checkout-cep-conta"
+                        className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
+                      >
+                        CEP
+                      </label>
+                      <input
+                        id="checkout-cep-conta"
+                        {...form.register("cep")}
+                        inputMode="numeric"
+                        autoComplete="postal-code"
+                        placeholder="00000-000"
+                        aria-invalid={erroDoCampo("cep") ? true : undefined}
+                        aria-describedby={
+                          erroDoCampo("cep")
+                            ? "erro-checkout-cep-conta"
+                            : "ajuda-checkout-cep-conta"
+                        }
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                        onChange={(e) => {
+                          // Mesma máscara e mesmo "último CEP" do campo da
+                          // visitante; sem a busca de rua (aqui não há rua).
+                          const { formatado } = formatarCep(e.target.value);
+                          form.setValue("cep", formatado, {
+                            shouldValidate: true,
+                          });
+                          if (soDigitos(formatado).length === 8)
+                            localStorageSeguro().setItem(
+                              "ikcous_last_shipping_cep",
+                              formatado,
+                            );
+                        }}
+                      />
+                      {erroDoCampo("cep") ? (
+                        <p
+                          id="erro-checkout-cep-conta"
+                          className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                        >
+                          {erroDoCampo("cep")?.message}
+                        </p>
+                      ) : (
+                        <p
+                          id="ajuda-checkout-cep-conta"
+                          data-testid={
+                            ehRetirada
+                              ? "checkout-retirada-sem-endereco"
+                              : undefined
+                          }
+                          className="ml-1 mt-1.5 text-sm font-medium text-zinc-600"
+                        >
+                          {ehRetirada
+                            ? FRASE_RETIRADA_SEM_ENDERECO
+                            : "Para receber em casa, toque em Novo e cadastre o endereço."}
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <AddressList
@@ -7992,7 +8097,7 @@ export function CheckoutViewDaConta({
                   : null
               }
               mensagemSemDestino={
-                user
+                user && !contaSemEnderecoSalvo
                   ? "Cadastre ou escolha um endereço de entrega acima para calcular o frete."
                   : "Preencha o CEP de entrega acima para calcular o frete."
               }
@@ -8880,7 +8985,10 @@ export function CheckoutViewDaConta({
                                   ? "checkout-cpf"
                                   : !user
                                     ? idDoPrimeiroCampoDeEnderecoQueFalta()
-                                    : null;
+                                    : resumoSoComCep &&
+                                        !enderecoConvidadoCompleto
+                                      ? "checkout-cep-conta"
+                                      : null;
                             if (campoPendente)
                               document.getElementById(campoPendente)?.focus();
                             else

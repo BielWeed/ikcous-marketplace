@@ -12,6 +12,7 @@ import {
   LocalBufferedInput,
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
 import {
   abrirCaixa,
   fecharCaixa,
@@ -545,7 +546,7 @@ export function MovimentarCaixaFolha({
             className={CLASSE_CAMPO}
           />
         </Campo>
-        <Campo
+        <CampoDeEscolha
           id="fin-caixa-mov-conta"
           rotulo={sangria ? "Para onde foi" : "De onde veio"}
           erro={erroConta}
@@ -554,25 +555,20 @@ export function MovimentarCaixaFolha({
               ? "Escolha a conta que recebeu o dinheiro. O valor muda de conta, sem virar despesa."
               : "Escolha a conta de onde veio o dinheiro. O valor muda de conta, sem virar despesa."
           }
-        >
-          <select
-            id="fin-caixa-mov-conta"
-            value={contrapartida}
-            onChange={(e) => setContaEscolhida(e.target.value)}
-            className={CLASSE_CAMPO}
-          >
-            {contrapartidaValida || semOpcaoDeConta ? null : (
-              <option value="" disabled>
-                Escolha uma conta
-              </option>
-            )}
-            {outrasContas.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
-        </Campo>
+          valor={contrapartida}
+          aoMudar={setContaEscolhida}
+          // Contrapartida fora da lista (sem Conta bancária ativa) mostra o
+          // placeholder: o vazio não é opção, a conta é obrigatória. Sem
+          // nenhuma outra conta, não há o que abrir; com a lista ainda por
+          // chegar, não se afirma que falta conta.
+          desabilitado={semOpcaoDeConta}
+          placeholder={
+            semContaDeDestino
+              ? "Nenhuma outra conta ativa"
+              : "Escolha uma conta"
+          }
+          opcoes={outrasContas.map((c) => ({ valor: c.id, rotulo: c.nome }))}
+        />
       </div>
     </FolhaFinanceira>
   );

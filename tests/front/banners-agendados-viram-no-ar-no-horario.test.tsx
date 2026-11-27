@@ -2,6 +2,7 @@
 import { act, useLayoutEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 let listaDeBanners = [
   {
@@ -97,12 +98,8 @@ async function avancar(ms: number) {
 }
 
 async function filtrar(situacao: string) {
-  const filtro = hospedeiro.querySelector<HTMLSelectElement>(
-    "#banner-status-filter",
-  )!;
   await act(async () => {
-    filtro.value = situacao;
-    filtro.dispatchEvent(new Event("change", { bubbles: true }));
+    escolherNaLista("banner-status-filter", situacao);
   });
 }
 

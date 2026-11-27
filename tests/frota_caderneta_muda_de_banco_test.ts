@@ -45,14 +45,24 @@ const FUNCOES = [
   "resolver_loja_com_estado",
   "frota_mudar_estado",
   "frota_lojas_estado_so_pela_porta",
+  // A 20261570 (o endereço antigo encaminha para o novo): o gatilho da tabela nova e as duas portas.
+  "frota_enderecos_que_encaminham_nao_e_principal",
+  "resolver_encaminhamento",
+  "frota_trocar_dominio",
 ];
-const TABELAS = ["frota_lojas", "frota_segredo", "frota_estado_historico"];
+const TABELAS = [
+  "frota_lojas",
+  "frota_segredo",
+  "frota_estado_historico",
+  "frota_enderecos_que_encaminham",
+];
 const VERSOES = [
   "20261141000000",
   "20261460000000",
   "20261470000000",
   "20261480000000",
   "20261490000000",
+  "20261570000000",
 ];
 
 Deno.test("impressao digital: UM statement, so SELECT, nenhum verbo de escrita, sem transacao propria", () => {
@@ -82,7 +92,7 @@ Deno.test("impressao digital: o hash da chave so sai como md5, e o atalho so com
   assertStringIncludes(s, "->> 'hash_rapido') IS NULL");
 });
 
-Deno.test("impressao digital: blocos de conteudo, forma, ACL, as 4 funcoes e as 5 versoes, em ordem que nao depende da colacao do banco", () => {
+Deno.test("impressao digital: blocos de conteudo, forma, ACL, as 7 funcoes e as 6 versoes, em ordem que nao depende da colacao do banco", () => {
   const s = LER(DIGITAL);
   for (const t of TABELAS) assertStringIncludes(s, `'${t}'`);
   for (const f of FUNCOES) assertStringIncludes(s, `'${f}'`);
@@ -93,6 +103,16 @@ Deno.test("impressao digital: blocos de conteudo, forma, ACL, as 4 funcoes e as 
   assertStringIncludes(s, "AT TIME ZONE 'UTC'");
   // O corpo das funcoes medido como o resto do repositorio mede (sem \r).
   assertStringIncludes(s, "md5(replace(p.prosrc, E'\\r', ''))");
+  // Cada tabela da caderneta entra no conteudo (linhas e md5) e na forma/ACL — a dos enderecos que encaminham inclusive.
+  const c = semComentarios(s);
+  for (const t of TABELAS) {
+    assertStringIncludes(c, `FROM public.${t} `, `${t}: linhas no conteudo`);
+    assertStringIncludes(
+      c,
+      `('${t}')`,
+      `${t}: nas listas de conteudo e de forma`,
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -158,6 +178,89 @@ Deno.test("gerador: o atalho da chave fica na origem; a porta do gatilho e' liga
   assertStringIncludes(sql, 'COLLATE "C"');
 });
 
+Deno.test("gerador: os enderecos que encaminham viajam inteiros, depois das lojas (a chave estrangeira e o gatilho olham frota_lojas)", () => {
+  const sql = LER(GERADOR);
+  const c = semComentarios(sql);
+  // As quatro tabelas na lista das colunas, na das linhas e na das formas.
+  for (const t of TABELAS) {
+    assertStringIncludes(
+      c,
+      `FROM public.${t} `,
+      `${t}: linhas lidas na origem`,
+    );
+    assertStringIncludes(c, `('${t}')`, `${t}: colunas e forma`);
+  }
+  // A ordem das insercoes no texto gerado: segredo, lojas, historico, e os enderecos por ultimo.
+  const ordem = TABELAS.map((t) =>
+    sql.indexOf(`(SELECT i.sql FROM insercoes i WHERE i.tabela = '${t}')`),
+  );
+  assert(
+    ordem.every((i) => i > 0),
+    `as quatro insercoes: ${ordem}`,
+  );
+  const [lojas, segredo, historico, enderecos] = ordem;
+  assert(
+    segredo < lojas && lojas < historico && historico < enderecos,
+    "segredo, lojas, historico, enderecos",
+  );
+  // Nenhuma coluna dos enderecos fica de fora (quem e criado_em viajam com o valor da origem, nunca com o padrao do destino).
+  assert(
+    !/v\.tabela = 'frota_enderecos_que_encaminham' AND/.test(c),
+    "nenhuma coluna dos enderecos e' filtrada",
+  );
+});
+
+// A origem (o banco antigo da caderneta) pode não ter a 20261570: tabela ausente = zero endereços. A tabela dos endereços só se
+// lê pela CTE dinâmica (um FROM direto falha ao planejar, mesmo sem linha); o destino continua exigindo a tabela e as portas.
+const LEITURA_DINAMICA = norm(`enderecos_da_origem AS (
+  SELECT x.j::jsonb AS j
+    FROM XMLTABLE('/table/row' PASSING
+           CASE WHEN to_regclass('public.frota_enderecos_que_encaminham') IS NULL THEN '<table/>'::xml
+                ELSE query_to_xml('SELECT to_jsonb(fe)::text AS j FROM public.frota_enderecos_que_encaminham fe', false, false, '') END
+           COLUMNS j text PATH 'j') x
+)`);
+Deno.test("origem sem a 20261570: gerador e digital leem os enderecos SO pela leitura dinamica (tabela ausente = zero enderecos)", () => {
+  for (const arq of [DIGITAL, GERADOR]) {
+    const sql = LER(arq);
+    const s = semComentarios(sql);
+    assertStringIncludes(s, LEITURA_DINAMICA, `${arq}: a leitura dinamica`);
+    assertStringIncludes(
+      s,
+      "SELECT 'frota_enderecos_que_encaminham', e.j ->> 'host', e.j FROM enderecos_da_origem e",
+      `${arq}: as linhas dos enderecos vem da leitura dinamica`,
+    );
+    // Fora da leitura dinamica (e do molde que roda no destino), nenhuma referencia direta a tabela dos enderecos.
+    const origem = sql
+      .replace(/\$m\$[\s\S]*?\$m\$/g, " ")
+      .replace(/--.*$/gm, " ")
+      .replace(/'[^']*'/g, "''");
+    assertEquals(
+      origem.match(/public\.frota_enderecos_que_encaminham\b/g),
+      null,
+      `${arq}: a origem nao cita a tabela dos enderecos fora de literal`,
+    );
+  }
+  const sql = LER(GERADOR);
+  assertStringIncludes(
+    semComentarios(sql),
+    "(SELECT count(*) FROM enderecos_da_origem) AS n_enderecos",
+  );
+  assertStringIncludes(
+    semComentarios(sql),
+    "to_regclass('public.frota_enderecos_que_encaminham') IS NOT NULL AS tem_enderecos",
+  );
+  // No destino: a forma dos enderecos so deixa de ser comparada quando a ORIGEM nao tinha a tabela.
+  const m = molde(sql);
+  assertStringIncludes(
+    m,
+    "CONTINUE WHEN v_tabela = 'frota_enderecos_que_encaminham' AND NOT v_origem_tem_enderecos;",
+  );
+  assertStringIncludes(
+    sql,
+    "|| '  v_origem_tem_enderecos boolean := ' || m.tem_enderecos || E';\\n'",
+  );
+});
+
 Deno.test("gerador: o pre-voo do destino recusa origem vazia, forma diferente, portas fora da 20261490 e destino com linha; o pos-voo confere", async () => {
   const m = molde(LER(GERADOR));
   const ini = m.indexOf("DO $preflight_copiar_caderneta$");
@@ -180,10 +283,33 @@ Deno.test("gerador: o pre-voo do destino recusa origem vazia, forma diferente, p
       pre.lastIndexOf("RAISE EXCEPTION 'COPIA_GATILHO_AUSENTE"),
   );
   // A trava de escrita vem antes de olhar se o destino esta vazio (duas copias ao mesmo tempo: a segunda espera e recusa).
+  const LOCK =
+    "LOCK TABLE public.frota_lojas, public.frota_segredo, public.frota_estado_historico, public.frota_enderecos_que_encaminham IN SHARE ROW EXCLUSIVE MODE;";
+  assertStringIncludes(pre, LOCK);
   assert(
-    pre.indexOf(
-      "LOCK TABLE public.frota_lojas, public.frota_segredo, public.frota_estado_historico",
-    ) < pre.indexOf("RAISE EXCEPTION 'COPIA_DESTINO_NAO_VAZIO"),
+    pre.indexOf(LOCK) < pre.indexOf("RAISE EXCEPTION 'COPIA_DESTINO_NAO_VAZIO"),
+  );
+  // As quatro tabelas: a que falta recusa com COPIA_DESTINO_SEM_CADERNETA; a que tem linha, com COPIA_DESTINO_NAO_VAZIO; a forma
+  // de cada uma e' conferida; e os dois gatilhos (o do estado e o dos enderecos) precisam estar ligados.
+  for (const t of TABELAS) {
+    assertStringIncludes(
+      pre,
+      `to_regclass('public.${t}') IS NULL`,
+      `${t}: falta recusa`,
+    );
+    assertStringIncludes(
+      pre,
+      `EXISTS (SELECT 1 FROM public.${t})`,
+      `${t}: com linha recusa`,
+    );
+  }
+  assertStringIncludes(
+    pre,
+    "('frota_enderecos_que_encaminham', v_forma_enderecos)",
+  );
+  assertStringIncludes(
+    pre,
+    "t.tgname = 'frota_enderecos_que_encaminham_nao_e_principal' AND NOT t.tgisinternal",
   );
   // Os md5 das portas sao os dos ARQUIVOS das migrations (20261490 para as duas portas do porteiro, 20261470 para as outras).
   const m1490 = LER(
@@ -192,17 +318,29 @@ Deno.test("gerador: o pre-voo do destino recusa origem vazia, forma diferente, p
   const m1470 = LER(
     "supabase/migrations/20261470000000_a_loja_muda_de_estado_so_pela_porta.sql",
   );
+  const m1570 = LER(
+    "supabase/migrations/20261570000000_o_endereco_antigo_encaminha_para_o_novo.sql",
+  );
   for (const h of [
     await md5(corpo(m1490, "public.resolver_loja")),
     await md5(corpo(m1490, "public.resolver_loja_com_estado")),
     await md5(corpo(m1470, "public.frota_mudar_estado")),
     await md5(corpo(m1470, "public.frota_lojas_estado_so_pela_porta")),
+    await md5(
+      corpo(m1570, "public.frota_enderecos_que_encaminham_nao_e_principal"),
+    ),
+    await md5(corpo(m1570, "public.resolver_encaminhamento")),
+    await md5(corpo(m1570, "public.frota_trocar_dominio")),
   ])
     assertStringIncludes(pre, `'${h}'`);
   const pos = m.slice(m.indexOf("DO $posvoo_copiar_caderneta$"));
   assertStringIncludes(pos, "RAISE EXCEPTION 'POSVOO_COPIAR_CADERNETA");
   assertStringIncludes(pos, "hash_rapido IS NOT NULL");
   assertStringIncludes(pos, "pg_sequences");
+  assertStringIncludes(
+    pos,
+    "(SELECT count(*) FROM public.frota_enderecos_que_encaminham) <> v_enderecos",
+  );
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------
