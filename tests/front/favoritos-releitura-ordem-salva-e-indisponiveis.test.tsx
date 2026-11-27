@@ -528,6 +528,27 @@ describe("FavoritesContext — (C) favoritos indisponíveis", () => {
     expect(ctx()?.favoritosIndisponiveis).toBe(0);
   });
 
+  // Loja com tudo pausado: o catálogo vazio não confirma nada para quem tem
+  // conta (a trava acima continua), mas a tela também não pode afirmar que a
+  // cliente nunca favoritou — os ids dela estão guardados.
+  it("catálogo vazio com favoritos guardados: a tela não diz que não há favoritos nem oferece limpar", async () => {
+    usuarioDaVez = { id: "ana" };
+    productsDaLoja = [];
+    linhasDoServidor = dosTresIds;
+    Tela = (await import("@/views/customer/FavoritesView")).FavoritesView;
+
+    const ctx = await montar();
+
+    expect(ctx()?.favoritosIndisponiveis).toBe(0);
+    expect(hospedeiro.textContent).toContain(
+      "Seus favoritos estão indisponíveis agora",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "Você ainda não tem favoritos",
+    );
+    expect(hospedeiro.textContent).not.toContain("Limpar indisponíveis");
+  });
+
   it("todos disponíveis: zero", async () => {
     usuarioDaVez = { id: "ana" };
     productsDaLoja = [umProduto("a"), umProduto("pausado")];
