@@ -16415,6 +16415,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
     // 20261620000000: a soma das categorias fecha com o faturamento no centavo.
     "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
+    // 20261640000000: a devolucao com a mesma chave nao paga duas vezes.
+    "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

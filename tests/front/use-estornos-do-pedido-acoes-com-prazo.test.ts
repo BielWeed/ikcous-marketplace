@@ -170,12 +170,14 @@ afterEach(() => {
     });
   }
   document.body.innerHTML = "";
+  // A chave da devolução (src/lib/chave-da-devolucao.ts) mora no localStorage.
+  localStorage.clear();
   vi.useRealTimers();
 });
 
 describe("useEstornosDoPedido — ações com prazo, sem estorno em dobro", () => {
   it.each([
-    { caso: "solicitar_estorno", repetindo: undefined },
+    { caso: "solicitar_estorno_com_chave", repetindo: undefined },
     { caso: "solicitar_estorno_repetindo", repetindo: "refund-falhou" },
   ])(
     "$caso pendurada: em 20 s avisa que não dá para saber, relê e só então solta — sem acionar o Mercado Pago",
@@ -264,7 +266,9 @@ describe("useEstornosDoPedido — ações com prazo, sem estorno em dobro", () =
     await passar(2 * PRAZO_DA_LEITURA_MS + 1);
     expect(atual().enviando).toBe(false);
     expect(atual().erro).toBe(true);
-    expect(h.chamadas).toEqual([{ tipo: "rpc", nome: "solicitar_estorno" }]);
+    expect(h.chamadas).toEqual([
+      { tipo: "rpc", nome: "solicitar_estorno_com_chave" },
+    ]);
   });
 
   it("durante a releitura do estouro, um 2º toque não chama a RPC de novo", async () => {
@@ -280,7 +284,9 @@ describe("useEstornosDoPedido — ações com prazo, sem estorno em dobro", () =
       void atual().solicitarEstorno({ amount: 100, motivo: "" });
     });
 
-    expect(h.chamadas).toEqual([{ tipo: "rpc", nome: "solicitar_estorno" }]);
+    expect(h.chamadas).toEqual([
+      { tipo: "rpc", nome: "solicitar_estorno_com_chave" },
+    ]);
     await passar(PRAZO_DA_LEITURA_MS);
   });
 
@@ -324,7 +330,7 @@ describe("useEstornosDoPedido — ações com prazo, sem estorno em dobro", () =
     await passar(1);
 
     expect(h.chamadas).toEqual([
-      { tipo: "rpc", nome: "solicitar_estorno" },
+      { tipo: "rpc", nome: "solicitar_estorno_com_chave" },
       { tipo: "invoke", nome: "estornar-pagamento" },
     ]);
     expect(toastMock.info).toHaveBeenCalledTimes(1);
@@ -343,7 +349,7 @@ describe("useEstornosDoPedido — ações com prazo, sem estorno em dobro", () =
     });
 
     expect(h.chamadas).toEqual([
-      { tipo: "rpc", nome: "solicitar_estorno" },
+      { tipo: "rpc", nome: "solicitar_estorno_com_chave" },
       { tipo: "invoke", nome: "estornar-pagamento" },
     ]);
     expect(atual().enviando).toBe(false);

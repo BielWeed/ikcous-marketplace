@@ -3637,7 +3637,28 @@ const ROL_DA_198 = [
   "get_category_analytics: corpo exato (md5)",
   "get_category_analytics: assinatura e atributos conhecidos",
 ];
+// Lote 200 (20261640000000, a devolucao com a mesma chave nao paga duas vezes: a coluna order_refunds.chave_da_solicitacao, o indice unico parcial
+// uq_order_refunds_chave_da_solicitacao e a funcao NOVA solicitar_estorno_com_chave; aditiva, exige a 20261241000000). Somente catalogo: nenhuma le
+// devolucao ou pedido e nenhuma chama a funcao. A 200a prova o corpo exato (md5), os atributos e o EXECUTE so do authenticated, a coluna (uuid, anulavel,
+// sem padrao) e o indice valido (5); antes do apply responde AUSENTE, nunca erro. A 200b prova a ausencia dos tres e as premissas do pre-voo (4).
+const ROL_DA_200A = [
+  "controle: funcoes de public visiveis a este papel",
+  "solicitar_estorno_com_chave: corpo exato (md5)",
+  "solicitar_estorno_com_chave: uma so, atributos conhecidos (SECURITY DEFINER, plpgsql, VOLATILE, retorno jsonb, 4 argumentos sem padrao, search_path=public) e EXECUTE so do authenticated (nem PUBLIC, anon ou service_role)",
+  "order_refunds.chave_da_solicitacao: uuid, anulavel e sem padrao",
+  "uq_order_refunds_chave_da_solicitacao: indice unico parcial (so chave preenchida) e valido",
+];
+const ROL_DA_200B = [
+  "controle: catalogo publico visivel",
+  "solicitar_estorno_com_chave, order_refunds.chave_da_solicitacao e uq_order_refunds_chave_da_solicitacao: ainda NAO existem",
+  "pedido__saldo_a_estornar: corpo da 20261241000000 (md5), a conta que a funcao nova chama",
+  "is_admin() e is_admin_atual() existem; order_refunds e marketplace_orders tem as colunas que a funcao nova le",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado":
+    ROL_DA_200A,
+  "200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente":
+    ROL_DA_200B,
   "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado": ROL_DA_198,
   "198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente": ROL_DA_198,
   "197a-conferir-o-catalogo-chega-ao-vivo-aplicado": ROL_DA_197A,

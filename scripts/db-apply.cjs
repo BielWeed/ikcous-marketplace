@@ -406,6 +406,26 @@ const VERIFICACOES = {
       { texto: "'ja_repetida', false,", vezes: 1 },
     ],
   },
+  // 20261640000000: a devolucao com a mesma chave nao paga duas vezes. A funcao NOVA solicitar_estorno_com_chave tem as portas de
+  // solicitar_estorno e, DEPOIS da trava do pedido, devolve a linha que ja tem a mesma chave (ja_registrada) em vez de criar outra; a linha
+  // nasce com a chave. A coluna, o indice unico parcial e o corpo exato (md5) sao da consulta 200a; o comportamento, da prova viva.
+  "20261640000000_a_devolucao_com_a_mesma_chave_nao_paga_duas_vezes.sql": {
+    funcao: "solicitar_estorno_com_chave",
+    esperado: [
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      { texto: "IF p_chave IS NULL THEN", vezes: 1 },
+      { texto: "     WHERE chave_da_solicitacao = p_chave;", vezes: 1 },
+      { texto: "IF p_amount > v_saldo THEN", vezes: 1 },
+      { texto: "'lojista', p_chave)", vezes: 1 },
+      {
+        texto:
+          "ON CONFLICT (chave_da_solicitacao) WHERE chave_da_solicitacao IS NOT NULL DO NOTHING",
+        vezes: 1,
+      },
+      { texto: "'ja_registrada', true", vezes: 1 },
+      { texto: "'ja_registrada', false", vezes: 1 },
+    ],
+  },
   // 20261399993000: o CRM e a lista de clientes nao contam a mesma pessoa duas vezes. DUAS funcoes, uma checagem cada. crm__nunca_comprou ganha SO a
   // CTE wa_nao_pagos (le crm__pedidos_nao_pagos, user_id nulo, o 55 cortado como em wa_pagos) e o terceiro NOT EXISTS; get_admin_customers_paged troca SO
   // o LEFT JOIN de user_addresses por UM endereco principal (LATERAL ... LIMIT 1) antes de juntar os pedidos. As travas de admin, a busca, o GROUP BY e o

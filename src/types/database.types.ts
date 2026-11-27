@@ -1649,6 +1649,7 @@ export type Database = {
       order_refunds: {
         Row: {
           amount: number;
+          chave_da_solicitacao: string | null;
           concluido_em: string | null;
           created_at: string;
           criada_sob_autorizacao: boolean | null;
@@ -1670,6 +1671,7 @@ export type Database = {
         };
         Insert: {
           amount: number;
+          chave_da_solicitacao?: string | null;
           concluido_em?: string | null;
           created_at?: string;
           criada_sob_autorizacao?: boolean | null;
@@ -1691,6 +1693,7 @@ export type Database = {
         };
         Update: {
           amount?: number;
+          chave_da_solicitacao?: string | null;
           concluido_em?: string | null;
           created_at?: string;
           criada_sob_autorizacao?: boolean | null;
@@ -4212,6 +4215,15 @@ export type Database = {
       };
       solicitar_estorno: {
         Args: { p_amount: number; p_motivo: string; p_order_id: string };
+        Returns: Json;
+      };
+      solicitar_estorno_com_chave: {
+        Args: {
+          p_amount: number;
+          p_chave: string;
+          p_motivo: string;
+          p_order_id: string;
+        };
         Returns: Json;
       };
       solicitar_estorno_repetindo: {
