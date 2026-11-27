@@ -162,6 +162,23 @@ describe("ProductCard - bordas do selo, do riscado e do estoque", () => {
     });
   }
 
+  // 27/11/2026: no cartão estreito da busca (320 px, fonte em 130%) o
+  // "De: R$ 12.999,90" ficava numa linha só e o último dígito sumia sob o
+  // `overflow-hidden` do cartão. Agora a linha quebra entre "De:" e o valor, e
+  // o valor continua inteiro.
+  it("desenho 'card': o 'De:' quebra antes do valor, nunca dentro dele", async () => {
+    await renderizar(
+      produto({ price: 9999.9, originalPrice: 12999.9 }),
+      "card",
+    );
+    const riscado = hospedeiro.querySelector<HTMLElement>(".line-through")!;
+    expect(riscado.textContent).toBe(formatCurrency(12999.9));
+    expect(riscado.classList.contains("whitespace-nowrap")).toBe(true);
+    const linhaDoDe = riscado.parentElement!;
+    expect(linhaDoDe.textContent?.startsWith("De:")).toBe(true);
+    expect(linhaDoDe.classList.contains("whitespace-nowrap")).toBe(false);
+  });
+
   describe("aviso de estoque - desenho 'card' (grade)", () => {
     it.each([
       [1, "Resta apenas 1!"],

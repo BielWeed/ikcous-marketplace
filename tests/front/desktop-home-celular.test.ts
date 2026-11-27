@@ -15,8 +15,10 @@ const BASE: Record<string, string> = {
     "25a050a3a02bcd2afb8844d4884ad77e4972641827f6ef16d013c036cc127080",
   "components/ui/custom/InfoBlockCarousel.tsx":
     "dae8611c08bb6eca49261c4f70c59d91acb13fb38d2db976d9f787dae8862c7f",
+  // 27/11/2026: o preço do cartão ganha 1 className novo, "whitespace-nowrap" no
+  // número (só quebra entre o "R$" e o número); nenhuma classe antiga mudou.
   "components/ui/custom/OfertasCompactas.tsx":
-    "64b0356d13717c565640182a7582b54819ab8d59bd2dd88acc107e7aee1923ed",
+    "e3175bf22d10f1f8df3dfee758d53471171a102b4960caaecdb9e599ffd618e1",
   "components/ui/custom/OfertasCompactasEsqueleto.tsx":
     "424bbbcd9c8224bb315140889fcb00c27f501b0c77de69d0aff924a4fb812be6",
   "components/ui/custom/OfertasLateral.tsx":

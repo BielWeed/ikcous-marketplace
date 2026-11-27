@@ -58,7 +58,7 @@ import { resumoParaPrevia } from "@/lib/resumo-para-previa";
 import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { textoSemControlesDeDirecao } from "@/lib/texto-sem-controles-de-direcao";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, reaisComEspacoComum as reais } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { dividirEmAtributos } from "@/utils/atributos-da-variacao";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -92,10 +92,6 @@ import { toast } from "sonner";
 // Quantas avaliações a página lista de cada vez ("Ver mais avaliações" soma
 // outra leva).
 const AVALIACOES_POR_PAGINA = 10;
-
-// Dinheiro com milhar e vírgula ("R$ 1.234,50"), com espaço comum no lugar do
-// inseparável do Intl: o texto também vai para o clipboard/WhatsApp.
-const reais = (valor: number) => formatCurrency(valor).replace(/\u00a0/g, " ");
 
 // Revisado na rodada 2 (Codex, 08/09, item 3): os botões Detalhes/
 // Avaliações/Perguntas não são abas de verdade — as três seções ficam
@@ -1291,8 +1287,11 @@ export const ProductView = React.memo(function ProductView({
               {originalExibido && originalExibido > precoExibido ? (
                 <div
                   className={cn(
-                    "flex items-baseline gap-2",
-                    "lg:gap-3 lg:flex-wrap",
+                    // `flex-wrap` também no celular (27/11/2026): em 320-360 px
+                    // com fonte em 130%, "A partir de" + preço + "De:" passavam
+                    // da tela.
+                    "flex flex-wrap items-baseline gap-2",
+                    "lg:gap-3",
                   )}
                 >
                   {vitrine?.aPartirDe && (

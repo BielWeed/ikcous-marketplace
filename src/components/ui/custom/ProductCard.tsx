@@ -1098,10 +1098,13 @@ export const ProductCard = memo(function ProductCard({
                 priceOverride da escolha (mesma semântica da página do
                 produto: `??` preserva override zero); sem escolha, o menor
                 preço das opções à venda (`precoDeVitrine`). */}
+                {/* Quebra entre "De:" e o valor, nunca dentro dele (27/11/2026):
+                no cartão estreito (320 px, fonte em 130%) o "De: R$ 12.999,90"
+                numa linha só perdia o último dígito sob o `overflow-hidden`. */}
                 {precoOriginalMostrado !== null && (
-                  <span className="whitespace-nowrap text-[11px] font-bold uppercase leading-none tracking-wider text-slate-600">
+                  <span className="text-[11px] font-bold uppercase leading-none tracking-wider text-slate-600">
                     De:{" "}
-                    <span className="line-through">
+                    <span className="whitespace-nowrap line-through">
                       {formatCurrency(precoOriginalMostrado)}
                     </span>
                   </span>

@@ -429,8 +429,9 @@ describe("Ofertas Compactas", () => {
       const compra = card.querySelector(
         '[aria-label^="Adicionar"][aria-label$="ao carrinho"]',
       )!;
+      // Espaço comum depois do "R$" desde 27/11/2026 (o preço só quebra ali).
       const preco = Array.from(card.querySelectorAll("span")).find(
-        (el) => el.textContent === "R$ 50,00",
+        (el) => el.textContent === "R$ 50,00",
       )!;
       expect(preco).toBeDefined();
       expect(compra.contains(preco)).toBe(false);
@@ -511,6 +512,25 @@ describe("Ofertas Compactas", () => {
     expect(fim.querySelector("[data-preco-oferta]")?.className).toContain(
       "text-zinc-950",
     );
+  });
+
+  // 27/11/2026: no cartão de 145 px (celular de 320-359 px, fonte em 130%) o
+  // preço quebrava NO MEIO do número ("R$ 1.23" / "4,56"). Agora a única quebra
+  // possível é entre o "R$" e o número, que fica inteiro num `whitespace-nowrap`.
+  it("o preço só quebra entre o R$ e o número, nunca dentro dele", async () => {
+    await montar([
+      produto("caro", { price: 1234.56, originalPrice: 2000 }),
+      produto("outro"),
+      produto("mais um"),
+    ]);
+    const caro = cartoes().find(
+      (card) => card.dataset.ofertaCompacta === "caro",
+    )!;
+    const preco = caro.querySelector<HTMLElement>("[data-preco-oferta]")!;
+    expect(preco.textContent).toBe("R$ 1.234,56");
+    expect(preco.textContent).not.toContain("\u00a0");
+    const numero = preco.querySelector<HTMLElement>(".whitespace-nowrap");
+    expect(numero?.textContent).toBe("1.234,56");
   });
 
   it("uma oferta usa foto e conteúdo lado a lado e preserva a economia verdadeira", async () => {

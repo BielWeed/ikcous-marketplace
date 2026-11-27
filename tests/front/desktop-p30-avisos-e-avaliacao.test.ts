@@ -18,8 +18,12 @@ const css = readFileSync("src/index.css", "utf8");
 //   ("border-b border-zinc-100 px-5 py-3.5 text-sm text-zinc-600 last:border-b-0").
 //   Total 210 -> 211; nenhuma outra classe antiga mudou.
 // Ordem dos literais dentro de TODOS os className, inclusive cn/condicionais.
+// + linha do item em 320 px (27/11/2026): "group flex items-center gap-3.5" vira
+//   "group flex flex-wrap items-center gap-x-3.5 gap-y-1"; na coluna `min-w-0` vira
+//   `min-w-24`; o total ganha `ml-auto`; entra 1 className novo, "whitespace-nowrap",
+//   no preço unitário. Total 211 -> 212; nenhuma outra classe antiga mudou.
 const assinaturaDoCelular =
-  "4a37a4371359f1ea76cc3adea65ef4586b6f9f2deffddbc0023295be6a9cab7a";
+  "6c64ade19bdf2d9e3af2dcb9310c9087031e89d3053ab78357fb770e81ecc1b9";
 const classesOriginais = [
   "fixed inset-x-0 bottom-[var(--folha-acima-da-barra)] top-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in",
   "relative z-10 max-h-[calc(100dvh-var(--folha-acima-da-barra)-72px)] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom",
@@ -100,9 +104,9 @@ describe("P30 — avisos e avaliação no computador", () => {
     ).toBeGreaterThan(fonte.indexOf("ref={avaliacaoFolhaRef}"));
   });
 
-  it("preserva os 211 literais de celular, inclusive os dois elementos tocados", () => {
+  it("preserva os 212 literais de celular, inclusive os dois elementos tocados", () => {
     const lista = literaisDasClasses(fonte).map(classesDoCelular);
-    expect(lista).toHaveLength(211);
+    expect(lista).toHaveLength(212);
     expect(
       createHash("sha256").update(JSON.stringify(lista)).digest("hex"),
       "classes do celular divergiram da base 251753360; confira a lista de className, não atualize o hash sem investigar",

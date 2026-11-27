@@ -1302,8 +1302,11 @@ export function ShippingCalculator({
               </>
             ) : (
               <span
-                className={`mt-0.5 block text-xs leading-none ${corDoAviso}`}
+                className={`mt-0.5 block text-xs leading-tight lg:leading-none ${corDoAviso}`}
               >
+                {/* `leading-tight` no celular (27/11/2026): em 320 px com fonte
+                    em 130% o prazo quebra em até 3 linhas, e o `leading-none`
+                    encostava uma na outra. No computador fica como era. */}
                 {prazoDaOpcao(option)}
               </span>
             )}
