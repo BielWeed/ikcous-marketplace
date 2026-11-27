@@ -266,7 +266,7 @@ describe("Painel — aviso lento ao cliente não prende o botão do pedido", () 
       await esperar(80);
     });
     expect(toast.warning).toHaveBeenCalledWith(
-      "Status atualizado, mas o push falhou",
+      "Status do pedido #3884BE atualizado, mas o push falhou",
       expect.objectContaining({
         description: "O cliente não foi notificado da mudança.",
       }),

@@ -252,7 +252,7 @@ describe("Painel — aviso de push que não chegou", () => {
       ],
     });
     expect(aviso).toHaveBeenCalledWith(
-      "Status atualizado, mas o push não chegou",
+      "Status do pedido #3884BE atualizado, mas o push não chegou",
       expect.objectContaining({
         description:
           "Esses aparelhos não recebem mais avisos (as inscrições venceram)",
@@ -281,7 +281,7 @@ describe("Painel — aviso de push que não chegou", () => {
     });
     expect(aviso).toHaveBeenCalledTimes(1);
     expect(aviso).toHaveBeenCalledWith(
-      "Status atualizado, mas não foi possível confirmar o envio do aviso",
+      "Status do pedido #3884BE atualizado, mas não foi possível confirmar o envio do aviso",
       {
         description:
           "O aviso ainda pode chegar à cliente. Recusas confirmadas: 2x esses aparelhos não recebem mais avisos (as inscrições venceram).",
@@ -293,7 +293,7 @@ describe("Painel — aviso de push que não chegou", () => {
     const aviso = await avancarComResposta({ enviados: 0, falhas: [] });
     expect(aviso).toHaveBeenCalledTimes(1);
     expect(aviso).toHaveBeenCalledWith(
-      "Status atualizado, mas o push não chegou",
+      "Status do pedido #3884BE atualizado, mas o push não chegou",
       expect.objectContaining({
         description: "Nenhum dispositivo deste cliente recebeu a notificação.",
       }),

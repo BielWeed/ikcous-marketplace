@@ -340,6 +340,27 @@ describe("fila offline de pedidos — a cliente é avisada quando a mudança sin
     expect(chamadasDoPush()).toHaveLength(0);
   });
 
+  it("push que falha na passada da fila: o aviso amarelo diz de qual pedido é", async () => {
+    // A passada roda em qualquer tela do painel, um aviso por item: sem o
+    // número, avisos iguais se empilhavam e a lojista não sabia a quem
+    // mandar WhatsApp.
+    const { toast } = await import("sonner");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    servidor.invoke.mockRejectedValue(new Error("sem rede"));
+    const sincronizar = await abrirAba();
+    guardar(avanco());
+
+    await sincronizar(DONO);
+    await vi.waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        "Status do pedido #6D5E4F atualizado, mas o push falhou",
+        expect.objectContaining({
+          description: "O cliente não foi notificado da mudança.",
+        }),
+      ),
+    );
+  });
+
   it("falha passageira na gravação: nada de push; quando grava na próxima, um push", async () => {
     const sincronizar = await abrirAba();
     guardar(avanco());
