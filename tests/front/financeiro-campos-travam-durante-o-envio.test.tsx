@@ -63,6 +63,10 @@ type CampoEditavel =
   | HTMLSelectElement
   | HTMLButtonElement;
 
+// A lista de escolha (o lugar do `<select>`) é um botão: sem este seletor o
+// teste deixaria de enxergar os campos de escolha e passaria sem testá-los.
+const SELETOR_DA_LISTA = 'button[aria-haspopup="listbox"]';
+
 function folha(): HTMLElement {
   const elemento = document.querySelector<HTMLElement>(
     '[data-slot="sheet-content"]',
@@ -74,14 +78,20 @@ function folha(): HTMLElement {
 function campos(): CampoEditavel[] {
   return [
     ...folha().querySelectorAll<CampoEditavel>(
-      'input:not([type="hidden"]), textarea, select, button[aria-pressed], button[role="switch"]',
+      `input:not([type="hidden"]), textarea, select, button[aria-pressed], button[role="switch"], ${SELETOR_DA_LISTA}`,
     ),
   ];
+}
+
+function listasDeEscolha(): HTMLButtonElement[] {
+  return [...folha().querySelectorAll<HTMLButtonElement>(SELETOR_DA_LISTA)];
 }
 
 function conteudoDosCampos() {
   return campos().map((campo) => ({
     valor: campo.value,
+    // O botão da lista não tem `value`: o escolhido mora em `data-valor`.
+    escolhido: campo.dataset.valor ?? null,
     marcado: campo instanceof HTMLInputElement ? campo.checked : null,
     pressionado: campo.getAttribute("aria-pressed"),
     ligado: campo.getAttribute("aria-checked"),
@@ -121,15 +131,25 @@ interface Caso {
   readonly salvar: string;
   /** Cadastro NOVO: resposta perdida pode ter criado; o Salvar fica parado. */
   readonly cadastroNovo?: boolean;
+  /** Piso de campos achados: o teste não pode passar com a folha "vazia". */
+  readonly minimoDeCampos: number;
+  /** Listas de escolha da folha, contadas exatamente. */
+  readonly listas?: number;
 }
 
 const LANCAMENTOS: {
   nome: string;
   inicial: Partial<FormularioDoLancamento>;
   payload: Readonly<Record<string, unknown>>;
+  /** 4 inputs + observação + botões do tipo/situação + listas. */
+  minimoDeCampos: number;
+  /** Categoria, Conta, Parcelas, Forma, Entra em: as que a folha mostra. */
+  listas: number;
 }[] = [
   {
     nome: "lançamento realizado",
+    minimoDeCampos: 13,
+    listas: 3,
     inicial: { formaPagamento: "pix" },
     payload: {
       categoria_id: CATEGORIA.id,
@@ -140,6 +160,8 @@ const LANCAMENTOS: {
   },
   {
     nome: "lançamento previsto parcelado",
+    minimoDeCampos: 14,
+    listas: 4,
     inicial: { situacao: "previsto", parcelas: "3" },
     payload: {
       categoria_id: CATEGORIA.id,
@@ -150,6 +172,8 @@ const LANCAMENTOS: {
   },
   {
     nome: "transferência",
+    minimoDeCampos: 10,
+    listas: 2,
     inicial: {
       tipo: "transferencia",
       contaDestinoId: CONTA_CAIXA_DA_LOJA,
@@ -164,8 +188,10 @@ const LANCAMENTOS: {
 
 const CASOS: Caso[] = [
   ...LANCAMENTOS.map(
-    ({ nome, inicial, payload }): Caso => ({
+    ({ nome, inicial, payload, minimoDeCampos, listas }): Caso => ({
       nome,
+      minimoDeCampos,
+      listas,
       montar: (aoSalvar) => (
         <NovoLancamentoFolha
           hoje={HOJE}
@@ -227,6 +253,9 @@ const CASOS: Caso[] = [
           },
       salvar: "Salvar",
       cadastroNovo: !sistema,
+      // Nome, tipo, saldo inicial, data e ativa (o `<select>` do tipo conta
+      // como campo, e continua contando quando virar lista de escolha).
+      minimoDeCampos: 5,
     },
     {
       nome: sistema ? "categoria do sistema" : "nova categoria",
@@ -250,6 +279,7 @@ const CASOS: Caso[] = [
       },
       salvar: "Salvar",
       cadastroNovo: !sistema,
+      minimoDeCampos: 9,
     },
   ]),
   // As duas categorias que o banco protege (Vendas): só o nome viaja.
@@ -277,6 +307,7 @@ const CASOS: Caso[] = [
     },
     salvar: "Salvar",
     cadastroNovo: false,
+    minimoDeCampos: 9,
   },
 ];
 
@@ -314,7 +345,10 @@ describe.each(CASOS)("Financeiro — $nome", (caso) => {
       const aberta = folha();
       const conteudo = conteudoDosCampos();
       const desabilitadosAntes = campos().map((campo) => campo.disabled);
-      expect(campos().length).toBeGreaterThan(0);
+      expect(campos().length).toBeGreaterThanOrEqual(caso.minimoDeCampos);
+      if (caso.listas !== undefined) {
+        expect(listasDeEscolha()).toHaveLength(caso.listas);
+      }
       expect(desabilitadosAntes).toContain(false);
 
       await act(async () => botao(caso.salvar).click());
