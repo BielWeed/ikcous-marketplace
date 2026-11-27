@@ -111,10 +111,10 @@ fica com NULL e o cartão de hoje não muda).
   `DETAIL` `campo: pausa_em`. **Chave ausente grava NULL**: apaga o dia que estava
   guardado. Por isso o app de gestão velho (10 chaves) continua gravando, e
   sempre limpa o dia.
-- **O sinal.** O app de gestão manda `pausa_em` só junto com o sinal do teste
-  encerrado sem pagamento: `status` `atrasada` com `teste_ate` igual a
+- **O sinal.** Para a loja antiga em teste, o app de gestão manda `pausa_em` junto
+  com o sinal do teste encerrado sem pagamento: `status` `atrasada` com `teste_ate` igual a
   `proxima_cobranca_em` (o fim do teste) e `pausa_em` depois desse dia. Fora
-  disso, a chave não vai no corpo. O painel só mostra o cartão "Teste encerrado"
+  disso e do caso da pagante abaixo, a chave não vai no corpo. O painel só mostra o cartão "Teste encerrado"
   com o sinal completo e coerente; sinal torto cai no cartão de sempre.
 - **A pagante atrasada (desde 26/11/2026, decisão "sem teste grátis").**
   `pausa_em` também chega para a lojista que entrou pagando e atrasou a

@@ -87,7 +87,9 @@ pagar. "Dia 0" é o vencimento da mensalidade ou o fim do teste.
 | Encerrar | "Não está mais no ar" | Só com ordem escrita do dono, depois do dia 60, com a cópia dos dados oferecida |
 | Pagou | Volta a vender no próximo pedido | A faixa some |
 
-- Nunca pausar na sexta, no sábado ou no domingo: a pausa passa para a segunda seguinte.
+- Loja antiga em teste: nunca pausar na sexta, no sábado ou no domingo; a pausa passa
+  para a segunda seguinte. Loja que entrou pagando: o dia é o que o app de gestão
+  calcula (também pula feriado nacional e véspera), e a loja nunca pausa antes dele.
 - Pausar é manual, com um clique numa lista que o sistema monta.
 - Reabrir é automático, quando o pagamento é registrado.
 - A Savy fica fora da pausa até o dono dizer o contrário.
