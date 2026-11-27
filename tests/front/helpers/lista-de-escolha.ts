@@ -48,9 +48,17 @@ function abrir(id: string): HTMLElement {
 }
 
 function fechar(lista: HTMLElement): void {
+  // `cancelable` como a tecla de verdade: o Radix fecha a lista e chama
+  // `preventDefault`, e é por isso que o ouvinte de Esc da tela de baixo (o
+  // editor de Banners, na janela) sabe que este Esc já foi usado. Sem ele, o
+  // Esc do teste fecharia também o editor, coisa que no aparelho não acontece.
   flushSync(() => {
     lista.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
     );
   });
 }
