@@ -1,8 +1,8 @@
 // @ts-nocheck
-// O CATALOGO E A CONFIGURACAO CHEGAM AO VIVO EM TODA LOJA — prova offline do par 20261610000000 + rollback. O COMPORTAMENTO (as 10
-// entram na loja nova, a IKCOUS fica identica, pre-voo, rollback com confirmacao, politicas de SELECT, trava, consultas 197a/197b) e'
+// O CATALOGO E A CONFIGURACAO CHEGAM AO VIVO EM TODA LOJA — prova offline da 20261610000000 + os dois rollbacks. O COMPORTAMENTO (as 10
+// entram na loja nova, a IKCOUS fica identica, pre-voo, rollback comum que nao tira nada, destrutivo com confirmacao, politicas de SELECT, trava, consultas 197a/197b) e'
 // provado no Postgres efemero por tests/banco/o-catalogo-chega-ao-vivo-em-toda-loja-viva.cjs. Aqui fica o que se prova so lendo o texto:
-// so ADD TABLE das 10 (nenhuma outra tabela, coupons fora, nenhum DROP, replica identity intocada), o rollback so com confirmacao e so as 10, e a
+// so ADD TABLE das 10 (nenhuma outra tabela, coupons fora, nenhum DROP, replica identity intocada), o rollback comum sem ALTER nenhum, o destrutivo so com confirmacao e so as 10, e a
 // fiacao de publicacao (lote, menu, rpc-ci, release).
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -34,7 +34,11 @@ const DEZ = [
 ];
 const lerBruto = (rel) => Deno.readTextFileSync(new URL(rel, DIR));
 const migration = lerBruto(`supabase/migrations/${NOME}`);
-const rollback = lerBruto(`supabase/migrations/rollback-manual-${NOME}`);
+// O destrutivo (SO COM O DONO) e' o que tira do ao vivo; o comum roda sem confirmacao (pilha (h) de ordem-das-travas-composta-viva.cjs) e nao tira nada.
+const rollback = lerBruto(
+  `supabase/migrations/rollback-manual-destrutivo-${NOME}`,
+);
+const comum = lerBruto(`supabase/migrations/rollback-manual-${NOME}`);
 /** O SQL sem comentarios de linha, mas COM o corpo dos blocos DO (os ALTER moram dentro de um). */
 const codigo = (s) =>
   s
@@ -48,17 +52,19 @@ const arrayDas10 = (s) => {
   return [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
 };
 
-Deno.test("1610: avaliarFase0 nao recusa o par; sem BEGIN/COMMIT; LF; lock_timeout antes do bloco", () => {
-  const res = avaliarFase0({
-    sqlMigration: migration,
-    sqlRollback: rollback,
-    temRollback: true,
-  });
-  assert.equal(
-    res.recusado,
-    false,
-    `motivos: ${(res.motivos || []).join("; ")}`,
-  );
+Deno.test("1610: avaliarFase0 nao recusa a migration com nenhum dos dois rollbacks; sem BEGIN/COMMIT; LF; lock_timeout antes do bloco", () => {
+  for (const sqlRollback of [comum, rollback]) {
+    const res = avaliarFase0({
+      sqlMigration: migration,
+      sqlRollback,
+      temRollback: true,
+    });
+    assert.equal(
+      res.recusado,
+      false,
+      `motivos: ${(res.motivos || []).join("; ")}`,
+    );
+  }
   for (const [sql, bloco] of [
     [migration, "DO $publicacao_20261610000000$"],
     [rollback, "DO $rollback_20261610000000$"],
@@ -142,6 +148,34 @@ Deno.test("1610: o cabecalho cita a politica de SELECT de cada uma das 10, o DEL
     "SEM BEGIN/COMMIT",
   ])
     assert.ok(cab.includes(trecho), trecho);
+});
+
+Deno.test("1610: o rollback comum nao tira nada (nenhum ALTER, nenhuma escrita, nenhuma recusa), so avisa e aponta o destrutivo", () => {
+  assert.deepEqual(arrayDas10(comum), DEZ);
+  assert.deepEqual(detectarTransacaoExplicita(removerRuido(comum)).achados, []);
+  assert.ok(!comum.includes("\r"), "texto LF");
+  const c = codigo(comum);
+  assert.equal(c.split("DO $rollback_comum_20261610000000$").length - 1, 1);
+  for (const proibido of [
+    /\bALTER\b/i,
+    /\bDROP\b/i,
+    /\bEXECUTE\b/i,
+    /\b(INSERT|UPDATE|DELETE)\b/i,
+    /\b(GRANT|REVOKE|CREATE)\b/i,
+    /RAISE EXCEPTION/i,
+    /confirmo_tirar_do_realtime/,
+  ])
+    assert.ok(!proibido.test(c), `o comum nao pode ter ${proibido}`);
+  assert.ok(c.includes("RAISE NOTICE"));
+  assert.ok(
+    comum.includes(`rollback-manual-destrutivo-${NOME}`),
+    "o comum aponta o arquivo do destrutivo",
+  );
+  assert.ok(
+    rollback.startsWith(
+      "-- ROLLBACK DESTRUTIVO 20261610000000 - SO COM O DONO.",
+    ),
+  );
 });
 
 Deno.test("1610: o rollback exige a confirmacao SET LOCAL antes de tirar, tira so as 10 e nunca as 3 da 20261061 nem coupons", () => {

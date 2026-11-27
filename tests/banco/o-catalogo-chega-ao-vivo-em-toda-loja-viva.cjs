@@ -11,8 +11,9 @@
 //   4. reaplicar (LF e CRLF) nao erra e nao mexe;
 //   5. o pre-voo recusa (B1) e nada entra: tabela sem RLS, sem chave primaria, com REPLICA IDENTITY NOTHING, ausente;
 //   6. sem a publicacao: nao erra e nao cria nada; publicacao FOR ALL TABLES: no-op sem erro (e o rollback recusa);
-//   7. rollback: sem a confirmacao recusa; com ela tira SO as 10 e deixa as 3 (e coupons, se estava); repetir e' no-op; reaplicar
-//      devolve as 13;
+//   7. rollback comum: sem confirmacao, NAO tira nada (o catalogo da publicacao fica identico na loja nova, na IKCOUS e sem a
+//      publicacao), so avisa; rollback destrutivo: sem a confirmacao recusa; com ela tira SO as 10 e deixa as 3 (e coupons, se
+//      estava); repetir e' no-op; reaplicar devolve as 13;
 //   8. o realtime entrega o que o SELECT ja entrega: as politicas de SELECT das 10 sao as do comentario da migration, e o carrinho e
 //      o favorito de uma conta nao aparecem para outra nem para o visitante; o custo do produto nao sai para ninguem;
 //   9. trava: gravacao e leitura em voo nao seguram o apply; quem segura SHARE UPDATE EXCLUSIVE (VACUUM/ANALYZE) faz o apply desistir
@@ -33,8 +34,14 @@ const PASTA = path.join(__dirname, "../../supabase/migrations");
 const CONSULTAS = path.join(__dirname, "../../scripts/publicacao/consultas");
 const norm = (s) => s.replace(/\r\n/g, "\n");
 const MIGRATION = norm(fs.readFileSync(path.join(PASTA, NOME), "utf8"));
-const ROLLBACK = norm(
+const COMUM = norm(
   fs.readFileSync(path.join(PASTA, `rollback-manual-${NOME}`), "utf8"),
+);
+const DESTRUTIVO = norm(
+  fs.readFileSync(
+    path.join(PASTA, `rollback-manual-destrutivo-${NOME}`),
+    "utf8",
+  ),
 );
 const A = "197a-conferir-o-catalogo-chega-ao-vivo-aplicado";
 const B = "197b-antes-o-catalogo-chega-ao-vivo-ausente";
@@ -302,28 +309,28 @@ caso(
     await c.query("CREATE PUBLICATION supabase_realtime FOR ALL TABLES");
     await aplicar();
     await c.query(CONFIRMA);
-    const r = await tentar(ROLLBACK);
+    const r = await tentar(DESTRUTIVO);
     assert.match(String(r.erro), /B1_BASELINE_DIVERGENT: .*FOR ALL TABLES/);
   },
 );
 
 caso(
-  "rollback: sem a confirmacao recusa; com ela tira so as 10 e deixa as 3; repetir e' no-op; reaplicar devolve as 13",
+  "rollback destrutivo: sem a confirmacao recusa; com ela tira so as 10 e deixa as 3; repetir e' no-op; reaplicar devolve as 13",
   async () => {
     await semRealtimeDoCatalogo();
     await aplicar();
-    const semConfirmar = await tentar(ROLLBACK);
+    const semConfirmar = await tentar(DESTRUTIVO);
     assert.match(String(semConfirmar.erro), /REALTIME_SO_LOJA_QUE_NAO_TINHA/);
     assert.deepEqual(await membros(), TREZE, "nada saiu sem a confirmacao");
     await c.query(CONFIRMA);
-    const r = await tentar(ROLLBACK);
+    const r = await tentar(DESTRUTIVO);
     assert.equal(r.erro, null, String(r.erro));
     assert.deepEqual(await membros(), TRES, "so as 10 sairam");
     assert.ok(tudoOk(await conferencia(B)), "a 197b volta a dizer sim");
     assert.deepEqual(falsos(await conferencia(A)), [
       "as 10 tabelas do catalogo e da configuracao estao na publicacao",
     ]);
-    const de_novo = await tentar(ROLLBACK);
+    const de_novo = await tentar(DESTRUTIVO);
     assert.equal(de_novo.erro, null, "rollback repetido e' no-op");
     assert.deepEqual(await membros(), TRES);
     await aplicar();
@@ -332,25 +339,72 @@ caso(
 );
 
 caso(
-  "rollback numa loja com coupons publicada: coupons fica (a migration nao a pos)",
+  "rollback destrutivo numa loja com coupons publicada: coupons fica (a migration nao a pos)",
   async () => {
     await comoAIkcous();
     await c.query(CONFIRMA);
-    const r = await tentar(ROLLBACK);
+    const r = await tentar(DESTRUTIVO);
     assert.equal(r.erro, null, String(r.erro));
     assert.deepEqual(await membros(), [...TRES, "coupons"].sort());
   },
 );
 
 caso(
-  "o rollback com a confirmacao de outra transacao nao vale (SET LOCAL)",
+  "rollback comum: sem confirmacao, nao tira nada (loja nova depois do apply, IKCOUS, repetido, sem a publicacao)",
+  async () => {
+    for (const montar of [
+      async () => {
+        await semRealtimeDoCatalogo();
+        await aplicar();
+      },
+      async () => {
+        await comoAIkcous();
+        await aplicar();
+      },
+    ]) {
+      await c.query("SAVEPOINT estado");
+      await montar();
+      const antes = await retrato();
+      const membrosAntes = await membros();
+      const avisos = [];
+      const ouvir = (m) => avisos.push(m.message);
+      c.on("notice", ouvir);
+      try {
+        for (const sql of [COMUM, COMUM.replace(/\n/g, "\r\n")]) {
+          const r = await tentar(sql);
+          assert.equal(r.erro, null, String(r.erro));
+        }
+      } finally {
+        c.off("notice", ouvir);
+      }
+      assert.equal(await retrato(), antes, "o comum nao tirou nem repos nada");
+      assert.deepEqual(await membros(), membrosAntes);
+      assert.ok(
+        avisos.some((m) =>
+          m.includes(
+            "10 das 10 tabelas estao na publicacao supabase_realtime; nada foi tirado",
+          ),
+        ),
+        `aviso do comum: ${avisos.join(" | ")}`,
+      );
+      assert.ok(tudoOk(await conferencia(A)), "a 197a segue positiva");
+      await c.query("ROLLBACK TO SAVEPOINT estado");
+    }
+    await c.query("DROP PUBLICATION supabase_realtime");
+    const r = await tentar(COMUM);
+    assert.equal(r.erro, null, "sem a publicacao: so avisa");
+  },
+);
+
+caso(
+  "o rollback destrutivo com a confirmacao de outra transacao nao vale (SET LOCAL)",
   async () => {
     await semRealtimeDoCatalogo();
     await aplicar();
     await c.query("SAVEPOINT outra");
     await c.query(CONFIRMA);
     await c.query("ROLLBACK TO SAVEPOINT outra");
-    const r = await tentar(ROLLBACK);
+    const r = await tentar(DESTRUTIVO);
     assert.match(String(r.erro), /REALTIME_SO_LOJA_QUE_NAO_TINHA/);
     assert.deepEqual(await membros(), TREZE);
   },

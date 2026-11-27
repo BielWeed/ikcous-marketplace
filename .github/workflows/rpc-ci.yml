@@ -1762,8 +1762,8 @@ jobs:
       # Migration 20261610000000 (o catalogo e a configuracao chegam ao vivo em toda loja): as 10 tabelas entram na publicacao supabase_realtime na loja
       # nova (so as 3 da 20261061; coupons nao entra: 13), a IKCOUS (as 14, com coupons, ja la) e' NO-OP com o catalogo da publicacao identico e a 197a
       # tolera coupons; loja pela metade, reaplicar LF/CRLF; pre-voo (sem RLS, sem chave primaria, NOTHING, ausente) recusa sem deixar nada; sem
-      # publicacao e FOR ALL TABLES; rollback com confirmacao (so as 10; coupons fica); as politicas de SELECT das 10 e o carrinho/favorito de uma conta
-      # fora da outra; trava (55P03 em 5 s); consultas 197a/197b. CLONE proprio.
+      # publicacao e FOR ALL TABLES; rollback comum que nao tira nada e destrutivo com confirmacao (so as 10; coupons fica); as politicas de SELECT das
+      # 10 e o carrinho/favorito de uma conta fora da outra; trava (55P03 em 5 s); consultas 197a/197b. CLONE proprio.
       - name: Prova viva de que o catalogo chega ao vivo em toda loja (migration 20261610000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         timeout-minutes: 4

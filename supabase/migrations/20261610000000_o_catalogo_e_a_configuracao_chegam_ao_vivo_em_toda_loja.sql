@@ -87,8 +87,10 @@
 -- aplicar pelo aplicar-migrations.yml (no-op que grava o ledger na mesma transacao). Prova de comportamento no CI efemero:
 -- tests/banco/o-catalogo-chega-ao-vivo-em-toda-loja-viva.cjs.
 --
--- ROLLBACK MANUAL: rollback-manual-20261610000000_o_catalogo_e_a_configuracao_chegam_ao_vivo_em_toda_loja.sql, SO para loja que nao
--- tinha NENHUMA das 10 antes (a Savy medida em 27/11/2026, loja nova) e com confirmacao; NUNCA na IKCOUS.
+-- ROLLBACK EM DOIS ARQUIVOS: rollback-manual-20261610000000_o_catalogo_e_a_configuracao_chegam_ao_vivo_em_toda_loja.sql (o comum) NAO
+-- tira nada da publicacao: so confere e avisa (roda sem confirmacao, inclusive na pilha de rollbacks do CI). Tirar do ao vivo e'
+-- rollback-manual-destrutivo-20261610000000_o_catalogo_e_a_configuracao_chegam_ao_vivo_em_toda_loja.sql, SO COM O DONO, so para loja que
+-- nao tinha NENHUMA das 10 antes (a Savy medida em 27/11/2026, loja nova) e com confirmacao; NUNCA na IKCOUS.
 
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';

@@ -4,7 +4,7 @@
 -- (sem ela, publicada, todo UPDATE e DELETE na tabela passaria a errar: o pre-voo da migration recusaria com B1_BASELINE_DIVERGENT); a 20261061
 -- ja aplicada (as 3 dentro); e nenhuma tabela publicada alem das 13 e de coupons (tolerada; se houver outra, alguem mexeu a mao: diagnostico
 -- antes). Na IKCOUS (as 10 ja dentro) a 197b sai "nao" no item da ausencia; na Savy e na loja nova, positiva. "Pelo menos uma fora" NAO e' "nenhuma
--- dentro": o rollback so vale para loja com 0 das 10 publicadas antes (ver o cabecalho dele).
+-- dentro": o rollback destrutivo so vale para loja com 0 das 10 publicadas antes (ver o cabecalho dele).
 WITH dez(t) AS (
   VALUES ('answers'), ('banners'), ('cart_items'), ('categorias'), ('favorites'), ('product_variants'), ('produtos'), ('questions'), ('reviews'),
          ('store_config')
