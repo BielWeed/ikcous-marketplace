@@ -58,6 +58,18 @@ const TETO_DE_AVALIACOES = 100;
 const TETO_DE_CANCELAMENTOS = 100;
 
 /**
+ * 27/11/2026: horas a mais na leitura dos cancelamentos, pelo relogio da
+ * lojista. O `desde` da janela de 24 h e calculado no APARELHO (a resposta do
+ * banco nao traz a hora do servidor): com o relogio 3 h adiantado, os
+ * cancelamentos de pedido pago feitos entre 21 h e 24 h atras sumiam do sino.
+ * 12 h cobre ate o erro de AM/PM de um relogio acertado a mao. O preco e o
+ * aviso de um cancelamento de 24 a 36 h atras continuar no sino num aparelho
+ * com o relogio certo: falso alarme custa uma linha, omissao custa um
+ * reembolso que ninguem viu (a mesma conta do `truncou` abaixo).
+ */
+const FOLGA_DO_RELOGIO_DA_LOJISTA_HORAS = 12;
+
+/**
  * Quantos pedidos esperando o lojista a lista mostra (os MAIS ANTIGOS, que
  * mais urgem). O sino conta todos; passando disto a leitura devolve `truncou`
  * e a tela avisa que a lista esta cortada.
@@ -266,7 +278,10 @@ interface LeituraDeCancelamentos {
 
 async function buscarCancelamentosDoCliente(): Promise<LeituraDeCancelamentos> {
   const desde = new Date(
-    Date.now() - JANELA_DE_CANCELAMENTO_HORAS * 3600 * 1000,
+    Date.now() -
+      (JANELA_DE_CANCELAMENTO_HORAS + FOLGA_DO_RELOGIO_DA_LOJISTA_HORAS) *
+        3600 *
+        1000,
   ).toISOString();
 
   const { data, error, count } = await supabase

@@ -8,8 +8,10 @@
 // datas que CHEGAM ao `addBanner`.
 //
 // Relógio: só o `Date` é falso (os temporizadores do React e do teste seguem
-// reais). Datas de calendário LOCAL, como o vizinho `banner-datas-sem-sentido`:
-// o teste vale em qualquer fuso, sem fixar `TZ`.
+// reais). Datas do calendário de BRASÍLIA (27/11/2026: o fim de semana é o da
+// loja, não o do aparelho). O fuso do processo é trocado para Tóquio durante o
+// teste, onde a sexta 23:59 de Brasília já é sábado: a conta que voltar a usar
+// o calendário do aparelho erra aqui, e não só no CI (UTC).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -97,7 +99,7 @@ function botaoComTexto(raiz: ParentNode, texto: string) {
   ) as HTMLButtonElement | undefined;
 }
 
-// Data/hora no calendário LOCAL (mês de 1 a 12).
+// Data/hora no calendário de Brasília, UTC-03:00 (mês de 1 a 12).
 const local = (
   a: number,
   m: number,
@@ -106,7 +108,13 @@ const local = (
   min = 0,
   s = 0,
   ms = 0,
-) => new Date(a, m - 1, d, h, min, s, ms);
+) => new Date(Date.UTC(a, m - 1, d, h + 3, min, s, ms));
+/** Dia da semana em Brasília (0 = domingo), em qualquer fuso do aparelho. */
+const diaDaSemanaEmBrasilia = (d: Date) =>
+  new Date(d.getTime() - 3 * HORA).getUTCDay();
+
+const fusoDaMaquina =
+  process.env.TZ ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 type Caso = {
   nome: string;
@@ -232,6 +240,7 @@ describe("AdminBannersView: atalhos de programação das datas", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.TZ = "Asia/Tokyo";
     h.banners = [
       {
         id: "banner-existente-1",
@@ -287,6 +296,7 @@ describe("AdminBannersView: atalhos de programação das datas", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    process.env.TZ = fusoDaMaquina;
   });
 
   async function montarPainel() {
@@ -346,7 +356,9 @@ describe("AdminBannersView: atalhos de programação das datas", () => {
 
   it.each(casos)("$nome", async (caso) => {
     // o dia da semana do dado de teste não pode mentir
-    expect(DIAS[caso.agora.getDay()]).toBe(DIAS[caso.diaDaSemana]);
+    expect(DIAS[diaDaSemanaEmBrasilia(caso.agora)]).toBe(
+      DIAS[caso.diaDaSemana],
+    );
 
     await abrirBannerNovoNoPasso3();
     await ligarProgramacao();

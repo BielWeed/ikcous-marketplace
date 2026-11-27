@@ -2,7 +2,16 @@
 //
 // Funções puras, usadas pelo painel (AdminBannersView) para não deixar a
 // lojista salvar datas sem sentido e para mostrar, em palavras, quando o
-// banner termina. Todas as horas são as do relógio LOCAL da lojista.
+// banner termina.
+//
+// 27/11/2026: todas as horas são as de BRASÍLIA, nunca as do aparelho. Antes o
+// campo era lido no fuso do computador da lojista: num aparelho em UTC, o
+// banner marcado para 28/11 00:00 entrava às 21:00 do dia 27 em Brasília, e a
+// tela devolvia o mesmo "28/11 00:00" que ela digitou. Mesma régua fixa
+// UTC-03:00 da validade do cupom (`validade-do-cupom.ts`, que explica por que
+// fixa e não `Intl`): Brasília não tem horário de verão desde 2019.
+
+import { DESLOCAMENTO_DA_LOJA_EM_MS } from "@/utils/validade-do-cupom";
 
 export const MENSAGEM_FIM_ANTES_DO_INICIO =
   "O fim precisa ser depois do início. Ajuste as datas para poder salvar.";
@@ -37,12 +46,102 @@ export function problemaDasDatas(
 
 const doisDigitos = (n: number) => String(n).padStart(2, "0");
 
+/**
+ * O instante como o relógio de parede de Brasília o mostra: lido com os
+ * getters `getUTC*`, dá o dia e a hora da loja em qualquer aparelho.
+ */
+function naLoja(instante: Date): Date {
+  return new Date(instante.getTime() - DESLOCAMENTO_DA_LOJA_EM_MS);
+}
+
+/** O instante real de um dia e hora do relógio de Brasília (mês de 0 a 11). */
+function daLoja(
+  ano: number,
+  mes: number,
+  dia: number,
+  hora = 0,
+  minuto = 0,
+  segundo = 0,
+): Date {
+  return new Date(
+    Date.UTC(ano, mes, dia, hora, minuto, segundo) + DESLOCAMENTO_DA_LOJA_EM_MS,
+  );
+}
+
 function mesmoDia(a: Date, b: Date): boolean {
   return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
+    a.getUTCFullYear() === b.getUTCFullYear() &&
+    a.getUTCMonth() === b.getUTCMonth() &&
+    a.getUTCDate() === b.getUTCDate()
   );
+}
+
+/**
+ * O valor do campo `datetime-local` ("aaaa-mm-ddThh:mm") lido como horário de
+ * Brasília, no instante ISO que vai ao banco. Vazio ou impossível (30/02, mês
+ * 13, 24:00) devolve null: o `Date.UTC` "rola" componente fora de faixa, então
+ * o dia construído é conferido contra o digitado.
+ */
+export function instanteDoCampoDoBanner(valor: string): string | null {
+  // Os segundos são opcionais: o campo só os manda com `step` menor que 60.
+  const partes = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)(:\d\d)?$/.exec(valor);
+  if (!partes) return null;
+  const [ano, mes, dia, hora, minuto] = partes.slice(1, 6).map(Number);
+  const segundo = partes[6] ? Number(partes[6].slice(1)) : 0;
+  const instante = daLoja(ano, mes - 1, dia, hora, minuto, segundo);
+  const conferido = naLoja(instante);
+  if (
+    Number.isNaN(instante.getTime()) ||
+    conferido.getUTCFullYear() !== ano ||
+    conferido.getUTCMonth() !== mes - 1 ||
+    conferido.getUTCDate() !== dia ||
+    conferido.getUTCHours() !== hora ||
+    conferido.getUTCMinutes() !== minuto
+  ) {
+    return null;
+  }
+  return instante.toISOString();
+}
+
+/**
+ * O instante gravado no valor que o campo `datetime-local` exibe, no horário
+ * de Brasília. Vazio ou ilegível devolve "".
+ */
+export function campoDoBannerDoInstante(iso?: string | null): string {
+  const instante = dataValida(iso);
+  if (!instante) return "";
+  return naLoja(instante).toISOString().slice(0, 16);
+}
+
+export type AtalhoDoPeriodo = "24h" | "weekend" | "7d" | "30d";
+
+/**
+ * O período dos atalhos de "Programar datas". Os de duração são agora + N x
+ * 24 h; o "Fim de Semana" vai do sábado 00:00 ao domingo 23:59:59 do
+ * calendário de Brasília (já no sábado ou no domingo, começa agora).
+ */
+export function periodoDoAtalhoDoBanner(
+  atalho: AtalhoDoPeriodo,
+  agora: Date = new Date(),
+): { inicio: Date; fim: Date } {
+  const DIA = 24 * 60 * 60 * 1000;
+  const inicio = new Date(agora.getTime());
+  if (atalho !== "weekend") {
+    const dias = atalho === "24h" ? 1 : atalho === "7d" ? 7 : 30;
+    return { inicio, fim: new Date(agora.getTime() + dias * DIA) };
+  }
+  const hoje = naLoja(agora);
+  const ano = hoje.getUTCFullYear();
+  const mes = hoje.getUTCMonth();
+  const dia = hoje.getUTCDate();
+  const diaDaSemana = hoje.getUTCDay();
+  const ateSabado = (6 - diaDaSemana + 7) % 7;
+  const jaEFimDeSemana = diaDaSemana === 6 || diaDaSemana === 0;
+  const ateDomingo = diaDaSemana === 0 ? 0 : ateSabado + 1;
+  return {
+    inicio: jaEFimDeSemana ? inicio : daLoja(ano, mes, dia + ateSabado),
+    fim: daLoja(ano, mes, dia + ateDomingo, 23, 59, 59),
+  };
 }
 
 /**
@@ -53,23 +152,24 @@ export function fimDoBannerEmTexto(
   fimIso: string | null | undefined,
   agora: Date = new Date(),
 ): string {
-  const fim = dataValida(fimIso);
-  if (!fim) return "";
-  const hora = `${doisDigitos(fim.getHours())}:${doisDigitos(fim.getMinutes())}`;
-  const diaMes = `${doisDigitos(fim.getDate())}/${doisDigitos(fim.getMonth() + 1)}`;
+  const instante = dataValida(fimIso);
+  if (!instante) return "";
+  // Dia e hora de Brasília, em qualquer aparelho.
+  const fim = naLoja(instante);
+  const hoje = naLoja(agora);
+  const hora = `${doisDigitos(fim.getUTCHours())}:${doisDigitos(fim.getUTCMinutes())}`;
+  const diaMes = `${doisDigitos(fim.getUTCDate())}/${doisDigitos(fim.getUTCMonth() + 1)}`;
   const dia =
-    fim.getFullYear() === agora.getFullYear()
+    fim.getUTCFullYear() === hoje.getUTCFullYear()
       ? diaMes
-      : `${diaMes}/${fim.getFullYear()}`;
+      : `${diaMes}/${fim.getUTCFullYear()}`;
 
-  if (fim.getTime() < agora.getTime()) {
+  if (instante.getTime() < agora.getTime()) {
     return `Já terminou em ${dia} às ${hora}.`;
   }
-  if (mesmoDia(fim, agora)) return `Termina hoje às ${hora}.`;
+  if (mesmoDia(fim, hoje)) return `Termina hoje às ${hora}.`;
   const amanha = new Date(
-    agora.getFullYear(),
-    agora.getMonth(),
-    agora.getDate() + 1,
+    Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), hoje.getUTCDate() + 1),
   );
   if (mesmoDia(fim, amanha)) return `Termina amanhã às ${hora}.`;
   return `Termina em ${dia} às ${hora}.`;
