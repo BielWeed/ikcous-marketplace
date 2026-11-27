@@ -882,6 +882,29 @@ export const NOTA_CODIGO_DE_POSTAGEM_GERADO =
   "Código de postagem dos Correios gerado (válido por 7 dias)";
 const VALIDADE_DO_CODIGO_DE_POSTAGEM_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Texto que admin_devolucao_concluir grava ao concluir com vale desde a
+// 20261175000000. O app não emite vale: a loja cria o vale fora do app.
+// Preso por tests/front/devolucao-nota-do-vale-contrato.test.ts.
+export const NOTA_VALE_GRAVADA_PELO_BANCO = "Vale-troca emitido";
+export const NOTA_VALE_PARA_A_LOJA =
+  "Resolvida com vale-troca (o vale é criado pela loja, fora do app)";
+
+/** Nota do evento como o histórico do painel mostra: o "Vale-troca emitido"
+ *  do banco vira o que de fato aconteceu, e valores saem em reais. */
+export function notaDoEventoParaLoja(
+  evento: Pick<EventoDevolucao, "para_status" | "ator" | "nota">,
+): string | null {
+  if (!evento.nota) return null;
+  if (
+    evento.ator === "loja" &&
+    evento.para_status === "concluida" &&
+    evento.nota.trim() === NOTA_VALE_GRAVADA_PELO_BANCO
+  ) {
+    return NOTA_VALE_PARA_A_LOJA;
+  }
+  return reaisComVirgula(evento.nota);
+}
+
 function fimDaValidadeDoCodigo(
   eventos: readonly EventoDevolucao[] = [],
 ): number | null {
