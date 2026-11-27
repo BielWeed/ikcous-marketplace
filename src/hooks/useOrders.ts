@@ -5441,34 +5441,51 @@ export function useOrders(
 
         // A RPC devolve só o ID. No pagamento online, o valor do Brick tem de
         // ser o que o banco recalculou, não o checksum enviado pelo carrinho.
+        // Na entrega/retirada é o que a tela de sucesso mostra: o banco aceita
+        // até R$ 0,05 de diferença e grava o DELE, que o recibo já mostra.
         let totalAmount = orderData.totalAmount;
-        if (opts?.comPagamentoOnline) {
-          try {
-            const { data: pedido, error: erroDaLeitura } = await supabase
-              .from("marketplace_orders")
-              .select("total")
-              .eq("id", data)
-              .single();
-            const total: unknown = pedido?.total;
-            if (
-              erroDaLeitura ||
-              (typeof total !== "number" && typeof total !== "string") ||
-              (typeof total === "string" && total.trim() === "") ||
-              !Number.isFinite(Number(total)) ||
-              Number(total) <= 0
-            ) {
-              throw Object.assign(new Error("Total indisponível"), {
-                cause: erroDaLeitura ?? undefined,
-              });
-            }
-            totalAmount = Number(total);
-          } catch (causa: any) {
-            // O pedido JÁ nasceu: não voltar ao total do cliente nem permitir
-            // outra finalização. A tela encaminha à retomada em Meus pedidos.
-            // A causa original (RLS, rede) vai em `cause`, para o
-            // console.error do catch externo mostrá-la junto do pedidoId:
-            // só o ID da própria cliente, no navegador dela, sem os demais
-            // dados do pedido nem os dados pessoais do cliente.
+        try {
+          const leitura = supabase
+            .from("marketplace_orders")
+            .select("total")
+            .eq("id", data)
+            .single();
+          // Na entrega o pedido já vale: a leitura só acerta o número da tela
+          // e não pode segurá-la (rede pendurada = total da tela).
+          const { data: pedido, error: erroDaLeitura } =
+            opts?.comPagamentoOnline
+              ? await leitura
+              : await aguardarComPrazo(
+                  Promise.resolve(leitura),
+                  5_000,
+                  erroDeConsultaSemResposta,
+                );
+          const total: unknown = pedido?.total;
+          if (
+            erroDaLeitura ||
+            (typeof total !== "number" && typeof total !== "string") ||
+            (typeof total === "string" && total.trim() === "") ||
+            !Number.isFinite(Number(total)) ||
+            Number(total) < 0 ||
+            // R$ 0,00 só vale na entrega (cupom de 100%); online não há o que
+            // cobrar.
+            (Number(total) === 0 && opts?.comPagamentoOnline)
+          ) {
+            throw Object.assign(new Error("Total indisponível"), {
+              cause: erroDaLeitura ?? undefined,
+            });
+          }
+          totalAmount = Number(total);
+        } catch (causa: any) {
+          // O pedido JÁ nasceu: não voltar ao total do cliente nem permitir
+          // outra finalização. A tela encaminha à retomada em Meus pedidos.
+          // A causa original (RLS, rede) vai em `cause`, para o
+          // console.error do catch externo mostrá-la junto do pedidoId:
+          // só o ID da própria cliente, no navegador dela, sem os demais
+          // dados do pedido nem os dados pessoais do cliente.
+          // Na entrega/retirada (convidado não lê a linha pela RLS, rede)
+          // fica o total da tela, como antes: o pedido vale e nada se inventa.
+          if (opts?.comPagamentoOnline) {
             throw Object.assign(
               new Error("Não foi possível conferir o valor final do pedido."),
               {
