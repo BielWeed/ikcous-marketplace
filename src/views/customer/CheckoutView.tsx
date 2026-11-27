@@ -4061,7 +4061,8 @@ export function CheckoutViewDaConta({
         // Só consome o rascunho depois de selecionar dinheiro: outra
         // execução deste efeito pode ainda ver o Pix inicial.
         if (paymentMethod !== "cash") {
-          setFormaTrocadaSemToque(true);
+          // Sem aviso: é a escolha da própria cliente voltando, não uma
+          // troca contra a vontade dela (revisão Opus 27/11/2026).
           setPaymentMethod("cash");
           return;
         }

@@ -695,7 +695,7 @@ describe("CheckoutView — o pagamento fala com o leitor de tela", () => {
     );
   });
 
-  it("o troco do rascunho remarca o dinheiro: a troca é anunciada", async () => {
+  it("o troco do rascunho remarca o dinheiro em silêncio: é a escolha dela voltando", async () => {
     mockSelectedShippingOption = {
       id: "local-delivery",
       name: "Entrega da loja",
@@ -736,8 +736,6 @@ describe("CheckoutView — o pagamento fala com o leitor de tela", () => {
         "aria-checked",
       ),
     ).toBe("true");
-    expect(avisoDaFormaDePagamento().textContent).toBe(
-      "Forma de pagamento alterada para Dinheiro na Entrega.",
-    );
+    expect(avisoDaFormaDePagamento().textContent).toBe("");
   });
 });
