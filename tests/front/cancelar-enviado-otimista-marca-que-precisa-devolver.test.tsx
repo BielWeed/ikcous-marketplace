@@ -121,7 +121,7 @@ let raiz: Root;
 let armazem: Map<string, string>;
 
 type PegaOrders = () => Order[];
-type AtualizaStatus = (id: string, status: OrderStatus) => Promise<void>;
+type AtualizaStatus = (id: string, status: OrderStatus) => Promise<unknown>;
 type ConfirmaRetorno = (id: string) => Promise<unknown>;
 
 async function montarSondaComCache(pedido: Order): Promise<{
@@ -454,7 +454,7 @@ type AtualizaStatusAdmin = (
   notes?: string,
   silent?: boolean,
   statusEsperado?: OrderStatus,
-) => Promise<void>;
+) => Promise<unknown>;
 
 async function montarSondaAdmin(): Promise<{
   chamarUpdateOrderStatus: AtualizaStatusAdmin;

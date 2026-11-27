@@ -982,6 +982,11 @@ function PagamentoComPix({
     const ok = codigo !== "" && (await copiarParaClipboard(codigo));
     if (!montadoRef.current) return;
     if (!ok) {
+      // Falha logo depois de um sucesso: o "Copiado!" do toque anterior sai
+      // junto, senão o botão diria que copiou ao lado do aviso de falha.
+      if (timerCopiadoRef.current) clearTimeout(timerCopiadoRef.current);
+      timerCopiadoRef.current = null;
+      setPixCopiado(false);
       setPixFalhouCopia(true);
       return;
     }

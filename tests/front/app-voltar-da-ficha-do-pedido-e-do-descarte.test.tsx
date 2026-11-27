@@ -248,6 +248,7 @@ vi.mock("@/hooks/useFavorites", () => ({
   useFavorites: () => ({
     favorites: [],
     toggleFavorite: () => {},
+    isFavorite: () => false,
     loading: false,
   }),
 }));

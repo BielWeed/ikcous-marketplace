@@ -1,4 +1,22 @@
 {
+  "1.5.244": {
+    "titulo": "Devolução que não paga duas vezes e avisos que dizem a verdade",
+    "novidades": [],
+    "correcoes": [
+      "Na ficha do pedido, tocar em \"Devolver\" de novo depois de uma demora não devolve o dinheiro duas vezes ao cliente.",
+      "O PIX já pago ou encerrado não mostra mais o código para pagar de novo.",
+      "Na compra para pagar na entrega, a tela final mostra o total gravado pela loja.",
+      "Status do pedido mudado sem internet avisa a cliente quando a conexão volta.",
+      "O cartão da assinatura no início do painel só diz \"vendas pausadas\" quando isso é verdade.",
+      "Salvar CPF da etiqueta, devolução e cupom não ficam mais presos em \"Salvando...\" quando a rede trava.",
+      "Quando o e-mail da loja falha no cadastro ou na troca de senha, a cliente recebe um aviso claro.",
+      "Em \"Meus pedidos\", a conta sem pedidos não diz mais que você nunca comprou: avisa que o pedido feito sem entrar na conta não aparece ali.",
+      "No painel, remover o Gmail da loja avisa que o e-mail de cadastro e de troca de senha também para."
+    ],
+    "melhorias": [
+      "O balcão e as perguntas de confirmação do painel falam com o leitor de tela e devolvem o foco a um lugar que existe."
+    ]
+  },
   "1.5.243": {
     "titulo": "Listas de escolha novas no painel e uma compra mais firme",
     "novidades": [

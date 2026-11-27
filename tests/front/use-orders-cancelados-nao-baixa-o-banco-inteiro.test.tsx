@@ -132,7 +132,7 @@ type AtualizaStatusAdmin = (
   notes?: string,
   silent?: boolean,
   statusEsperado?: OrderStatus,
-) => Promise<void>;
+) => Promise<unknown>;
 
 function stubLocalStorage() {
   armazem = new Map();

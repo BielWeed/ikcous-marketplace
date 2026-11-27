@@ -92,3 +92,18 @@ export interface AssinaturaDaLoja {
   readonly suporteWhatsapp: string | null;
   readonly atualizadoEm: string | null;
 }
+
+/**
+ * A loja aceita pedido NOVO pela vitrine agora? Resposta do banco
+ * (`situacao_das_vendas_da_loja()`, migration 20261600000000), lida por
+ * `lerSituacaoDasVendas`. É a única fonte que enxerga a chave
+ * `pausa_de_vendas.vale_pela_assinatura`: a assinatura sozinha não diz se a
+ * pausa vale. `null` no lugar dela = "não sei" (loja sem a função, rede).
+ */
+export interface SituacaoDasVendas {
+  readonly aceita: boolean;
+  /** `manutencao`, `vendas_pausadas` ou `null` (aceita). */
+  readonly motivo: string | null;
+  /** `YYYY-MM-DD` em que a pausa passou a valer; só com `vendas_pausadas`. */
+  readonly pausadaDesde: string | null;
+}

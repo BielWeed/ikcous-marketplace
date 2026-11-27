@@ -325,7 +325,12 @@ describe("estimarDasDoSimples: limites de R$ 3,6 mi e R$ 4,8 mi, no centavo", ()
         receitaDoMes: 400_000,
         receitasMensais: {},
       }),
-    ).toEqual(semEstimativa("acima_do_sublimite"));
+      // O 1º mês x 12 é projeção, e o resultado diz isso.
+    ).toEqual({
+      estado: "sem_estimativa",
+      motivo: "acima_do_sublimite",
+      projecao: true,
+    });
   });
 });
 

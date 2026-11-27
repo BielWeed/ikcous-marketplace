@@ -13,7 +13,7 @@
 //      quando o app já registrava desde o começo do período medido (1º de janeiro, ou o
 //      mês da abertura); senão mostra "vendas registradas no app neste ano" sem
 //      veredito (e o alerta de acima do limite, se o número já passou do teto). O aviso
-//      fixo ("o que você vendeu sem registrar aqui também conta") vem em toda tela COM
+//      fixo ("lançamento à mão e venda fora do app também contam") vem em toda tela COM
 //      número e não vem nas telas sem número (ano não conferido)
 //   C  Simples de só comércio: a estimativa do ÚLTIMO MÊS FECHADO (14 meses lidos, o
 //      atual fora), com o aviso fixo
@@ -187,7 +187,7 @@ import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 // O aviso fixo do medidor do MEI (só nas telas COM número), palavra por palavra.
 const AVISO_DO_MEDIDOR =
-  "Este número só tem as vendas registradas no app. O que você vendeu sem registrar aqui (Instagram, WhatsApp, feira) também conta para o limite do MEI: some por sua conta.";
+  "Este número só tem as vendas feitas pelo app (pedidos e balcão). Os lançamentos feitos à mão no Financeiro (mesmo na categoria Vendas) não entram, nem o que você vendeu sem registrar aqui (Instagram, WhatsApp, feira). Tudo isso também conta para o limite do MEI: some por sua conta.";
 // Os títulos do ano COMPLETO: o número é um mínimo, então tudo começa com o prefixo.
 const DENTRO = "Pelo que o app registrou, você está dentro do limite";
 const ACIMA_20 =
@@ -720,6 +720,42 @@ describe("C — Simples de só comércio: a estimativa do último mês fechado",
     await montar();
     expect(texto()).toContain("em que mês você começou a vender pelo app");
     expect(host.querySelector("[data-estimativa-valor]")).toBeNull();
+  });
+
+  it("outubro com venda e devolução do mesmo tamanho: diz que as devoluções igualaram as vendas, nunca 'Sem vendas neste mês'", async () => {
+    devolucaoDoMes.set("2026-10", 1000);
+    await montar();
+    const valor = normal(
+      host.querySelector("[data-estimativa-valor]")?.textContent,
+    );
+    expect(valor).toBe(
+      "As devoluções deste mês igualaram ou passaram as vendas, então não há imposto estimado.",
+    );
+    expect(texto()).not.toContain("Sem vendas neste mês");
+  });
+
+  it("outubro sem venda nenhuma: 'Sem vendas neste mês'", async () => {
+    receitaDoMes.set("2026-10", 0);
+    await montar();
+    expect(
+      normal(host.querySelector("[data-estimativa-valor]")?.textContent),
+    ).toBe("Sem vendas neste mês");
+  });
+
+  it("1 mês medido acima do teto: a frase fala da projeção pela média, não dos últimos 12 meses", async () => {
+    tabelas.set("fiscal_cadastro", {
+      linhas: [
+        cadastroDoBanco("simples", "comercio", {
+          vende_no_app_desde: "2026-09-01",
+        }),
+      ],
+    });
+    receitaDoMes.set("2026-09", 500_000);
+    await montar();
+    expect(texto()).toContain(
+      "Pela média dos meses registrados no app, a projeção de 12 meses passa do teto do Simples Nacional.",
+    );
+    expect(texto()).not.toContain("últimos 12 meses");
   });
 });
 

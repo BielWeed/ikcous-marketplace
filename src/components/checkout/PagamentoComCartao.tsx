@@ -2000,6 +2000,17 @@ export function PagamentoComCartao({
           mora numa região viva própria, SEMPRE montada: o leitor de tela só
           anuncia o que muda dentro de uma região que já existia (antes o
           spinner ficava fora de qualquer região). */}
+      {/* Caça de leitor de tela (27/11/2026): o Brick gira no próprio botão,
+          mas o app não dizia nada enquanto o cartão ia ao banco. Região
+          sempre montada (só o texto entra e sai), sem ocupar lugar na tela. */}
+      <p
+        data-testid="aviso-do-envio-do-cartao"
+        role="status"
+        className="sr-only"
+      >
+        {enviosEmCurso > 0 ? TEXTOS_DO_CARTAO.enviando : ""}
+      </p>
+
       <div
         data-testid="area-do-formulario"
         className={carregandoOFormulario ? "min-h-[28rem]" : undefined}

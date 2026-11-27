@@ -265,6 +265,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     painel,
     assinatura,
     assinaturaLida,
+    situacaoDasVendas,
     carregando,
     erro,
     erroAssinatura,
@@ -514,6 +515,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                 <LocalErrorBoundary>
                   <CartaoDaAssinatura
                     assinatura={assinatura}
+                    situacaoDasVendas={situacaoDasVendas}
                     lida={assinaturaLida}
                     carregando={carregando}
                     erro={erroAssinatura}

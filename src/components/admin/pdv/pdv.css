@@ -977,6 +977,18 @@
     font-size: 12px;
   }
 }
+/* Celular estreito: com o motivo aberto, cada cartão tem meia linha, e o
+   rótulo ao lado deixava o campo com 44 px em 320 px (R$ 150,00 cortado).
+   O rótulo sobe para cima do campo, que fica com a largura do cartão. */
+@media (max-height: 900px) and (max-width: 479px) {
+  .pdv-discount > .pdv-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pdv-discount > .pdv-card > div {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
 @media (max-height: 420px) {
   .pdv-footer[data-etapa="escolha_de_variacao"] .pdv-client-chip {
     display: none;

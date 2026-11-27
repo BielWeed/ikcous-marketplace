@@ -484,7 +484,7 @@ describe("Clientes no celular (J4)", () => {
 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Carrinho do cliente");
-    expect(texto).toContain("O que está no carrinho agora");
+    expect(texto).toContain("Itens no carrinho quando você abriu esta ficha");
     expect(texto).toContain("1 produto");
     expect(texto).not.toContain("1 produtos");
     expect(texto).not.toContain("estrutura de checkout");
@@ -502,5 +502,40 @@ describe("Clientes no celular (J4)", () => {
     await abrirAbaCarrinho();
 
     expect(hospedeiro.textContent ?? "").toContain("2 produtos");
+  });
+
+  // A ficha só lê o carrinho ao abrir: nada de "agora", "tempo real" nem
+  // bolinha pulsando, que prometiam uma atualização que não existe.
+  it("(c) a aba do carrinho diz que mostra o carrinho de quando a ficha abriu, sem pulsar", async () => {
+    h.papelDaFicha = "customer";
+    h.linhasDoCarrinho = [{ product_id: "p-1", quantity: 1 }];
+    await abrirFicha();
+    await abrirAbaCarrinho();
+
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).toContain("Itens no carrinho quando você abriu esta ficha");
+    expect(texto).not.toContain("carrinho agora");
+    expect(hospedeiro.querySelector(".animate-ping")).toBeNull();
+  });
+
+  it("(c) a ajuda da ficha não promete carrinho em tempo real nem abandonado", async () => {
+    h.papelDaFicha = "customer";
+    await abrirFicha();
+    const ajuda = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[title="Guia da ficha do cliente e ajuda"]',
+    );
+    expect(ajuda).not.toBeNull();
+    await act(async () => {
+      ajuda!.click();
+      await esperar(20);
+    });
+
+    // A ajuda abre numa folha (Radix Dialog), fora do hospedeiro.
+    const folha = document.querySelector('[role="dialog"]');
+    expect(folha).not.toBeNull();
+    const texto = folha!.textContent ?? "";
+    expect(texto).toContain("Carrinho (quando a ficha abriu)");
+    expect(texto).not.toMatch(/tempo real/i);
+    expect(texto).not.toMatch(/abandonado/i);
   });
 });

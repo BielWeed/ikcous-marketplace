@@ -130,7 +130,7 @@ async function montarSonda(
   });
   const { useOrders } = await import("@/hooks/useOrders");
   let ordersAtuais: Order[] = [];
-  let update: (id: string, status: OrderStatus) => Promise<void> =
+  let update: (id: string, status: OrderStatus) => Promise<unknown> =
     async () => {};
   let carregar: (
     page?: number,

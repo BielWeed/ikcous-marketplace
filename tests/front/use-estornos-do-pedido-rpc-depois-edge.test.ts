@@ -173,6 +173,8 @@ afterEach(() => {
     });
   }
   document.body.innerHTML = "";
+  // A chave da devolução (src/lib/chave-da-devolucao.ts) mora no localStorage.
+  localStorage.clear();
 });
 
 describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa", () => {
@@ -242,11 +244,13 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(CHAMADAS).toHaveLength(2);
     expect(CHAMADAS[0]).toEqual({
       tipo: "rpc",
-      nome: "solicitar_estorno",
+      nome: "solicitar_estorno_com_chave",
       argumentos: {
         p_order_id: "pedido-1",
         p_amount: 50,
         p_motivo: "teste",
+        // a chave da intenção (20261640000000): repetir não paga duas vezes
+        p_chave: expect.stringMatching(/^[0-9a-f-]{36}$/),
       },
     });
     expect(CHAMADAS[1]).toEqual({

@@ -164,6 +164,25 @@ function receitasLiquidasPorMes(
   return porMes;
 }
 
+/**
+ * As vendas de cada mês ANTES das devoluções, em reais, da MESMA série (nenhuma leitura a
+ * mais). Só serve à frase do mês sem receita líquida: "não vendeu" e "as devoluções comeram
+ * as vendas" são coisas diferentes. Nunca entra em conta nenhuma.
+ */
+function vendasBrutasPorMes(
+  meses: readonly IntervaloDeDatas[],
+  dres: readonly DreFinanceira[] | null,
+): ReadonlyMap<string, number> | null {
+  if (dres === null || dres.length !== meses.length) return null;
+  const porMes = new Map<string, number>();
+  for (const [i, mes] of meses.entries()) {
+    const dre = dres.at(i);
+    if (dre === undefined) return null;
+    porMes.set(mes.inicio.slice(0, 7), receitaDoMes(dre, null).receita);
+  }
+  return porMes;
+}
+
 /** A estimativa do DAS de um mês. Mês que a série não trouxe nunca vira "zero vendas". */
 function estimarOMes(
   cadastro: CadastroFiscalLido,
@@ -227,6 +246,7 @@ function BlocoDaConta({
   anoDoMedidor,
   serie,
   receitas,
+  vendasBrutas,
 }: {
   readonly cadastro: CadastroFiscalLido;
   readonly mesAtual: string;
@@ -234,6 +254,8 @@ function BlocoDaConta({
   readonly anoDoMedidor: { readonly ano: number; readonly fechado: boolean };
   readonly serie: ConsultaFinanceira<DreFinanceira[]>;
   readonly receitas: ReadonlyMap<string, number> | null;
+  /** As vendas de cada mês antes das devoluções (`vendasBrutasPorMes`). */
+  readonly vendasBrutas: ReadonlyMap<string, number> | null;
 }) {
   const conta = quemTemConta(cadastro);
   if (conta.tipo === "nenhuma") return <SemEstimativa cadastro={cadastro} />;
@@ -291,6 +313,7 @@ function BlocoDaConta({
         estimativa={estimarOMes(cadastro, competencia, receitas)}
         competencia={competencia}
         receitaDoMes={receitas.get(competencia) ?? 0}
+        vendasDoMes={vendasBrutas?.get(competencia)}
       />
     </div>
   );
@@ -356,6 +379,10 @@ export function AbaImpostos({
     () => receitasLiquidasPorMes(mesesDaSerie, serie.dados),
     [mesesDaSerie, serie.dados],
   );
+  const vendasBrutas = useMemo(
+    () => vendasBrutasPorMes(mesesDaSerie, serie.dados),
+    [mesesDaSerie, serie.dados],
+  );
 
   // O caderno não depende do cadastro: toda loja vê as guias que lançou.
   const periodoDoCaderno = useMemo<IntervaloDeDatas>(
@@ -419,6 +446,7 @@ export function AbaImpostos({
           anoDoMedidor={anoDoMedidor}
           serie={serie}
           receitas={receitas}
+          vendasBrutas={vendasBrutas}
         />
       ) : null}
 

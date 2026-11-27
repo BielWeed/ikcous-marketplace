@@ -201,9 +201,13 @@ export const FavoritesView = React.memo(function FavoritesView({
     pendingCount,
     retentarPendentes,
     favoritosIndisponiveis,
+    favoritosSalvos,
     limparIndisponiveis,
   } = useFavorites();
   const indisponiveis = favoritosIndisponiveis ?? 0;
+  // Catálogo vazio não confirma indisponível para quem tem conta (não há o
+  // que limpar), mas a lista vazia também não pode dizer que não há favoritos.
+  const semNenhumDisponivel = indisponiveis > 0 || (favoritosSalvos ?? 0) > 0;
   const idBase = useId();
   const listaRef = useRef<HTMLDivElement>(null);
   const [comDesconto, setComDesconto] = useState(false);
@@ -559,7 +563,7 @@ export const FavoritesView = React.memo(function FavoritesView({
         <header className="px-4 pb-4 pt-5 lg:px-0">
           <h1 className="text-3xl font-bold tracking-tight">Favoritos</h1>
           <p className="mt-1 text-xs text-muted-foreground">
-            {indisponiveis > 0
+            {semNenhumDisponivel
               ? "Nenhum produto disponível agora"
               : "Nenhum produto salvo ainda"}
           </p>
@@ -582,7 +586,7 @@ export const FavoritesView = React.memo(function FavoritesView({
             />
           </div>
           <h2 className="text-xl font-bold">
-            {indisponiveis > 0
+            {semNenhumDisponivel
               ? "Seus favoritos estão indisponíveis agora"
               : "Você ainda não tem favoritos"}
           </h2>

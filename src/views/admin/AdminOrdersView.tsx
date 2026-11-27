@@ -64,13 +64,13 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
-import { caminhoDoPedidoNoAviso } from "@/lib/alvo-do-aviso";
 import { orientacaoDeDevolucao } from "@/lib/anulacao-do-balcao";
 import { consumirPedidoDePedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
 import {
   deveAvisarPedidoNovo,
   tipoDoAvisoDoPedido,
 } from "@/lib/aviso-de-pedido-atualizado";
+import { avisarOClienteDoStatus } from "@/lib/aviso-de-status-ao-cliente";
 import { formatarInteiro } from "@/lib/crm";
 import { carimboLocalParaNomeDeArquivo } from "@/lib/data-local-csv";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
@@ -86,15 +86,9 @@ import {
   mensagemDoStatusNoWhatsapp,
   rotuloDoStatusParaACliente,
 } from "@/lib/mensagem-do-status-no-whatsapp";
-import {
-  descricaoDePushSemConfirmacao,
-  falhaDePushSemConfirmacao,
-  motivoDaFalhaEmPortugues,
-} from "@/lib/motivo-da-falha-de-push";
 import { nomeDaClienteNoPedido } from "@/lib/nome-da-cliente-no-balcao";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
-import { CAMPO_DO_CARIMBO_DO_AVISO } from "@/lib/ordem-do-aviso-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
 import {
@@ -1843,92 +1837,6 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     }
   }, [listaTemPedidos, totalAbsolutoNaLoja]);
 
-  /** Push de "seu pedido agora está: …" depois de o status ser gravado. Nunca
-   *  lança: a falha vira aviso amarelo para a lojista. */
-  const avisarOClienteDoStatus = async (
-    orderId: string,
-    newStatus: OrderStatus,
-    alvo: Order,
-  ) => {
-    // Carimbo de ordem do aviso, tirado AGORA (status já gravado), antes de
-    // qualquer espera de rede: os avisos de status do mesmo pedido são
-    // disparados sem esperar um pelo outro e podem chegar trocados. O aparelho
-    // mantém na bandeja o de carimbo maior (`ordem-do-aviso-do-pedido.ts`).
-    const emitidoEm = Date.now();
-    try {
-      const title = "Status do Pedido Atualizado";
-      const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${rotuloDoStatusParaACliente(newStatus, alvo.retiradaNaLoja)}`;
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      const { data: envio, error: erroDoInvoke } =
-        await supabase.functions.invoke("send-push", {
-          body: {
-            targetUserId: alvo.userId,
-            title,
-            body,
-            // Sem `url` o toque no aviso caía na vitrine ("/").
-            url: caminhoDoPedidoNoAviso(orderId),
-            data: {
-              orderId,
-              type: "order_status",
-              [CAMPO_DO_CARIMBO_DO_AVISO]: emitidoEm,
-            },
-          },
-          headers: token
-            ? {
-                Authorization: `Bearer ${token}`,
-              }
-            : {},
-        });
-
-      if (erroDoInvoke) throw erroDoInvoke;
-
-      // `enviados` só existe na send-push depois da PUSH-010 (#80). O teste de
-      // tipo é de propósito: contra a versão antiga da função, que respondia
-      // `{ success: true }` sem contagem, isto não faz nada — em vez de acusar
-      // falha em todo envio. `total` 0 = a cliente nunca ligou as notificações
-      // (nenhum aparelho inscrito): não é falha, então não há o que acusar.
-      if (
-        typeof envio?.enviados === "number" &&
-        envio.enviados === 0 &&
-        envio.total !== 0
-      ) {
-        if (envio.falhas?.some(falhaDePushSemConfirmacao)) {
-          toast.warning(
-            "Status atualizado, mas não foi possível confirmar o envio do aviso",
-            {
-              description: descricaoDePushSemConfirmacao(
-                envio.falhas,
-                "O aviso ainda pode chegar à cliente",
-              ),
-            },
-          );
-          return;
-        }
-
-        // O motivo cru vem em inglês técnico ("push service respondeu 410
-        // Gone"): a lojista lê a tradução, com a inicial maiúscula.
-        const motivo = envio?.falhas?.[0]
-          ? motivoDaFalhaEmPortugues(envio.falhas[0])
-          : null;
-        toast.warning("Status atualizado, mas o push não chegou", {
-          description: motivo
-            ? motivo.charAt(0).toUpperCase() + motivo.slice(1)
-            : "Nenhum dispositivo deste cliente recebeu a notificação.",
-        });
-      }
-    } catch (err) {
-      console.error("Error sending status push:", err);
-      toast.warning("Status atualizado, mas o push falhou", {
-        description: "O cliente não foi notificado da mudança.",
-      });
-    }
-  };
-
   // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
   // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.
   // onStatusChange` (OrderDetail.tsx) recebe a origem no 3º argumento, sem
@@ -1956,6 +1864,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // se ela ainda está nela (ver o `setSelectedOrder` abaixo).
     const etapaDePartida =
       selectedOrder?.id === orderId ? selectedOrder.status : undefined;
+    // A mudança foi para a fila offline? Lido do resultado de
+    // `updateOrderStatus`, nunca do `isOffline` deste render: a internet pode
+    // cair com a pergunta "Cancelar o pedido?" aberta, e o valor capturado
+    // ainda diria "online" — o push falhava e a ficha afirmava que a cliente
+    // não seria avisada, quando a fila avisa ao sincronizar.
+    let guardadoNaFila = false;
     // A RPC VEM PRIMEIRO (PEDIDO-090, #87).
     //
     // Até aqui o push saía ANTES da gravação. Se a RPC falhasse — 401, sessão
@@ -1965,7 +1879,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     try {
       // A origem capturada pelo diálogo prevalece sobre o estado atualizado.
       // Sem diálogo, usa a ficha selecionada apenas se for do MESMO pedido.
-      await updateOrderStatus(
+      const resultado = await updateOrderStatus(
         orderId,
         newStatus,
         undefined,
@@ -1973,6 +1887,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         statusEsperado ??
           (selectedOrder?.id === orderId ? selectedOrder.status : undefined),
       );
+      guardadoNaFila = resultado === "guardado-na-fila";
       haptic.success();
 
       // Achado 1 (caça-defeitos, Task 4c) — `handleStatusChange` é função
@@ -2069,7 +1984,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       throw err;
     }
 
-    if (silent || isOffline) return;
+    if (silent || guardadoNaFila) return;
 
     // O pedido pode não estar na página carregada: quando o admin chega por
     // deep link, `orders` traz só a página atual e o `find` devolve undefined.

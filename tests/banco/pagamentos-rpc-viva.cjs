@@ -119,6 +119,9 @@ const {
   PAUSA_DE_VENDAS,
 } = require("./a-loja-pausa-o-pedido-novo-posterior.cjs");
 const {
+  DEVOLUCAO_COM_CHAVE,
+} = require("./a-devolucao-com-a-mesma-chave-posterior.cjs");
+const {
   PRECO_HISTORICO,
 } = require("./o-preco-do-produto-deixa-historico-posterior.cjs");
 const {
@@ -1898,6 +1901,10 @@ const POSTERIORES_A_97 = [
   // rollback da 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual (comum) dela tira os 2 gatilhos e as 5 funcoes e DEIXA a tabela
   // pausa_de_vendas. Definicao unica em tests/banco/a-loja-pausa-o-pedido-novo-posterior.cjs. No FIM da lista de proposito.
   PAUSA_DE_VENDAS,
+  // 20261640000000: a RPC solicitar_estorno_com_chave chama is_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT). O rollback-manual (comum) dela tira so a funcao e DEIXA a coluna chave_da_solicitacao e o indice. Definicao
+  // unica em tests/banco/a-devolucao-com-a-mesma-chave-posterior.cjs. No FIM da lista de proposito.
+  DEVOLUCAO_COM_CHAVE,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

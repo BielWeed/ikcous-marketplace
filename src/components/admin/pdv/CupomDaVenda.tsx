@@ -12,13 +12,18 @@
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Button } from "@/components/ui/button";
 import { ImagemComFallback } from "@/components/ui/custom/ImagemComFallback";
-import type { AcaoDaVenda, EstadoDaVenda } from "@/hooks/useVendaPresencial";
+import type {
+  AcaoDaVenda,
+  EstadoDaVenda,
+  ItemDoCupom,
+} from "@/hooks/useVendaPresencial";
 import { guardarCodigoParaCadastro } from "@/lib/codigo-para-cadastro";
 import { ORIENTACAO_PARA_CONFERIR_VENDA_NO_BALCAO } from "@/lib/erro-da-venda-presencial";
 import {
   type FeedbackDoLeitor,
   criarFeedbackDoLeitor,
 } from "@/lib/feedback-do-leitor";
+import { pluralizar } from "@/lib/pluralizar";
 import type { View } from "@/types";
 import {
   AlertTriangle,
@@ -57,6 +62,22 @@ export interface PropsDoCupomDaVenda {
   readonly agora?: () => number;
   /** Abre a busca antes de devolver o foco ao sair de uma camada com Esc. */
   readonly aoRetomarBusca?: () => void;
+}
+
+/** Cupom esvaziou pelo "Remover": o foco vai a quem põe produto na venda,
+ * no modo que já está aberto (busca, código digitado ou a aba da câmera) —
+ * sem trocar de modo nem desligar a câmera. */
+function focarEntradaDeProduto(): void {
+  for (const id of ["busca-manual-de-produto", "codigo-de-barras-manual"]) {
+    const campo = document.getElementById(id);
+    if (campo && !campo.closest("[hidden]")) {
+      campo.focus();
+      return;
+    }
+  }
+  document
+    .querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+    ?.focus();
 }
 
 function reais(valor: number): string {
@@ -150,6 +171,62 @@ export function CupomDaVenda({
     if (aoRetomarBusca) aoRetomarBusca();
     else document.getElementById("busca-manual-de-produto")?.focus();
   }, [escolha, confirmandoCancelamento, aoRetomarBusca]);
+
+  // Leitor de tela: o +/− só mudava um número na linha, sem fala, e o
+  // "Remover" (quantidade 1) sumia levando o foco junto. O toque guarda o que
+  // mudou; quando o cupom novo chega, a região falada (fixa, no fim da seção
+  // "Itens da venda") diz o resultado e, se o item saiu, o foco vai ao item
+  // seguinte (ou ao de cima, ou à entrada de produto quando o cupom esvazia).
+  // Compara com a quantidade de ANTES: toque recusado não fala nada.
+  // `vez` conta as falas e é a `key` do nó falado: frase igual à anterior
+  // (2 → 3 pelo bipe → 2 pelo "−") não mudaria o DOM e o leitor calaria;
+  // trocar o nó DENTRO da região viva, que fica fixa, é anunciado de novo.
+  const [anuncio, setAnuncio] = useState({ texto: "", vez: 0 });
+  function anunciar(texto: string) {
+    setAnuncio((atual) => ({ texto, vez: atual.vez + 1 }));
+  }
+  const listaRef = useRef<HTMLUListElement>(null);
+  const mudancaDeQuantidadeRef = useRef<{
+    readonly chave: string;
+    readonly nome: string;
+    readonly quantidadeAntes: number;
+    readonly posicao: number;
+  } | null>(null);
+  useEffect(() => {
+    const mudanca = mudancaDeQuantidadeRef.current;
+    if (!mudanca) return;
+    mudancaDeQuantidadeRef.current = null;
+    const item = estado.itens.find((i) => i.chave === mudanca.chave);
+    if (item) {
+      if (item.quantidade === mudanca.quantidadeAntes) return;
+      anunciar(
+        `${item.nome}: ${pluralizar(item.quantidade, "unidade", "unidades")}, R$ ${reais(item.preco * item.quantidade)}`,
+      );
+      return;
+    }
+    anunciar(`${mudanca.nome} removido da venda`);
+    const linhas = listaRef.current?.children;
+    const vizinho =
+      linhas && linhas.length > 0
+        ? linhas[Math.min(mudanca.posicao, linhas.length - 1)]
+        : null;
+    if (vizinho instanceof HTMLElement) vizinho.focus();
+    else focarEntradaDeProduto();
+  }, [estado.itens]);
+
+  function mudarQuantidade(
+    item: ItemDoCupom,
+    posicao: number,
+    acao: AcaoDaVenda,
+  ) {
+    mudancaDeQuantidadeRef.current = {
+      chave: item.chave,
+      nome: item.nome,
+      quantidadeAntes: item.quantidade,
+      posicao,
+    };
+    despachar(acao);
+  }
 
   function aoTeclarNaCamada(evento: React.KeyboardEvent<HTMLElement>): void {
     if (evento.key !== "Escape") return;
@@ -356,12 +433,13 @@ export function CupomDaVenda({
               <span className="sr-only">Nenhum item na venda ainda.</span>
             </div>
           ) : (
-            <ul>
-              {estado.itens.map((item) => {
+            <ul ref={listaRef}>
+              {estado.itens.map((item, posicao) => {
                 const destacado = estado.ultimaEntrada?.chave === item.chave;
                 return (
                   <li
                     key={item.chave}
+                    tabIndex={-1}
                     data-destacado={destacado ? "true" : "false"}
                     className="pdv-item lg:shrink-0"
                   >
@@ -418,16 +496,17 @@ export function CupomDaVenda({
                           }
                           disabled={estado.enviando}
                           onClick={() =>
-                            item.quantidade === 1
-                              ? despachar({
-                                  tipo: "item_removido",
-                                  chave: item.chave,
-                                })
-                              : despachar({
-                                  tipo: "quantidade_alterada",
-                                  chave: item.chave,
-                                  delta: -1,
-                                })
+                            mudarQuantidade(
+                              item,
+                              posicao,
+                              item.quantidade === 1
+                                ? { tipo: "item_removido", chave: item.chave }
+                                : {
+                                    tipo: "quantidade_alterada",
+                                    chave: item.chave,
+                                    delta: -1,
+                                  },
+                            )
                           }
                           className={`pdv-touch ${item.quantidade === 1 ? "pdv-red" : ""}`}
                         >
@@ -445,7 +524,7 @@ export function CupomDaVenda({
                             estado.enviando || item.quantidade >= item.estoque
                           }
                           onClick={() =>
-                            despachar({
+                            mudarQuantidade(item, posicao, {
                               tipo: "quantidade_alterada",
                               chave: item.chave,
                               delta: 1,
@@ -470,6 +549,11 @@ export function CupomDaVenda({
               })}
             </ul>
           )}
+          {/* Fala do +/− e do "Remover" (ver `mudarQuantidade`). Fica DENTRO
+              da seção, não solta na grade do balcão em tela larga. */}
+          <p className="sr-only" aria-live="polite" aria-atomic="true">
+            <span key={anuncio.vez}>{anuncio.texto}</span>
+          </p>
         </section>
       )}
 

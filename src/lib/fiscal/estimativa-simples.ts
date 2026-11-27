@@ -112,7 +112,20 @@ export type EstimativaDoSimples =
     }
   | {
       readonly estado: "sem_estimativa";
-      readonly motivo: Exclude<MotivoSemEstimativa, "faltam_meses">;
+      readonly motivo: "acima_do_sublimite" | "acima_do_teto";
+      /**
+       * SÓ quando a RBT12 que passou do limite é PROJEÇÃO (média dos meses medidos x 12, ou
+       * o 1º mês de atividade x 12), e não a soma de 12 meses medidos: a tela não pode dizer
+       * "as vendas dos últimos 12 meses". Ausente = a soma de 12 meses de verdade.
+       */
+      readonly projecao?: true;
+    }
+  | {
+      readonly estado: "sem_estimativa";
+      readonly motivo: Exclude<
+        MotivoSemEstimativa,
+        "faltam_meses" | "acima_do_sublimite" | "acima_do_teto"
+      >;
     };
 
 type ParametrosDoSimples = ParametrosConferidos["simples"];
@@ -120,6 +133,15 @@ type ParametrosDoSimples = ParametrosConferidos["simples"];
 const semEstimativa = (
   motivo: Exclude<MotivoSemEstimativa, "faltam_meses">,
 ): EstimativaDoSimples => ({ estado: "sem_estimativa", motivo });
+
+/** Acima do sublimite ou do teto, com a marca de projeção só quando a RBT12 é projeção. */
+const acimaDoLimite = (
+  motivo: "acima_do_sublimite" | "acima_do_teto",
+  projecao: boolean,
+): EstimativaDoSimples =>
+  projecao
+    ? { estado: "sem_estimativa", motivo, projecao: true }
+    : { estado: "sem_estimativa", motivo };
 
 const COMPETENCIA = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -294,6 +316,8 @@ export function estimarDasDoSimples(
   let denominador = 1;
   // Só preenchido quando a RBT12 saiu da média de poucos meses medidos pelo app.
   let mesesNaMedia: number | undefined;
+  // A RBT12 é projeção (média x 12) em todo caminho menos o da soma de 12 meses medidos.
+  let projecao = true;
   if (k === 1) {
     // L8: no 1º mês de atividade, o próprio mês anualizado.
     numerador = mesEmCentavos * simples.mesesDaRbt12;
@@ -319,6 +343,7 @@ export function estimarDasDoSimples(
       // Todos os meses que a regra pede foram medidos: a conta cheia.
       if (pedidos === simples.mesesDaRbt12) {
         numerador = lidos.somaEmCentavos;
+        projecao = false;
       } else {
         numerador = lidos.somaEmCentavos * simples.mesesDaRbt12;
         denominador = pedidos;
@@ -344,14 +369,14 @@ export function estimarDasDoSimples(
   }
 
   if (numerador > paraCentavos(simples.tetoSimples) * denominador) {
-    return semEstimativa("acima_do_teto");
+    return acimaDoLimite("acima_do_teto", projecao);
   }
   if (numerador > paraCentavos(simples.sublimite) * denominador) {
-    return semEstimativa("acima_do_sublimite");
+    return acimaDoLimite("acima_do_sublimite", projecao);
   }
   const achada = acharFaixa(numerador, denominador, simples.anexoI);
   // Não acontece (o teto é a última faixa), mas sem faixa nunca se inventa alíquota.
-  if (!achada) return semEstimativa("acima_do_teto");
+  if (!achada) return acimaDoLimite("acima_do_teto", projecao);
 
   const valor = dasDaFaixaEmDezenas(
     mesEmCentavos,

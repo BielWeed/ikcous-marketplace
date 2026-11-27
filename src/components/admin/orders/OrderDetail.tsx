@@ -94,7 +94,14 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type RefObject,
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import {
@@ -485,6 +492,9 @@ interface OrderHeaderProps {
   // Motivo pelo qual o papel ainda não pode sair com tamanho e cor (achado e8
   // da caça): o texto aparece ao lado do botão desligado. `null` = pode imprimir.
   motivoDeNaoImprimir?: string | null;
+  /** Alvo do foco quando a pergunta de cancelar fecha e o botão que a abriu
+   * ficou desligado ou sumiu (ver `useConfirmarAcao`). */
+  tituloRef?: RefObject<HTMLHeadingElement | null>;
 }
 
 function OrderHeader({
@@ -492,6 +502,7 @@ function OrderHeader({
   devolucaoConcluida,
   avisoDeEspera,
   motivoDeNaoImprimir = null,
+  tituloRef,
 }: Readonly<OrderHeaderProps>) {
   const criadoEm = new Date(order.createdAt);
   // Mesmo calendário de Brasília usado pelo filtro da lista de pedidos.
@@ -520,7 +531,11 @@ function OrderHeader({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h1 className="break-words text-[22px] font-medium leading-tight tracking-tight text-white">
+            <h1
+              ref={tituloRef}
+              tabIndex={-1}
+              className="break-words text-[22px] font-medium leading-tight tracking-tight text-white"
+            >
               Pedido{" "}
               <span className="text-admin-gold">
                 #{numeroDoPedido(order.id)}
@@ -2639,7 +2654,14 @@ export const OrderDetail = memo(function OrderDetail({
   // Laudo #2 (L-1): cancelar pedido deixa de ser UM clique sem guarda — a
   // ação mais destrutiva do painel pede confirmação com texto por caso
   // (pago? em rota?), na mesma régua do cancelamento pelo cliente.
-  const { confirmar, dialogo, fechar: fecharConfirmacao } = useConfirmarAcao();
+  // Depois do "sim" o "Cancelar pedido" fica desligado e some com o pedido
+  // cancelado: o foco vai ao título da ficha, não ao body.
+  const tituloDaFichaRef = useRef<HTMLHeadingElement>(null);
+  const {
+    confirmar,
+    dialogo,
+    fechar: fecharConfirmacao,
+  } = useConfirmarAcao({ alvoDoFoco: tituloDaFichaRef });
   // A foto dos campos que alimentam o texto da pergunta: "o app devolve
   // sozinho" só é verdade enquanto o pedido está como estava quando a janela
   // abriu. Pedido que muda com a janela aberta (cliente cancelou, pagamento
@@ -2797,6 +2819,7 @@ export const OrderDetail = memo(function OrderDetail({
           devolucaoConcluida={devolucaoConcluida}
           avisoDeEspera={avisoDeEspera}
           motivoDeNaoImprimir={motivoDeNaoImprimir}
+          tituloRef={tituloDaFichaRef}
         />
 
         <OrderStepperPipeline

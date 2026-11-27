@@ -70,8 +70,11 @@ vi.mock("@/components/admin/pdv/LeitorDeCodigo", () => ({
 
 const CAMINHO_CSS = "src/components/admin/pdv/pdv.css";
 // Assinatura (sha256, fim de linha LF) do pdv.css de a69e9e6ba, ANTES do bloco.
+// Refeita em 27/11/2026 por uma mudança DE CELULAR, fora do bloco: o rótulo
+// do desconto sobe para cima do campo em tela estreita
+// (`tests/e2e/jornada-balcao-desconto-no-celular.spec.ts`).
 const ASSINATURA_DO_CSS_ORIGINAL =
-  "3f13e48b2236ab03342ef3786f4c74770c508ef9451a03ac011f80973e55da0d";
+  "fc666b90f189c17e99c3306843ec3404abc89e306ab7cd50a0d464d6b6e4adb0";
 const PARAMS_DO_BLOCO = "(min-width: 1280px)";
 const RAIZ = '.pdv[data-etapa="cupom"]';
 

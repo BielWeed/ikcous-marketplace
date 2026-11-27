@@ -97,6 +97,7 @@ export const TEXTOS_DO_CARTAO = {
   confianca:
     "Pagamento processado pelo Mercado Pago. Seus dados do cartão não passam pela loja.",
   carregando: "Carregando o formulário do cartão...",
+  enviando: "Enviando pagamento ao banco…",
   dados: "Confira os dados do cartão",
   semLimite: "O cartão não tem limite para este valor",
   autorizacao:

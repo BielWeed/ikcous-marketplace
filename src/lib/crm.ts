@@ -1041,8 +1041,10 @@ export function avisoDaMensalidadeEmAberto(
  *
  * `pausadasDesde` é o `pausa_em` (o dia prometido pela gestão, o mesmo do
  * WhatsApp). O banco nunca pausa ANTES dele, mas pode pausar depois (suspensa
- * gravada mais tarde, sexta a domingo vão para a segunda): o cartão não lê o
- * banco da pausa, então esse atraso não aparece aqui.
+ * gravada mais tarde, sexta a domingo vão para a segunda), e só pausa com a
+ * chave `pausa_de_vendas.vale_pela_assinatura` ligada: este sinal sozinho NÃO
+ * prova a pausa. Desde 27/11/2026 o cartão decide por `avisoDaSuspensa`
+ * (`situacao-das-vendas.ts`), que pergunta ao banco.
  */
 export function avisoDasVendasPausadas(
   assinatura: Pick<

@@ -57,6 +57,12 @@ const SUCESSORAS = [
     versao: "20261630000000",
     consulta: "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",
   },
+  // 20261640000000: a devolucao com a mesma chave nao paga duas vezes (solicitar_estorno_com_chave).
+  {
+    versao: "20261640000000",
+    consulta:
+      "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

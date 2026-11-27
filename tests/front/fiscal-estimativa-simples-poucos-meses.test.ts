@@ -178,13 +178,21 @@ describe("poucos meses de vendas no app: onde a estimativa começa", () => {
     ).toEqual(comBase(35_630, 1));
     expect(
       estimar("2026-05-01", { receitasMensais: { "2026-05": 300_000.01 } }),
-    ).toEqual({ estado: "sem_estimativa", motivo: "acima_do_sublimite" });
+    ).toEqual({
+      estado: "sem_estimativa",
+      motivo: "acima_do_sublimite",
+      projecao: true,
+    });
   });
 
   it("1 mês medido de R$ 400.000,01 (RBT12 passa do teto de R$ 4,8 mi): sem estimativa", () => {
     expect(
       estimar("2026-05-01", { receitasMensais: { "2026-05": 400_000.01 } }),
-    ).toEqual({ estado: "sem_estimativa", motivo: "acima_do_teto" });
+    ).toEqual({
+      estado: "sem_estimativa",
+      motivo: "acima_do_teto",
+      projecao: true,
+    });
   });
 
   it("2 meses: estima, e diz que a base são 2 meses (R$ 10.000 x 12 = R$ 120.000, 4%, DAS de R$ 400)", () => {
@@ -356,7 +364,11 @@ describe("poucos meses de vendas no app: mês zerado, virada de ano e tetos", ()
       estimar("2026-04-01", {
         receitasMensais: serie("2026-04", "2026-05", 400_000),
       }),
-    ).toEqual({ estado: "sem_estimativa", motivo: "acima_do_sublimite" });
+    ).toEqual({
+      estado: "sem_estimativa",
+      motivo: "acima_do_sublimite",
+      projecao: true,
+    });
   });
 
   it("2 meses com média de R$ 400.000,01: RBT12 passa do teto de R$ 4,8 mi: sem estimativa", () => {
@@ -365,7 +377,11 @@ describe("poucos meses de vendas no app: mês zerado, virada de ano e tetos", ()
       estimar("2026-04-01", {
         receitasMensais: { "2026-04": 400_000, "2026-05": 400_000.02 },
       }),
-    ).toEqual({ estado: "sem_estimativa", motivo: "acima_do_teto" });
+    ).toEqual({
+      estado: "sem_estimativa",
+      motivo: "acima_do_teto",
+      projecao: true,
+    });
   });
 
   it("2 meses com média de R$ 300.000 (RBT12 R$ 3,6 mi, ainda abaixo do sublimite): faixa 5, 11,875%", () => {

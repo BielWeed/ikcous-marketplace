@@ -34,6 +34,8 @@ const h = vi.hoisted(() => ({
   eventos: [] as Record<string, unknown>[],
   leiturasDoPedido: [] as string[],
   pedidoPendurado: false,
+  /** Números (1, 2, …) das leituras do pedido que penduram; as outras respondem. */
+  leiturasPenduradas: new Set<number>(),
   eventosPendurados: false,
 }));
 
@@ -56,9 +58,10 @@ vi.mock("@/lib/supabase", () => ({
         select: () => ({
           eq: (_coluna: string, valor: string) => {
             h.leiturasDoPedido.push(valor);
+            const numero = h.leiturasDoPedido.length;
             return {
               maybeSingle: () =>
-                h.pedidoPendurado
+                h.pedidoPendurado || h.leiturasPenduradas.has(numero)
                   ? nuncaResponde()
                   : Promise.resolve({
                       data: h.pedidoState.data
@@ -132,6 +135,7 @@ describe("EtiquetaDoPedidoCard: CPF e leituras com prazo", () => {
     h.leiturasDoPedido.length = 0;
     h.eventos = [];
     h.pedidoPendurado = false;
+    h.leiturasPenduradas.clear();
     h.eventosPendurados = false;
     h.pedidoState.data = pedido();
     hospedeiro = document.createElement("div");
@@ -309,6 +313,44 @@ describe("EtiquetaDoPedidoCard: CPF e leituras com prazo", () => {
           cpf: CPF,
         },
       });
+    });
+
+    it("a trava sai UMA vez: o fim da releitura antiga não solta a trava do salvamento NOVO do mesmo pedido", async () => {
+      // Leitura 1 abre A; a 2 é a releitura do estouro (pendura 15 s); as
+      // outras (abrir B, voltar para A) respondem.
+      h.leiturasPenduradas.add(2);
+      h.invokeMock.mockReturnValue(chamadaPendurada().promessa);
+      await abrirCard(ORDER_A);
+      await digitarCpf();
+      await salvarCpf();
+
+      // Estourou: a trava sai ANTES da releitura, e a releitura pendura.
+      await passar(PRAZO_DE_SALVAR_O_CPF_MS);
+      expect(h.leiturasDoPedido).toEqual([ORDER_A, ORDER_A]);
+
+      // Durante a releitura, a lojista sai e volta: salvamento NOVO de A.
+      await abrirCard(ORDER_B);
+      await abrirCard(ORDER_A);
+      await digitarCpf();
+      await salvarCpf();
+      expect(h.invokeMock).toHaveBeenCalledTimes(2);
+
+      // A releitura antiga estoura; o `finally` dela NÃO pode apagar a trava
+      // do salvamento novo, que segue em voo.
+      await passar(PRAZO_DA_LEITURA_MS);
+      expect(vi.mocked(toast.info)).not.toHaveBeenCalled();
+
+      await abrirCard(ORDER_B);
+      await abrirCard(ORDER_A);
+      await digitarCpf();
+      await salvarCpf();
+
+      // Sem o marcador `travaSolta`, este clique invocaria a edge pela 3ª vez.
+      expect(h.invokeMock).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(toast.info)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(toast.info).mock.calls[0]?.[0]).toMatch(
+        /CPF deste pedido ainda está sendo salvo/,
+      );
     });
 
     it("erro HTTP com o corpo pendurado: em 5 s solta o botão com a frase genérica", async () => {

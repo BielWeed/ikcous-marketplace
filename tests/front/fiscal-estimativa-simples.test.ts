@@ -558,13 +558,16 @@ describe("estimarDasDoSimples: empresa com menos de 12 meses de atividade (L8, 2
     expect(estimar({ ...base, receitaDoMes: 300_000 }).estado).toBe(
       "com_estimativa",
     );
+    // O 1º mês x 12 é projeção: a tela não pode falar em "últimos 12 meses".
     expect(estimar({ ...base, receitaDoMes: 300_000.01 })).toEqual({
       estado: "sem_estimativa",
       motivo: "acima_do_sublimite",
+      projecao: true,
     });
     expect(estimar({ ...base, receitaDoMes: 500_000 })).toEqual({
       estado: "sem_estimativa",
       motivo: "acima_do_teto",
+      projecao: true,
     });
   });
 
