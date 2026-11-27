@@ -2,7 +2,7 @@
 -- Nao le nenhuma linha de nenhuma tabela. Antes do apply esta consulta responde "nao" (a 96a negativa e' esperada), nunca erro.
 -- Prova que devolver_estoque tem o corpo novo (a trava na ordem da compra), os atributos de sempre e que ninguem de aplicacao a executa.
 -- SUCESSORA: a 20261642000000 (a peca que volta sem tamanho) mantem a trava e so acrescenta o ramo da peca sem tamanho; o corpo dela conta
--- como o desta (a 201a confere qual).
+-- como o desta (a 202a confere qual).
 WITH fn AS (
   SELECT p.oid, md5(replace(p.prosrc, chr(13), '')) AS h, l.lanname, p.prosecdef, p.provolatile, p.proisstrict, p.proconfig,
          pg_get_function_result(p.oid) AS resultado

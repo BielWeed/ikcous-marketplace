@@ -1,7 +1,7 @@
 -- 110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado: DEPOIS da 20261395200000 (o corpo desta migration, md5 a152c8dcd7cf6d1e05e5aff128d6c45e).
 -- SO LEITURA, so catalogo; rol fechado de 4 linhas. Nao le nenhuma linha de dado e nao chama a admin_devolucao_concluir.
 -- SUCESSORA: a 20261642000000 (a peca que volta sem tamanho) mantem a ordem global das travas e so acrescenta o ramo da peca sem tamanho; o
--- corpo dela conta como o desta na linha do md5 (a 201a confere qual).
+-- corpo dela conta como o desta na linha do md5 (a 202a confere qual).
 WITH fn AS (
   SELECT p.oid, md5(replace(p.prosrc, chr(13), '')) AS h,
     (l.lanname = 'plpgsql'

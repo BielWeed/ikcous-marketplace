@@ -1385,7 +1385,7 @@ const VERIFICACOES = {
   // 20261642000000: a peca que volta sem tamanho espera a lojista. devolver_estoque e admin_devolucao_concluir ganham o ramo do item SEM variacao
   // de produto que tem variacao ligada (a peca vai para pecas_sem_tamanho e nao conta como creditada); resolver_peca_sem_tamanho credita a
   // variacao escolhida uma vez so. Os marcadores sao as decisoes que, tiradas, voltam o defeito ou o pioram. Os corpos exatos (md5) sao da
-  // consulta 201a e do pos-voo; o comportamento e da prova viva a-peca-que-volta-sem-tamanho-viva.cjs.
+  // consulta 202a e do pos-voo; o comportamento e da prova viva a-peca-que-volta-sem-tamanho-viva.cjs.
   "20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql": [
     {
       funcao: "devolver_estoque",
