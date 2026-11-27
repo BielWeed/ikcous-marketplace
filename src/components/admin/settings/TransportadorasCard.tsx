@@ -604,12 +604,15 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       const confirmados = new Set(config.ligados);
       ligadosSalvosRef.current = confirmados;
       setLigadosSalvos(confirmados);
+      // Escolha pendente: reaplica por cima da lista nova (caça de regressão
+      // 27/11 — manter `atual` cru deixava a lista VISTA andar sozinha, e o
+      // salvar seguinte desligava o que outro aparelho ligou sem a edge ver).
       setLigadosEscolhidos((atual) =>
         reinicio.tudo ||
         (atual.size === anteriores.size &&
           [...atual].every((p) => anteriores.has(p)))
           ? confirmados
-          : atual,
+          : reaplicarEscolha(anteriores, atual, confirmados),
       );
       // A escolha pendente acabou de voltar à do servidor — a recusa que
       // falava dela sai junto (revisão Opus, PR #637).

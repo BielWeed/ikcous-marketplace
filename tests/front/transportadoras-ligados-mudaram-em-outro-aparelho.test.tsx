@@ -234,6 +234,72 @@ describe("TransportadorasSection — a lista mudou em outro aparelho", () => {
     expect(marcada("Frenet")).toBe(false);
   });
 
+  it("releitura no MEIO da edição (sair e voltar ao Frete) reaplica a escolha por cima da lista nova — não desliga o que o outro aparelho ligou", async () => {
+    // Caça de regressão 27/11: a releitura atualizava a lista VISTA mas
+    // deixava a escolha pendente intacta; o salvar seguinte passava na
+    // conferência da edge e desligava o Melhor Envio sem aviso.
+    let noBanco = ["superfrete"];
+    invoke.mockImplementation((_n: string, opcoes: any) => {
+      const body = opcoes?.body;
+      if (body?.action === "ler_configuracao_frete") {
+        return Promise.resolve({ data: leitura(noBanco), error: null });
+      }
+      if (body?.action === "save_active_providers") {
+        const atual = [...noBanco].sort().join(",");
+        const vistos = [...(body.ligadosVistos ?? [])].sort().join(",");
+        if (body.ligadosVistos && vistos !== atual) {
+          return Promise.resolve({
+            data: { success: false, motivo: "ligados_mudaram", error: "x" },
+            error: null,
+          });
+        }
+        noBanco = body.ligados;
+        return Promise.resolve({
+          data: { success: true, ligados: body.ligados },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
+    const { TransportadorasSection } = await import(
+      "./apoio/transportadoras-isoladas"
+    );
+    const montar = async (active: boolean) => {
+      await act(async () => {
+        raiz.render(<TransportadorasSection active={active} />);
+      });
+      await assentar();
+    };
+    await montar(true);
+    expect(marcada("SuperFrete")).toBe(true);
+
+    // No celular ela DESLIGA a SuperFrete, sem salvar ainda.
+    await clicar(caixa("SuperFrete"));
+    expect(marcada("SuperFrete")).toBe(false);
+
+    // No computador, o Melhor Envio foi ligado.
+    noBanco = ["superfrete", "melhor_envio"];
+
+    // Ela sai da aba do Frete e volta: a tela relê do servidor.
+    const leiturasAntes = leiturasFeitas();
+    await montar(false);
+    await montar(true);
+    expect(leiturasFeitas()).toBe(leiturasAntes + 1);
+
+    // A escolha dela (tirar a SF) continua; o ME do outro aparelho aparece.
+    expect(marcada("SuperFrete")).toBe(false);
+    expect(marcada("Melhor Envio")).toBe(true);
+    expect(marcada("Frenet")).toBe(false);
+
+    await clicar(salvar());
+    expect(corposDoSalvar()[0]).toEqual({
+      action: "save_active_providers",
+      ligados: ["melhor_envio"],
+      ligadosVistos: ["superfrete", "melhor_envio"],
+    });
+    expect(noBanco).toEqual(["melhor_envio"]);
+  });
+
   it("depois de um salvar BEM-sucedido, a próxima ida leva como vista a lista que o servidor confirmou", async () => {
     invoke.mockImplementation((_n: string, opcoes: any) => {
       const body = opcoes?.body;
