@@ -9,10 +9,8 @@ import {
   formatarData,
   formatarDiaEMes,
   formatarMoeda,
-  fraseDoCiclo,
   infoDoStatusDaAssinatura,
   linhasDeDatasDaAssinatura,
-  rotuloDoCiclo,
 } from "@/lib/crm";
 import { avisoDaSuspensa } from "@/lib/situacao-das-vendas";
 import type { TomDeEstado } from "@/lib/tons-de-estado";
@@ -29,6 +27,7 @@ import type { ReactNode } from "react";
 import {
   BOTAO_INICIO,
   FalhaDoInicio,
+  ROTULO_INICIO,
   TileDoInicio,
   VALOR_INICIO,
 } from "./visualDoInicio";
@@ -205,12 +204,32 @@ export function CartaoDaAssinatura({
   // No teste encerrado, na mensalidade em aberto e nas vendas pausadas somem
   // "Em aberto desde", "Próxima cobrança" e "Teste até": fica só "Cliente
   // desde", montada direto de `inicioEm`.
-  const linhasDeDatas =
+  const todasAsDatas =
     prazo || pausadas
       ? assinatura.inicioEm
         ? [{ rotulo: "Cliente desde", data: assinatura.inicioEm }]
         : []
       : linhasDeDatasDaAssinatura(assinatura);
+  // `valorMensal` é o valor da PRÓXIMA cobrança (27/11/2026): o 1º mês
+  // negociado, o restante de um pagamento parcial ou o preço de depois do
+  // contrato — com "/mês" a lojista lia R$ 175,00/mês, o que é falso. Com conta
+  // vencida (prazo, pausa, regularizar) o mesmo valor é o que está em aberto,
+  // nunca "próxima". Sem conta vencida, a data da próxima cobrança sai da
+  // lista e vai para junto do valor: o rótulo aparece uma vez só.
+  // Cancelada não tem próxima cobrança: o valor some (revisão 27/11/2026).
+  const mostraValor =
+    assinatura.valorMensal != null &&
+    !emTeste &&
+    assinatura.status !== "cancelada";
+  const temContaVencida = Boolean(prazo || pausadas || precisaRegularizar);
+  const dataDaCobranca =
+    mostraValor && !temContaVencida
+      ? (todasAsDatas.find((l) => l.rotulo === "Próxima cobrança")?.data ??
+        null)
+      : null;
+  const linhasDeDatas = dataDaCobranca
+    ? todasAsDatas.filter((l) => l.rotulo !== "Próxima cobrança")
+    : todasAsDatas;
 
   return (
     <section
@@ -223,11 +242,20 @@ export function CartaoDaAssinatura({
       <p className="min-w-0 break-words text-xl font-bold text-white [overflow-wrap:anywhere]">
         {assinatura.plano ?? "Plano sem nome"}
       </p>
-      {assinatura.valorMensal != null && !emTeste ? (
-        <p className={`text-2xl ${VALOR_INICIO}`}>
-          {formatarMoeda(assinatura.valorMensal)}
-          <span className="font-medium">{rotuloDoCiclo(assinatura.ciclo)}</span>
-        </p>
+      {mostraValor && assinatura.valorMensal != null ? (
+        <dl>
+          <dt className={ROTULO_INICIO}>
+            {temContaVencida ? "Valor em aberto" : "Próxima cobrança"}
+          </dt>
+          <dd className={`mt-1 text-2xl ${VALOR_INICIO}`}>
+            {formatarMoeda(assinatura.valorMensal)}
+          </dd>
+          {dataDaCobranca ? (
+            <dd className="mt-1 text-sm tabular-nums text-zinc-400">
+              em {formatarData(dataDaCobranca)}
+            </dd>
+          ) : null}
+        </dl>
       ) : null}
       <dl className="space-y-3 text-sm">
         {linhasDeDatas.map(({ rotulo, data }) => (
@@ -245,13 +273,14 @@ export function CartaoDaAssinatura({
       {contagem ? (
         <p className="text-sm font-medium text-white">{contagem}</p>
       ) : null}
-      {/* Cortesia (valor 0) não tem "depois" a cobrar. */}
+      {/* Cortesia (valor 0) não tem "depois" a cobrar. Só a PRIMEIRA
+          mensalidade: o valor é o da próxima cobrança, não o de todo mês. */}
       {emTeste &&
       assinatura.valorMensal != null &&
       assinatura.valorMensal > 0 ? (
         <p className="text-sm leading-relaxed text-zinc-400">
-          Depois, {formatarMoeda(assinatura.valorMensal)}
-          {fraseDoCiclo(assinatura.ciclo)}
+          Depois, a primeira mensalidade é de{" "}
+          {formatarMoeda(assinatura.valorMensal)}.
         </p>
       ) : null}
       {prazo ? (

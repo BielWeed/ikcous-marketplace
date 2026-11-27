@@ -353,6 +353,10 @@ function clearLocalUserData() {
   // aba lia o que a anterior digitou. `sessionStorageSeguro` nunca lança.
   limparRascunhoDoCheckout(sessionStorageSeguro());
   limparPedidoSemResposta();
+  // As chaves anti-repetição de lançamentos do Financeiro que ficaram "pode
+  // ter sido salvo" (tentativasEmAberto.ts) ficam DE PROPÓSITO: levam o dono
+  // junto, então outra conta nunca as usa, e quem sai e volta em 10 minutos
+  // precisa delas para salvar igual sem lançar em dobro.
   esquecerRastreioDeConvidado();
   esquecerDadosLocaisDaConta();
 }

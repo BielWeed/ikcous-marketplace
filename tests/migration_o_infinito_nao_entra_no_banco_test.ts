@@ -63,10 +63,16 @@ const SUCESSORAS = [
     consulta:
       "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
   },
+  // 20261641000000: uma avaliacao por cliente e produto, e a media do painel so das publicadas.
+  {
+    versao: "20261641000000",
+    consulta:
+      "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
+  },
   // 20261642000000: a peca que volta sem tamanho espera a lojista (devolver_estoque, admin_devolucao_concluir e as RPCs novas).
   {
     versao: "20261642000000",
-    consulta: "201a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
+    consulta: "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
   },
 ];
 const lerBruto = (n) =>

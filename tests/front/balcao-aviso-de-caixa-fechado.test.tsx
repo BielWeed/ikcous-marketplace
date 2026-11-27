@@ -220,9 +220,11 @@ const despacharRef: {
 function Hospedeiro({
   consultarCaixa,
   aoAbrirCaixa,
+  aoRegistrarVenda,
 }: {
   consultarCaixa: () => Promise<SituacaoDoCaixa>;
   aoAbrirCaixa: () => void;
+  aoRegistrarVenda?: () => Promise<void>;
 }) {
   const { estado, despachar, limparCupom } = useVendaPresencial({
     armazenamento: criarArmazenamentoEmMemoria(),
@@ -234,7 +236,9 @@ function Hospedeiro({
     <FechamentoDaVenda
       estado={estado}
       despachar={despachar}
-      aoRegistrarVenda={vi.fn().mockResolvedValue(undefined)}
+      aoRegistrarVenda={
+        aoRegistrarVenda ?? vi.fn().mockResolvedValue(undefined)
+      }
       limparCupom={limparCupom}
       consultarCaixa={consultarCaixa}
       aoAbrirCaixa={aoAbrirCaixa}
@@ -246,12 +250,14 @@ describe("FechamentoDaVenda — aviso de caixa fechado no Dinheiro", () => {
   async function montar(
     consultarCaixa: () => Promise<SituacaoDoCaixa>,
     aoAbrirCaixa: () => void = vi.fn(),
+    aoRegistrarVenda?: () => Promise<void>,
   ): Promise<void> {
     await act(async () => {
       raiz.render(
         <Hospedeiro
           consultarCaixa={consultarCaixa}
           aoAbrirCaixa={aoAbrirCaixa}
+          aoRegistrarVenda={aoRegistrarVenda}
         />,
       );
     });
@@ -370,6 +376,76 @@ describe("FechamentoDaVenda — aviso de caixa fechado no Dinheiro", () => {
     await escolher("cash");
     expect(aviso()).toBeNull();
     expect(consultar).toHaveBeenCalledTimes(2);
+  });
+
+  it("aviso visto, troca para Pix e volta a Dinheiro com a consulta falhando: o aviso antigo não volta, nem enquanto a consulta não responde", async () => {
+    let recusar: (motivo: unknown) => void = () => {};
+    const consultar = vi
+      .fn<() => Promise<SituacaoDoCaixa>>()
+      .mockResolvedValueOnce("fechado")
+      .mockImplementationOnce(
+        () =>
+          new Promise<SituacaoDoCaixa>((_resolver, rejeitar) => {
+            recusar = rejeitar;
+          }),
+      );
+    await montar(consultar);
+    await escolher("cash");
+    expect(aviso(), "o aviso não apareceu na 1ª escolha").not.toBeNull();
+    await escolher("pix");
+    expect(aviso()).toBeNull();
+    // De volta a Dinheiro: a consulta nova ainda não respondeu. O "fechado" da
+    // escolha anterior não vale para esta — nada de aviso piscando.
+    await escolher("cash");
+    expect(
+      aviso(),
+      "o aviso da escolha anterior voltou antes da consulta nova responder",
+    ).toBeNull();
+    // E a consulta nova falha (sem internet): segue calado.
+    await act(async () => {
+      recusar(new TypeError("Failed to fetch"));
+    });
+    await avancar();
+    expect(aviso()).toBeNull();
+    expect(consultar).toHaveBeenCalledTimes(2);
+  });
+
+  it("enquanto a venda está sendo registrada, Abrir caixa fica travado como os outros botões", async () => {
+    let soltarRegistro: () => void = () => {};
+    const aoRegistrarVenda = vi.fn(
+      () =>
+        new Promise<void>((resolver) => {
+          soltarRegistro = resolver;
+        }),
+    );
+    const aoAbrirCaixa = vi.fn();
+    await montar(
+      vi.fn().mockResolvedValue("fechado"),
+      aoAbrirCaixa,
+      aoRegistrarVenda,
+    );
+    await escolher("cash");
+    expect(botaoPorTexto(aviso()!, "Abrir caixa")!.disabled).toBe(false);
+
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Registrar venda")!.click();
+    });
+    await avancar();
+    expect(aoRegistrarVenda).toHaveBeenCalledTimes(1);
+
+    const abrir = botaoPorTexto(aviso()!, "Abrir caixa")!;
+    expect(abrir.disabled, "Abrir caixa clicável durante o registro").toBe(
+      true,
+    );
+    await act(async () => {
+      abrir.click();
+    });
+    expect(aoAbrirCaixa).not.toHaveBeenCalled();
+
+    await act(async () => {
+      soltarRegistro();
+    });
+    await avancar();
   });
 });
 

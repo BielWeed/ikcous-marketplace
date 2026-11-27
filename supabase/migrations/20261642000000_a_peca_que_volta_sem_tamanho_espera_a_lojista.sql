@@ -71,7 +71,7 @@
 -- DEPOIS da 20261389100000 e da 20261395200000 (o pré-voo recusa sem elas) e da 20261197000000 (is_admin_atual). BANCO ANTES DO FRONT em
 -- CADA loja: o painel novo chama as duas RPCs; sem elas o aviso não aparece (a leitura falha e o painel segue sem o aviso).
 --
--- 9. FICHA DE VERIFICAÇÃO: consultas 201a (depois) / 201b (antes).
+-- 9. FICHA DE VERIFICAÇÃO: consultas 202a (depois) / 202b (antes).
 --   PROVA VIVA: tests/banco/a-peca-que-volta-sem-tamanho-viva.cjs (rpc-ci).
 --
 -- 10. ROLLBACK

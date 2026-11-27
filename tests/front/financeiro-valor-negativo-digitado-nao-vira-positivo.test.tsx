@@ -94,6 +94,7 @@ describe("Financeiro — valor negativo entra pela máscara e é recusado", () =
     await act(async () => {
       raiz.render(
         <NovoLancamentoFolha
+          autorId="dona-da-loja"
           hoje={HOJE}
           contas={[conta]}
           categorias={[categoria]}

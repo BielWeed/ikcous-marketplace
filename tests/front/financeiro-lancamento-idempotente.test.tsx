@@ -3,7 +3,6 @@
 // Financeiro — "Novo lançamento": a chave de idempotência da tentativa (20261246).
 
 import { NovoLancamentoFolha } from "@/components/admin/financeiro/NovoLancamentoFolha";
-import { esquecerTodasAsChavesEmAberto } from "@/components/admin/financeiro/tentativasEmAberto";
 import {
   CONTA_BANCARIA,
   CONTA_CAIXA_DA_LOJA,
@@ -61,6 +60,8 @@ const CATEGORIAS: CategoriaFinanceira[] = [
     sistema: false,
   },
 ];
+const DONA = "8a1f0c2e-2222-4222-8222-000000000002";
+const FUNCIONARIA = "8a1f0c2e-1111-4111-8111-000000000001";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -70,10 +71,11 @@ describe("lançamento: a tentativa sobrevive ao prazo, só muda com o conteúdo"
   let salvo: Mock<(mensagem: string) => void>;
   let fechado: Mock<() => void>;
 
-  async function abrir() {
+  async function abrir(autorId: string | null = DONA) {
     await act(async () => {
       raiz.render(
         <NovoLancamentoFolha
+          autorId={autorId}
           hoje={HOJE}
           contas={CONTAS}
           categorias={CATEGORIAS}
@@ -129,7 +131,7 @@ describe("lançamento: a tentativa sobrevive ao prazo, só muda com o conteúdo"
     });
   }
   beforeEach(async () => {
-    esquecerTodasAsChavesEmAberto();
+    sessionStorage.removeItem("fin-lancamento-tentativas-em-aberto");
     vi.useFakeTimers();
     rpcFalso.mockReset().mockImplementation(() => new Promise(() => {}));
     host = document.createElement("div");
@@ -271,6 +273,74 @@ describe("lançamento: a tentativa sobrevive ao prazo, só muda com o conteúdo"
     });
     await abrir();
     await mudar("fin-lanc-valor", "13000");
+    await enviar();
+    expect(payload(1).chave_idempotencia).not.toBe(primeira);
+  });
+
+  it("funcionária fica sem resposta, sai, a dona entra e lança igual: grava com chave nova", async () => {
+    await act(async () => {
+      raiz.render(null);
+    });
+    await abrir(FUNCIONARIA);
+    await enviar();
+    await vencerPrazo(); // "pode ter sido salvo": a chave dela fica em aberto
+    const daFuncionaria = payload(0).chave_idempotencia;
+    await act(async () => {
+      raiz.render(null); // saiu da conta
+    });
+    await abrir(DONA);
+    rpcFalso.mockResolvedValueOnce({ data: { ids: ["da-dona"] }, error: null });
+    await enviar();
+    expect(payload(1)).toEqual({
+      ...payload(0),
+      chave_idempotencia: payload(1).chave_idempotencia,
+    });
+    expect(payload(1).chave_idempotencia).toMatch(UUID);
+    expect(payload(1).chave_idempotencia).not.toBe(daFuncionaria);
+    expect(salvo).toHaveBeenCalledWith("Lançamento salvo.");
+    // A chave dela continua dela: se voltar e reenviar, não duplica o seu.
+    await abrir(FUNCIONARIA);
+    await enviar();
+    expect(payload(2).chave_idempotencia).toBe(daFuncionaria);
+  });
+
+  it("a conta da aba muda com a folha aberta: o envio seguinte não leva a chave de quem saiu", async () => {
+    await enviar();
+    await vencerPrazo(); // "pode ter sido salvo": a chave da dona fica em aberto
+    const daDona = payload(0).chave_idempotencia;
+    // Outra aba entrou com a conta da funcionária; a folha é a MESMA (sem
+    // remontar), com o conteúdo igual.
+    await abrir(FUNCIONARIA);
+    await enviar();
+    expect(payload(1)).toEqual({
+      ...payload(0),
+      chave_idempotencia: payload(1).chave_idempotencia,
+    });
+    expect(payload(1).chave_idempotencia).toMatch(UUID);
+    expect(payload(1).chave_idempotencia).not.toBe(daDona);
+    // A dona volta na mesma folha: a chave dela continua dela.
+    await vencerPrazo();
+    await abrir(DONA);
+    await enviar();
+    expect(payload(2).chave_idempotencia).toBe(daDona);
+    // Sem conta conhecida, nem a chave em memória da dona vai junto.
+    await vencerPrazo();
+    await abrir(null);
+    await enviar();
+    expect(payload(3).chave_idempotencia).not.toBe(daDona);
+    expect(payload(3).chave_idempotencia).not.toBe(
+      payload(1).chave_idempotencia,
+    );
+  });
+
+  it("sem usuário conhecido, reabrir não reaproveita chave de ninguém", async () => {
+    await enviar();
+    await vencerPrazo();
+    const primeira = payload(0).chave_idempotencia;
+    await act(async () => {
+      raiz.render(null);
+    });
+    await abrir(null);
     await enviar();
     expect(payload(1).chave_idempotencia).not.toBe(primeira);
   });

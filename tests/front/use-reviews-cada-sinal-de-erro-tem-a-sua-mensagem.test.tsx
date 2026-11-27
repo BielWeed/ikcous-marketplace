@@ -181,7 +181,8 @@ describe("addReview — cada sinal de erro escolhe a frase certa sozinho", () =>
   it("código 23505 SEM nenhum texto: 'já avaliou'", async () => {
     h.singleOk = { data: null, error: { code: "23505", message: "x" } };
 
-    expect(await chamarAddReview()).toBeNull();
+    // A repetida recusada pelo banco (20261641000000) tem o mesmo resultado da conferencia.
+    expect(await chamarAddReview()).toEqual({ jaAvaliado: true });
 
     expect(await mensagemNaTela()).toBe(JA_AVALIOU);
   });
@@ -192,7 +193,7 @@ describe("addReview — cada sinal de erro escolhe a frase certa sozinho", () =>
       error: { message: "Duplicate Key value violates unique constraint" },
     };
 
-    expect(await chamarAddReview()).toBeNull();
+    expect(await chamarAddReview()).toEqual({ jaAvaliado: true });
 
     expect(await mensagemNaTela()).toBe(JA_AVALIOU);
   });

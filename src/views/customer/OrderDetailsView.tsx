@@ -529,7 +529,12 @@ export function OrderDetailsView({
   // Devolução nem Avaliar (o servidor recusa todos: a dona é outra), e com o
   // "fale com a loja". Se a lista da conta traz o mesmo pedido, o retrato sai
   // (efeito da lista viva abaixo) e as ações voltam.
-  const contaDona = retratoDoConvidado ? null : user;
+  // Exceção: o retrato traz o `user_id` do pedido. A cliente logada que
+  // consultou o PRÓPRIO pedido e o abre com a lista da conta falhando ou vazia
+  // é a dona — as ações dela não somem por causa do caminho que a trouxe.
+  const retratoDaPropriaConta =
+    !!user && !!order?.userId && order.userId === user.id;
+  const contaDona = retratoDoConvidado && !retratoDaPropriaConta ? null : user;
   // Qual cor/tamanho cada linha do pedido mostrava na compra.
   const rotulosDasVariacoes = useRotulosDasVariacoes(order?.items);
   // O mesmo texto, por id da LINHA do pedido: é a chave que a folha de devolução
@@ -2001,7 +2006,10 @@ export function OrderDetailsView({
               <div
                 key={idx}
                 className={cn(
-                  "group flex items-center gap-3.5",
+                  // 27/11/2026: em 320 px (fonte em 130%) sobravam ~52 px para o
+                  // nome e o "Qtd. 2 · R$ 499,90 un.". A coluna tem largura mínima
+                  // e, quando não cabe, o total desce (à direita) em vez de invadir.
+                  "group flex flex-wrap items-center gap-x-3.5 gap-y-1",
                   order.status === "cancelled" && "opacity-60",
                 )}
               >
@@ -2012,7 +2020,7 @@ export function OrderDetailsView({
                     className="transition-transform duration-500 group-hover:scale-105"
                   />
                 </div>
-                <div className="flex min-w-0 flex-1 flex-col justify-center">
+                <div className="flex min-w-24 flex-1 flex-col justify-center">
                   <h5 className="break-words text-sm font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
                     {item.name}
                   </h5>
@@ -2026,13 +2034,20 @@ export function OrderDetailsView({
                   )}
                   <p className="mt-0.5 text-xs font-medium text-zinc-500">
                     Qtd. {item.quantity}
-                    {item.quantity > 1 &&
-                      ` · ${formatCurrency(item.price)} un.`}
+                    {item.quantity > 1 && (
+                      <>
+                        {" · "}
+                        <span className="whitespace-nowrap">
+                          {formatCurrency(item.price)}
+                        </span>
+                        {" un."}
+                      </>
+                    )}
                   </p>
                 </div>
                 <span
                   className={cn(
-                    "flex-shrink-0 text-sm font-bold",
+                    "ml-auto flex-shrink-0 text-sm font-bold",
                     order.status === "cancelled"
                       ? "text-zinc-500 line-through"
                       : "text-zinc-900",

@@ -276,7 +276,12 @@ describe("Início do painel", () => {
 
     const pagina = texto(hospedeiro);
     expect(pagina).toContain("Atrasada");
-    expect(pagina).toContain("R$ 99,90/mês");
+    // 27/11/2026: sem "/mês" (o app de gestão pode mandar o restante de um
+    // pagamento parcial). Atrasada: o valor é o que está em aberto, não a
+    // "próxima" cobrança (revisão do mesmo dia).
+    expect(pagina).toContain("Valor em abertoR$ 99,90");
+    expect(pagina).not.toContain("Próxima cobrança");
+    expect(pagina).not.toContain("/mês");
     // Atrasada: a data é a da mensalidade mais antiga em aberto.
     expect(pagina).toContain("Em aberto desde");
     expect(pagina).toContain("01/10/2026");
@@ -373,6 +378,51 @@ describe("Início do painel", () => {
     expect(texto(cartao)).not.toContain("pausad");
     // A falha desta leitura não vira erro do cartão nem dos números.
     expect(texto(cartao)).not.toContain("Tentar de novo");
+  });
+
+  it("primeira leitura diz 'pausadas' e a revalidação da situação falha: o cartão não herda a pausa da resposta anterior", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    h.respostas.set("assinatura_da_loja_ler", {
+      data: SUSPENSA_COM_PAUSA_VENCIDA,
+      error: null,
+    });
+    h.respostas.set("situacao_das_vendas_da_loja", {
+      data: {
+        aceita: false,
+        motivo: "vendas_pausadas",
+        pausada_desde: "2026-01-13",
+      },
+      error: null,
+    });
+    await montar();
+    await esperarAte(() =>
+      texto(hospedeiro).includes("Vendas pela loja pausadas desde 13/01"),
+    );
+
+    h.respostas.set("situacao_das_vendas_da_loja", {
+      data: null,
+      error: { message: "TypeError: Failed to fetch" },
+    });
+    const leiturasDaSituacao = () =>
+      h.rpc.mock.calls.filter(
+        ([nome]) => nome === "situacao_das_vendas_da_loja",
+      ).length;
+    const sincronizar = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-label="Sincronizar os números do Início"]',
+    );
+    act(() => sincronizar?.click());
+    // guarda: a revalidação saiu e terminou (o botão volta a valer)
+    await esperarAte(
+      () => leiturasDaSituacao() === 2 && sincronizar?.disabled === false,
+    );
+    await esperarAte(() => texto(hospedeiro).includes("Loja Pro"));
+    const cartao = hospedeiro.querySelector(
+      '[aria-labelledby="inicio-assinatura-titulo"]',
+    );
+    expect(texto(cartao)).not.toContain("pausad");
+    expect(texto(cartao)).not.toContain("Seus clientes não conseguem");
+    expect(texto(cartao)).toContain("Suspensa");
   });
 
   it("os botões grandes levam aos Relatórios e ao Financeiro", async () => {

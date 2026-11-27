@@ -3,7 +3,7 @@
 /* eslint-disable security/detect-unsafe-regex -- as regexes leem o texto fixo e versionado de uma migration (sem entrada de fora), entao nao ha ReDoS possivel; mesma razao dos outros testes migration_*. */
 // A PECA QUE VOLTA SEM TAMANHO ESPERA A LOJISTA — leitura do TEXTO da 20261642000000 e do rollback dela.
 // O COMPORTAMENTO (o defeito com os corpos de antes, a matriz diferencial, a devolucao, a decisao idempotente, duas conexoes reais, o Salvar
-// recusado pela versao, os mutantes, reaplicar, pre-voo, rollback e as consultas 201a/201b) e' provado no Postgres efemero por
+// recusado pela versao, os mutantes, reaplicar, pre-voo, rollback e as consultas 202a/202b) e' provado no Postgres efemero por
 // tests/banco/a-peca-que-volta-sem-tamanho-viva.cjs; aqui ficam as ancoras que se leem do arquivo, sem banco:
 //   - a migration e' ADITIVA, SEM transacao propria e SEM backfill;
 //   - os dois corpos novos sao os vigentes (389 e 395) com SO a troca declarada, byte a byte;
@@ -359,10 +359,10 @@ Deno.test("20261642: os md5 do pre-voo, do pos-voo, do rollback e das consultas 
   assertStringIncludes(posterior, `HASH_DEVOLVER_DESTA = "${H_DEV}"`);
   assertStringIncludes(posterior, `HASH_CONCLUIR_DESTA = "${H_CONCL}"`);
   const a = lerTexto(
-    "scripts/publicacao/consultas/201a-conferir-a-peca-que-volta-sem-tamanho-aplicado.sql",
+    "scripts/publicacao/consultas/202a-conferir-a-peca-que-volta-sem-tamanho-aplicado.sql",
   );
   const b = lerTexto(
-    "scripts/publicacao/consultas/201b-antes-a-peca-que-volta-sem-tamanho-base-vigente.sql",
+    "scripts/publicacao/consultas/202b-antes-a-peca-que-volta-sem-tamanho-base-vigente.sql",
   );
   for (const h of [H_DEV, H_CONCL, H_PEND, H_RES])
     assertStringIncludes(a, `'${h}'`);
@@ -418,11 +418,11 @@ Deno.test("20261642: ligada na release - canais, consultas, conferir-banco, rpc-
   assertEquals(lote.length, 1);
   assertEquals(
     lote[0].consulta,
-    "201a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
+    "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
   );
   assertEquals(
     lote[0].ausenciaConfirmadaPor,
-    "201b-antes-a-peca-que-volta-sem-tamanho-base-vigente",
+    "202b-antes-a-peca-que-volta-sem-tamanho-base-vigente",
   );
   assertEquals(lote[0].versoes, ["20261642000000"]);
   const {
@@ -430,13 +430,13 @@ Deno.test("20261642: ligada na release - canais, consultas, conferir-banco, rpc-
   } = require("../scripts/publicacao/conferir-banco.cjs");
   assertEquals(
     ROL_FECHADO_POR_CONSULTA[
-      "201a-conferir-a-peca-que-volta-sem-tamanho-aplicado"
+      "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado"
     ].length,
     6,
   );
   assertEquals(
     ROL_FECHADO_POR_CONSULTA[
-      "201b-antes-a-peca-que-volta-sem-tamanho-base-vigente"
+      "202b-antes-a-peca-que-volta-sem-tamanho-base-vigente"
     ].length,
     4,
   );

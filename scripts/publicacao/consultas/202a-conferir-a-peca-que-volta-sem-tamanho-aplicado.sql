@@ -1,7 +1,7 @@
--- 201a-conferir-a-peca-que-volta-sem-tamanho-aplicado: DEPOIS da 20261642000000 (devolver_estoque e admin_devolucao_concluir com o ramo da peca sem
+-- 202a-conferir-a-peca-que-volta-sem-tamanho-aplicado: DEPOIS da 20261642000000 (devolver_estoque e admin_devolucao_concluir com o ramo da peca sem
 -- tamanho, a tabela public.pecas_sem_tamanho e as RPCs pecas_sem_tamanho_pendentes(uuid) e resolver_peca_sem_tamanho(uuid, uuid)). SO LEITURA, somente
 -- catalogo; rol fechado de 6 linhas. NAO le nenhuma linha de pedido, devolucao, produto nem peca e NAO chama funcao nenhuma. Antes do apply (ou depois do
--- rollback) as linhas da migration respondem 'AUSENTE' ou 'nao' (a 201a negativa e' esperada), nunca erro.
+-- rollback) as linhas da migration respondem 'AUSENTE' ou 'nao' (a 202a negativa e' esperada), nunca erro.
 WITH fn AS (
   SELECT p.proname::text AS nome, md5(replace(p.prosrc, chr(13), '')) AS h, p.oid
     FROM pg_catalog.pg_proc p

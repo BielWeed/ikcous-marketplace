@@ -93,6 +93,7 @@ const naturezaDoTipo = (tipo: TipoDeLancamento) =>
  * na própria folha (a folha só fecha quando o banco confirma).
  */
 export function NovoLancamentoFolha({
+  autorId,
   hoje,
   contas,
   categorias,
@@ -103,6 +104,8 @@ export function NovoLancamentoFolha({
   aoMudarSujo,
   aoMudarEnviando,
 }: {
+  /** Conta de quem lança: a chave de uma tentativa sem resposta é só dela. */
+  readonly autorId: string | null;
   readonly hoje: DataIso;
   readonly contas: readonly ContaFinanceira[];
   readonly categorias: readonly CategoriaFinanceira[];
@@ -128,6 +131,9 @@ export function NovoLancamentoFolha({
   const formRef = useRef(formInicial);
   const [chaveInicial] = useState(gerarChaveDaTentativa);
   const chaveDaTentativa = useRef(chaveInicial);
+  // Conta dona da chave em memória: se a conta da aba trocar com a folha aberta
+  // (outra aba entrou), a chave da pessoa anterior não vai no próximo envio.
+  const autorDaChave = useRef(autorId);
   // "Sujo" = diferente do que abriu (desfazer à mão limpa o aviso). Tocar e
   // sair de um campo sem mudar nada não conta.
   const sujo = JSON.stringify(form) !== JSON.stringify(formInicial);
@@ -254,8 +260,13 @@ export function NovoLancamentoFolha({
     // abertura do formulário) reaproveita a chave dela: se aquela gravação ainda
     // estiver viva no servidor, esta devolve o mesmo lançamento em vez de somar.
     const conteudo = JSON.stringify(resultado.payload);
-    const chave = chaveEmAbertoDoConteudo(conteudo) ?? chaveDaTentativa.current;
-    guardarChaveEmAberto(conteudo, chave);
+    if (autorDaChave.current !== autorId) {
+      autorDaChave.current = autorId;
+      chaveDaTentativa.current = gerarChaveDaTentativa();
+    }
+    const chave =
+      chaveEmAbertoDoConteudo(autorId, conteudo) ?? chaveDaTentativa.current;
+    guardarChaveEmAberto(autorId, conteudo, chave);
     try {
       // O prazo solta a tela, mas não cancela a gravação no servidor.
       const ids = await aguardarComPrazo(
@@ -266,7 +277,7 @@ export function NovoLancamentoFolha({
         30_000,
         () => erroDePrazo,
       );
-      esquecerChaveEmAberto(conteudo);
+      esquecerChaveEmAberto(autorId, conteudo);
       confirmarVisualmente({
         titulo:
           ids.length > 1

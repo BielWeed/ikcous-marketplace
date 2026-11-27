@@ -423,7 +423,7 @@ describe("AdminReviewsView — redesenho", () => {
     for (const trecho of [
       "Média global",
       "nota dos compradores",
-      "Total recebido",
+      "Total publicado",
       "2 para aprovar",
       "Taxa de resposta",
       "50%",

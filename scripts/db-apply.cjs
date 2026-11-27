@@ -426,6 +426,63 @@ const VERIFICACOES = {
       { texto: "'ja_registrada', false", vezes: 1 },
     ],
   },
+  // 20261641000000: uma avaliacao por cliente e produto, e a media do painel so das publicadas. TRES funcoes: a NOVA do gatilho
+  // (trava por conta+produto ANTES de contar, recusa 23505; fora so a sessao direta e o cliente em nome de outra conta) e as duas
+  // RPCs do painel com o status no bloco global (get_admin_reviews_paged) e no WHERE (get_reviews_metrics). O corpo exato (md5), os
+  // atributos e a ACL sao da consulta 201a; o comportamento, da prova viva.
+  "20261641000000_uma_avaliacao_por_cliente_e_a_media_do_painel_so_das_publicadas.sql":
+    [
+      {
+        funcao: "avaliacao_uma_por_cliente_e_produto",
+        esperado: [
+          {
+            texto:
+              "pg_advisory_xact_lock(hashtextextended(\n        'reviews_uma_por_cliente_e_produto:'",
+            vezes: 1,
+          },
+          {
+            texto:
+              "IF EXISTS (SELECT 1 FROM public.reviews r WHERE r.user_id = NEW.user_id AND r.product_id = NEW.product_id) THEN",
+            vezes: 1,
+          },
+          {
+            texto: "USING ERRCODE = '23505', DETAIL = 'avaliacao_repetida';",
+            vezes: 1,
+          },
+          {
+            texto:
+              "IF v_papel IN ('anon', 'authenticated') AND NEW.user_id IS DISTINCT FROM auth.uid() THEN",
+            vezes: 1,
+          },
+        ],
+      },
+      {
+        funcao: "get_admin_reviews_paged",
+        esperado: [
+          {
+            texto:
+              "    FROM public.reviews r\n    WHERE r.status = 'publicada';",
+            vezes: 1,
+          },
+          {
+            texto: "AND (NOT v_so_sem_resposta OR r.merchant_reply IS NULL)",
+            vezes: 2,
+          },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "get_reviews_metrics",
+        esperado: [
+          {
+            texto:
+              "    r.status = 'publicada'\n    AND (p_rating IS NULL OR r.rating = p_rating)",
+            vezes: 1,
+          },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+    ],
   // 20261399993000: o CRM e a lista de clientes nao contam a mesma pessoa duas vezes. DUAS funcoes, uma checagem cada. crm__nunca_comprou ganha SO a
   // CTE wa_nao_pagos (le crm__pedidos_nao_pagos, user_id nulo, o 55 cortado como em wa_pagos) e o terceiro NOT EXISTS; get_admin_customers_paged troca SO
   // o LEFT JOIN de user_addresses por UM endereco principal (LATERAL ... LIMIT 1) antes de juntar os pedidos. As travas de admin, a busca, o GROUP BY e o

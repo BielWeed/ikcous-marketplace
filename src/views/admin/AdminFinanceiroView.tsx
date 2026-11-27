@@ -531,6 +531,8 @@ export function AdminFinanceiroView({
       case "novo-lancamento":
         return (
           <NovoLancamentoFolha
+            key={user?.id ?? "sem-autor"}
+            autorId={user?.id ?? null}
             hoje={hoje}
             contas={listaDeContas}
             categorias={listaDeCategorias}
@@ -607,6 +609,7 @@ export function AdminFinanceiroView({
           <FecharCaixaFolha
             aoMudarEnviando={aoMudarEnviando}
             aoReconciliar={aoReconciliarCaixa}
+            autorId={user?.id ?? null}
             caixa={folha.caixa}
             aoFechar={pedirParaFechar}
             aoFechado={(como) => {

@@ -251,6 +251,34 @@ describe("ficha do pedido achado pela consulta dentro da conta", () => {
     },
   );
 
+  // A cliente logada consultou o PRÓPRIO pedido pela consulta e depois o abre
+  // com a lista da conta vazia (ou falhando): o retrato diz que o pedido é
+  // desta conta (`user_id`), então as ações dela não somem.
+  it.each(CENARIOS)(
+    "$nome: o pedido do retrato cujo user_id é o da conta aberta mostra as ações da dona",
+    async ({ pedido: p, acoesDaDona, orientacao }) => {
+      gravarRetrato({ ...p, userId: "conta-que-consultou" });
+
+      await abrir();
+
+      expect(texto()).toContain("Meu pedido");
+      // Continua dizendo de quando é o status: o retrato não atualiza sozinho.
+      expect(texto()).toContain("pode ter mudado");
+      for (const acao of acoesDaDona) expect(texto()).toContain(acao);
+      expect(texto()).not.toContain(orientacao);
+    },
+  );
+
+  it("controle: o pedido do retrato com user_id de OUTRA conta segue sem as ações da dona", async () => {
+    const { pedido: p, acoesDaDona } = CENARIOS[1];
+    gravarRetrato({ ...p, userId: "outra-conta" });
+
+    await abrir();
+
+    expect(texto()).toContain("pode ter mudado");
+    for (const acao of acoesDaDona) expect(texto()).not.toContain(acao);
+  });
+
   it("LIMITE: o pedido consultado que também é da conta passa a ser da dona quando a lista da conta o traz", async () => {
     const p = CENARIOS[1].pedido;
     gravarRetrato(p);

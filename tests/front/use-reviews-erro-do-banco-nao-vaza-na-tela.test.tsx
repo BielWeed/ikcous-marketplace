@@ -348,7 +348,8 @@ describe("addReview — o erro cru do banco não vaza para a tela", () => {
 
     const retorno = await chamarAddReview();
 
-    expect(retorno).toBeNull();
+    // A repetida recusada pelo banco (20261641000000) tem o mesmo resultado da conferencia.
+    expect(retorno).toEqual({ jaAvaliado: true });
     const mensagemNaTela = await ultimaMensagemDeErroNaTela();
     expect(mensagemNaTela).toBe("Você já avaliou este produto.");
     for (const fragmentoProibido of [

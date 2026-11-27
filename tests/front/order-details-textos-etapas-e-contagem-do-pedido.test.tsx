@@ -458,6 +458,32 @@ describe("OrderDetailsView — etapas, textos e contagem", () => {
       );
       expect(hospedeiro.textContent).toMatch(/Qtd\. 3 · R\$\s?100,00 un\./);
     });
+
+    // 27/11/2026: em 320 px (fonte do sistema em 130%) sobravam ~52 px para o
+    // nome e o "Qtd. 2 · R$ 499,90 un.": o preço invadia o total da linha e o
+    // nome picava letra a letra. Agora a coluna tem largura mínima (o total desce
+    // para a linha de baixo, à direita, quando não cabe) e o preço unitário fica
+    // inteiro: a linha só quebra entre "Qtd. 2 ·" e o preço.
+    it("em tela estreita o total desce e o preço unitário nunca quebra no meio", async () => {
+      await renderizar(
+        com({
+          items: [{ ...pedidoBase.items[0], price: 499.9, quantity: 2 }],
+        }),
+      );
+      const qtd = [...hospedeiro.querySelectorAll("p")].find((p) =>
+        p.textContent?.startsWith("Qtd. 2"),
+      )!;
+      const unitario = qtd.querySelector<HTMLElement>(".whitespace-nowrap");
+      expect(unitario?.textContent).toMatch(/^R\$\s499,90$/);
+      const coluna = qtd.parentElement!;
+      expect(coluna.classList.contains("min-w-0")).toBe(false);
+      expect(coluna.classList.contains("min-w-24")).toBe(true);
+      const linha = coluna.parentElement!;
+      expect(linha.classList.contains("flex-wrap")).toBe(true);
+      const total = linha.lastElementChild as HTMLElement;
+      expect(total.textContent).toMatch(/^R\$\s999,80$/);
+      expect(total.classList.contains("ml-auto")).toBe(true);
+    });
   });
 
   describe("rastreio", () => {

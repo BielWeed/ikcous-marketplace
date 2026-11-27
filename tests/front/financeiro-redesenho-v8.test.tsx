@@ -269,6 +269,7 @@ it("transferência permite conferir valor, origem e destino sem enviar", async (
   await act(async () =>
     root.render(
       <NovoLancamentoFolha
+        autorId="dona-da-loja"
         hoje="2026-10-17"
         contas={contas}
         categorias={[]}

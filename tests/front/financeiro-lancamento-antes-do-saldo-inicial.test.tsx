@@ -145,6 +145,7 @@ describe("Financeiro — lançamento antes do saldo inicial da conta", () => {
     await act(async () => {
       raiz.render(
         <NovoLancamentoFolha
+          autorId="dona-da-loja"
           hoje={HOJE}
           contas={lista}
           categorias={CATEGORIAS}

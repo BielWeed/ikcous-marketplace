@@ -65,8 +65,9 @@ WITH alvo(assinatura) AS (
   SELECT 'get_reviews_metrics: corpo e o da 20261222000000, com a guarda de admin (md5)',
          'cb41947ab5a8075cea87ab123913b10d',
          -- aceita tambem o corpo da SUCESSORA, a 20261381000000 (a guarda passa para o admin atual): o `vivo`
-         -- mostra o esperado, como a 9a e a 17a fazem com as sucessoras delas.
-         COALESCE((SELECT CASE WHEN f.m = '71a40c86c6c1b23fbf991d653c746091'
+         -- mostra o esperado, como a 9a e a 17a fazem com as sucessoras delas. E o da SUCESSORA dela, a 20261641000000 (so as
+         -- publicadas entram na conta; a guarda e a mesma).
+         COALESCE((SELECT CASE WHEN f.m IN ('71a40c86c6c1b23fbf991d653c746091', '971268999fce410628356d65b99fbca5')
                                THEN 'cb41947ab5a8075cea87ab123913b10d' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_reviews_metrics: o corpo exige is_admin() antes de ler as avaliacoes',

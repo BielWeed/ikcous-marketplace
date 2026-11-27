@@ -1,4 +1,4 @@
--- 201b-antes-a-peca-que-volta-sem-tamanho-base-vigente: ANTES da 20261642000000. SO LEITURA, somente catalogo, rol fechado de 4 linhas. NAO le nenhuma
+-- 202b-antes-a-peca-que-volta-sem-tamanho-base-vigente: ANTES da 20261642000000. SO LEITURA, somente catalogo, rol fechado de 4 linhas. NAO le nenhuma
 -- linha de pedido, devolucao, produto nem peca e NAO chama funcao nenhuma. A base vigente e' o corpo da 20261389100000 (devolver_estoque) e o da
 -- 20261395200000 (admin_devolucao_concluir); aceita tambem os corpos desta para uma reaplicacao idempotente. A tabela pecas_sem_tamanho pode faltar (loja
 -- que nunca recebeu a migration) ou ja ter a forma desta (o rollback a mantem); outra forma faz o pre-voo recusar, e esta linha responde 'nao'.

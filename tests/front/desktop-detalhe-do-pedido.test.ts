@@ -139,7 +139,7 @@ describe("detalhe do pedido no computador — P10", () => {
     }
   });
 
-  it("preserva a assinatura das 163 classes de celular, incluindo classes condicionais", () => {
+  it("preserva a assinatura das 164 classes de celular, incluindo classes condicionais", () => {
     const arvore = ts.createSourceFile(
       "OrderDetailsView.tsx",
       fonte,
@@ -164,7 +164,7 @@ describe("detalhe do pedido no computador — P10", () => {
       ts.forEachChild(no, visitar);
     }
     visitar(arvore);
-    expect(classes).toHaveLength(163);
+    expect(classes).toHaveLength(164);
     // + 1.5.218 (19/11/2026): saem 2 `line-clamp-2` (código livre e nome do item: texto
     // longo fica completo) e entra 1 parágrafo novo (orientação de devolução ou troca
     // para quem não entrou na conta). Total 162 -> 163; nenhuma outra classe antiga mudou.
@@ -173,8 +173,12 @@ describe("detalhe do pedido no computador — P10", () => {
     // + linha "Recebe: X" do cartão de endereço (18/11/2026): a única classe nova
     // é "mt-0.5 break-words text-sm font-medium text-zinc-700"; o resto segue igual.
     // + nome do comprador com `break-words` (18/11/2026): só essa classe entra no literal existente.
+    // + linha do item em 320 px (27/11/2026): "group flex items-center gap-3.5" vira
+    // "group flex flex-wrap items-center gap-x-3.5 gap-y-1"; na coluna `min-w-0` vira
+    // `min-w-24`; o total ganha `ml-auto`; entra 1 className novo, "whitespace-nowrap",
+    // no preço unitário. Total 163 -> 164; nenhuma outra classe antiga mudou.
     expect(
       createHash("sha256").update(JSON.stringify(classes)).digest("hex"),
-    ).toBe("9bf498a65acb785844627600c04ac49dc1758d21b16964daea8f5be60e342308");
+    ).toBe("7bde6e92a2699aa1b2b24ec55a6e93db581078014a55a3f4d54b569dba6a504e");
   });
 });

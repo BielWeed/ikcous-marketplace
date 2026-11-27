@@ -82,3 +82,77 @@ export function esquecerTentativasDeSessoesFechadas(
     // Sem leitura confiável, não concluir que uma intenção deixou de existir.
   }
 }
+
+// Pedido de fechamento DESTE aparelho. A resposta do fechamento pode se perder;
+// ela fecha a folha, abre de novo e manda o mesmo valor, e o banco responde com
+// `replay`. Sem esta memória a folha nova não sabe que o pedido foi dela e diz
+// "Nada foi fechado agora" sobre o fechamento que ela fez segundos antes. Fica
+// na aba (sessionStorage), é de quem pediu (id da conta) e do MESMO caixa e
+// valor, e vence em 10 minutos: replay de um fechamento antigo (tela velha)
+// continua sendo "já estava fechado". Sem conta ou sem armazenamento, só a
+// memória da própria folha vale.
+const PEDIDOS_DE_FECHAMENTO = "ikcous_fin_caixa_pedidos_de_fechamento";
+const VALIDADE_DO_PEDIDO_MS = 10 * 60_000;
+
+function enderecoDoPedido(
+  autor: string,
+  sessao: string,
+  contado: number,
+): string {
+  return JSON.stringify([autor, sessao, Math.round(contado * 100)]);
+}
+
+function lerPedidos(): Map<string, unknown> {
+  try {
+    const bruto = sessionStorage.getItem(PEDIDOS_DE_FECHAMENTO);
+    const lido: unknown = bruto ? JSON.parse(bruto) : {};
+    return lido && typeof lido === "object" && !Array.isArray(lido)
+      ? new Map(Object.entries(lido))
+      : new Map();
+  } catch {
+    return new Map();
+  }
+}
+
+function valendo(em: unknown, agora: number): boolean {
+  return (
+    typeof em === "number" &&
+    agora - em >= 0 &&
+    agora - em <= VALIDADE_DO_PEDIDO_MS
+  );
+}
+
+export function lembrarPedidoDeFechamento(
+  autor: string | null,
+  sessao: string,
+  contado: number,
+): void {
+  if (!autor) return;
+  const agora = Date.now();
+  const pedidos = new Map<string, unknown>();
+  for (const [endereco, em] of lerPedidos()) {
+    if (valendo(em, agora)) pedidos.set(endereco, em);
+  }
+  pedidos.set(enderecoDoPedido(autor, sessao, contado), agora);
+  try {
+    sessionStorage.setItem(
+      PEDIDOS_DE_FECHAMENTO,
+      JSON.stringify(Object.fromEntries(pedidos)),
+    );
+  } catch {
+    // Sem armazenamento: só a memória da própria folha reconhece a repetição.
+  }
+}
+
+/** Este aparelho, com esta conta, pediu este fechamento há poucos minutos? */
+export function pediuEsteFechamentoHaPouco(
+  autor: string | null,
+  sessao: string,
+  contado: number,
+): boolean {
+  if (!autor) return false;
+  return valendo(
+    lerPedidos().get(enderecoDoPedido(autor, sessao, contado)),
+    Date.now(),
+  );
+}

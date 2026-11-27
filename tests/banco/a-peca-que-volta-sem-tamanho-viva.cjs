@@ -24,7 +24,7 @@
  *   9. o Salvar de uma tela aberta antes NAO sobrescreve o estoque que a peca acabou de somar (PRD01 pela versao do produto);
  *  10. mutantes (cada um na guarda certa), restaurando o corpo exato depois;
  *  11. reaplicar (LF e CRLF), pre-voo, rollback (corpos de volta byte a byte, RPCs fora, tabela e linhas mantidas, o da 395 recusa
- *      antes dele), consultas 201a/201b.
+ *      antes dele), consultas 202a/202b.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-que-volta-sem-tamanho-viva.cjs
  */
@@ -61,10 +61,10 @@ const MIGRATION = lerMigration(NOME);
 const ROLLBACK = lerMigration(`rollback-manual-${NOME}`);
 const ROLLBACK_395 = lerMigration(`rollback-manual-${NOME_395}`);
 const FICHA_A = lerConsulta(
-  "201a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
+  "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
 );
 const FICHA_B = lerConsulta(
-  "201b-antes-a-peca-que-volta-sem-tamanho-base-vigente",
+  "202b-antes-a-peca-que-volta-sem-tamanho-base-vigente",
 );
 
 const H_DEV_389 = "943b226906e91013e7cccf4992617e35";
@@ -1053,10 +1053,10 @@ async function fichaTemNao(sql, rotulo) {
 async function provaDaMigration() {
   await emTransacao(async () => {
     const b = await blusaComPecas(C, 2);
-    await fichaSoSim(FICHA_A, "201a depois do apply");
+    await fichaSoSim(FICHA_A, "202a depois do apply");
     await fichaSoSim(
       FICHA_B,
-      "201b depois do apply (reaplicar e' idempotente)",
+      "202b depois do apply (reaplicar e' idempotente)",
     );
 
     // Reaplicar (LF e CRLF): mesmo estado, as linhas ficam.
@@ -1084,8 +1084,8 @@ async function provaDaMigration() {
       2,
       "o rollback nao apaga dado",
     );
-    await fichaSoSim(FICHA_B, "201b antes do apply");
-    await fichaTemNao(FICHA_A, "201a antes do apply");
+    await fichaSoSim(FICHA_B, "202b antes do apply");
+    await fichaTemNao(FICHA_A, "202a antes do apply");
     assert.equal(
       (await tentarSql(ROLLBACK)).erro,
       undefined,
@@ -1165,7 +1165,7 @@ for (const m of MUTANTES) {
   });
 }
 prova(
-  "11. reaplicar (LF e CRLF), pre-voo, rollback (ordem, corpos, dado mantido) e fichas 201a/201b",
+  "11. reaplicar (LF e CRLF), pre-voo, rollback (ordem, corpos, dado mantido) e fichas 202a/202b",
   provaDaMigration,
 );
 

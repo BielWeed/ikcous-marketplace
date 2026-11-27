@@ -17,6 +17,11 @@ const FILTRO_SEM_RESPOSTA = Object.freeze({
     = '75f5c48de4eb4005a2516e54b3d33135', false) AS sim`,
 });
 async function desfazerFiltroSemRespostaNaTransacao(c) {
+  // A 20261641000000 (a média do painel só das publicadas) sucede esta na MESMA assinatura: sai PRIMEIRO (ordem inversa da aplicação;
+  // não faz nada se não está no ar). Sem isso o "no ar" abaixo dá falso (o corpo vivo é o da 3641) e a 3996 nunca sairia.
+  await require("./uma-avaliacao-por-cliente-posterior.cjs").desfazerUmaAvaliacaoPorClienteNaTransacao(
+    c,
+  );
   if ((await c.query(FILTRO_SEM_RESPOSTA.noAr)).rows[0]?.sim !== true)
     return false;
   await c.query(

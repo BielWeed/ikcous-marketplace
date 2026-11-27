@@ -452,6 +452,154 @@ Deno.test("199a/199b — rol fechado, um statement so de catalogo, md5 do pre-vo
   );
 });
 
+// 201 (27/11/2026): o lote da 20261641000000 (uma avaliacao por cliente e produto, e a media do painel so das publicadas). Rol fechado de 6
+// linhas, o mesmo na 201a e na 201b, so catalogo; a 201a espera os corpos desta e a 201b os vigentes (3996/381, sem funcao nem gatilho
+// novos) ou os desta. Os md5 saem do PRE-VOO da propria migration; as consultas das antecessoras (25a, 86a, 123a, 148a) aceitam os desta.
+Deno.test("201a/201b — rol fechado, um statement so de catalogo, md5 do pre-voo da 20261641000000, menu, rpc-ci, release e lote no canais", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A201 =
+    "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado";
+  const B201 =
+    "201b-antes-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-base-vigente";
+  const migration = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261641000000_uma_avaliacao_por_cliente_e_a_media_do_painel_so_das_publicadas.sql`,
+  );
+  const pares = [
+    ...migration.matchAll(/NOT IN \('([0-9a-f]{32})', '([0-9a-f]{32})'\)/g),
+  ];
+  assertEquals(
+    pares.length,
+    2,
+    "o pre-voo cita (vigente, desta) das duas RPCs",
+  );
+  const [[, pagedVigente, pagedDesta], [, metricsVigente, metricsDesta]] =
+    pares;
+  const gatilho =
+    /IS DISTINCT FROM '([0-9a-f]{32})' THEN\n\s+RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public\.avaliacao_uma_por_cliente_e_produto\(\)/.exec(
+      migration,
+    );
+  assert(gatilho, "o pre-voo cita o md5 da funcao do gatilho");
+  const itens = [
+    "avaliacao_uma_por_cliente_e_produto: corpo exato (md5)",
+    "avaliacao_uma_por_cliente_e_produto: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno trigger, search_path=public e EXECUTE de ninguem",
+    "tr_avaliacao_uma_por_cliente_e_produto: BEFORE INSERT por linha em reviews, chama a funcao, ligado, sem WHEN",
+    "get_admin_reviews_paged: corpo exato (md5), metricas globais so das publicadas",
+    "get_reviews_metrics: corpo exato (md5), so as publicadas",
+    "get_admin_reviews_paged e get_reviews_metrics: uma assinatura cada, SECURITY DEFINER plpgsql VOLATILE, EXECUTE de authenticated e service_role (nem anon nem PUBLIC)",
+  ];
+  for (const consulta of [A201, B201]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(
+      !/FROM\s+public\.reviews\b/i.test(limpo),
+      `${consulta}: le so catalogo`,
+    );
+    assertStringIncludes(
+      menu,
+      `- ${consulta}
+`,
+    );
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A201}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B201}.sql`),
+  );
+  // A 201a aceita SO os corpos desta; a 201b, os vigentes OU os desta (reaplicacao idempotente).
+  for (const h of [pagedDesta, metricsDesta, gatilho[1]])
+    assertStringIncludes(sqlA, `'${h}'`);
+  for (const h of [pagedVigente, metricsVigente])
+    assert(!sqlA.includes(h), `a 201a nao pode aceitar o corpo vigente ${h}`);
+  assertStringIncludes(sqlB, `IN ('${pagedVigente}', '${pagedDesta}')`);
+  assertStringIncludes(sqlB, `IN ('${metricsVigente}', '${metricsDesta}')`);
+  // As consultas das antecessoras aceitam os corpos desta como SUCESSORA: senao reprovam em toda loja depois do apply.
+  const ler = async (prefixo: string) =>
+    sqlSemComentarios(
+      await Deno.readTextFile(
+        `${CONSULTAS_DIR}/${listarConsultas().find((c: string) => c.startsWith(prefixo))}.sql`,
+      ),
+    );
+  assertStringIncludes(await ler("25a-"), `'${metricsDesta}'`);
+  assertStringIncludes(await ler("86a-"), `'${metricsDesta}'`);
+  assertStringIncludes(await ler("86a-"), `'${pagedDesta}'`);
+  assertStringIncludes(await ler("123a-"), `'${pagedDesta}'`);
+  assertStringIncludes(await ler("148a-"), `'${pagedDesta}'`);
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A201,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261641000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B201);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 201a: ${chave} nao se aplica`);
+  const ordem = canais.provasDeObjetos.map(
+    (p: { consulta: string }) => p.consulta,
+  );
+  for (const antes of [
+    "86a-conferir-ex-admin-no-resto-do-painel-aplicado",
+    "148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado",
+  ])
+    assert(
+      ordem.indexOf(antes) >= 0 && ordem.indexOf(antes) < ordem.indexOf(A201),
+      `o lote da 201a vem depois do da ${antes}`,
+    );
+});
+
 // 129: medicao ANTES; nao autoriza apply nem registra uma prova de pos-aplicacao.
 const CONSULTAS_129 = [
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
@@ -16772,8 +16920,10 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",
     // 20261640000000: a devolucao com a mesma chave nao paga duas vezes.
     "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
+    // 20261641000000: uma avaliacao por cliente e produto, e a media do painel so das publicadas.
+    "201a-conferir-uma-avaliacao-por-cliente-e-a-media-so-das-publicadas-aplicado",
     // 20261642000000: a peca que volta sem tamanho espera a lojista.
-    "201a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
+    "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos
