@@ -813,6 +813,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-loja-pausa-o-pedido-novo-viva.cjs",
     // 20261610: o catalogo e a configuracao chegam ao vivo em toda loja (as 10 tabelas na publicacao do realtime, coupons fora; IKCOUS no-op; pre-voo; rollback com confirmacao; politicas de SELECT; trava; consultas 197a/197b).
     "tests/banco/o-catalogo-chega-ao-vivo-em-toda-loja-viva.cjs",
+    // 20261630000000: a loja ja suspensa tambem pausa (a marca grava o dia de quem segue suspensa sem dia; controle com a marca da 1600; mutantes; reaplicar sem tocar dados; rollback antes do da 1600; consultas 199a/199b/196a).
+    "tests/banco/a-loja-ja-suspensa-tambem-pausa-viva.cjs",
     // 20261384: o pedido pago pelo app exige conta (visitante sem conta recusado antes de reservar estoque; logado e pagar na entrega como hoje; retry; concorrencia real; mutantes; rollback; consultas 89a/89b).
     "tests/banco/pedido-pelo-app-exige-conta-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

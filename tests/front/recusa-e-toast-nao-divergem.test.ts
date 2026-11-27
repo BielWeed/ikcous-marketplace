@@ -206,6 +206,19 @@ const CORPUS: ReadonlyArray<{ rotulo: string; erro: unknown }> = [
     erro: p0001("Os cupons estão desativados nesta loja."),
   },
 
+  // A PAUSA DE VENDAS (migration 20261600000000, gatilho
+  // a_loja_aceita_pedido_novo): o INSERT é recusado antes de o pedido nascer.
+  // P0001 com texto: painel e toast falam a MESMA frase, e o painel nunca
+  // manda "tentar de novo" nem "conferir antes".
+  {
+    rotulo: "13a. loja em manutenção (gatilho da pausa)",
+    erro: p0001("A loja está em manutenção. Tente de novo mais tarde."),
+  },
+  {
+    rotulo: "13b. vendas pausadas pela assinatura (gatilho da pausa)",
+    erro: p0001("Esta loja não está aceitando pedidos agora."),
+  },
+
   // A COMPRA QUE DÁ R$ 0,00 NÃO SE PAGA PELO APP (migration 20261236000000):
   // P0001 com texto, o pedido provadamente não nasceu — o painel e o toast têm
   // de falar a MESMA frase, e o painel nunca manda "tentar de novo".

@@ -578,6 +578,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
     // 20261620000000: a soma das categorias fecha com o faturamento no centavo.
     "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
+    // 20261630000000: a loja ja suspensa tambem pausa (sucessora da marca desta).
+    "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

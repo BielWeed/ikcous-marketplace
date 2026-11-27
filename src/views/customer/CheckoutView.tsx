@@ -769,6 +769,11 @@ const DESTINO_DA_ACAO: Record<AcaoDeRecusa, DestinoDaRecusa> = {
   // abaixo) — entrar ou criar conta.
   entrar_na_conta: "conta",
   conferir_antes: "pedidos",
+  // Loja em manutenção ou com as vendas pausadas (gatilho da migration
+  // 20261600000000): o pedido não nasceu e nada na tela resolve. Fecha o
+  // painel, o carrinho fica, e o Finalizar NÃO trava (fora de
+  // `aguardandoConferenciaDaRecusa`): a pessoa tenta de novo quando quiser.
+  aguardar_a_loja: "so_fechar",
   // Quem compra SEM CONTA: reenvia a compra CONGELADA da tentativa sem
   // resposta (nunca remonta do formulário). Ver `reenviarPedidoCongelado`.
   reenviar_mesma_compra: "reenviar",

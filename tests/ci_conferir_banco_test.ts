@@ -324,6 +324,134 @@ Deno.test("198a/198b — rol fechado, um statement so de catalogo, md5 do pre-vo
     assert(!(chave in lote[0]), `lote da 198a: ${chave} nao se aplica`);
 });
 
+// 199 (27/11/2026): o lote da 20261630000000 (a loja ja suspensa tambem pausa). Rol fechado de 4 linhas, o mesmo na 199a e na 199b,
+// so catalogo; a 199a espera a marca desta e a 199b a da 20261600000000 ou a desta. Os md5 saem do PRE-VOO da propria migration.
+Deno.test("199a/199b — rol fechado, um statement so de catalogo, md5 do pre-voo da 20261630000000, menu, rpc-ci, release e lote no canais", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A199 = "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado";
+  const B199 = "199b-antes-a-loja-ja-suspensa-tambem-pausa-base-vigente";
+  const migration = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261630000000_a_loja_ja_suspensa_tambem_pausa.sql`,
+  );
+  const par = /v_hash NOT IN \('([0-9a-f]{32})', '([0-9a-f]{32})'\)/.exec(
+    migration,
+  );
+  assert(par, "o pre-voo da 20261630000000 nao cita (vigente, desta)");
+  const [, vigente, desta] = par;
+  const itens = [
+    "marcar_suspensa_desde: corpo exato (md5)",
+    "marcar_suspensa_desde: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno trigger, search_path fixo e EXECUTE de ninguem",
+    "tr_assinatura_marca_suspensa_desde: AFTER INSERT OR UPDATE OF status por linha em assinatura_da_loja, chama a marca, ligado",
+    "pausa_de_vendas: a tabela de linha unica da 20261600000000 (4 colunas)",
+  ];
+  for (const consulta of [A199, B199]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(
+      !/FROM\s+public\.(assinatura_da_loja|pausa_de_vendas|assinatura_da_loja_chave)\b/i.test(
+        limpo,
+      ),
+      `${consulta}: le so catalogo`,
+    );
+    assertStringIncludes(
+      menu,
+      `- ${consulta}
+`,
+    );
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A199}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B199}.sql`),
+  );
+  // A 199a aceita SO a marca desta; a 199b, a vigente (1600) OU a desta (reaplicacao idempotente).
+  assertStringIncludes(sqlA, `COALESCE(fn.h = '${desta}', false)`);
+  assert(!sqlA.includes(vigente), "a 199a nao pode aceitar a marca da 1600");
+  assertStringIncludes(sqlB, `fn.h IN ('${vigente}', '${desta}')`);
+  // A 196a (lote da 1600) aceita a marca desta como SUCESSORA: senao ela reprova em toda loja depois do apply.
+  const sql196a = sqlSemComentarios(
+    await Deno.readTextFile(
+      `${CONSULTAS_DIR}/196a-conferir-a-loja-pausa-o-pedido-novo-aplicado.sql`,
+    ),
+  );
+  assertStringIncludes(
+    sql196a,
+    `('marcar_suspensa_desde', '${vigente}', '${desta}',`,
+  );
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-ja-suspensa-tambem-pausa-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A199,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261630000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B199);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 199a: ${chave} nao se aplica`);
+  // Depois do lote da 1600 (a 1630 exige a 1600 no ar na mesma loja).
+  const ordem = canais.provasDeObjetos.map(
+    (p: { consulta: string }) => p.consulta,
+  );
+  assert(
+    ordem.indexOf("196a-conferir-a-loja-pausa-o-pedido-novo-aplicado") <
+      ordem.indexOf(A199),
+    "o lote da 199a vem depois do da 196a",
+  );
+});
+
 // 129: medicao ANTES; nao autoriza apply nem registra uma prova de pos-aplicacao.
 const CONSULTAS_129 = [
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
@@ -16415,6 +16543,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
     // 20261620000000: a soma das categorias fecha com o faturamento no centavo.
     "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
+    // 20261630000000: a loja ja suspensa tambem pausa.
+    "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

@@ -3,6 +3,7 @@ import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { useAgoraDoPainel } from "@/hooks/useAgoraDoPainel";
 import {
   avisoDaMensalidadeEmAberto,
+  avisoDasVendasPausadas,
   avisoDoTesteEncerrado,
   contagemDoTeste,
   formatarData,
@@ -28,6 +29,17 @@ import {
 } from "./visualDoInicio";
 
 const MAXIMO_DE_RECURSOS = 6;
+
+/** Por que existe o aviso: o teste que acabou ou a mensalidade da pagante. */
+function fraseDoVencimento(
+  doTeste: boolean,
+  valorMensal: number,
+  venceuEm: string,
+): string {
+  return doTeste
+    ? `Seu teste grátis acabou. A primeira mensalidade, de ${formatarMoeda(valorMensal)}, venceu em ${formatarDiaEMes(venceuEm)}.`
+    : `A mensalidade de ${formatarMoeda(valorMensal)} venceu em ${formatarDiaEMes(venceuEm)}.`;
+}
 
 /** O status do contrato na cor do significado: pontinho + texto. */
 function estadoDoPlano(status: StatusDaAssinatura | null): {
@@ -131,17 +143,27 @@ export function CartaoDaAssinatura({
     ? null
     : avisoDaMensalidadeEmAberto(assinatura, new Date(agora));
   const prazo = aviso ?? avisoPagante;
-  const estado: { tom: TomDeEstado; texto: string } = aviso
-    ? { tom: "atencao", texto: "Teste encerrado" }
-    : avisoPagante
-      ? { tom: "atencao", texto: "Mensalidade em aberto" }
-      : estadoDoPlano(assinatura.status);
+  // No dia da pausa a gestão grava `suspensa` com os mesmos dados: os pedidos
+  // pela loja já pararam, e o cartão diz desde quando e como voltar (texto 3 da
+  // decisão da pausa). Sem o sinal completo (Savy, IKCOUS) o cartão de hoje.
+  const pausadas = avisoDasVendasPausadas(assinatura, new Date(agora));
+  const estado: { tom: TomDeEstado; texto: string } = pausadas
+    ? {
+        tom: "negativo",
+        texto: `Vendas pela loja pausadas desde ${formatarDiaEMes(pausadas.pausadasDesde)}`,
+      }
+    : aviso
+      ? { tom: "atencao", texto: "Teste encerrado" }
+      : avisoPagante
+        ? { tom: "atencao", texto: "Mensalidade em aberto" }
+        : estadoDoPlano(assinatura.status);
   const suporte = linkWhatsappDoCliente(assinatura.suporteWhatsapp);
   const recursosVisiveis = assinatura.recursos.slice(0, MAXIMO_DE_RECURSOS);
   const recursosEscondidos =
     assinatura.recursos.length - recursosVisiveis.length;
   const precisaRegularizar =
     !prazo &&
+    !pausadas &&
     (assinatura.status === "atrasada" ||
       assinatura.status === "suspensa" ||
       assinatura.status === "pendente");
@@ -150,13 +172,15 @@ export function CartaoDaAssinatura({
   const contagem = emTeste
     ? contagemDoTeste(assinatura.testeAte, new Date(agora))
     : null;
-  // No teste encerrado e na mensalidade em aberto somem "Em aberto desde" e
-  // "Teste até": fica só "Cliente desde", montada direto de `inicioEm`.
-  const linhasDeDatas = prazo
-    ? assinatura.inicioEm
-      ? [{ rotulo: "Cliente desde", data: assinatura.inicioEm }]
-      : []
-    : linhasDeDatasDaAssinatura(assinatura);
+  // No teste encerrado, na mensalidade em aberto e nas vendas pausadas somem
+  // "Em aberto desde", "Próxima cobrança" e "Teste até": fica só "Cliente
+  // desde", montada direto de `inicioEm`.
+  const linhasDeDatas =
+    prazo || pausadas
+      ? assinatura.inicioEm
+        ? [{ rotulo: "Cliente desde", data: assinatura.inicioEm }]
+        : []
+      : linhasDeDatasDaAssinatura(assinatura);
 
   return (
     <section
@@ -203,9 +227,7 @@ export function CartaoDaAssinatura({
       {prazo ? (
         <>
           <p className="text-sm font-medium leading-relaxed text-white">
-            {aviso
-              ? `Seu teste grátis acabou. A primeira mensalidade, de ${formatarMoeda(prazo.valorMensal)}, venceu em ${formatarDiaEMes(prazo.venceuEm)}.`
-              : `A mensalidade de ${formatarMoeda(prazo.valorMensal)} venceu em ${formatarDiaEMes(prazo.venceuEm)}.`}
+            {fraseDoVencimento(!!aviso, prazo.valorMensal, prazo.venceuEm)}
           </p>
           <p
             className={cn("text-sm leading-relaxed", classeDoTexto("atencao"))}
@@ -217,6 +239,25 @@ export function CartaoDaAssinatura({
           <p className="text-sm leading-relaxed text-zinc-400">
             Já pagou? Assim que confirmarmos o pagamento, este aviso some
             sozinho.
+          </p>
+        </>
+      ) : null}
+      {pausadas ? (
+        <>
+          <p className="text-sm font-medium leading-relaxed text-white">
+            {fraseDoVencimento(
+              pausadas.doTeste,
+              pausadas.valorMensal,
+              pausadas.venceuEm,
+            )}
+          </p>
+          <p
+            className={cn("text-sm leading-relaxed", classeDoTexto("negativo"))}
+          >
+            Seus clientes não conseguem fazer pedidos novos pela loja. Pedidos
+            já feitos, entregas, devoluções, estornos e vendas no balcão
+            continuam funcionando. Assim que confirmarmos o pagamento da
+            mensalidade, as vendas voltam sozinhas.
           </p>
         </>
       ) : null}
