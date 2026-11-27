@@ -55,9 +55,9 @@ function nascer(amount: number): LinhaDoServidor {
   return linha;
 }
 
-/** O que o banco responde (semântica de solicitar_estorno e de solicitar_estorno_repetindo). */
+/** O que o banco responde (semântica de solicitar_estorno_com_chave e de solicitar_estorno_repetindo). */
 function servidor(nome: string, argumentos: ArgumentosDaRpc) {
-  if (nome === "solicitar_estorno") {
+  if (nome === "solicitar_estorno_com_chave") {
     const nova = nascer(Number(argumentos.p_amount));
     return { data: { refund_id: nova.id, amount: nova.amount }, error: null };
   }
@@ -194,6 +194,8 @@ afterEach(() => {
     });
   }
   document.body.innerHTML = "";
+  // A chave da devolução (src/lib/chave-da-devolucao.ts) mora no localStorage.
+  localStorage.clear();
 });
 
 describe("Tentar de novo — a mesma linha falhada, duas abas", () => {
@@ -326,7 +328,7 @@ describe("Tentar de novo — a mesma linha falhada, duas abas", () => {
     );
   });
 
-  it("controle: sem `repetindo` o caminho de sempre segue (solicitar_estorno com o valor)", async () => {
+  it("controle: sem `repetindo` o caminho de sempre segue (solicitar_estorno_com_chave com o valor)", async () => {
     const aba = await abrirAba();
 
     await act(async () => {
@@ -336,8 +338,13 @@ describe("Tentar de novo — a mesma linha falhada, duas abas", () => {
     expect(rpcs()).toEqual([
       {
         tipo: "rpc",
-        nome: "solicitar_estorno",
-        argumentos: { p_order_id: "pedido-1", p_amount: 50, p_motivo: "teste" },
+        nome: "solicitar_estorno_com_chave",
+        argumentos: {
+          p_order_id: "pedido-1",
+          p_amount: 50,
+          p_motivo: "teste",
+          p_chave: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        },
       },
     ]);
     expect(invokes()).toHaveLength(1);

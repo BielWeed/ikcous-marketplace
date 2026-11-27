@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import {
+  chaveDaDevolucao,
+  encerrarChaveDaDevolucao,
+} from "@/lib/chave-da-devolucao";
 import { mensagemDoErro } from "@/lib/devolucao";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
@@ -137,9 +141,14 @@ const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
 const textoRegistradoCron = (numero: string) =>
   `Devolução do pedido #${numero} registrada; o Mercado Pago é acionado em até 10 minutos.`;
 // A RPC que cria a linha não respondeu no prazo: ela PODE ter criado a linha
-// (que o cron executa sozinho), então a frase não diz que falhou.
+// (que o cron executa sozinho), então a frase não diz que falhou. O aviso sai
+// ANTES de a lista ser relida: ele não afirma que ela já foi atualizada.
 const textoSemResposta = (numero: string) =>
-  `Devolução do pedido #${numero}: sem resposta da rede. Não dá para saber se a devolução foi registrada. A lista de devoluções foi atualizada: confira antes de tentar de novo.`;
+  `Devolução do pedido #${numero}: sem resposta da rede. Não dá para saber se a devolução foi registrada. Confira a lista de devoluções antes de tentar de novo.`;
+// A mesma intenção chegou de novo e o servidor já a tinha registrado (a
+// primeira tentativa chegou, a resposta é que se perdeu): nada novo foi pedido.
+const textoJaRegistrada = (numero: string) =>
+  `Pedido #${numero}: esta devolução já estava registrada (o primeiro envio chegou). Acompanhe a linha na lista.`;
 
 /**
  * Junta o texto de `order_refunds` ao veredito do servidor. Linha que o
@@ -168,7 +177,8 @@ function juntar(
 
 /**
  * Lê o saldo e o histórico de devoluções de UM pedido e expõe
- * `solicitarEstorno`, que grava o pedido no ledger (RPC `solicitar_estorno`)
+ * `solicitarEstorno`, que grava o pedido no ledger (RPC
+ * `solicitar_estorno_com_chave`, com a chave da intenção)
  * e SÓ DEPOIS aciona o Mercado Pago (edge `estornar-pagamento`) — nessa
  * ordem, sempre (arquitetura de "ledger primeiro, execução depois").
  *
@@ -329,21 +339,37 @@ export function useEstornosDoPedido(
       enviandoRef.current = true;
       setEnviando(true);
       const numero = numeroDoPedido(orderId);
+      // A chave da INTENÇÃO (pedido + valor), a mesma em toda retentativa dela — inclusive depois do
+      // "não dá para saber", de reabrir a ficha ou de recarregar a página (20261640000000). O servidor
+      // devolve a linha que já tem a chave em vez de criar outra. O "Tentar de novo" não leva chave: o
+      // servidor já reconhece a linha falhada que se repete.
+      const chave = repetindo ? null : chaveDaDevolucao(orderId, amount);
+      // O servidor confirmou a intenção (linha criada ou já registrada): a próxima é intenção nova.
+      const encerrarIntencao = (dados: unknown) => {
+        if (
+          chave &&
+          (dados as { refund_id?: string } | null | undefined)?.refund_id
+        ) {
+          encerrarChaveDaDevolucao(orderId, chave);
+        }
+      };
       try {
         // "Tentar de novo" manda o id da linha falhada: o servidor repete ESSA linha uma vez só (o valor sai
         // dela) e a segunda chamada (outra aba, outra pessoa da loja, o botão que sobrou depois do sucesso)
-        // volta com `ja_repetida` e a MESMA repetição. `solicitar_estorno` não sabe qual linha se repete: cria
-        // uma linha nova a cada chamada, e duas abas mandariam dois pedidos de devolução ao Mercado Pago.
+        // volta com `ja_repetida` e a MESMA repetição. A devolução nova vai com a chave da intenção: sem ela,
+        // o servidor não sabe que o segundo toque de R$ 50 é o mesmo do primeiro e cria a segunda linha.
         const pedidoAoServidor = Promise.resolve(
           repetindo
             ? supabase.rpc("solicitar_estorno_repetindo", {
                 p_refund_id: repetindo,
                 p_motivo: motivo,
               })
-            : supabase.rpc("solicitar_estorno", {
+            : supabase.rpc("solicitar_estorno_com_chave", {
                 p_order_id: orderId,
                 p_amount: amount,
                 p_motivo: motivo,
+                // Sem `repetindo`, a chave foi gerada acima.
+                p_chave: chave as string,
               }),
         );
         let resposta: Awaited<typeof pedidoAoServidor>;
@@ -364,17 +390,24 @@ export function useEstornosDoPedido(
           toast.warning(textoSemResposta(numero), { duration: 15_000 });
           await relerAteValer();
           // A resposta tardia só relê (registrada DEPOIS da releitura acima,
-          // para nunca descartá-la e soltar o botão sobre o saldo antigo).
+          // para nunca descartá-la e soltar o botão sobre o saldo antigo). Se
+          // ela confirmar a linha, a intenção acabou: a próxima é nova. Sem
+          // ela, a chave fica e o próximo toque de igual valor a repete.
           const reler = () => {
             if (ativoRef.current) void carregar();
           };
-          void pedidoAoServidor.then(reler, reler);
+          void pedidoAoServidor.then((tardia) => {
+            if (!tardia.error) encerrarIntencao(tardia.data);
+            reler();
+          }, reler);
           return;
         }
         const { data, error } = resposta;
 
         // A RPC já devolve mensagem leiga e ela passa como veio; só a falha de
         // rede, que o navegador entrega em inglês ("Failed to fetch"), vira frase.
+        // A chave da intenção FICA: a recusa não gravou nada, e a falha de rede
+        // pode ter gravado — o próximo toque de igual valor a repete.
         if (error) {
           toast.error(
             `Devolução do pedido #${numero}: ${mensagemDoErro(error, ERRO_GENERICO)}`,
@@ -403,6 +436,19 @@ export function useEstornosDoPedido(
           toast.info(
             `Pedido #${numero}: esta devolução já foi repetida (por outra aba ou por outra pessoa da loja). Acompanhe a linha mais nova.`,
           );
+          await carregar();
+          return;
+        }
+
+        encerrarIntencao(data);
+
+        // A MESMA intenção já tinha chegado ao servidor (a tela desistiu de esperar e a lojista tocou de
+        // novo): a linha é a da primeira, que o cron executa. Aqui não há nada a enviar, só a lista a mostrar.
+        const jaRegistrada =
+          (data as unknown as { ja_registrada?: boolean } | null)
+            ?.ja_registrada === true;
+        if (jaRegistrada) {
+          toast.info(textoJaRegistrada(numero));
           await carregar();
           return;
         }

@@ -16764,6 +16764,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
     // 20261630000000: a loja ja suspensa tambem pausa.
     "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",
+    // 20261640000000: a devolucao com a mesma chave nao paga duas vezes.
+    "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos
