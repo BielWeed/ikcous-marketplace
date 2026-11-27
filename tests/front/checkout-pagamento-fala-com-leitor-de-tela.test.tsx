@@ -335,6 +335,7 @@ describe("CheckoutView — o pagamento fala com o leitor de tela", () => {
     hospedeiro.remove();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    sessionStorage.clear();
   });
 
   async function chegarNaTelaDeAguardarPagamento(
@@ -426,8 +427,11 @@ describe("CheckoutView — o pagamento fala com o leitor de tela", () => {
     });
 
     const aviso = paragrafoComTexto("Não foi possível gerar o QR code do PIX.");
-    expect(aviso?.getAttribute("role")).toBe("alert");
     expect(document.activeElement).toBe(aviso);
+    // Um canal só (lote 486): o foco já faz o leitor ler o texto; com
+    // `role="alert"` no MESMO elemento, VoiceOver/NVDA leem duas vezes.
+    expect(aviso?.getAttribute("role")).toBeNull();
+    expect(hospedeiro.querySelectorAll('[role="alert"]')).toHaveLength(0);
   });
 
   it("'Tentar de novo' some ao tocar: a falha seguinte também fala e recebe o foco", async () => {
@@ -457,8 +461,8 @@ describe("CheckoutView — o pagamento fala com o leitor de tela", () => {
     });
 
     const aviso = paragrafoComTexto(demorou);
-    expect(aviso?.getAttribute("role")).toBe("alert");
     expect(document.activeElement).toBe(aviso);
+    expect(aviso?.getAttribute("role")).toBeNull();
   });
 
   it("caixa âmbar (cobrança do cartão em dúvida na tela do PIX) fala e recebe o foco perdido", async () => {
@@ -478,8 +482,9 @@ describe("CheckoutView — o pagamento fala com o leitor de tela", () => {
       "Não conseguimos confirmar se a tentativa de pagamento com cartão",
     );
     expect(aviso).toBeDefined();
-    expect(aviso?.getAttribute("role")).toBe("alert");
     expect(document.activeElement).toBe(aviso);
+    expect(aviso?.getAttribute("role")).toBeNull();
+    expect(hospedeiro.querySelectorAll('[role="alert"]')).toHaveLength(0);
   });
 
   it("caixa âmbar terminal (frase da edge) também fala", async () => {
@@ -511,6 +516,12 @@ describe("CheckoutView — o pagamento fala com o leitor de tela", () => {
     });
 
     expect(document.activeElement).toBe(titulo);
+    // Sem o foco, quem fala é o alerta.
+    expect(
+      paragrafoComTexto(
+        "Não foi possível gerar o QR code do PIX.",
+      )?.getAttribute("role"),
+    ).toBe("alert");
   });
 
   it("transportadora: a troca automática para o PIX no app é anunciada, e a escolha da própria cliente não", async () => {
@@ -580,5 +591,153 @@ describe("CheckoutView — o pagamento fala com o leitor de tela", () => {
     });
 
     expect(avisoDaFormaDePagamento().textContent).toBe("");
+  });
+
+  // Lote 486: o aviso nasce da FORMA trocada, não do rótulo. Virar retirada
+  // troca "na Entrega" por "na Retirada" no texto da opção, mas a forma é a
+  // mesma: a região não pode falar de novo.
+  it("virar retirada não repete o aviso: a forma não mudou, só o rótulo", async () => {
+    mockUser = null;
+    mockFormasNaEntrega = ["cash"];
+    mockSelectedShippingOption = {
+      id: "local-delivery",
+      name: "Entrega da loja",
+      price: 20,
+      deliveryDays: 1,
+      provider: "local",
+    };
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    const desenhar = () =>
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    await act(async () => {
+      desenhar();
+    });
+    expect(avisoDaFormaDePagamento().textContent).toBe(
+      "Forma de pagamento alterada para Dinheiro na Entrega.",
+    );
+
+    mockSelectedShippingOption = {
+      id: "store-pickup",
+      name: "Retirar na loja",
+      price: 0,
+      deliveryDays: 0,
+      provider: "local",
+    };
+    await act(async () => {
+      desenhar();
+    });
+    // A tela mudou mesmo para retirada (senão o teste não prova nada).
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Dinheiro na Retirada")?.getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
+    expect(avisoDaFormaDePagamento().textContent).not.toContain("Retirada");
+
+    // E voltar para a entrega também não refala o aviso antigo.
+    mockSelectedShippingOption = {
+      id: "local-delivery",
+      name: "Entrega da loja",
+      price: 20,
+      deliveryDays: 1,
+      provider: "local",
+    };
+    await act(async () => {
+      desenhar();
+    });
+    expect(avisoDaFormaDePagamento().textContent).toBe("");
+  });
+
+  // `CheckoutViewDaConta`: a MESMA instância atravessa a queda da sessão (o
+  // `CheckoutView` remonta pela chave da conta e começaria do zero).
+  it("a sessão caiu com o PIX do app marcado: a volta para o Pix na entrega é anunciada", async () => {
+    mockSelectedShippingOption = {
+      id: "local-delivery",
+      name: "Entrega da loja",
+      price: 20,
+      deliveryDays: 1,
+      provider: "local",
+    };
+    const { CheckoutViewDaConta } = await import(
+      "@/views/customer/CheckoutView"
+    );
+    const desenhar = () =>
+      raiz.render(
+        <CheckoutViewDaConta
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    await act(async () => {
+      desenhar();
+    });
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Pagar agora com PIX")!.click();
+    });
+    expect(avisoDaFormaDePagamento().textContent).toBe("");
+
+    mockUser = null;
+    await act(async () => {
+      desenhar();
+    });
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Pix na Entrega")?.getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
+    expect(avisoDaFormaDePagamento().textContent).toBe(
+      "Forma de pagamento alterada para Pix na Entrega.",
+    );
+  });
+
+  it("o troco do rascunho remarca o dinheiro: a troca é anunciada", async () => {
+    mockSelectedShippingOption = {
+      id: "local-delivery",
+      name: "Entrega da loja",
+      price: 20,
+      deliveryDays: 1,
+      provider: "local",
+    };
+    const { salvarRascunhoDoCheckout } = await import(
+      "@/lib/rascunho-do-checkout"
+    );
+    salvarRascunhoDoCheckout(sessionStorage, {
+      nome: "",
+      whatsapp: "",
+      cep: "",
+      numero: "",
+      rua: "",
+      bairro: "",
+      cidade: "",
+      estado: "",
+      complemento: "",
+      notas: "",
+      trocoPara: "200",
+      cupom: null,
+      contaDosDados: "user-1",
+    });
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Dinheiro na Entrega")?.getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
+    expect(avisoDaFormaDePagamento().textContent).toBe(
+      "Forma de pagamento alterada para Dinheiro na Entrega.",
+    );
   });
 });

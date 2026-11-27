@@ -37,6 +37,7 @@ import {
 } from "vitest";
 
 import { carregarSdkMercadoPago } from "@/components/checkout/sdk-mercado-pago";
+import { avisoFalado } from "./helpers/aviso-falado";
 
 const createOrder = vi.fn();
 const updateOrderStatus = vi.fn();
@@ -569,7 +570,7 @@ describe("C6/P1 — recusa depois do 3DS: a vaga solta tem de virar recusa visí
   // "não foi aprovado" nem "nada foi cobrado". O que muda é só a frase: a
   // tentativa morta por prova (vaga solta pela RPC, que só solta pedido
   // `aguardando`) num pedido que fechou depois vira o terminal honesto, em
-  // `role="alert"`.
+  // `role="alert"` (ou no foco perdido que vai ao texto, lote 486).
   for (const [rotulo, campos, frase] of [
     [
       "pedido cancelado (status cancelled)",
@@ -592,9 +593,7 @@ describe("C6/P1 — recusa depois do 3DS: a vaga solta tem de virar recusa visí
       await verificacaoPeriodica();
 
       expect(hospedeiro.textContent).not.toContain(CONFIRMANDO);
-      expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
-        frase,
-      );
+      expect(avisoFalado(hospedeiro)).toBe(frase);
       expect(hospedeiro.textContent).not.toContain("não foi aprovado");
       expect(hospedeiro.textContent).not.toMatch(/nada foi cobrado/i);
       expect(botaoExato("Tentar outro cartão")).toBeUndefined();

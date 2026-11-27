@@ -2267,12 +2267,24 @@ export function CheckoutViewDaConta({
   // caía no corpo da página. O texto do erro (caixa vermelha ou âmbar) vira o
   // alvo. Só se o foco estava perdido: mesma regra do cancelar, abaixo.
   const textoDoErroDoPagamentoRef = useRef<HTMLParagraphElement>(null);
-  useEffect(() => {
+  // Um canal só (lote 486): o erro que RECEBE o foco já é lido por causa do
+  // foco; com `role="alert"` no mesmo texto, VoiceOver/NVDA leem duas vezes.
+  // O erro que levou o foco perde o alerta; o que chega com o foco em outro
+  // lugar vivo fala pelo alerta. Layout effect: o alerta sai antes de o
+  // navegador montar a árvore do leitor de tela.
+  const [erroQueRecebeuOFoco, setErroQueRecebeuOFoco] =
+    useState<typeof erroPagamento>(null);
+  useLayoutEffect(() => {
     if (!erroPagamento) return;
     const ativo = document.activeElement;
     if (ativo && ativo !== document.body && document.contains(ativo)) return;
-    textoDoErroDoPagamentoRef.current?.focus({ preventScroll: true });
+    const texto = textoDoErroDoPagamentoRef.current;
+    texto?.focus({ preventScroll: true });
+    if (texto && document.activeElement === texto)
+      setErroQueRecebeuOFoco(erroPagamento);
   }, [erroPagamento]);
+  const erroFalaPeloFoco =
+    erroPagamento !== null && erroQueRecebeuOFoco === erroPagamento;
   const devolverFocoDoCancelarRef = useRef(false);
   // Conta cada tentativa: sem rede o erro nasce no mesmo gesto do clique, e
   // limpar e repor a MESMA frase não muda nada na tela — o leitor de tela só fala
@@ -3688,6 +3700,7 @@ export function CheckoutViewDaConta({
   // verdade.
   useEffect(() => {
     if (!authLoading && !user && paymentMethod === "online") {
+      setFormaTrocadaSemToque(true);
       setPaymentMethod("pix");
       setMetodoOnline("pix");
     }
@@ -3805,6 +3818,14 @@ export function CheckoutViewDaConta({
   // própria cliente numa opção desliga (ela sabe o que escolheu). Só o aviso:
   // a regra de cada efeito não muda.
   const [formaTrocadaSemToque, setFormaTrocadaSemToque] = useState(false);
+  // A forma que o aviso já disse (lote 486): o aviso nasce quando a FORMA
+  // muda, nunca quando só o rótulo muda (entrega vira retirada, a loja troca
+  // crédito por débito) — senão o leitor repete a troca que não houve.
+  // `rotulo` vazio = calado até a próxima troca de forma.
+  const [formaAnunciada, setFormaAnunciada] = useState<{
+    chave: string;
+    rotulo: string;
+  } | null>(null);
   useEffect(() => {
     if (totalZero.zerado) {
       if (totalZero.meioParaMarcar === null) return;
@@ -4040,6 +4061,7 @@ export function CheckoutViewDaConta({
         // Só consome o rascunho depois de selecionar dinheiro: outra
         // execução deste efeito pode ainda ver o Pix inicial.
         if (paymentMethod !== "cash") {
+          setFormaTrocadaSemToque(true);
           setPaymentMethod("cash");
           return;
         }
@@ -6500,7 +6522,7 @@ export function CheckoutViewDaConta({
                   PIX (em modo cartão a dúvida é a verificação, acima). */}
               <p
                 ref={textoDoErroDoPagamentoRef}
-                role="alert"
+                role={erroFalaPeloFoco ? undefined : "alert"}
                 tabIndex={-1}
                 className="text-sm font-medium text-amber-800 outline-none"
               >
@@ -6574,7 +6596,11 @@ export function CheckoutViewDaConta({
               <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
               <p
                 ref={textoDoErroDoPagamentoRef}
-                role={erroPagamento.anunciar ? "alert" : undefined}
+                role={
+                  erroPagamento.anunciar && !erroFalaPeloFoco
+                    ? "alert"
+                    : undefined
+                }
                 tabIndex={-1}
                 className="min-w-0 break-words text-sm font-medium text-red-700 outline-none"
               >
@@ -7129,9 +7155,31 @@ export function CheckoutViewDaConta({
             opcao.metodoOnline === metodoOnlineEfetivo),
       )
     : undefined;
-  const avisoDaFormaTrocada = opcaoMarcadaSemToque
-    ? `Forma de pagamento alterada para ${opcaoMarcadaSemToque.label}.`
-    : "";
+  const chaveDaFormaMarcadaSemToque = opcaoMarcadaSemToque
+    ? `${opcaoMarcadaSemToque.value}-${opcaoMarcadaSemToque.metodoOnline ?? ""}`
+    : null;
+  // Ajuste no próprio desenho (o React redesenha na hora, antes de pintar):
+  // forma nova = aviso novo; mesma forma com outro rótulo = cala.
+  if (chaveDaFormaMarcadaSemToque !== (formaAnunciada?.chave ?? null)) {
+    setFormaAnunciada(
+      chaveDaFormaMarcadaSemToque === null
+        ? null
+        : {
+            chave: chaveDaFormaMarcadaSemToque,
+            rotulo: opcaoMarcadaSemToque?.label ?? "",
+          },
+    );
+  } else if (
+    formaAnunciada?.rotulo &&
+    formaAnunciada.rotulo !== opcaoMarcadaSemToque?.label
+  ) {
+    setFormaAnunciada({ chave: formaAnunciada.chave, rotulo: "" });
+  }
+  const avisoDaFormaTrocada =
+    formaAnunciada?.rotulo &&
+    formaAnunciada.rotulo === opcaoMarcadaSemToque?.label
+      ? `Forma de pagamento alterada para ${formaAnunciada.rotulo}.`
+      : "";
   // Sem seleção habilitada, Tab ainda precisa alcançar o grupo — inclusive
   // a opção bloqueada que leva o convidado a entrar/criar conta.
   const opcaoDePagamentoTabulavel =
