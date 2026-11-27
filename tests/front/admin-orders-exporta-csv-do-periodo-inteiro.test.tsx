@@ -56,6 +56,10 @@ class ObserverStub {
 }
 
 type Argumentos = Record<string, string | number>;
+// Todos os pedidos do dublê nasceram no mesmo instante. Desde 27/11/2026 o CSV
+// lê por CHAVE: a 1ª página vai com o fim do período do filtro e as seguintes
+// com a data do último pedido lido (esta), não com o número da página.
+const CRIADO_EM = "2026-09-01T12:00:00.000Z";
 type Resposta = {
   data: { data: ReturnType<typeof pedido>[]; total_count: number } | null;
   error: Error | null;
@@ -71,7 +75,7 @@ function pedido(numero: number, pagamento = "aguardando") {
     status: "pending",
     payment_status: pagamento,
     payment_method: "pix",
-    created_at: "2026-09-01T12:00:00.000Z",
+    created_at: CRIADO_EM,
     updated_at: "2026-09-01T12:00:00.000Z",
   };
 }
@@ -196,8 +200,9 @@ describe("CSV de todos os pedidos do filtro", () => {
       .spyOn(HTMLAnchorElement.prototype, "click")
       .mockImplementation(() => {});
     exportacao = async (args) => {
-      const inicio = args.p_page === 0 ? 1 : 13;
-      const quantidade = args.p_page === 0 ? 12 : 3;
+      const primeira = args.p_end_date !== CRIADO_EM;
+      const inicio = primeira ? 1 : 13;
+      const quantidade = primeira ? 12 : 3;
       return resposta(
         Array.from({ length: quantidade }, (_, i) =>
           pedido(inicio + i, String(args.p_payment_status)),
@@ -296,13 +301,15 @@ describe("CSV de todos os pedidos do filtro", () => {
       expect(linha?.split(";").slice(-2)).toEqual(["30,00", "70,00"]);
       expect(baixar).toHaveBeenCalledTimes(1);
       expect(chamadasExportacao().map(([, args]) => args)).toEqual(
-        [0, 1].map((pagina) => ({
-          p_page: pagina,
+        // A 2ª página continua da data do último pedido lido (a chave), que
+        // fica dentro do período; o resto do recorte é o mesmo.
+        [caso.fimEnviado, CRIADO_EM].map((fim) => ({
+          p_page: 0,
           p_page_size: 100,
           p_status: caso.status,
           p_search: caso.buscaEnviada,
           p_start_date: caso.inicioEnviado,
-          p_end_date: caso.fimEnviado,
+          p_end_date: fim,
           p_payment_status: caso.pagamento,
           // C4.4: a exportação respeita o filtro de canal da lista; sem chip
           // marcado, o hook manda 'all' (e a RPC de 8 args recebe o default).
@@ -351,6 +358,13 @@ describe("CSV de todos os pedidos do filtro", () => {
     expect(todas.length).toBeGreaterThan(0);
     for (const [, args] of todas) {
       expect(args.p_start_date).toBe("");
+    }
+    // Limite de período nenhum: a lista e a 1ª página do CSV vão sem fim; as
+    // páginas seguintes do CSV levam só a chave (a data do último lido).
+    const doCsv = chamadasExportacao().map(([, args]) => args.p_end_date);
+    expect(doCsv[0]).toBe("");
+    expect(doCsv.slice(1).every((fim) => fim === CRIADO_EM)).toBe(true);
+    for (const [, args] of todas.filter(([, a]) => a.p_page_size !== 100)) {
       expect(args.p_end_date).toBe("");
     }
   });
@@ -401,7 +415,7 @@ describe("CSV de todos os pedidos do filtro", () => {
   it("mantém o botão desabilitado enquanto gera e não baixa arquivo se a segunda página falhar", async () => {
     let liberar!: (valor: Resposta) => void;
     exportacao = (args) =>
-      args.p_page === 0
+      args.p_end_date === ""
         ? Promise.resolve(
             resposta(
               Array.from({ length: 12 }, (_, i) => pedido(i + 1)),
@@ -547,18 +561,27 @@ describe("CSV de todos os pedidos do filtro", () => {
     await expect(
       hook.buscarPedidosDoFiltroParaExportar({}),
     ).resolves.toHaveLength(5000);
-    expect(chamadasExportacao()).toHaveLength(50);
+    // 5000 pedidos no MESMO instante: a 1ª leitura da chave relê a página
+    // que já veio (o empate inteiro) e só então anda pela posição dentro
+    // do empate — uma chamada a mais que a leitura por posição.
+    expect(chamadasExportacao()).toHaveLength(51);
   });
 
-  it("interrompe após 50 páginas quando a RPC nunca completa a contagem", async () => {
-    exportacao = async (args) =>
-      resposta([pedido(Number(args.p_page) + 1)], 5000);
+  it("interrompe no teto de páginas quando a RPC nunca completa a contagem", async () => {
+    // Cada chamada traz UM pedido novo e a contagem nunca fecha.
+    let chamada = 0;
+    exportacao = async () => {
+      chamada += 1;
+      return resposta([pedido(chamada)], 5000);
+    };
     await act(async () => {
       raiz.render(<AlvoHook />);
     });
     await expect(hook.buscarPedidosDoFiltroParaExportar({})).rejects.toThrow(
       /incompleta/i,
     );
-    expect(chamadasExportacao()).toHaveLength(50);
+    // Teto: ceil(5000 / 99) + 1 — a chave inclusiva relê o último de cada
+    // página, então cada página depois da 1ª rende no máximo 99 novos.
+    expect(chamadasExportacao()).toHaveLength(52);
   });
 });
