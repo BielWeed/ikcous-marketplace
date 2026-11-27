@@ -15,14 +15,20 @@
  * O QUE SE PROVA:
  *   T1 (scripts/frota/banco-da-caderneta/caderneta-impressao-digital.sql): a MESMA caderneta nos dois bancos (gravada em outra
  *      ordem, lida com outro fuso) dá a MESMA digital; mudar UMA coisa (uma coluna de uma loja, um microssegundo, o estado, uma
- *      linha do histórico, o hash, o corpo de uma porta, um grant, uma coluna, o gatilho desligado, uma versão do ledger) muda
- *      SÓ o bloco dela; a saída nunca traz o hash, o atalho nem dado de loja; roda em transação só de leitura.
+ *      linha do histórico, o hash, o corpo de uma porta, um grant, uma coluna, o gatilho desligado, uma versão do ledger, um
+ *      endereço que encaminha) muda SÓ o bloco dela; a saída nunca traz o hash, o atalho nem dado de loja (nem o endereço que
+ *      encaminha); roda em transação só de leitura.
  *   T2 (copiar-caderneta-gerar.sql): gerado na origem (só leitura) e executado no destino, dá a digital IGUAL, exceto o atalho
- *      (que não viaja); as duas portas respondem igual nos dois, como anon, para todo endereço e chave; rodar duas vezes recusa
- *      sem gravar; a próxima linha de histórico do destino nasce depois do último id da origem. Recusa sem gravar: destino com
- *      linha em cada uma das três tabelas, sem os corpos da 20261490, sem as colunas do atalho, sem o gatilho, gatilho
- *      desligado, origem vazia. Mutantes do gerador (sem a variável da porta, copiando o atalho, sem ajustar a sequência, sem a
- *      trava do destino vazio) caem cada um na guarda certa.
+ *      (que não viaja); as três portas do visitante (v1, v2 e a do encaminhamento) respondem igual nos dois, como anon, para todo
+ *      endereço e chave; os endereços que encaminham chegam INTEIROS (com o quem e o criado_em da origem, nunca o padrão do
+ *      destino); rodar duas vezes recusa sem gravar; a próxima linha de histórico do destino nasce depois do último id da origem.
+ *      Recusa sem gravar: destino com linha em cada uma das quatro tabelas, sem os corpos da 20261490, sem as colunas do atalho,
+ *      sem o gatilho, gatilho desligado, sem a tabela dos endereços (COPIA_DESTINO_SEM_CADERNETA), sem as portas da 20261570,
+ *      com a tabela dos endereços em outra forma ou com o gatilho dela desligado, origem vazia. A origem SEM a 20261570 (o banco
+ *      antigo): tabela ausente = zero endereços — o gerador e a digital rodam nela, a cópia entra no destino (que tem a
+ *      20261570) sem endereço, e a digital difere só no atalho e nos objetos da 20261570. Mutantes do gerador (sem a variável
+ *      da porta, copiando o atalho, sem ajustar a sequência, sem a trava do destino vazio, sem copiar os endereços, endereços
+ *      antes das lojas) caem cada um na guarda certa.
  *   T3/T4 (rollback-manual-20261141000000, rollback-manual-destrutivo-20261460000000 e -20261470000000): com a caderneta
  *      semeada, recusam (CADERNETA_SEMEADA) e nada some, mesmo com o APAGAR de cada arquivo e com a confirmação escrita
  *      errada; com ikcous.apagar_caderneta = 'sim', apagam; com qualquer UMA das três tabelas com linha, recusam nomeando-a;
@@ -62,6 +68,9 @@ const DESTRUTIVO_1470 = lerMig(`rollback-manual-destrutivo-${NOME_1470}`);
 const ROLLBACK_1490 = lerMig(`rollback-manual-${NOME_1490}`);
 const DESTRUTIVO_1490 = lerMig(`rollback-manual-destrutivo-${NOME_1490}`);
 const MIGRATION_1490 = lerMig(NOME_1490);
+const NOME_1570 = "20261570000000_o_endereco_antigo_encaminha_para_o_novo.sql";
+const ROLLBACK_1570 = lerMig(`rollback-manual-${NOME_1570}`);
+const DESTRUTIVO_1570 = lerMig(`rollback-manual-destrutivo-${NOME_1570}`);
 
 const VERSOES = [
   "20261141000000",
@@ -69,6 +78,7 @@ const VERSOES = [
   "20261470000000",
   "20261480000000",
   "20261490000000",
+  "20261570000000",
 ];
 // Os corpos que a digital tem de ler num banco com as migrations do repositório (os mesmos md5 que os pré-voos conferem).
 const MD5_DAS_FUNCOES = {
@@ -76,8 +86,14 @@ const MD5_DAS_FUNCOES = {
   resolver_loja_com_estado: "a30e752cff5ae4edc2db612866eb8bcd",
   frota_mudar_estado: "d1dd1ae579be7a6f5c8687ea039cb3b8",
   frota_lojas_estado_so_pela_porta: "58d85afbab0acb79eef70d03c304fb80",
+  frota_enderecos_que_encaminham_nao_e_principal:
+    "874d5af8ef1504daa9e602d6f991353a",
+  resolver_encaminhamento: "5ca45d858b56991facb8d2052f0aecfb",
+  frota_trocar_dominio: "5758ff83113e042fc927d83c254291bd",
 };
-const BLOCOS = 34; // 9 de conteúdo, 8 de tabela (forma e ACL de 3 tabelas e da sequência), 12 de função, 5 do ledger
+// 11 de conteúdo (linhas e md5 de 4 tabelas, hash, atalho, sequência), 10 de tabela (forma e ACL de 4 tabelas e da sequência),
+// 21 de função (corpo, atributos e ACL de 7), 6 do ledger.
+const BLOCOS = 48;
 const PORTA =
   "public.frota_mudar_estado(text, text, text, text, text, text, text, text, timestamptz)";
 const LIGAR_A_PORTA =
@@ -164,7 +180,59 @@ const HISTORICO = [
 ];
 const COLUNAS_HISTORICO = Object.keys(HISTORICO[0]);
 const SEQUENCIA_DA_ORIGEM = 15;
-const LINHAS_DA_CADERNETA = LOJAS.length + 1 + HISTORICO.length;
+// Os endereços que encaminham (20261570): o quem e o criado_em NÃO são os padrões (session_user, now()) — a cópia que deixasse o
+// destino preencher sozinho daria outra digital.
+const endereco = (
+  host,
+  loja_id,
+  motivo,
+  criado_em,
+  quem = "sessao-da-prova-do-endereco",
+) => ({
+  host,
+  loja_id,
+  motivo,
+  criado_em,
+  quem,
+});
+const ENDERECOS = [
+  endereco(
+    "loja-ativa-antiga.exemplo.test",
+    "cmb-ativa",
+    "antigo",
+    "2026-11-23T10:00:00.654321+00:00",
+  ),
+  endereco(
+    "www.loja-ativa.exemplo.test",
+    "cmb-ativa",
+    "www",
+    "2026-11-23T10:00:01+00:00",
+  ),
+  endereco(
+    "loja-dormindo-nova.exemplo.test",
+    "cmb-dormindo",
+    "novo-em-preparo",
+    "2026-11-24T08:30:00.5+00:00",
+  ),
+  endereco(
+    "loja-desligada-antiga.exemplo.test",
+    "cmb-desligada",
+    "antigo",
+    "2026-11-24T09:00:00+00:00",
+    // Os caracteres que o XML escapa (& < > " '), acento e quebra de linha: a origem lê os endereços por query_to_xml (a
+    // tabela pode não existir lá), e o texto tem de chegar ao destino igual.
+    "sessão & <prova> \"da\" 'virada'\nlinha 2 ]]>",
+  ),
+];
+const COLUNAS_ENDERECO = Object.keys(ENDERECOS[0]);
+const TABELAS_DA_CADERNETA = [
+  "frota_lojas",
+  "frota_segredo",
+  "frota_estado_historico",
+  "frota_enderecos_que_encaminham",
+];
+const LINHAS_DA_CADERNETA =
+  LOJAS.length + 1 + HISTORICO.length + ENDERECOS.length;
 
 // ---------------------------------------------------------------------------
 // apoio
@@ -204,7 +272,7 @@ async function desfeita(c, fn) {
 const sim = async (c, sql) => (await c.query(sql)).rows[0].sim === true;
 async function linhasDaCaderneta(c) {
   let n = 0;
-  for (const t of ["frota_lojas", "frota_segredo", "frota_estado_historico"]) {
+  for (const t of TABELAS_DA_CADERNETA) {
     const existe = await sim(
       c,
       `SELECT to_regclass('public.${t}') IS NOT NULL AS sim`,
@@ -237,6 +305,11 @@ async function semear(c, hash, { atalho = false, inverter = false } = {}) {
     await c.query(
       `INSERT INTO public.frota_estado_historico (${COLUNAS_HISTORICO.join(", ")}) OVERRIDING SYSTEM VALUE VALUES (${marcadores(COLUNAS_HISTORICO.length)})`,
       COLUNAS_HISTORICO.map((k) => h[k]),
+    );
+  for (const e of inverter ? [...ENDERECOS].reverse() : ENDERECOS)
+    await c.query(
+      `INSERT INTO public.frota_enderecos_que_encaminham (${COLUNAS_ENDERECO.join(", ")}) VALUES (${marcadores(COLUNAS_ENDERECO.length)})`,
+      COLUNAS_ENDERECO.map((k) => e[k]),
     );
   await c.query(DESLIGAR_A_PORTA);
 }
@@ -362,6 +435,51 @@ const DIVERGENCIAS = [
     ],
     ["ledger.20261490000000"],
   ],
+  [
+    "o motivo de um endereço que encaminha",
+    [
+      "UPDATE public.frota_enderecos_que_encaminham SET motivo = 'antigo' WHERE host = 'www.loja-ativa.exemplo.test'",
+    ],
+    ["frota_enderecos_que_encaminham.conteudo"],
+  ],
+  [
+    "um microssegundo no criado_em de um endereço que encaminha",
+    [
+      "UPDATE public.frota_enderecos_que_encaminham SET criado_em = criado_em + interval '1 microsecond' WHERE host = 'loja-ativa-antiga.exemplo.test'",
+    ],
+    ["frota_enderecos_que_encaminham.conteudo"],
+  ],
+  [
+    "um endereço que encaminha a mais",
+    [
+      "INSERT INTO public.frota_enderecos_que_encaminham (host, loja_id, motivo, criado_em, quem) VALUES ('mais-um.exemplo.test', 'cmb-ativa', 'antigo', '2026-11-24T10:00:00+00:00', 'x')",
+    ],
+    [
+      "frota_enderecos_que_encaminham.conteudo",
+      "frota_enderecos_que_encaminham.linhas",
+    ],
+  ],
+  [
+    "um grant na porta do encaminhamento",
+    [
+      "GRANT EXECUTE ON FUNCTION public.resolver_encaminhamento(text, text) TO authenticated",
+    ],
+    ["funcao.resolver_encaminhamento.acl"],
+  ],
+  [
+    "o gatilho dos endereços desligado",
+    [
+      "ALTER TABLE public.frota_enderecos_que_encaminham DISABLE TRIGGER frota_enderecos_que_encaminham_nao_e_principal",
+    ],
+    ["tabela.frota_enderecos_que_encaminham.forma"],
+  ],
+  [
+    "a 20261570 fora do ledger",
+    [
+      "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20261570000000'",
+    ],
+    ["ledger.20261570000000"],
+  ],
 ];
 
 async function impressaoDigital(origem, destino, hash) {
@@ -384,6 +502,10 @@ async function impressaoDigital(origem, destino, hash) {
     assert.equal(
       a.get("frota_estado_historico.linhas"),
       String(HISTORICO.length),
+    );
+    assert.equal(
+      a.get("frota_enderecos_que_encaminham.linhas"),
+      String(ENDERECOS.length),
     );
     assert.equal(a.get("frota_segredo.hash"), md5(hash));
     assert.equal(a.get("frota_segredo.hash_rapido_nulo"), "sim");
@@ -422,6 +544,8 @@ async function impressaoDigital(origem, destino, hash) {
         "publishable_key",
       ])
         assert(!texto.includes(l[k]), `dado de loja não sai (${k})`);
+    for (const e of ENDERECOS)
+      assert(!texto.includes(e.host), "o endereço que encaminha não sai");
     assert.equal(
       new Map(saida.map((l) => [l.bloco, l.valor])).get(
         "frota_segredo.hash_rapido_nulo",
@@ -470,7 +594,7 @@ async function gerar(c, gerador = GERADOR) {
   }
 }
 const sqlDaPorta = (versao) =>
-  `SELECT * FROM public.${versao}($1, $2) ORDER BY id`;
+  `SELECT * FROM public.${versao}($1, $2) ORDER BY ${versao === "resolver_encaminhamento" ? "destino" : "id"}`;
 /** Chama a porta como anon num SAVEPOINT (a chamada certa grava o atalho; aqui nada fica). */
 async function comoAnon(c, versao, host, chave) {
   return noSavepoint(c, async () => {
@@ -505,11 +629,17 @@ async function copiaConfere(origem, destino, gerador = GERADOR) {
     try {
       for (const host of [
         ...LOJAS.map((l) => l.dominio_publico),
+        ...ENDERECOS.map((e) => e.host),
         "LOJA-ATIVA.exemplo.test",
+        "WWW.LOJA-ATIVA.exemplo.test",
         "nao-existe.exemplo.test",
       ])
         for (const chave of [CHAVE, "chave-errada", ""])
-          for (const versao of ["resolver_loja", "resolver_loja_com_estado"]) {
+          for (const versao of [
+            "resolver_loja",
+            "resolver_loja_com_estado",
+            "resolver_encaminhamento",
+          ]) {
             const naOrigem = await comoAnon(origem, versao, host, chave);
             const noDestino = await comoAnon(destino, versao, host, chave);
             assert.deepEqual(
@@ -534,6 +664,30 @@ async function copiaConfere(origem, destino, gerador = GERADOR) {
         .join("|"),
       "cmb-dormindo,adormecida,",
       "controle: a loja adormecida chega ao destino adormecida, sem URL",
+    );
+    assert.deepEqual(
+      await comoAnon(
+        destino,
+        "resolver_encaminhamento",
+        "loja-ativa-antiga.exemplo.test",
+        CHAVE,
+      ),
+      [{ destino: "loja-ativa.exemplo.test" }],
+      "controle: o endereço antigo encaminha, no destino, para o endereço atual da loja",
+    );
+    assert.deepEqual(
+      (
+        await destino.query(
+          `SELECT ${COLUNAS_ENDERECO.join(", ")} FROM public.frota_enderecos_que_encaminham ORDER BY host COLLATE "C"`,
+        )
+      ).rows.map((r) => ({ ...r, criado_em: r.criado_em.toISOString() })),
+      [...ENDERECOS]
+        .sort((x, y) => (x.host < y.host ? -1 : 1))
+        .map((e) => ({
+          ...e,
+          criado_em: new Date(e.criado_em).toISOString(),
+        })),
+      "controle: os endereços chegam inteiros (quem e criado_em da origem; o microssegundo a digital confere)",
     );
 
     // Rodar duas vezes: recusa e não grava nada.
@@ -617,6 +771,43 @@ const RECUSAS = [
     ],
     /COPIA_GATILHO_AUSENTE/,
   ],
+  [
+    "destino sem a tabela dos endereços que encaminham (comum e destrutivo da 20261570)",
+    [
+      ROLLBACK_1570,
+      "SET LOCAL app.confirmo_apagar_enderecos_que_encaminham = 'APAGAR'",
+      DESTRUTIVO_1570,
+    ],
+    /COPIA_DESTINO_SEM_CADERNETA/,
+  ],
+  [
+    "destino sem as portas da 20261570 (só o comum: a tabela ficou)",
+    [ROLLBACK_1570],
+    /COPIA_PORTAS_DIVERGENTES/,
+  ],
+  [
+    "destino com a tabela dos endereços em outra forma",
+    ["ALTER TABLE public.frota_enderecos_que_encaminham ADD COLUMN sobra text"],
+    /COPIA_FORMA_DIVERGENTE: public\.frota_enderecos_que_encaminham/,
+  ],
+  [
+    "destino com o gatilho dos endereços desligado",
+    [
+      "ALTER TABLE public.frota_enderecos_que_encaminham DISABLE TRIGGER frota_enderecos_que_encaminham_nao_e_principal",
+    ],
+    /COPIA_GATILHO_AUSENTE/,
+  ],
+  [
+    // A chave estrangeira impede um endereço sem loja; o modo réplica a desliga SÓ para plantar a linha (as outras três tabelas
+    // ficam vazias: é a trava dos endereços, e só ela, que tem de recusar).
+    "destino com um endereço que encaminha (e nenhuma loja)",
+    [
+      "SET LOCAL session_replication_role = replica",
+      "INSERT INTO public.frota_enderecos_que_encaminham (host, loja_id, motivo) VALUES ('intruso.exemplo.test', 'cmb-fantasma', 'antigo')",
+      "SET LOCAL session_replication_role = origin",
+    ],
+    /COPIA_DESTINO_NAO_VAZIO/,
+  ],
 ];
 async function recusas(origem, destino) {
   const script = await gerar(origem);
@@ -643,7 +834,94 @@ async function recusas(origem, destino) {
     );
     assert.equal(await linhasDaCaderneta(destino), 0);
   });
-  return RECUSAS.length + 1;
+  return RECUSAS.length + 2;
+}
+
+// Os blocos que a digital de uma origem SEM a 20261570 (o banco antigo da caderneta) tem como "ausente" e o destino (com a
+// 20261570) não: a tabela dos endereços (forma e ACL) e as três funções dela. As linhas e o conteúdo dos endereços NÃO estão
+// aqui: tabela ausente = zero endereços, e um destino com a tabela vazia dá a mesma contagem e o mesmo md5.
+const SO_DA_1570 = [
+  "funcao.frota_enderecos_que_encaminham_nao_e_principal.acl",
+  "funcao.frota_enderecos_que_encaminham_nao_e_principal.atributos",
+  "funcao.frota_enderecos_que_encaminham_nao_e_principal.corpo",
+  "funcao.frota_trocar_dominio.acl",
+  "funcao.frota_trocar_dominio.atributos",
+  "funcao.frota_trocar_dominio.corpo",
+  "funcao.resolver_encaminhamento.acl",
+  "funcao.resolver_encaminhamento.atributos",
+  "funcao.resolver_encaminhamento.corpo",
+  "tabela.frota_enderecos_que_encaminham.acl",
+  "tabela.frota_enderecos_que_encaminham.forma",
+];
+/**
+ * A origem SEM a 20261570 (o banco antigo da caderneta, que não recebe migration pelo canal): o gerador e a digital rodam nela
+ * (só leitura), a cópia entra no destino COM a 20261570 e sem nenhum endereço, e a digital dos endereços bate (0 linhas, mesmo
+ * md5). O destino continua exigindo a tabela e as portas da 20261570 (as recusas acima).
+ */
+async function origemSem1570(origem, destino) {
+  await desfeita(origem, async () => {
+    for (const s of [
+      ROLLBACK_1570,
+      "SET LOCAL app.confirmo_apagar_enderecos_que_encaminham = 'APAGAR'",
+      CONFIRMAR_CADERNETA,
+      DESTRUTIVO_1570,
+    ])
+      await origem.query(s);
+    assert.equal(
+      await sim(
+        origem,
+        "SELECT to_regclass('public.frota_enderecos_que_encaminham') IS NULL AS sim",
+      ),
+      true,
+      "controle: a origem não tem a tabela dos endereços",
+    );
+    assert.equal(
+      await linhasDaCaderneta(origem),
+      LOJAS.length + 1 + HISTORICO.length,
+      "controle: as outras três tabelas da origem têm a caderneta",
+    );
+    // Só leitura, num SAVEPOINT desfeito (a transação de fora é a que tirou a 20261570).
+    const soLeitura = (fn) =>
+      noSavepoint(origem, async () => {
+        await origem.query("SET TRANSACTION READ ONLY");
+        return fn();
+      });
+    const script = await soLeitura(
+      async () => (await origem.query(GERADOR)).rows[0].script,
+    );
+    const a = await soLeitura(() => digital(origem));
+    for (const bloco of SO_DA_1570)
+      assert.equal(a.get(bloco), "ausente", `na origem: ${bloco}`);
+    assert.equal(a.get("frota_enderecos_que_encaminham.linhas"), "0");
+    assert.equal(a.get("frota_enderecos_que_encaminham.conteudo"), md5(""));
+    await desfeita(destino, async () => {
+      await destino.query(script);
+      const b = await digital(destino);
+      assert.deepEqual(
+        diferentes(a, b),
+        ["frota_segredo.hash_rapido_nulo", ...SO_DA_1570].sort(),
+        "a cópia é igual à origem, exceto o atalho e os objetos da 20261570 (que a origem não tem)",
+      );
+      assert.equal(
+        (
+          await destino.query(
+            "SELECT count(*)::int AS n FROM public.frota_enderecos_que_encaminham",
+          )
+        ).rows[0].n,
+        0,
+        "nenhum endereço chega ao destino",
+      );
+      assert.equal(
+        (
+          await destino.query(
+            "SELECT count(*)::int AS n FROM public.frota_lojas",
+          )
+        ).rows[0].n,
+        LOJAS.length,
+        "as lojas chegam",
+      );
+    });
+  });
 }
 
 /** Cada mutante do GERADOR tem de cair na guarda certa. */
@@ -670,9 +948,41 @@ const MUTANTES = [
     /POSVOO_COPIAR_CADERNETA: a sequência/,
   ],
   [
+    // Tabela ausente = zero endereços só vale quando a tabela NÃO existe: com ela na origem, as linhas têm de ser lidas.
+    "a leitura dos endereços da origem sempre vazia: a digital do destino difere da origem",
+    [
+      "CASE WHEN to_regclass('public.frota_enderecos_que_encaminham') IS NULL THEN",
+      "CASE WHEN true THEN",
+    ],
+    /a cópia é igual à origem, exceto o atalho/,
+  ],
+  [
+    "sem copiar os endereços que encaminham: o pós-voo recusa",
+    [
+      "  || COALESCE((SELECT i.sql FROM insercoes i WHERE i.tabela = 'frota_enderecos_que_encaminham'), '')\n",
+      "",
+    ],
+    /POSVOO_COPIAR_CADERNETA: as contagens/,
+  ],
+  [
+    "os endereços antes das lojas: a chave estrangeira recusa",
+    [
+      `  || COALESCE((SELECT i.sql FROM insercoes i WHERE i.tabela = 'frota_lojas'), '')
+  || COALESCE((SELECT i.sql FROM insercoes i WHERE i.tabela = 'frota_estado_historico'), '')
+  || COALESCE((SELECT i.sql FROM insercoes i WHERE i.tabela = 'frota_enderecos_que_encaminham'), '')
+`,
+      `  || COALESCE((SELECT i.sql FROM insercoes i WHERE i.tabela = 'frota_enderecos_que_encaminham'), '')
+  || COALESCE((SELECT i.sql FROM insercoes i WHERE i.tabela = 'frota_lojas'), '')
+  || COALESCE((SELECT i.sql FROM insercoes i WHERE i.tabela = 'frota_estado_historico'), '')
+`,
+    ],
+    /frota_enderecos_que_encaminham_loja_id_fkey/,
+  ],
+  [
     "sem a trava do destino vazio: rodar duas vezes já não recusa pela trava",
     [
-      "IF EXISTS (SELECT 1 FROM public.frota_lojas) OR EXISTS (SELECT 1 FROM public.frota_segredo) OR EXISTS (SELECT 1 FROM public.frota_estado_historico) THEN",
+      `IF EXISTS (SELECT 1 FROM public.frota_lojas) OR EXISTS (SELECT 1 FROM public.frota_segredo) OR EXISTS (SELECT 1 FROM public.frota_estado_historico)
+     OR EXISTS (SELECT 1 FROM public.frota_enderecos_que_encaminham) THEN`,
       "IF false THEN",
     ],
     /rodar duas vezes recusa/,
@@ -699,8 +1009,19 @@ async function mutantes(origem, destino) {
 const QUE_APAGAM = [
   {
     nome: "rollback da 20261141 (apaga frota_lojas e frota_segredo)",
-    antes: [],
+    // A sucessora 20261570 sai antes (comum + destrutivo confirmado): a chave estrangeira dela depende de frota_lojas e o DROP sem
+    // CASCADE recusaria. As duas confirmações são desligadas logo depois, para o rollback da 20261141 decidir sozinho.
+    antes: [
+      ROLLBACK_1570,
+      "SET LOCAL app.confirmo_apagar_enderecos_que_encaminham = 'APAGAR'",
+      CONFIRMAR_CADERNETA,
+      DESTRUTIVO_1570,
+      "SET LOCAL ikcous.apagar_caderneta = ''",
+      "SET LOCAL app.confirmo_apagar_enderecos_que_encaminham = ''",
+    ],
     arquivo: ROLLBACK_1141,
+    // O destrutivo da 20261570 (confirmado) já levou os endereços: sobram as três tabelas de antes.
+    linhas: LINHAS_DA_CADERNETA - ENDERECOS.length,
     existe:
       "SELECT to_regclass('public.frota_lojas') IS NOT NULL AND to_regclass('public.frota_segredo') IS NOT NULL AS sim",
   },
@@ -714,6 +1035,7 @@ const QUE_APAGAM = [
       "SET LOCAL app.confirmo_apagar_estado_de_vida = 'APAGAR'",
     ],
     arquivo: DESTRUTIVO_1460,
+    linhas: LINHAS_DA_CADERNETA,
     existe:
       "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'public.frota_lojas'::regclass AND attname = 'estado' AND NOT attisdropped) AS sim",
   },
@@ -724,6 +1046,7 @@ const QUE_APAGAM = [
       "SET LOCAL app.confirmo_apagar_historico_do_estado_da_loja = 'APAGAR'",
     ],
     arquivo: DESTRUTIVO_1470,
+    linhas: LINHAS_DA_CADERNETA,
     existe:
       "SELECT to_regclass('public.frota_estado_historico') IS NOT NULL AS sim",
   },
@@ -757,7 +1080,7 @@ async function rollbacksQueApagam(origem, destino) {
         assert.equal(await sim(origem, q.existe), true, `${q.nome}: nada some`);
         assert.equal(
           await linhasDaCaderneta(origem),
-          LINHAS_DA_CADERNETA,
+          q.linhas,
           `${q.nome}: nenhuma linha some`,
         );
         casos++;
@@ -890,6 +1213,10 @@ async function main() {
     const nRecusas = await provar(
       "T2: recusas sem gravar (destino com linha, sem 20261490, sem atalho, sem gatilho, origem vazia)",
       () => recusas(origem, destino),
+    );
+    await provar(
+      "T2: origem sem a 20261570 (tabela ausente = zero endereços): gerador e digital rodam nela, a cópia entra sem endereço",
+      () => origemSem1570(origem, destino),
     );
     const mortos = await provar("T2: mutantes do gerador", () =>
       mutantes(origem, destino),
