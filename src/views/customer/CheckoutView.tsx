@@ -3702,6 +3702,36 @@ export function CheckoutViewDaConta({
       temOpcaoSelecionada: !!selectedShippingOption,
     });
 
+  // O TOTAL PARA O LEITOR DE TELA (27/11/2026): o frete se recota, o cupom
+  // entra, e o Total da barra muda em silêncio — ele não é região viva. Mesma
+  // régua do carrinho (`CartView`, `role="status"` só no valor), SEM spam: o
+  // texto só troca quando há um total FECHADO diferente do último; "a
+  // calcular" não fala, e a recotação que volta ao mesmo valor também não.
+  // Enquanto recota, a região ESVAZIA (esvaziar não é anunciado): o total de
+  // antes não pode ficar legível como se valesse — o preço pode ter mudado.
+  // Ajuste de estado no render — o padrão do React para estado derivado, sem
+  // efeito de um quadro atrasado.
+  const totalFechadoParaLeitorDeTela = semFreteSelecionado
+    ? null
+    : `Total do pedido: ${reais(finalTotal)}. ${
+        // A retirada não fala "entrega" (a linha da barra também não).
+        ehRetirada && shipping === 0
+          ? "Retirada na loja"
+          : `Entrega: ${shipping > 0 ? reais(shipping) : "Grátis"}`
+      }.`;
+  const [anuncioDoTotal, setAnuncioDoTotal] = useState(() => ({
+    ultimo: totalFechadoParaLeitorDeTela ?? "",
+    visivel: totalFechadoParaLeitorDeTela !== null,
+  }));
+  if (
+    totalFechadoParaLeitorDeTela !== null &&
+    totalFechadoParaLeitorDeTela !== anuncioDoTotal.ultimo
+  )
+    setAnuncioDoTotal({ ultimo: totalFechadoParaLeitorDeTela, visivel: true });
+  else if (totalFechadoParaLeitorDeTela === null && anuncioDoTotal.visivel)
+    setAnuncioDoTotal({ ultimo: anuncioDoTotal.ultimo, visivel: false });
+  const totalAnunciado = anuncioDoTotal.visivel ? anuncioDoTotal.ultimo : "";
+
   // CUPOM EM CONFERÊNCIA (dinheiro): o cupom da tela ainda não foi conferido
   // para o subtotal e a conta de AGORA — restaurado do rascunho com desconto 0,
   // ou com o subtotal que mudou depois da última conferência. Enviar assim leva
@@ -8964,6 +8994,16 @@ export function CheckoutViewDaConta({
                         {isSubmitting
                           ? "Enviando pedido…"
                           : avisoDoFreteParaLeitorDeTela}
+                      </span>
+                      {/* O total, para o leitor de tela (`totalAnunciado`):
+                          região à parte, DEPOIS da de cima — fala só quando o
+                          valor fechado muda. */}
+                      <span
+                        role="status"
+                        aria-atomic="true"
+                        className="sr-only"
+                      >
+                        {totalAnunciado}
                       </span>
                       <div
                         role="group"
