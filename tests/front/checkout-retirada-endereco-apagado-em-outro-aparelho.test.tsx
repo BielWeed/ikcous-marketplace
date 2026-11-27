@@ -233,6 +233,8 @@ function linha(id: string, cep: string, principal: boolean) {
 
 const AVISO_DA_RETIRADA =
   "O endereço da sua conta foi alterado em outro aparelho. Confira seus dados e finalize de novo.";
+const AVISO_SEM_ENDERECO_NENHUM =
+  "O endereço da sua conta foi apagado em outro aparelho. Cadastre um endereço para finalizar.";
 
 function chamadasDoPedido() {
   return rpc.chamadas.filter((c) =>
@@ -354,9 +356,25 @@ describe("CheckoutView -- retirada com o endereço apagado em outro aparelho", (
     await finalizar();
 
     expect(chamadasDoPedido()).toEqual([]);
-    expect(toast.error).toHaveBeenCalledWith(AVISO_DA_RETIRADA);
+    expect(toast.error).toHaveBeenCalledWith(AVISO_SEM_ENDERECO_NENHUM);
     expect(toast.error).not.toHaveBeenCalledWith(
       "Endereço inválido ou não pertence ao usuário.",
+    );
+    // A escolha velha saiu, e a seção aberta mostra a saída: "Novo" endereço.
+    expect(escolha.id).toBeNull();
+    expect(document.getElementById("checkout-novo-endereco")).not.toBeNull();
+
+    // Revisão Opus (26/11/2026): o segundo toque NÃO repete o mesmo aviso
+    // em laço. Sem endereço nenhum na conta, vale a regra do checkout para a
+    // retirada com conta: a instrução de cadastrar, e nada sai.
+    vi.mocked(toast.error).mockClear();
+    await finalizar();
+
+    expect(chamadasDoPedido()).toEqual([]);
+    expect(toast.error).not.toHaveBeenCalledWith(AVISO_SEM_ENDERECO_NENHUM);
+    expect(toast.error).not.toHaveBeenCalledWith(AVISO_DA_RETIRADA);
+    expect(toast.error).toHaveBeenCalledWith(
+      "Por favor, adicione ou selecione um endereço.",
     );
   });
 

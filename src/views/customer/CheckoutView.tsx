@@ -5309,9 +5309,20 @@ export function CheckoutViewDaConta({
         enderecosConfirmados &&
         !enderecosConfirmados.some((a) => a.id === selectedAddressId)
       ) {
+        // A lista foi CONFIRMADA pelo `aoLer`: a escolha passa já ao principal
+        // dela, ou a nenhum. O efeito de escolha automática não faz isso com a
+        // lista vazia (ali vazia é "ainda não sei"), e o id velho prendia cada
+        // toque seguinte neste mesmo aviso, sem saída (revisão Opus, 26/11).
+        // Sem endereço, o próximo toque cai na regra do checkout para quem
+        // tem conta ("adicione ou selecione um endereço") e o resumo mostra
+        // "Cadastre um endereço".
+        const restante = enderecoDeEntregaEfetivo(enderecosConfirmados, null);
+        setSelectedAddressId(restante?.id ?? null);
         setIdentificacaoAbertaManual(true);
         toast.error(
-          "O endereço da sua conta foi alterado em outro aparelho. Confira seus dados e finalize de novo.",
+          restante
+            ? "O endereço da sua conta foi alterado em outro aparelho. Confira seus dados e finalize de novo."
+            : "O endereço da sua conta foi apagado em outro aparelho. Cadastre um endereço para finalizar.",
         );
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
