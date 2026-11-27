@@ -608,7 +608,7 @@ describe("Notificações v5 — funções preservadas", () => {
       '[data-lista-cortada="cancelamento"]',
     );
     expect(aviso?.textContent).toContain(
-      "Há mais cancelamentos nas últimas 24 horas do que cabem nesta tela",
+      "Há mais cancelamentos recentes do que cabem nesta tela",
     );
     expect(aviso?.textContent).toContain("os mais recentes");
     expect(aviso?.textContent).toContain("Pedidos");

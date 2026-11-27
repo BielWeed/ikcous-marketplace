@@ -125,7 +125,7 @@ const TEXTO_DE_LISTA_CORTADA = new Map<TipoDeAviso, string>([
   [
     // Pedido pago cancelado = dinheiro a devolver: o resto precisa ser visto.
     "cancelamento",
-    "Há mais cancelamentos nas últimas 24 horas do que cabem nesta tela: aqui estão os mais recentes. Veja o resto em Pedidos, principalmente os que já estavam pagos.",
+    "Há mais cancelamentos recentes do que cabem nesta tela: aqui estão os mais recentes. Veja o resto em Pedidos, principalmente os que já estavam pagos.",
   ],
   [
     // O sino conta todos os pagamentos por marcar; a lista traz os mais recentes.
