@@ -374,7 +374,12 @@ module.exports = [
     // no CI. Subo 6 kB (um degrau de 4 nao cobre os 4,45 kB acima) e nada foi trocado por codigo
     // mais arriscado para caber. A vitrine NAO mexeu (704 kB): foi de 700,21 para 701,03 kB, o Radix
     // Popover que o vite.config.ts poe no vendor-inicio. Regra do dono: o teto sobe.
-    limit: "592 kB",
+    // 27/11/2026 (pedidos do painel so com teclado e leitor de tela, PR #2011): 592 -> 596 kB. O
+    // painel mediu 592,23 kB no CI (0,23 kB acima): foco na ficha, no cartao e na paginacao e a
+    // regiao que anuncia a mudanca de status. Degrau de 4 kB (o de sempre) porque os lotes do
+    // balcao e do caixa que vem atras tambem crescem o painel. Nada trocado por codigo mais
+    // arriscado. A vitrine NAO mexeu (704,62 de 708 kB). Regra do dono: o teto sobe.
+    limit: "596 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },
