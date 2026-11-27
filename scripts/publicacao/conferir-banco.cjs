@@ -3663,7 +3663,28 @@ const ROL_DA_200B = [
   "pedido__saldo_a_estornar: corpo da 20261241000000 (md5), a conta que a funcao nova chama",
   "is_admin() e is_admin_atual() existem; order_refunds e marketplace_orders tem as colunas que a funcao nova le",
 ];
+// Lote 201 (20261642000000, a peca que volta sem tamanho espera a lojista: devolver_estoque e admin_devolucao_concluir com o ramo da peca sem
+// tamanho, a tabela NOVA pecas_sem_tamanho e as RPCs NOVAS pecas_sem_tamanho_pendentes e resolver_peca_sem_tamanho). Somente catalogo: nenhuma
+// le pedido, devolucao, produto nem peca e nenhuma chama funcao. A 201a prova os quatro corpos (md5), o EXECUTE so do authenticated das RPCs novas e
+// a tabela fechada (6); antes do apply responde AUSENTE/nao, nunca erro. A 201b prova a base vigente (389 e 395, ou os desta), a tabela ausente ou
+// com a forma desta (o rollback a mantem) e as premissas do pre-voo (4).
+const ROL_DA_201A = [
+  "devolver_estoque: corpo exato (md5)",
+  "admin_devolucao_concluir: corpo exato (md5)",
+  "pecas_sem_tamanho_pendentes: corpo exato (md5)",
+  "resolver_peca_sem_tamanho: corpo exato (md5)",
+  "as duas RPCs novas: uma so cada, SECURITY DEFINER, search_path=public e EXECUTE so do authenticated (nem PUBLIC, anon ou service_role)",
+  "pecas_sem_tamanho: a tabela da 20261642000000 (11 colunas), RLS ligada, sem politica e sem privilegio de aplicacao",
+];
+const ROL_DA_201B = [
+  "devolver_estoque: corpo da 20261389100000 ou desta (md5)",
+  "admin_devolucao_concluir: corpo da 20261395200000 ou desta (md5)",
+  "pecas_sem_tamanho: ausente ou com a forma desta (11 colunas)",
+  "is_admin() e is_admin_atual() existem; produtos, pedidos, variacoes e itens da devolucao tem as colunas que os corpos leem",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "201a-conferir-a-peca-que-volta-sem-tamanho-aplicado": ROL_DA_201A,
+  "201b-antes-a-peca-que-volta-sem-tamanho-base-vigente": ROL_DA_201B,
   "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado":
     ROL_DA_200A,
   "200b-antes-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-ausente":

@@ -203,13 +203,19 @@ Deno.test("395200: a vigente e' a ultima redefinicao de admin_devolucao_concluir
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
+  // A 20261642000000 (a peca que volta sem tamanho) e' a sucessora desta, e a UNICA: o rollback dela devolve este corpo byte a byte.
   assert.equal(
     fontes.at(-1),
-    nome,
-    "outra migration redefine admin_devolucao_concluir depois desta",
+    "20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql",
+    "outra migration redefine admin_devolucao_concluir depois da sucessora",
   );
   assert.equal(
     fontes.at(-2),
+    nome,
+    "outra migration redefine admin_devolucao_concluir entre esta e a sucessora",
+  );
+  assert.equal(
+    fontes.at(-3),
     "20261343000000_o_reembolso_manual_respeita_a_reserva.sql",
   );
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");

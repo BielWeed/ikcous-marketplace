@@ -35,6 +35,11 @@ const CONCLUSAO_TRANCA = Object.freeze({
 
 /** Desfaz a 20261395200000 na conexao aberta, se no ar; repetir e' no-op. Devolve true se desfez. */
 async function desfazerConclusaoTrancaNaTransacao(cliente) {
+  // A 20261642000000 (a peca que volta sem tamanho) sucede este corpo (e o de devolver_estoque da 389): sai ANTES (o pre-voo do
+  // rollback desta recusa o corpo dela).
+  await require("./a-peca-que-volta-sem-tamanho-posterior.cjs").desfazerPecaSemTamanhoNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(hashVivo);
   if (r.rows[0]?.h !== HASH_DESTA) return false;
   await cliente.query(

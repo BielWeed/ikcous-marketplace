@@ -2629,6 +2629,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "a152c8dcd7cf6d1e05e5aff128d6c45e",
           versao: "20261395200000",
         },
+        // 27/11/2026: a peca que volta sem tamanho espera a lojista (a cadeia 241 -> 343 -> 395200 -> 1642).
+        {
+          fn: "admin_devolucao_concluir",
+          h: "1a548896acb8248f1b1771d765c92fcb",
+          versao: "20261642000000",
+        },
         // 27/10/2026 (lote 231): a busca de devolucao acha o numero do pedido (a cadeia 199 -> 395).
         {
           fn: "admin_devolucoes_listar",
@@ -16766,6 +16772,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "199a-conferir-a-loja-ja-suspensa-tambem-pausa-aplicado",
     // 20261640000000: a devolucao com a mesma chave nao paga duas vezes.
     "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
+    // 20261642000000: a peca que volta sem tamanho espera a lojista.
+    "201a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

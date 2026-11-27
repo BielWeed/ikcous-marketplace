@@ -63,6 +63,11 @@ const SUCESSORAS = [
     consulta:
       "200a-conferir-a-devolucao-com-a-mesma-chave-nao-paga-duas-vezes-aplicado",
   },
+  // 20261642000000: a peca que volta sem tamanho espera a lojista (devolver_estoque, admin_devolucao_concluir e as RPCs novas).
+  {
+    versao: "20261642000000",
+    consulta: "201a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

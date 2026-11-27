@@ -10,6 +10,10 @@ import {
   conterTabNoDialogo,
   controlesDoDialogo,
 } from "@/components/admin/primitivos/conterTabNoDialogo";
+import {
+  AvisoDePecaSemTamanho,
+  type TamanhoDaPeca,
+} from "@/components/admin/products/AvisoDePecaSemTamanho";
 import { CampoDeCategoria } from "@/components/admin/products/CampoDeCategoria";
 import { CodigoDoProduto } from "@/components/admin/products/CodigoDoProduto";
 import { DicaExpansivel } from "@/components/admin/products/DicaExpansivel";
@@ -1175,6 +1179,25 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     [images, galeriaLocal],
   );
   const galeriaAtualRef = useRef(galeriaAtual);
+  // A peça que voltou sem tamanho (20261642000000) só entra numa variação
+  // LIGADA e já GRAVADA: as do produto como o banco o devolveu, nunca as da
+  // edição em curso (uma variação nova ainda não existe no banco).
+  const tamanhosDaPeca = useMemo<TamanhoDaPeca[]>(() => {
+    const ligadas: Array<{ id: string; name?: string; value?: string }> = (
+      currentProduct?.variants ?? []
+    ).filter(
+      (v: { id?: string; active?: boolean }) =>
+        v.active && typeof v.id === "string" && !v.id.startsWith("temp-"),
+    );
+    const grupos = new Set(ligadas.map((v) => v.name ?? ""));
+    return ligadas.map((v) => ({
+      id: v.id,
+      rotulo:
+        grupos.size > 1
+          ? `${v.name ?? ""} ${v.value ?? ""}`.trim()
+          : (v.value ?? v.name ?? ""),
+    }));
+  }, [currentProduct]);
   useLayoutEffect(() => {
     galeriaAtualRef.current = galeriaAtual;
   }, [galeriaAtual]);
@@ -5231,6 +5254,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           disabled={isSubmitting || showSuccess}
           className="m-0 min-w-0 space-y-4 border-0 p-0"
         >
+          {productId && (
+            <AvisoDePecaSemTamanho
+              produtoId={productId}
+              tamanhos={tamanhosDaPeca}
+            />
+          )}
           {isOffline && (
             <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2">
               <AlertTriangle className="size-5 shrink-0 animate-pulse text-red-500" />
