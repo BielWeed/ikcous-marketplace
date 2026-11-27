@@ -469,6 +469,9 @@ export const Header = memo(function Header({
                 <motion.div
                   layout
                   key={activeToast.id || "header-dynamic-island-toast"}
+                  // Camada flutuante (ui/sheet): por cima de uma folha aberta,
+                  // tocar aqui faz só o que a cápsula faz — não fecha a folha.
+                  data-camada-flutuante=""
                   {...pausaDoAviso}
                   initial={{ opacity: 0, scale: 0.8, width: 36 }}
                   animate={{ opacity: 1, scale: 1, width: "auto" }}
@@ -528,6 +531,7 @@ export const Header = memo(function Header({
                   type="button"
                   layout
                   key={activeToast.id || "header-dynamic-island-toast"}
+                  data-camada-flutuante=""
                   {...pausaDoAviso}
                   initial={{ opacity: 0, scale: 0.8, width: 36 }}
                   animate={{ opacity: 1, scale: 1, width: "auto" }}

@@ -99,6 +99,26 @@ function matarGuardioesOrfaos() {
   for (const destruir of [...guardioesOrfaos]) destruir();
 }
 
+// CAMADAS FLUTUANTES: o que pinta POR CIMA de uma folha aberta sem ser
+// dela — a cápsula de aviso e a ilha de atualização do topo (marcadas com
+// `data-camada-flutuante`, no Header e na IlhaDeAtualizacao) e o aviso do
+// Sonner (`data-sonner-toaster`, marca da própria biblioteca). Tocar nelas
+// faz SÓ o que elas fazem ("Ver", dispensar o aviso): nem o Radix nem o
+// guardião leem esse gesto como "toque fora". Defeito de 27/11/2026: tocar
+// em "Ver" no aviso de pedido novo, ou na cápsula do topo, fechava a folha
+// por baixo — e quem preenchia perdia o que tinha digitado. A outra metade
+// do conserto mora no index.css: com a folha modal aberta o <body> fica com
+// `pointer-events: none`, e sem `auto` nelas o dedo atravessava até o véu.
+const SELETOR_DE_CAMADA_FLUTUANTE =
+  "[data-camada-flutuante], [data-sonner-toaster]";
+
+function nasceEmCamadaFlutuante(alvo: EventTarget | null): boolean {
+  return (
+    alvo instanceof Element &&
+    alvo.closest(SELETOR_DE_CAMADA_FLUTUANTE) !== null
+  );
+}
+
 function SheetContent({
   className,
   children,
@@ -107,6 +127,7 @@ function SheetContent({
   showCloseButton = true,
   overlayClassName,
   onPointerDownCapture,
+  onPointerDownOutside,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
@@ -264,8 +285,12 @@ function SheetContent({
         // O sinal é o que o DismissableLayer do Radix grava no content de
         // toda camada abaixo da modal mais alta. Lido no pointerdown e
         // valendo para o gesto todo: no mouse a camada de cima já fechou no
-        // pointerup, e armar ali engoliria o click à toa.
-        gestoSobOutraCamada = el.style.pointerEvents === "none";
+        // pointerup, e armar ali engoliria o click à toa. Gesto que nasce
+        // numa camada flutuante (aviso, ilha) também é de outra camada: o
+        // click dele é o "Ver"/dispensar, nunca lixo de fecho.
+        gestoSobOutraCamada =
+          el.style.pointerEvents === "none" ||
+          nasceEmCamadaFlutuante(evento.target);
       }
       gestoDeToque =
         (evento as PointerEvent).pointerType === "touch" ? true : gestoDeToque;
@@ -300,6 +325,13 @@ function SheetContent({
             evento.target instanceof Node &&
             !evento.currentTarget.contains(evento.target);
           onPointerDownCapture?.(evento);
+        }}
+        onPointerDownOutside={(evento) => {
+          onPointerDownOutside?.(evento);
+          // Toque numa camada flutuante não é toque fora: o Radix não fecha.
+          if (nasceEmCamadaFlutuante(evento.detail.originalEvent.target)) {
+            evento.preventDefault();
+          }
         }}
         className={cn(
           "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-[130] flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",

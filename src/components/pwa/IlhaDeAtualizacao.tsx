@@ -62,6 +62,9 @@ export function IlhaDeAtualizacao({
     >
       {texto && (
         <span
+          // Camada flutuante (ui/sheet): por cima de uma folha aberta, tocar
+          // na ilha não fecha a folha.
+          data-camada-flutuante=""
           className={cn(
             // Entrada por CSS (tailwindcss-animate), sem framer-motion no
             // primeiro paint; `motion-safe:` já respeita "menos movimento".
