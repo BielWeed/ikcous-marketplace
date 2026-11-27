@@ -3,6 +3,7 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { NotificationContext } from "@/contexts/NotificationContextCore";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
+  STATUS_ABERTOS,
   TAMANHO_MAXIMO_DA_FOTO,
   TIPOS_DE_FOTO,
   caminhoDaFoto,
@@ -24,6 +25,7 @@ import type {
   ResolucaoDevolucao,
   ResultadoSolicitacao,
   ResumoDevolucao,
+  StatusDevolucao,
 } from "@/types/devolucao";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 
@@ -71,6 +73,18 @@ const PRAZO_DA_GRAVACAO_MS = 20_000;
 const PRAZO_DO_UPLOAD_DA_FOTO_MS = 90_000;
 const SEM_RESPOSTA =
   "Sem resposta da rede. Confira se a mudança apareceu no pedido antes de tentar de novo.";
+// A conexão caiu no meio (Chrome "Failed to fetch", Safari "Load failed",
+// Firefox "NetworkError"): o `error` que o Supabase devolve no lugar de lançar,
+// ou o próprio erro lançado. Mesma expressão de `mensagemDoErro`.
+const RE_FALHA_DE_REDE =
+  /failed to fetch|networkerror|network request failed|load failed|fetch failed/i;
+const STATUS_EM_ANDAMENTO: readonly StatusDevolucao[] = STATUS_ABERTOS;
+
+function ehFalhaDeRede(erro: unknown): boolean {
+  if (typeof erro !== "object" || erro === null) return false;
+  const mensagem = (erro as { message?: unknown }).message;
+  return typeof mensagem === "string" && RE_FALHA_DE_REDE.test(mensagem);
+}
 
 /**
  * Devolução/troca na tela do pedido do CLIENTE (plano 2026-09-26, seção
@@ -252,6 +266,51 @@ export function useDevolucaoCliente(
     ): Promise<Desfecho<ResultadoSolicitacao>> => {
       const desmarcar = marcarOperacaoSensivel("solicitacao-de-devolucao");
       const idsAnteriores = new Set(devolucoes.map((d) => d.id));
+      // A rede caiu no meio do envio: o servidor pode ter gravado e só a
+      // resposta se perdeu. Mesmo tratamento do tempo esgotado (envio incerto),
+      // com uma releitura na hora: a devolução nova e em andamento que
+      // apareceu é este pedido, e a cliente vê o protocolo. Sem ela (ou sem
+      // conseguir ler), a frase de incerteza, e a próxima tentativa confere o
+      // pedido antes de reenviar — nunca "Já existe uma devolução em andamento".
+      const conferirEnvioIncerto = async (): Promise<
+        Desfecho<ResultadoSolicitacao>
+      > => {
+        try {
+          const resposta = await comPrazo(
+            Promise.resolve(
+              supabase.rpc("devolucoes_do_pedido", { p_order_id: orderId }),
+            ),
+            PRAZO_DA_LEITURA_MS,
+          );
+          const lista = resposta.error
+            ? null
+            : lerDevolucoesDoPedido(resposta.data);
+          const nova = lista?.find(
+            (d) =>
+              !idsAnteriores.has(d.id) &&
+              STATUS_EM_ANDAMENTO.includes(d.status),
+          );
+          if (nova) {
+            void carregar();
+            return {
+              ok: true,
+              valor: {
+                id: nova.id,
+                protocolo: nova.protocolo,
+                tipo: nova.tipo,
+                status: nova.status,
+              },
+            };
+          }
+        } catch {
+          // A releitura também não respondeu: continua incerto.
+        }
+        if (solicitacaoIncertaRef.current?.orderId !== orderId) {
+          solicitacaoIncertaRef.current = { orderId, idsAnteriores };
+        }
+        void carregar();
+        return { ok: false, erro: SEM_RESPOSTA };
+      };
       try {
         const incerta = solicitacaoIncertaRef.current;
         if (incerta?.orderId === orderId) {
@@ -309,6 +368,7 @@ export function useDevolucaoCliente(
           },
         );
         if (error) {
+          if (ehFalhaDeRede(error)) return await conferirEnvioIncerto();
           await carregar();
           return { ok: false, erro: mensagemDoErro(error, ERRO_GENERICO) };
         }
@@ -334,6 +394,7 @@ export function useDevolucaoCliente(
           void carregar();
           return { ok: false, erro: SEM_RESPOSTA };
         }
+        if (ehFalhaDeRede(e)) return await conferirEnvioIncerto();
         await carregar();
         return { ok: false, erro: mensagemDoErro(e, ERRO_GENERICO) };
       } finally {

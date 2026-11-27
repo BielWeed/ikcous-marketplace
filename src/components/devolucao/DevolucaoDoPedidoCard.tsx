@@ -110,6 +110,12 @@ interface DevolucaoDoPedidoCardProps {
   readonly horarioDaLoja: string | null;
   readonly onCancelar: (id: string) => Promise<Desfecho>;
   readonly onInformarEnvio: (id: string, codigo: string) => Promise<Desfecho>;
+  /**
+   * Troca concluída e a peça nova veio com problema: abre o WhatsApp da loja
+   * com o protocolo (quem chama monta a mensagem e o link). Só vem quando a
+   * loja tem WhatsApp; sem ele o cartão mostra só a frase da orientação.
+   */
+  readonly onPecaDaTrocaComProblema?: (protocolo: string) => void;
 }
 
 const COR_DO_TOM = new Map([
@@ -132,6 +138,7 @@ export function DevolucaoDoPedidoCard({
   horarioDaLoja,
   onCancelar,
   onInformarEnvio,
+  onPecaDaTrocaComProblema,
 }: DevolucaoDoPedidoCardProps) {
   const [codigo, setCodigo] = useState("");
   const [enviando, setEnviando] = useState<"cancelar" | "envio" | null>(null);
@@ -330,6 +337,19 @@ export function DevolucaoDoPedidoCard({
       >
         {instrucao}
       </p>
+
+      {atual.status === "concluida" &&
+        atual.resolucao_final === "troca" &&
+        onPecaDaTrocaComProblema && (
+          <button
+            type="button"
+            onClick={() => onPecaDaTrocaComProblema(atual.protocolo)}
+            className="mt-3 flex min-h-11 w-full items-center gap-2 rounded-2xl border border-zinc-100 px-3 text-left text-sm font-bold text-zinc-800"
+          >
+            <MessageCircle className="size-4 shrink-0 text-zinc-500" />A peça da
+            troca veio com problema
+          </button>
+        )}
 
       {atual.mensagem_loja && (
         <div className="mt-3 flex gap-2.5 rounded-2xl bg-zinc-50 p-3">

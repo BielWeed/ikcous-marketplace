@@ -186,6 +186,9 @@ afterEach(() => {
   act(() => raiz.unmount());
   hospedeiro.remove();
   document.body.innerHTML = "";
+  // A folha guarda o rascunho na aba (por conta e pedido) e reabre com ele:
+  // sem limpar, o teste seguinte herdaria a folha aberta no passo da revisão.
+  sessionStorage.clear();
 });
 
 async function abrirAFolha(itens: Order["items"]) {
