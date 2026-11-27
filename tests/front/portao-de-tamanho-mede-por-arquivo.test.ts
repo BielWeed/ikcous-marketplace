@@ -74,7 +74,7 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os fixados: cliente 704 kB, painel 586 kB", () => {
+  it("os tetos de JS são os fixados: cliente 704 kB, painel 592 kB", () => {
     // cliente 696 -> 700 em 21/11/2026 (1.5.230; o CI mediu 697,13 kB, 1,13 kB acima; regra do dono: o teto sobe).
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito. cliente 652 -> 656 e painel 530 -> 534 em 12/11/2026 (1.5.173; a base ficou sem folga e cada PR novo reprovava; regra do dono: o teto sobe).
@@ -157,7 +157,8 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // painel 558 -> 562 em 24/11/2026 (1.5.232; medido 558,7 kB no build local, 700 B acima do teto; regra do dono: o teto sobe);
     // painel 562 -> 578 em 25/11/2026 (Gestão Fiscal, aba Impostos: módulo novo inteiro; o painel mediu 575 kB no build local, 13 kB acima do teto; a aba carrega só quando aberta e nada de src/lib/fiscal entra na vitrine; regra do dono: o teto sobe);
     // painel 578 -> 586 em 25/11/2026 (Central de Fornecedores, etapa E1: tela nova inteira; o painel mediu 583,53 kB no build local, 5,53 kB acima do teto, contra 576,47 kB da base; a tela carrega só quando aberta; a vitrine foi de 698,79 para 699,35 kB e o teto dela não mexeu; regra do dono: o teto sobe);
-    expect(entrada("painel.map(")).toContain('limit: "586 kB"');
+    // painel 586 -> 592 em 27/11/2026 (lista premium do painel, aprovada pelo dono em 26/11: o <select> nativo de 8 telas virou a lista de escolha; o painel mediu 590,45 kB no build local contra 585,25 kB da base; regra do dono: o teto sobe);
+    expect(entrada("painel.map(")).toContain('limit: "592 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
   });
 });

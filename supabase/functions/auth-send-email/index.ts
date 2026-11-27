@@ -8,7 +8,7 @@ import {
   resolverRemetente,
   type ResultadoDoEnvio,
 } from "../_shared/email-da-loja.ts";
-import { enviarEmail } from "../_shared/smtp.ts";
+import { enviarEmail, msAtePrazo } from "../_shared/smtp.ts";
 import { readKey } from "../_shared/webpush.ts";
 
 // Auth permite cinco segundos INCLUINDO partida fria. O processamento usa no
@@ -73,9 +73,11 @@ export async function handler(
 ): Promise<Response> {
   const inicio = performance.now();
   const prazoFinalMs = inicio + ORCAMENTO_MS;
+  // A MESMA conta do SMTP (`msAtePrazo`): o que ele veria como 0 ms aqui já é
+  // tempo_esgotado. Com duas contas, a fração final (<1 ms) virava envio_falhou.
   const restante = () => {
-    const ms = prazoFinalMs - performance.now();
-    if (ms <= 0) throw new FalhaDoHook("tempo_esgotado");
+    const ms = msAtePrazo(prazoFinalMs);
+    if (ms === 0) throw new FalhaDoHook("tempo_esgotado");
     return ms;
   };
   const env = deps.env ?? Deno.env;
@@ -165,7 +167,7 @@ export async function handler(
   } catch (erro) {
     const codigo: Codigo = erro instanceof FalhaDoHook
       ? erro.codigo
-      : performance.now() >= prazoFinalMs
+      : msAtePrazo(prazoFinalMs) === 0
       ? "tempo_esgotado"
       : "envio_falhou";
     // Nunca imprime erro bruto: pode conter usuário, senha, token e link.

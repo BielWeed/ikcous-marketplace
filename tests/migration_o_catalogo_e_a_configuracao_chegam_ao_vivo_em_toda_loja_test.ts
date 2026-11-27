@@ -211,7 +211,7 @@ Deno.test("1610: o rollback exige a confirmacao SET LOCAL antes de tirar, tira s
   );
 });
 
-Deno.test("1610: publicacao — lote unico (197a/197b) de apply normal por ultimo, rol fechado, workflows, release e prova viva", async () => {
+Deno.test("1610: publicacao — lote unico (197a/197b) de apply normal logo depois da 196a, rol fechado, workflows, release e prova viva", async () => {
   const canais = JSON.parse(lerBruto("scripts/frota/canais-de-backend.json"));
   const lote = canais.provasDeObjetos.filter((p) =>
     (p.versoes ?? []).includes(VERSAO),
@@ -231,7 +231,21 @@ Deno.test("1610: publicacao — lote unico (197a/197b) de apply normal por ultim
     PROVA_VIVA,
   ])
     assert.ok(lote[0]._comentario.includes(trecho), trecho);
-  assert.equal(canais.provasDeObjetos.at(-1).consulta, A, "o lote vai no fim");
+  // O lote vem logo depois do da 20261600000000 (196a) e antes dos das sucessoras (198a, 20261620000000, e as que vierem):
+  // anexado em ordem de versao, os anteriores nao se reordenam.
+  const consultas = canais.provasDeObjetos.map((p) => p.consulta);
+  const posicao = consultas.indexOf(A);
+  assert.equal(
+    consultas[posicao - 1],
+    "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado",
+    "o lote vem logo depois do da 20261600000000",
+  );
+  for (const depois of canais.provasDeObjetos.slice(posicao + 1))
+    for (const versao of depois.versoes ?? [])
+      assert.ok(
+        versao > VERSAO,
+        `lote depois do da 1610 com versao anterior: ${versao}`,
+      );
 
   const {
     ROL_FECHADO_POR_CONSULTA,

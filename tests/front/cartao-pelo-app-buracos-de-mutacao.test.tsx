@@ -37,6 +37,7 @@ vi.mock("sonner", () => ({
 
 import { CartaoPeloAppBloco } from "@/components/admin/settings/FormasDePagamentoCard";
 import { CARTAO_PELO_APP } from "@/components/admin/settings/mercado-pago-conteudo";
+import { escolherNaLista, valorDaLista } from "./helpers/lista-de-escolha";
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -93,18 +94,16 @@ describe("Cartão pelo app (buracos de mutação)", () => {
     hospedeiro.querySelector<HTMLButtonElement>(
       `[role="switch"][aria-label="${rotulo}"]`,
     ) as HTMLButtonElement;
+  // O "Parcelar em até" é a lista de escolha do painel (lista premium,
+  // 26/11/2026): o botão do campo, com `aria-haspopup="listbox"`.
   const seletorDeParcelas = () =>
-    hospedeiro.querySelector<HTMLSelectElement>("select");
+    hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-haspopup="listbox"]',
+    );
 
   async function escolherParcelas(valor: string) {
-    const sel = seletorDeParcelas();
-    const setter = Object.getOwnPropertyDescriptor(
-      HTMLSelectElement.prototype,
-      "value",
-    )?.set;
     await act(async () => {
-      setter?.call(sel, valor);
-      sel?.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherNaLista(seletorDeParcelas()!.id, valor);
     });
     await esperar();
   }
@@ -128,7 +127,7 @@ describe("Cartão pelo app (buracos de mutação)", () => {
   ])("escolher %sx avisa '%s' e grava esse teto", async (valor, aviso) => {
     banco.linha = { credito: true, debito: true, parcelas_max: 6 };
     await montar();
-    expect(seletorDeParcelas()?.value).toBe("6");
+    expect(valorDaLista(seletorDeParcelas()!.id)).toBe("6");
     await escolherParcelas(valor);
     expect(toastSucesso).toHaveBeenCalledExactlyOnceWith(aviso);
     // Só o teto mudou: crédito e débito seguem como o banco tinha.

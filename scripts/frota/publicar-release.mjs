@@ -1104,6 +1104,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "196b-antes-a-loja-pausa-o-pedido-novo-ausente",
   "197a-conferir-o-catalogo-chega-ao-vivo-aplicado",
   "197b-antes-o-catalogo-chega-ao-vivo-ausente",
+  "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado",
+  "198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

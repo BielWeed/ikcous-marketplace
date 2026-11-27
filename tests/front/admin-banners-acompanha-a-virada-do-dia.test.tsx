@@ -10,6 +10,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 const ANTES_DA_MEIA_NOITE = "2026-11-13T02:59:50Z"; // 12/11, 23:59:50 em SP
 
@@ -138,16 +139,8 @@ describe("AdminBannersView — acompanha a virada do dia", () => {
   }
 
   async function filtrarPorAgendados() {
-    const filtro = hospedeiro.querySelector<HTMLSelectElement>(
-      "#banner-status-filter",
-    );
-    if (!filtro) throw new Error("filtro de situação não encontrado");
     await act(async () => {
-      Object.getOwnPropertyDescriptor(
-        HTMLSelectElement.prototype,
-        "value",
-      )?.set?.call(filtro, "scheduled");
-      filtro.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherNaLista("banner-status-filter", "scheduled");
     });
   }
 

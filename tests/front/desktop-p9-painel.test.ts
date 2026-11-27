@@ -17,6 +17,10 @@ function ler(caminho: string) {
 }
 
 describe("P9 — painel no computador", () => {
+  // Lista premium, Lote F (26/11/2026): os seis `<select>` dos Banners viraram
+  // `CampoDeEscolha`, com o desenho dentro do componente. A foto dos Banners
+  // perdeu as classes dos `<select>` e dos `<Label>` que iam junto, e o filtro
+  // de Situação ficou só com o `mt-3` (o `lg:max-w-sm` some do celular).
   it.each(arquivos)("%s preserva todas as classes do celular", (caminho) => {
     const fonte = ts.createSourceFile(
       caminho,

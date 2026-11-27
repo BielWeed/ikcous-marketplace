@@ -172,8 +172,12 @@ describe("CuponsDoCheckout — PASSO A3: cartões tocáveis e código atrás de 
     montar({ aplicando: "VIP15" });
     const vip = botao("Aplicar o cupom VIP15");
     expect(vip?.textContent).toContain("Aplicando…");
-    expect(vip?.disabled).toBe(true);
-    expect(botao("Aplicar o cupom VITRINE10")?.disabled).toBe(true);
+    // Trava passageira: `aria-disabled`, não `disabled` (que tira o foco).
+    expect(vip?.getAttribute("aria-disabled")).toBe("true");
+    expect(vip?.disabled).toBe(false);
+    expect(
+      botao("Aplicar o cupom VITRINE10")?.getAttribute("aria-disabled"),
+    ).toBe("true");
   });
 
   it("aplicado: vira o cartão SELECIONADO (borda forte + bolinha escura com check), com 'Remover' e sem repetir na lista", () => {

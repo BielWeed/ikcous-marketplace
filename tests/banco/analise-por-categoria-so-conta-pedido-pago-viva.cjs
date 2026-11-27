@@ -6,6 +6,9 @@
  * Rateio: duas categorias (100 e 50, cupom 30, frete 20) recebem 93,33 e
  * 46,67. A 20261409000000 inclui itens sem vínculo nessa mesma conta, sem
  * mudar a receita diária nem a total do painel (get_admin_analytics_v2).
+ * A 20261620000000 devolve cada categoria em centavos pelo MAIOR RESTO: três
+ * categorias de 3,3333... num pedido de 10,00 dão 3,34 + 3,33 + 3,33, e a
+ * lista soma exatamente a receita do painel.
  * Só TESTE: mutante no clone prova_*, corpo original restaurado no finally.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/analise-por-categoria-so-conta-pedido-pago-viva.cjs
@@ -303,18 +306,31 @@ const MUTANTES_DO_RATEIO = [
   ],
   [
     "valor da categoria sem a conta com o total (cupom e frete ficam de fora)",
-    "SUM(p.total * f.subtotal_categoria\n            / NULLIF(f.subtotal_pedido, 0))::numeric AS valor_total,",
-    "SUM(f.subtotal_categoria)::numeric AS valor_total,",
+    "SUM(p.total * f.subtotal_categoria\n                / NULLIF(f.subtotal_pedido, 0)) AS valor_exato,",
+    "SUM(f.subtotal_categoria) AS valor_exato,",
   ],
   [
     "ticket dividido por 1 em vez da contagem de pedidos",
-    "/ COUNT(DISTINCT f.order_id),",
-    "/ 1,",
+    "ROUND(r.valor_total / r.num_pedidos, 2) AS ticket_medio",
+    "ROUND(r.valor_total / 1, 2) AS ticket_medio",
   ],
   [
     "ticket arredondado em reais inteiros",
-    "            2\n        ) AS ticket_medio",
-    "            0\n        ) AS ticket_medio",
+    "ROUND(r.valor_total / r.num_pedidos, 2) AS ticket_medio",
+    "ROUND(r.valor_total / r.num_pedidos, 0) AS ticket_medio",
+  ],
+  // 20261620000000: o centavo que falta vai para o MAIOR resto (B tem 0,67 de
+  // resto, A tem 0,33). Sem o centavo, B fica 46,66; com o centavo no menor
+  // resto, A fica 293,34 e B 46,66.
+  [
+    "sem o centavo do maior resto (a lista fica um centavo abaixo do total)",
+    "CASE WHEN c.fila_do_resto <= c.faltam THEN 1 ELSE 0 END",
+    "0",
+  ],
+  [
+    "o centavo vai para o MENOR resto",
+    "ORDER BY e.valor_exato * 100 - FLOOR(e.valor_exato * 100) DESC NULLS LAST,",
+    "ORDER BY e.valor_exato * 100 - FLOOR(e.valor_exato * 100) ASC NULLS LAST,",
   ],
 ];
 
@@ -359,6 +375,167 @@ async function provarRateio(original) {
   }
   console.log(
     `  VERDE    restaurado: ${JSON.stringify((await oRateioReparteOTotal()).valores)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// A soma no centavo (20261620000000): um pedido de R$ 10,00 (itens de R$ 1,00
+// em três categorias, frete 7) dá 3,3333... a cada uma. Arredondar cada linha
+// sozinha dá 3,33 + 3,33 + 3,33 = 9,99 contra a receita de 10,00 do painel; o
+// maior resto dá o centavo que falta a UMA delas (empate: o nome) e a lista
+// fecha. A prova do rateio acima não enxerga isto: lá o arredondamento simples
+// por categoria (293,33 + 46,67) já fecha em 340,00.
+// ---------------------------------------------------------------------------
+const CATEGORIA_C = "Categoria C fictícia R99";
+
+async function aSomaFechaNoCentavo() {
+  await C.query("BEGIN");
+  try {
+    await semearUsuarios();
+    const pedido = randomUUID();
+    await C.query(
+      `INSERT INTO public.marketplace_orders
+         (id, user_id, customer_name, customer_data, total, subtotal, shipping,
+          discount, status, canal, payment_method, payment_status, created_at)
+       VALUES ($1, $2, 'Pessoa fictícia R99', '{}'::jsonb, 10, 3, 7,
+               0, 'delivered', 'online', 'online', 'pago', now())`,
+      [pedido, CLIENTE],
+    );
+    for (const categoria of [CATEGORIA_A, CATEGORIA_B, CATEGORIA_C]) {
+      const produto = randomUUID();
+      await C.query(
+        `INSERT INTO public.produtos
+           (id, nome, categoria, preco_venda, custo, estoque, ativo)
+         VALUES ($1, 'Produto fictício R99', $2, 1, 0.5, 100, true)`,
+        [produto, categoria],
+      );
+      await C.query(
+        `INSERT INTO public.marketplace_order_items
+           (order_id, product_id, product_name, quantity, price)
+         VALUES ($1, $2, 'Produto fictício R99', 1, 1)`,
+        [pedido, produto],
+      );
+    }
+    await C.query("SET LOCAL ROLE authenticated");
+    await C.query(
+      "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
+      [ADMIN, CLAIMS],
+    );
+    const r = await C.query(
+      `SELECT * FROM public.get_category_analytics(
+         now() - interval '1 hour', now() + interval '1 hour')`,
+    );
+    const painel = await C.query(
+      "SELECT public.get_admin_analytics_v2(30) AS r",
+    );
+    const receita = Number(painel.rows[0].r.executive.totalRevenue);
+    // O valor que a RPC devolve, sem arredondar aqui: a prova é que ele JÁ vem
+    // em centavos. Ordem pelo nome (B e C empatam no valor).
+    const valores = r.rows
+      .map((linha) => ({
+        categoria: linha.name,
+        valor_total: String(linha.value),
+        num_pedidos: Number(linha.orders),
+        ticket_medio: String(linha.avg_ticket),
+      }))
+      .sort((a, b) => (a.categoria < b.categoria ? -1 : 1));
+    assert.deepEqual(
+      valores,
+      [
+        {
+          categoria: CATEGORIA_A,
+          valor_total: "3.34",
+          num_pedidos: 1,
+          ticket_medio: "3.34",
+        },
+        {
+          categoria: CATEGORIA_B,
+          valor_total: "3.33",
+          num_pedidos: 1,
+          ticket_medio: "3.33",
+        },
+        {
+          categoria: CATEGORIA_C,
+          valor_total: "3.33",
+          num_pedidos: 1,
+          ticket_medio: "3.33",
+        },
+      ],
+      "SOMA_NO_CENTAVO: cada categoria em centavos, o centavo que falta no maior resto (empate: o nome)",
+    );
+    const somaEmCentavos = r.rows.reduce(
+      (s, linha) => s + Math.round(Number(linha.value) * 100),
+      0,
+    );
+    assert.equal(receita, 10, "SOMA_NO_CENTAVO: totalRevenue do painel");
+    assert.equal(
+      somaEmCentavos,
+      Math.round(receita * 100),
+      "SOMA_NO_CENTAVO: a lista tem de somar a receita do painel, centavo a centavo",
+    );
+    return valores;
+  } finally {
+    await C.query("ROLLBACK");
+  }
+}
+
+const MUTANTES_DA_SOMA = [
+  [
+    "cada categoria arredondada sozinha (3,33 x 3 = 9,99)",
+    "ROUND((c.piso + CASE WHEN c.fila_do_resto <= c.faltam THEN 1 ELSE 0 END) / 100, 2)",
+    "ROUND(c.valor_exato, 2)",
+  ],
+  [
+    "sem o centavo do maior resto",
+    "CASE WHEN c.fila_do_resto <= c.faltam THEN 1 ELSE 0 END",
+    "0",
+  ],
+  [
+    "valor sem arredondar (o corpo da 20261409000000)",
+    "ROUND((c.piso + CASE WHEN c.fila_do_resto <= c.faltam THEN 1 ELSE 0 END) / 100, 2)",
+    "c.valor_exato",
+  ],
+];
+
+async function provarSomaNoCentavo(original) {
+  console.log(`  VERDE    ${JSON.stringify(await aSomaFechaNoCentavo())}`);
+  const normalizada = original.replace(/\r\n/g, "\n");
+  for (const [rotulo, ancora, troca] of MUTANTES_DA_SOMA) {
+    assert.equal(
+      normalizada.split(ancora).length - 1,
+      1,
+      `mutante "${rotulo}": a âncora precisa casar exatamente 1x`,
+    );
+    const mutante = normalizada.replace(ancora, troca);
+    assert.notEqual(mutante, normalizada);
+    let pego;
+    try {
+      await C.query(mutante);
+      assert.equal(await definicao(), mutante, "o mutante não entrou no banco");
+      try {
+        await aSomaFechaNoCentavo();
+      } catch (erro) {
+        pego = erro;
+      }
+    } finally {
+      await C.query(original);
+      assert.equal(
+        await definicao(),
+        original,
+        "o corpo vivo não foi restaurado",
+      );
+    }
+    assert.ok(
+      pego instanceof assert.AssertionError,
+      `MUTANTE SOBREVIVEU ou erro SQL/timeout (${rotulo}): ${pego?.stack}`,
+    );
+    assert.match(pego.message, /^SOMA_NO_CENTAVO:/);
+    console.log(`  VERMELHO ${rotulo}`);
+    console.log(`           ${pego.message.split("\n")[0]}`);
+    console.log(`           observado: ${JSON.stringify(pego.actual)}`);
+  }
+  console.log(
+    `  VERDE    restaurado: ${JSON.stringify(await aSomaFechaNoCentavo())}`,
   );
 }
 
@@ -513,9 +690,10 @@ async function main() {
     console.log(`Corpo VIVO de get_category_analytics: ${hash.rows[0].h}`);
     await provarGuarda(original);
     await provarRateio(original);
+    await provarSomaNoCentavo(original);
     await provarItensSemVinculo();
     console.log(
-      `\nanalise-por-categoria-so-conta-pedido-pago-viva: 1/1 controle do pagamento e ${MUTANTES_DO_RATEIO.length}/${MUTANTES_DO_RATEIO.length} do rateio mortos; verde/vermelho/verde`,
+      `\nanalise-por-categoria-so-conta-pedido-pago-viva: 1/1 controle do pagamento, ${MUTANTES_DO_RATEIO.length}/${MUTANTES_DO_RATEIO.length} do rateio e ${MUTANTES_DA_SOMA.length}/${MUTANTES_DA_SOMA.length} da soma no centavo mortos; verde/vermelho/verde`,
     );
   } finally {
     await C.end().catch(() => {});

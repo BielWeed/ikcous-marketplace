@@ -10,6 +10,7 @@ import {
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { LocalBufferedTextarea } from "@/components/admin/LocalBufferedInput";
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -365,6 +366,9 @@ export function BaixarLancamentoFolha({
   }
 
   const ativas = contas.filter((c) => c.ativa);
+  const rotuloDaContaVazia = contaOriginalDesativada
+    ? "Escolha uma conta ativa…"
+    : "A conta do lançamento";
 
   return (
     <FolhaFinanceira
@@ -452,7 +456,7 @@ export function BaixarLancamentoFolha({
             />
           </Campo>
         ) : null}
-        <Campo
+        <CampoDeEscolha
           id="fin-baixa-conta"
           rotulo={alvo.lado === "entrada" ? "Entrou em" : "Saiu de"}
           ajuda={
@@ -460,26 +464,19 @@ export function BaixarLancamentoFolha({
               ? `A conta original está desativada: escolha ${alvo.lado === "entrada" ? "em que conta o dinheiro entrou" : "de onde saiu o dinheiro"} ou reative a conta em Contas.`
               : "A conta do lançamento ou outra conta ativa."
           }
-        >
-          <select
-            id="fin-baixa-conta"
-            disabled={enviando}
-            value={contaId}
-            onChange={(e) => setContaEscolhida(e.target.value)}
-            className={CLASSE_CAMPO}
-          >
-            <option value="">
-              {contaOriginalDesativada
-                ? "Escolha uma conta ativa…"
-                : "A conta do lançamento"}
-            </option>
-            {ativas.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
-        </Campo>
+          desabilitado={enviando}
+          valor={contaId}
+          aoMudar={setContaEscolhida}
+          // A conta do lançamento que a lista ainda não trouxe cai aqui: a
+          // baixa vai com ela, então o campo diz isso.
+          placeholder={rotuloDaContaVazia}
+          opcoes={[
+            // Vazio é opção de verdade: vai sem conta e o servidor usa a do
+            // lançamento (ou, com ela desativada, a baixa não confirma).
+            { valor: "", rotulo: rotuloDaContaVazia },
+            ...ativas.map((c) => ({ valor: c.id, rotulo: c.nome })),
+          ]}
+        />
         <p className="rounded-2xl bg-teal-400/5 p-3 text-xs leading-relaxed text-zinc-400">
           O valor é fixo, integral. Não pode ser alterado e não há baixa
           parcial.

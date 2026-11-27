@@ -3630,7 +3630,16 @@ const ROL_DA_197B = [
   "premissa: as 3 tabelas da 20261061000000 ja estao na publicacao",
   "nenhuma tabela do esquema public alem das 13 e de coupons (tolerada) esta na publicacao",
 ];
+// O rol das consultas do lote da 20261620000000 (a soma das categorias fecha com o faturamento no centavo): as MESMAS 2 linhas da 164 (so
+// get_category_analytics muda de corpo). Somente catalogo: nenhuma linha de pedido e lida e a funcao nao e chamada. A 198a espera o corpo
+// desta (md5); a 198b, o da 20261409000000 ou o desta (reaplicacao idempotente).
+const ROL_DA_198 = [
+  "get_category_analytics: corpo exato (md5)",
+  "get_category_analytics: assinatura e atributos conhecidos",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado": ROL_DA_198,
+  "198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente": ROL_DA_198,
   "197a-conferir-o-catalogo-chega-ao-vivo-aplicado": ROL_DA_197A,
   "197b-antes-o-catalogo-chega-ao-vivo-ausente": ROL_DA_197B,
   "196a-conferir-a-loja-pausa-o-pedido-novo-aplicado": ROL_DA_196A,

@@ -24,6 +24,7 @@ import {
   type ContaFinanceira,
   type DataIso,
 } from "@/types/financeiro";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 const HOJE = "2026-09-26";
 const SALDO_INICIAL_DO_BANCO = "2026-09-20";
@@ -101,14 +102,10 @@ async function digitar(id: string, valor: string) {
   });
 }
 
+/** Escolhe como a lojista: toca no campo e na opção da lista de escolha. */
 async function escolher(id: string, valor: string) {
-  const el = document.getElementById(id) as HTMLSelectElement;
   await act(async () => {
-    Object.getOwnPropertyDescriptor(
-      HTMLSelectElement.prototype,
-      "value",
-    )?.set?.call(el, valor);
-    el.dispatchEvent(new Event("change", { bubbles: true }));
+    escolherNaLista(id, valor);
   });
 }
 

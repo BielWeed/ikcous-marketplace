@@ -5,12 +5,15 @@
 // Regra do dono: valor em dinheiro NUNCA quebra de linha. Quem se ajusta é o
 // tamanho da letra, pelo número de caracteres do texto já formatado.
 
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Layers } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { ListaDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/ListaDeEscolha";
+import type { OpcaoDaLista } from "@/components/admin/primitivos/lista-de-escolha/tipos";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { ContaFinanceira, DataIso } from "@/types/financeiro";
+import { iconeDaListaDoTipoDeConta } from "./icones";
 import { CLASSE_CHIP, CLASSE_CHIP_COMUM } from "./partes";
 import {
   classeDoValorGrande,
@@ -121,9 +124,13 @@ export function tituloDoDia(
 }
 
 /**
- * Chip "Todas as contas ›" do Extrato: pílula de 44px com o `<select>` de
- * verdade por cima (invisível, mas é ele que recebe o toque e o foco), para o
- * celular abrir a lista nativa.
+ * Chip "Todas as contas ›" do Extrato: pílula de 44px que abre a lista de
+ * escolha do painel ("Mostrar contas": folha de baixo no celular, colada no
+ * chip no computador). "Todas as contas" vem primeiro ("Somar tudo"); cada
+ * conta leva o ícone do tipo, e a desativada continua escolhível, com
+ * "Desativada" embaixo (o extrato dela ainda existe).
+ *
+ * O nome para o leitor de tela é "Conta, <o que está mostrado>".
  */
 export function ChipDaConta({
   id,
@@ -136,35 +143,63 @@ export function ChipDaConta({
   readonly aoMudar: (id: string) => void;
   readonly contas: readonly ContaFinanceira[];
 }) {
-  const escolhida = contas.find((c) => c.id === valor);
+  const opcoes: OpcaoDaLista[] = [
+    {
+      valor: "",
+      rotulo: "Todas as contas",
+      subinfo: "Somar tudo",
+      icone: Layers,
+    },
+    ...contas.map((c) => ({
+      valor: c.id,
+      rotulo: c.nome,
+      subinfo: c.ativa ? undefined : "Desativada",
+      icone: iconeDaListaDoTipoDeConta(c.tipo),
+    })),
+  ];
   return (
-    <label
-      className={cn(
-        CLASSE_CHIP,
-        CLASSE_CHIP_COMUM,
-        "relative w-fit max-w-full cursor-pointer gap-1.5 text-sm focus-within:ring-2 focus-within:ring-sky-300",
-      )}
-    >
-      <span className="min-w-0 truncate">
-        {escolhida ? escolhida.nome : "Todas as contas"}
-      </span>
-      <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
-      <select
-        id={id}
-        aria-label="Conta"
-        value={valor}
-        onChange={(e) => aoMudar(e.target.value)}
-        className="absolute inset-0 size-full cursor-pointer opacity-0"
-      >
-        <option value="">Todas as contas</option>
-        {contas.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.nome}
-            {c.ativa ? "" : " (inativa)"}
-          </option>
-        ))}
-      </select>
-    </label>
+    <ListaDeEscolha
+      id={id}
+      rotulo="Conta"
+      tituloDaLista="Mostrar contas"
+      opcoes={opcoes}
+      // Conta que sumiu da lista cai em "Todas as contas" (o `valor` fora das
+      // opções mostraria o placeholder, que aqui é o mesmo texto).
+      valor={valor}
+      placeholder="Todas as contas"
+      aoMudar={aoMudar}
+      gatilho={({ botao, aberta, escolhida, textoMostrado }) => {
+        const Icone = escolhida?.icone ?? Layers;
+        return (
+          <button
+            {...botao}
+            aria-label={`Conta, ${textoMostrado}`}
+            className={cn(
+              CLASSE_CHIP,
+              CLASSE_CHIP_COMUM,
+              "w-fit max-w-full cursor-pointer gap-1.5 text-sm",
+              aberta && "lista-de-escolha-aberta",
+            )}
+          >
+            <Icone
+              aria-hidden="true"
+              className={cn(
+                "size-4 shrink-0",
+                aberta ? "lista-de-escolha-ouro" : "text-zinc-400",
+              )}
+            />
+            <span className="min-w-0 truncate">{textoMostrado}</span>
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "size-4 shrink-0 transition-transform",
+                aberta && "lista-de-escolha-ouro -rotate-90",
+              )}
+            />
+          </button>
+        );
+      }}
+    />
   );
 }
 

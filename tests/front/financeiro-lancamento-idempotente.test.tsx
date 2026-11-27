@@ -14,6 +14,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import type { Mock } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -106,26 +107,25 @@ describe("lançamento: a tentativa sobrevive ao prazo, só muda com o conteúdo"
     return chamada[1].p;
   };
   async function mudar(id: string, valor: string) {
-    const el = document.getElementById(id) as
-      | HTMLInputElement
-      | HTMLSelectElement
-      | HTMLTextAreaElement;
+    const el = document.getElementById(id);
+    // Lista de escolha (o lugar do `<select>`): toca no campo e na opção.
+    if (el?.getAttribute("aria-haspopup") === "listbox") {
+      await act(async () => {
+        escolherNaLista(id, valor);
+      });
+      return;
+    }
+    const campo = el as HTMLInputElement | HTMLTextAreaElement;
     const proto =
-      el instanceof HTMLSelectElement
-        ? HTMLSelectElement.prototype
-        : el instanceof HTMLTextAreaElement
-          ? HTMLTextAreaElement.prototype
-          : HTMLInputElement.prototype;
+      campo instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, valor);
-      el.dispatchEvent(
-        new Event(el instanceof HTMLSelectElement ? "change" : "input", {
-          bubbles: true,
-        }),
-      );
+      Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(campo, valor);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () => {
-      el.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      campo.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
     });
   }
   beforeEach(async () => {

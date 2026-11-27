@@ -7,6 +7,8 @@ import {
   LocalBufferedInput,
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
+import type { OpcaoDaLista } from "@/components/admin/primitivos/lista-de-escolha/tipos";
 import { salvarLancamento } from "@/hooks/useFinanceiro";
 import {
   FORMAS_DO_LANCAMENTO,
@@ -52,7 +54,26 @@ import {
 
 const ID_FORM = "fin-novo-lancamento";
 
-const PARCELAS = Array.from({ length: MAXIMO_DE_PARCELAS }, (_, i) => i + 1);
+/** O campo vazio mostra isto; não é uma opção que se possa escolher. */
+const PLACEHOLDER_DA_ESCOLHA = "Escolha…";
+
+// 48 opções: a lista liga a busca sozinha (10 ou mais).
+const OPCOES_DE_PARCELAS: readonly OpcaoDaLista[] = Array.from(
+  { length: MAXIMO_DE_PARCELAS },
+  (_, i) => ({
+    valor: String(i + 1),
+    rotulo: i === 0 ? "À vista (1×)" : `${i + 1}×`,
+  }),
+);
+
+// "Não informar" (`""`) é uma opção de verdade: a forma é opcional.
+const OPCOES_DE_FORMA: readonly OpcaoDaLista[] = [
+  { valor: "", rotulo: "Não informar" },
+  ...FORMAS_DO_LANCAMENTO.map((forma) => ({
+    valor: forma,
+    rotulo: rotuloDaForma(forma),
+  })),
+];
 
 /** Conta sugerida: o banco para receita/despesa (o comum numa loja), senão a primeira ativa. */
 function contaSugerida(contas: readonly ContaFinanceira[]): string {
@@ -172,6 +193,16 @@ export function NovoLancamentoFolha({
           (c.ativa || c.id === form.categoriaId),
       ),
     [categorias, form.tipo, form.categoriaId],
+  );
+  const opcoesDeCategoria = useMemo<readonly OpcaoDaLista[]>(
+    () => categoriasDoTipo.map((c) => ({ valor: c.id, rotulo: c.nome })),
+    [categoriasDoTipo],
+  );
+  // "Sai de" e "Entra em" listam as mesmas contas; cada campo tem o seu id
+  // (e a sua lista), então um nunca escreve no valor do outro.
+  const opcoesDeConta = useMemo<readonly OpcaoDaLista[]>(
+    () => contasAtivas.map((c) => ({ valor: c.id, rotulo: c.nome })),
+    [contasAtivas],
   );
 
   function atualizar(parcial: Partial<FormularioDoLancamento>) {
@@ -405,74 +436,41 @@ export function NovoLancamentoFolha({
         </Campo>
 
         {transferencia ? null : (
-          <Campo
+          <CampoDeEscolha
             id="fin-lanc-categoria"
             rotulo="Categoria"
+            placeholder={PLACEHOLDER_DA_ESCOLHA}
+            opcoes={opcoesDeCategoria}
+            valor={form.categoriaId}
+            aoMudar={(categoriaId) => atualizar({ categoriaId })}
+            desabilitado={enviando}
             erro={erros.categoriaId}
             ajuda="É a categoria que coloca o valor na linha certa do resultado."
-          >
-            <select
-              id="fin-lanc-categoria"
-              disabled={enviando}
-              value={form.categoriaId}
-              aria-invalid={erros.categoriaId ? true : undefined}
-              onChange={(e) => atualizar({ categoriaId: e.target.value })}
-              className={CLASSE_CAMPO}
-            >
-              <option value="">Escolha…</option>
-              {categoriasDoTipo.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
-          </Campo>
+          />
         )}
 
         <div className={transferencia ? "grid grid-cols-1 gap-5" : ""}>
-          <Campo
+          <CampoDeEscolha
             id="fin-lanc-conta"
             rotulo={transferencia ? "Sai de" : "Conta"}
+            placeholder={PLACEHOLDER_DA_ESCOLHA}
+            opcoes={opcoesDeConta}
+            valor={form.contaId}
+            aoMudar={(contaId) => atualizar({ contaId })}
+            desabilitado={enviando}
             erro={erros.contaId}
-          >
-            <select
-              id="fin-lanc-conta"
-              disabled={enviando}
-              value={form.contaId}
-              aria-invalid={erros.contaId ? true : undefined}
-              onChange={(e) => atualizar({ contaId: e.target.value })}
-              className={CLASSE_CAMPO}
-            >
-              <option value="">Escolha…</option>
-              {contasAtivas.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
-          </Campo>
+          />
           {transferencia ? (
-            <Campo
+            <CampoDeEscolha
               id="fin-lanc-conta-destino"
               rotulo="Entra em"
+              placeholder={PLACEHOLDER_DA_ESCOLHA}
+              opcoes={opcoesDeConta}
+              valor={form.contaDestinoId}
+              aoMudar={(contaDestinoId) => atualizar({ contaDestinoId })}
+              desabilitado={enviando}
               erro={erros.contaDestinoId}
-            >
-              <select
-                id="fin-lanc-conta-destino"
-                disabled={enviando}
-                value={form.contaDestinoId}
-                aria-invalid={erros.contaDestinoId ? true : undefined}
-                onChange={(e) => atualizar({ contaDestinoId: e.target.value })}
-                className={CLASSE_CAMPO}
-              >
-                <option value="">Escolha…</option>
-                {contasAtivas.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </select>
-            </Campo>
+            />
           ) : null}
         </div>
 
@@ -597,49 +595,33 @@ export function NovoLancamentoFolha({
         ) : null}
 
         {previsto ? (
-          <Campo
+          <CampoDeEscolha
             id="fin-lanc-parcelas"
             rotulo="Parcelas"
+            opcoes={OPCOES_DE_PARCELAS}
+            valor={form.parcelas}
+            aoMudar={(parcelasEscolhidas) =>
+              atualizar({ parcelas: parcelasEscolhidas })
+            }
+            desabilitado={enviando}
             erro={erros.parcelas}
             ajuda={
               parcela
                 ? `${parcelas}× de ${parcela.exata ? "" : "cerca de "}${formatarBRL(parcela.parcela)} — uma por mês a partir de ${formatarData(form.dataVencimento)}${parcela.exata ? "" : `; a soma fecha em ${formatarBRL(valorDigitado ?? 0)}`}.`
                 : "À vista: um vencimento só."
             }
-          >
-            <select
-              id="fin-lanc-parcelas"
-              disabled={enviando}
-              value={form.parcelas}
-              onChange={(e) => atualizar({ parcelas: e.target.value })}
-              className={CLASSE_CAMPO}
-            >
-              {PARCELAS.map((n) => (
-                <option key={n} value={String(n)}>
-                  {n === 1 ? "À vista (1×)" : `${n}×`}
-                </option>
-              ))}
-            </select>
-          </Campo>
+          />
         ) : null}
 
         {transferencia ? null : (
-          <Campo id="fin-lanc-forma" rotulo="Forma de pagamento (opcional)">
-            <select
-              id="fin-lanc-forma"
-              disabled={enviando}
-              value={form.formaPagamento}
-              onChange={(e) => atualizar({ formaPagamento: e.target.value })}
-              className={CLASSE_CAMPO}
-            >
-              <option value="">Não informar</option>
-              {FORMAS_DO_LANCAMENTO.map((forma) => (
-                <option key={forma} value={forma}>
-                  {rotuloDaForma(forma)}
-                </option>
-              ))}
-            </select>
-          </Campo>
+          <CampoDeEscolha
+            id="fin-lanc-forma"
+            rotulo="Forma de pagamento (opcional)"
+            opcoes={OPCOES_DE_FORMA}
+            valor={form.formaPagamento}
+            aoMudar={(formaPagamento) => atualizar({ formaPagamento })}
+            desabilitado={enviando}
+          />
         )}
 
         <Campo

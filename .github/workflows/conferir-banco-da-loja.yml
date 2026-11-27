@@ -427,6 +427,8 @@ on:
           - 196m-medir-quem-cria-pedido
           - 197a-conferir-o-catalogo-chega-ao-vivo-aplicado
           - 197b-antes-o-catalogo-chega-ao-vivo-ausente
+          - 198a-conferir-a-soma-das-categorias-fecha-no-centavo-aplicado
+          - 198b-antes-a-soma-das-categorias-fecha-no-centavo-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

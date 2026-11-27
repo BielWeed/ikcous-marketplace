@@ -40,6 +40,11 @@ vi.mock("sonner", () => ({
 }));
 
 import { FormasDePagamentoSection } from "@/components/admin/settings/FormasDePagamentoCard";
+import {
+  escolherNaLista,
+  opcoesDaLista,
+  valorDaLista,
+} from "./helpers/lista-de-escolha";
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -122,10 +127,24 @@ describe("Formas de pagamento — Cartão pelo app", () => {
 
   const credito = () => interruptor("Cartão de crédito pelo app");
   const debito = () => interruptor("Cartão de débito pelo app");
-  const seletorDeParcelas = () =>
-    [...hospedeiro.querySelectorAll("select")].find((s) =>
-      s.labels?.[0]?.textContent?.includes("Parcelar em até"),
-    ) as HTMLSelectElement | undefined;
+  // O "Parcelar em até" é a lista de escolha do painel (lista premium,
+  // 26/11/2026): o botão do campo, achado pelo rótulo `<label for>`.
+  const seletorDeParcelas = () => {
+    const rotulo = [...hospedeiro.querySelectorAll("label")].find(
+      (l) => l.textContent === "Parcelar em até",
+    );
+    const campo = rotulo ? document.getElementById(rotulo.htmlFor) : null;
+    return campo instanceof HTMLButtonElement &&
+      campo.getAttribute("aria-haspopup") === "listbox"
+      ? campo
+      : undefined;
+  };
+  async function escolherParcelas(valor: string) {
+    await act(async () => {
+      escolherNaLista(seletorDeParcelas()!.id, valor);
+    });
+    await esperar();
+  }
 
   async function clicar(el: HTMLElement) {
     await act(async () => {
@@ -195,7 +214,7 @@ describe("Formas de pagamento — Cartão pelo app", () => {
 
     const seletor = seletorDeParcelas();
     expect(seletor).toBeDefined();
-    expect([...seletor!.options].map((o) => o.value)).toEqual(
+    expect(opcoesDaLista(seletor!.id).map((o) => o.valor)).toEqual(
       Array.from({ length: 12 }, (_, i) => String(i + 1)),
     );
   });
@@ -258,22 +277,110 @@ describe("Formas de pagamento — Cartão pelo app", () => {
     banco.linha = { credito: true, debito: true, parcelas_max: 1 };
     await montar();
 
-    const seletor = seletorDeParcelas()!;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(
-        HTMLSelectElement.prototype,
-        "value",
-      )!.set!.call(seletor, "6");
-      seletor.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await esperar();
+    await escolherParcelas("6");
 
     expect(banco.rpc).toHaveBeenCalledWith("salvar_config_pagamento_cartao", {
       p_credito: true,
       p_debito: true,
       p_parcelas_max: 6,
     });
-    expect(seletorDeParcelas()!.value).toBe("6");
+    expect(valorDaLista(seletorDeParcelas()!.id)).toBe("6");
+  });
+
+  // Lista premium (D.1, 26/11/2026): a escolha é a lista do painel, não o
+  // <select> nativo — e o que ela grava é o MESMO de antes.
+  it("escolher 6x grava o teto uma única vez, com o aviso 'Crédito em até 6x'", async () => {
+    banco.linha = { credito: true, debito: false, parcelas_max: 1 };
+    await montar();
+    expect(seletorDeParcelas()!.getAttribute("aria-haspopup")).toBe("listbox");
+
+    await escolherParcelas("6");
+
+    expect(banco.rpc).toHaveBeenCalledTimes(1);
+    expect(banco.rpc).toHaveBeenCalledWith("salvar_config_pagamento_cartao", {
+      p_credito: true,
+      p_debito: false,
+      p_parcelas_max: 6,
+    });
+    expect(toastSucesso).toHaveBeenCalledExactlyOnceWith("Crédito em até 6x");
+    // A lista fechou e o campo fechado mostra o que o BANCO devolveu.
+    expect(seletorDeParcelas()!.getAttribute("aria-expanded")).toBe("false");
+    expect(seletorDeParcelas()!.textContent).toContain("6x");
+  });
+
+  it("escolher de novo o teto que já está gravado não grava nada", async () => {
+    banco.linha = { credito: true, debito: false, parcelas_max: 6 };
+    await montar();
+
+    await escolherParcelas("6");
+
+    expect(banco.rpc).not.toHaveBeenCalled();
+    expect(toastSucesso).not.toHaveBeenCalled();
+  });
+
+  it("a lista das parcelas: sem busca, '1x' diz 'à vista' e nenhuma opção promete 'sem juros'", async () => {
+    banco.linha = { credito: true, debito: false, parcelas_max: 12 };
+    await montar();
+    const campo = seletorDeParcelas()!;
+
+    await act(async () => {
+      campo.click();
+    });
+    const lista = document.getElementById(`${campo.id}-lista`);
+    expect(lista).not.toBeNull();
+    const opcoes = [...lista!.querySelectorAll<HTMLElement>('[role="option"]')];
+    expect(opcoes.map((o) => o.dataset.rotulo)).toEqual(
+      Array.from({ length: 12 }, (_, i) => `${i + 1}x`),
+    );
+    // Só o 1x leva a linha de baixo: "à vista".
+    expect(opcoes[0].textContent).toBe("1xà vista");
+    for (const opcao of opcoes.slice(1)) {
+      expect(opcao.textContent).toBe(opcao.dataset.rotulo);
+    }
+    // Os juros das parcelas ficam com o cliente (mercado-pago-conteudo.ts):
+    // a lista nunca diz o contrário.
+    expect(document.body.textContent).not.toMatch(/sem juros/i);
+    // 12 opções ligariam a busca sozinhas; a tela aprovada (tela 2) não tem.
+    expect(document.querySelector('[role="combobox"]')).toBeNull();
+    expect(
+      document.querySelector('input[type="search"], input[type="text"]'),
+    ).toBeNull();
+  });
+
+  it("enquanto grava, a lista das parcelas fica travada e o helper recusa escolher", async () => {
+    banco.linha = { credito: true, debito: false, parcelas_max: 3 };
+    await montar();
+    let responder!: () => void;
+    banco.rpc.mockImplementationOnce(
+      (_nome: string, p: any) =>
+        new Promise((resolve) => {
+          responder = () =>
+            resolve({
+              data: {
+                id: 1,
+                credito: p.p_credito,
+                debito: p.p_debito,
+                parcelas_max: p.p_parcelas_max,
+              },
+              error: null,
+            });
+        }),
+    );
+    await clicar(debito());
+
+    try {
+      expect(seletorDeParcelas()!.disabled).toBe(true);
+      expect(() => escolherNaLista(seletorDeParcelas()!.id, "6")).toThrow(
+        /desabilitada/,
+      );
+    } finally {
+      // Solta a gravação mesmo se a prova falhar: pendurada, ela travaria
+      // os testes seguintes.
+      await act(async () => responder());
+      await esperar();
+    }
+    expect(seletorDeParcelas()!.disabled).toBe(false);
+    expect(banco.rpc).toHaveBeenCalledTimes(1);
   });
 
   // Pedido do dono (26/11/2026): com o cartão já ligado e funcionando, o aviso

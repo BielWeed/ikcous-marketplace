@@ -37,6 +37,7 @@ import {
   CONTA_MERCADO_PAGO,
 } from "@/types/financeiro";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
+import { escolherNaLista, valorDaLista } from "./helpers/lista-de-escolha";
 
 const PEDIDO = "11111111-2222-3333-4444-555555abc123";
 
@@ -382,16 +383,13 @@ describe("Financeiro — extrato e a pagar", () => {
       )?.set?.call(data, "2026-09-20");
       data.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    const conta = document.getElementById(
-      "fin-baixa-conta",
-    ) as HTMLSelectElement;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(
-        HTMLSelectElement.prototype,
-        "value",
-      )?.set?.call(conta, CONTA_CAIXA_DA_LOJA);
-      conta.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    // A conta é a lista de escolha do painel: tocar no campo e na opção.
+    await act(async () =>
+      escolherNaLista("fin-baixa-conta", CONTA_CAIXA_DA_LOJA),
+    );
+    expect(valorDaLista("fin-baixa-conta")).toBe(CONTA_CAIXA_DA_LOJA);
+    // Escolher a conta fecha só a lista: a folha da baixa continua aberta.
+    expect(folha()).toBe(baixa);
     await clicar(botaoEm(baixa, "Confirmar baixa"));
 
     expect(rpcFalso).toHaveBeenCalledWith("fin_lancamento_baixar", {

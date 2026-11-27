@@ -18,6 +18,7 @@ vi.mock("@/components/admin/financeiro/FluxoDeCaixaGrafico", () => ({
 
 import { CONTA_BANCARIA } from "@/types/financeiro";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
+import { escolherNaLista } from "./helpers/lista-de-escolha";
 
 const PERGUNTA = "Descartar o que você escreveu?";
 
@@ -258,15 +259,8 @@ describe("Financeiro — folha com algo escrito pergunta antes de fechar", () =>
   it("salvar não pergunta nada: a folha preenchida fecha quando o banco confirma", async () => {
     await abrirNovoLancamento(true);
     await digitar("fin-lanc-valor", "10000");
-    const categoria = document.getElementById(
-      "fin-lanc-categoria",
-    ) as HTMLSelectElement;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(
-        HTMLSelectElement.prototype,
-        "value",
-      )?.set?.call(categoria, "cat-aluguel");
-      categoria.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherNaLista("fin-lanc-categoria", "cat-aluguel");
     });
     rpcFalso.mockImplementation(async (nome: string) => {
       if (nome === "fin_lancamento_salvar")

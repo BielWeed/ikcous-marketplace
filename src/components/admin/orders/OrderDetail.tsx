@@ -843,11 +843,20 @@ function OrderDeliveryCard({
   // e WhatsApp), e quem tem conta pode ter apagado o do cadastro. Sem rua,
   // bairro e cidade não há o que copiar nem apontar no mapa: a ficha diz só
   // que ela retira, em uma linha, sem afirmar se informou ou não.
+  // RETIRADA COM CONTA (26/11/2026, retirada pede só o CEP): o pedido de
+  // retirada não leva mais endereço de casa. O pedido antigo que ainda aponta
+  // para o cadastro (Order.enderecoDoCadastroAtual) também diz só que ela
+  // retira — sem o endereço nem o CEP de HOJE, que não são os da compra. A
+  // cópia gravada NA compra (pedido antigo de visitante) continua como era.
   const semEnderecoDeCasa =
     order.retiradaNaLoja &&
-    [order.customer.address, order.customer.neighborhood, order.customer.city]
-      .map((parte) => (parte ?? "").trim())
-      .every((parte) => parte === "");
+    (!!order.enderecoDoCadastroAtual ||
+      [order.customer.address, order.customer.neighborhood, order.customer.city]
+        .map((parte) => (parte ?? "").trim())
+        .every((parte) => parte === ""));
+  const cepDaRetirada = order.enderecoDoCadastroAtual
+    ? ""
+    : (order.customer.cep ?? "").trim();
 
   const linhasDoEndereco = montarLinhasDoEndereco(order.customer);
 
@@ -911,10 +920,10 @@ function OrderDeliveryCard({
       {!ehBalcao && semEnderecoDeCasa && (
         <p className="border-t border-admin-border pt-4 text-sm leading-relaxed text-zinc-400">
           Cliente retira na loja.
-          {order.customer.cep?.trim() ? (
+          {cepDaRetirada ? (
             <>
               <br />
-              CEP: {order.customer.cep.trim()}
+              CEP: {cepDaRetirada}
             </>
           ) : null}
         </p>
@@ -923,12 +932,8 @@ function OrderDeliveryCard({
       {!ehBalcao && !semEnderecoDeCasa && (
         <div className="space-y-2 border-t border-admin-border pt-4">
           <p className="text-xs text-zinc-400">
-            {/* Retirada sem cópia no pedido: o endereço é o do cadastro de
-                HOJE, não o da compra (Order.enderecoDoCadastroAtual). */}
             {order.retiradaNaLoja
-              ? order.enderecoDoCadastroAtual
-                ? "Endereço do cadastro (atual)"
-                : "Endereço do cliente"
+              ? "Endereço do cliente"
               : "Endereço de entrega"}
           </p>
           <p className="break-words text-sm leading-relaxed text-zinc-200">

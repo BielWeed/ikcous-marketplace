@@ -539,6 +539,10 @@ export function useCategories() {
     async (id: string, novoNome: string): Promise<ResultadoDoRenome> => {
       const reservado = erroDoNomeReservado(novoNome);
       if (reservado) throw new ErroDeCategoria(reservado, "22023");
+      // A mesma régua (e a mesma frase) do criar: o banco também recusa, mas a
+      // frase dele diz "sem letra" a quem escreveu só letras de outro alfabeto.
+      const invalido = erroDoNomeDaCategoria(novoNome);
+      if (invalido) throw new ErroDeCategoria(invalido, "22023");
       const { data, error } = await aguardarComPrazo(
         Promise.resolve(
           supabase.rpc("renomear_categoria", {

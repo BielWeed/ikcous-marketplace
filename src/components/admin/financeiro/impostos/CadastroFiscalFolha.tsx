@@ -14,6 +14,11 @@
 // vendas antes de janeiro de 2020, e isso é conferido AQUI, para a lojista não
 // levar a recusa do servidor. O mês (`yyyy-mm`, campo de mês) vira `yyyy-mm-01`.
 //
+// Vai ao banco SÓ o que a lojista mexeu nesta folha, por cima do cadastro relido
+// logo antes de gravar (`salvarCadastroFiscalSoOMexido`): a folha pode ficar aberta
+// enquanto outro aparelho grava, e mandar a cópia de quando ela abriu desfaria isso
+// sem aviso (o regime trocado no celular voltava ao antigo).
+//
 // Gravar é UMA chamada e nunca repete sozinha. "Sem resposta" (rede ou prazo) pode
 // ter gravado: a folha manda conferir e PARA o Salvar até a lojista fechar (o
 // cartão relê o cadastro ao fechar). Folha suja pergunta antes de fechar.
@@ -21,14 +26,17 @@
 import { Landmark } from "lucide-react";
 import { useId, useMemo, useRef, useState } from "react";
 
+import { CampoDeEscolha } from "@/components/admin/primitivos/lista-de-escolha/CampoDeEscolha";
+import type { OpcaoDaLista } from "@/components/admin/primitivos/lista-de-escolha/tipos";
 import {
   ErroDoCadastroFiscal,
-  salvarCadastroFiscal,
+  salvarCadastroFiscalSoOMexido,
 } from "@/hooks/useImpostos";
 import { mensagemDeErroFinanceiro } from "@/lib/financeiro";
 import {
   ATIVIDADES_FISCAIS,
   type CadastroFiscal,
+  type CampoDoPayloadFiscal,
   type ErrosDoCadastroFiscal,
   REGIMES_FISCAIS,
   type ResultadoDoCadastroFiscal,
@@ -56,6 +64,16 @@ import {
 const PRIMEIRA_ABERTURA: DataIso = "1900-01-01";
 const PRIMEIRO_MES_DAS_VENDAS: DataIso = "2020-01-01";
 
+// Regime e atividade: as opções que a lojista lê. Sem cadastro o campo mostra
+// "Escolha…" (o placeholder), que não é opção: não dá para "desescolher".
+const OPCOES_DO_REGIME: readonly OpcaoDaLista[] = REGIMES_FISCAIS.map(
+  (regime) => ({ valor: regime, rotulo: rotuloDoRegime(regime) }),
+);
+const OPCOES_DA_ATIVIDADE: readonly OpcaoDaLista[] = ATIVIDADES_FISCAIS.map(
+  (atividade) => ({ valor: atividade, rotulo: rotuloDaAtividade(atividade) }),
+);
+const CONVITE_DA_LISTA = "Escolha…";
+
 const FRASE_ABERTURA_ANTIGA = "A data de abertura não pode ser antes de 1900.";
 const FRASE_VENDAS_ANTIGAS =
   "O mês em que começou a vender não pode ser antes de janeiro de 2020.";
@@ -77,6 +95,22 @@ function formularioInicial(cadastro: CadastroFiscal | null): FormularioDaFolha {
     abertaEm: cadastro?.abertaEm ?? "",
     vendeMes: cadastro?.vendeNoAppDesde?.slice(0, 7) ?? "",
   };
+}
+
+/**
+ * O que a lojista mexeu: o campo cujo TEXTO difere do que a folha mostrou ao abrir,
+ * com o nome do campo no corpo do RPC. A mesma régua decide o "sujo".
+ */
+function camposMexidos(
+  form: FormularioDaFolha,
+  inicial: FormularioDaFolha,
+): CampoDoPayloadFiscal[] {
+  const mexidos: CampoDoPayloadFiscal[] = [];
+  if (form.regime !== inicial.regime) mexidos.push("regime");
+  if (form.atividade !== inicial.atividade) mexidos.push("atividade");
+  if (form.abertaEm !== inicial.abertaEm) mexidos.push("aberta_em");
+  if (form.vendeMes !== inicial.vendeMes) mexidos.push("vende_no_app_desde");
+  return mexidos;
 }
 
 /**
@@ -180,7 +214,7 @@ export function CadastroFiscalFolha({
   const gravando = useRef(false);
 
   // Depois de "sem resposta" o rascunho pode já estar gravado: fechar não pergunta.
-  const sujo = !semResposta && JSON.stringify(form) !== JSON.stringify(inicial);
+  const sujo = !semResposta && camposMexidos(form, inicial).length > 0;
 
   const validacao = useMemo(() => validar(form, hoje), [form, hoje]);
   const erros: ErrosDoCadastroFiscal =
@@ -220,7 +254,10 @@ export function CadastroFiscalFolha({
     setEnviando(true);
     setErroDoServidor(null);
     try {
-      await salvarCadastroFiscal(resultado.payload);
+      await salvarCadastroFiscalSoOMexido(
+        resultado.payload,
+        camposMexidos(form, inicial),
+      );
       aoSalvar();
     } catch (erro) {
       if (erro instanceof ErroDoCadastroFiscal) {
@@ -307,47 +344,27 @@ export function CadastroFiscalFolha({
           }}
           className="flex flex-col gap-4"
         >
-          <Campo id={ID_REGIME} rotulo="Regime da empresa" erro={erros.regime}>
-            <select
-              id={ID_REGIME}
-              value={form.regime}
-              disabled={parado}
-              aria-invalid={erros.regime ? true : undefined}
-              aria-describedby={ligacaoDoErro(ID_REGIME, erros.regime)}
-              onChange={(e) => atualizar({ regime: e.target.value })}
-              className={CLASSE_CAMPO}
-            >
-              <option value="">Escolha…</option>
-              {REGIMES_FISCAIS.map((regime) => (
-                <option key={regime} value={regime}>
-                  {rotuloDoRegime(regime)}
-                </option>
-              ))}
-            </select>
-          </Campo>
-          <Campo
+          <CampoDeEscolha
+            id={ID_REGIME}
+            rotulo="Regime da empresa"
+            opcoes={OPCOES_DO_REGIME}
+            valor={form.regime}
+            aoMudar={(regime) => atualizar({ regime })}
+            placeholder={CONVITE_DA_LISTA}
+            desabilitado={parado}
+            erro={erros.regime}
+          />
+          <CampoDeEscolha
             id={ID_ATIVIDADE}
             rotulo="O que a empresa faz"
+            opcoes={OPCOES_DA_ATIVIDADE}
+            valor={form.atividade}
+            aoMudar={(atividade) => atualizar({ atividade })}
+            placeholder={CONVITE_DA_LISTA}
+            desabilitado={parado}
             erro={erros.atividade}
             ajuda="Só comércio: vende apenas produtos. Tem serviço: também presta algum serviço."
-          >
-            <select
-              id={ID_ATIVIDADE}
-              value={form.atividade}
-              disabled={parado}
-              aria-invalid={erros.atividade ? true : undefined}
-              aria-describedby={ligacaoDoErro(ID_ATIVIDADE, erros.atividade)}
-              onChange={(e) => atualizar({ atividade: e.target.value })}
-              className={CLASSE_CAMPO}
-            >
-              <option value="">Escolha…</option>
-              {ATIVIDADES_FISCAIS.map((atividade) => (
-                <option key={atividade} value={atividade}>
-                  {rotuloDaAtividade(atividade)}
-                </option>
-              ))}
-            </select>
-          </Campo>
+          />
           <Campo
             id={ID_ABERTA_EM}
             rotulo="Data de abertura da empresa (opcional)"

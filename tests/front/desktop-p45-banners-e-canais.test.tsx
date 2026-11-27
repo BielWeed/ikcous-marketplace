@@ -99,8 +99,13 @@ const GALERIA = "src/components/admin/banners/GaleriaDeBanners.tsx";
 const CELULAR_EDITOR = "space-y-6";
 const CELULAR_BUSCA =
   "mt-3 min-h-11 border-admin-border bg-admin-bg text-white";
-const CELULAR_FILTRO =
-  "mt-1 min-h-11 w-full rounded-xl border border-admin-border bg-admin-bg px-3 text-white";
+// Lista premium (Lote F, 26/11/2026): o filtro deixou de ser `<select>` e virou
+// `CampoDeEscolha`. O `className` dele vai no contêiner do campo (o desenho de
+// 72px, borda e fundo mora no componente), e o rótulo "Situação", que era um
+// `<Label>` separado com `mt-3`, passou a ser o rótulo flutuante. Por isso o
+// literal do celular agora é só o `mt-3` que antes ficava no rótulo; o
+// `lg:max-w-sm` continua sendo a trava do computador.
+const CELULAR_FILTRO = "mt-3";
 
 const TOKENS_DO_EDITOR = ["lg:mx-auto", "lg:w-full", "lg:max-w-2xl"];
 

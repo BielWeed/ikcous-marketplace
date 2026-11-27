@@ -405,7 +405,11 @@ export function dividirNomeDoPagador(
     const codigo = caractere.charCodeAt(0);
     if (codigo <= 0x1f || codigo === 0x7f) return {};
   }
-  const limpo = nome.trim().replace(/\s+/g, " ");
+  // NFC antes de tudo (caça de 26/11/2026): acento DECOMPOSTO ("e" + U+0301,
+  // comum em texto colado) é `\p{M}`, não `\p{L}` — "José" em NFD virava lixo
+  // e o cartão saía sem nome para o antifraude. Compor aqui também faz o nome
+  // ENVIADO sair composto, e o teto de 100 conta caracteres compostos.
+  const limpo = nome.normalize("NFC").trim().replace(/\s+/g, " ");
   if (limpo === "" || limpo.length > 100) return {};
   const partes = limpo.split(" ");
   if (!partes.every((parte) => /^\p{L}[\p{L}'’.-]*$/u.test(parte))) return {};

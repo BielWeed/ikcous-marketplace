@@ -25,16 +25,32 @@ import type { EstadoDoDono } from "@/hooks/useDonoDaLoja";
 import type { ConsultaFinanceira } from "@/hooks/useFinanceiro";
 import type { LeituraDoCadastroFiscal } from "@/lib/fiscal/cadastro";
 
-const { donoFalso, authFalso, limparDonoFalso, rpc, logDoBanco, lojaFalsa } =
-  vi.hoisted(() => ({
-    donoFalso: { atual: {} as EstadoDoDono },
-    // Quem está logado (o id que o histórico usa para dizer "Você").
-    authFalso: { id: null as string | null },
-    limparDonoFalso: vi.fn(),
-    rpc: vi.fn(),
-    logDoBanco: { linhas: [] as unknown[] },
-    lojaFalsa: { documento: null as string | null },
-  }));
+import {
+  escolherNaLista,
+  opcoesDaLista,
+  valorDaLista,
+} from "./helpers/lista-de-escolha";
+
+const {
+  donoFalso,
+  authFalso,
+  limparDonoFalso,
+  rpc,
+  logDoBanco,
+  lojaFalsa,
+  cadastroNoBanco,
+} = vi.hoisted(() => ({
+  donoFalso: { atual: {} as EstadoDoDono },
+  // Quem está logado (o id que o histórico usa para dizer "Você").
+  authFalso: { id: null as string | null },
+  limparDonoFalso: vi.fn(),
+  rpc: vi.fn(),
+  logDoBanco: { linhas: [] as unknown[] },
+  lojaFalsa: { documento: null as string | null },
+  // A linha de `fiscal_cadastro` que a folha relê logo antes de gravar: a do
+  // cadastro que a tela mostra (montar/renderizarDeNovo a acertam).
+  cadastroNoBanco: { linha: null as Record<string, unknown> | null },
+}));
 
 vi.mock("@/hooks/useDonoDaLoja", () => ({
   useDonoDaLoja: () => donoFalso.atual,
@@ -49,8 +65,19 @@ vi.mock("@/contexts/StoreContext", () => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc,
-    // A única leitura que o cartão faz sozinho: as últimas alterações.
+    // O cartão lê sozinho as últimas alterações; a folha relê o cadastro antes
+    // de gravar (manda só o mexido por cima dele).
     from: (tabela: string) => {
+      if (tabela === "fiscal_cadastro") {
+        return {
+          select: () => ({
+            maybeSingle: async () => ({
+              data: cadastroNoBanco.linha,
+              error: null,
+            }),
+          }),
+        };
+      }
       if (tabela !== "fiscal_cadastro_log") {
         throw new Error(`leitura inesperada: ${tabela}`);
       }
@@ -149,6 +176,23 @@ let raiz: Root;
 let hospedeiro: HTMLDivElement;
 const aoIrParaMinhaLoja = vi.fn();
 
+/** O banco tem o cadastro que a tela mostra (nenhum outro aparelho no meio). */
+function guardarNoBanco(dados: LeituraDoCadastroFiscal | null) {
+  if (dados?.estado !== "com_cadastro") {
+    cadastroNoBanco.linha = null;
+    return;
+  }
+  const c = dados.cadastro;
+  cadastroNoBanco.linha = {
+    regime: c.regime,
+    atividade: c.atividade,
+    aberta_em: c.abertaEm,
+    vende_no_app_desde: c.vendeNoAppDesde,
+    atualizado_em: c.atualizadoEm,
+    atualizado_por: c.atualizadoPor,
+  };
+}
+
 async function assentar() {
   await act(async () => {
     await new Promise((r) => setTimeout(r, 10));
@@ -173,6 +217,7 @@ async function montar(
   extra = {},
 ) {
   donoFalso.atual = dono;
+  guardarNoBanco(dados);
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
@@ -186,6 +231,7 @@ async function renderizarDeNovo(
   dados: LeituraDoCadastroFiscal | null,
   extra = {},
 ) {
+  guardarNoBanco(dados);
   await act(async () => {
     raiz.render(elemento(dados, extra));
   });
@@ -226,25 +272,42 @@ async function clicar(el: HTMLElement) {
   });
   await assentar();
 }
-function campo(id: string): HTMLInputElement | HTMLSelectElement {
+function campo(id: string): HTMLInputElement | HTMLButtonElement {
   const el = document.getElementById(id);
   if (!el) throw new Error(`Campo ${id} não está na tela.`);
-  return el as HTMLInputElement | HTMLSelectElement;
+  return el as HTMLInputElement | HTMLButtonElement;
 }
+/** Regime e atividade são listas de escolha (botão que abre a lista). */
+function ehLista(el: HTMLElement): boolean {
+  return el.getAttribute("aria-haspopup") === "listbox";
+}
+/**
+ * Preenche como a lojista: nas listas toca no campo e na opção (e espera a
+ * lista fechar, o foco volta numa tarefa seguinte); nas datas digita.
+ */
 async function preencher(id: string, valor: string) {
   const el = campo(id);
-  const prototipo =
-    el instanceof HTMLSelectElement
-      ? HTMLSelectElement.prototype
-      : HTMLInputElement.prototype;
+  if (ehLista(el)) {
+    await act(async () => {
+      escolherNaLista(id, valor);
+    });
+    await act(async () => {
+      await new Promise((resolver) => setTimeout(resolver, 0));
+    });
+    return;
+  }
   await act(async () => {
-    Object.getOwnPropertyDescriptor(prototipo, "value")?.set?.call(el, valor);
-    el.dispatchEvent(
-      new Event(el instanceof HTMLSelectElement ? "change" : "input", {
-        bubbles: true,
-      }),
-    );
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set?.call(el, valor);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
   });
+}
+/** O que o campo mostra: o valor da lista ou o texto do campo de data. */
+function valorDo(id: string): string {
+  const el = campo(id);
+  return ehLista(el) ? valorDaLista(id) : (el as HTMLInputElement).value;
 }
 async function submeter() {
   await act(async () => {
@@ -297,10 +360,10 @@ describe("Cadastro fiscal: só o dono altera", () => {
     await clicar(botao("Alterar"));
     expect(folha()).not.toBeNull();
     // A folha abre com o que está cadastrado.
-    expect(campo(ID_REGIME).value).toBe("simples");
-    expect(campo(ID_ATIVIDADE).value).toBe("comercio");
-    expect(campo(ID_ABERTA).value).toBe("2024-05-10");
-    expect(campo(ID_VENDE).value).toBe("2025-01");
+    expect(valorDo(ID_REGIME)).toBe("simples");
+    expect(valorDo(ID_ATIVIDADE)).toBe("comercio");
+    expect(valorDo(ID_ABERTA)).toBe("2024-05-10");
+    expect(valorDo(ID_VENDE)).toBe("2025-01");
 
     await preencher(ID_REGIME, "mei");
     await clicar(botao("Salvar"));
@@ -352,6 +415,12 @@ describe("Cadastro fiscal: só o dono altera", () => {
     expect(travado(salvar)).toBe(true);
     expect(razaoDo(salvar)).toBe(SO_O_DONO);
     expect(campo(ID_REGIME).disabled).toBe(true);
+    // A lista travada não abre nem muda o que a lojista escolheu antes.
+    for (const id of [ID_REGIME, ID_ATIVIDADE]) {
+      expect(() => escolherNaLista(id, "real")).toThrowError(/desabilitada/);
+      expect(document.getElementById(`${id}-lista`)).toBeNull();
+    }
+    expect(valorDo(ID_REGIME)).toBe("mei");
     await clicar(salvar);
     await submeter();
     expect(rpc).not.toHaveBeenCalled();
@@ -383,10 +452,10 @@ describe("Cadastro fiscal: só o dono altera", () => {
     expect(texto()).not.toContain(SEM_DONO);
     await clicar(botao("Configurar"));
     expect(folha()).not.toBeNull();
-    expect(campo(ID_REGIME).value).toBe("");
-    expect(campo(ID_ATIVIDADE).value).toBe("");
-    expect(campo(ID_ABERTA).value).toBe("");
-    expect(campo(ID_VENDE).value).toBe("");
+    expect(valorDo(ID_REGIME)).toBe("");
+    expect(valorDo(ID_ATIVIDADE)).toBe("");
+    expect(valorDo(ID_ABERTA)).toBe("");
+    expect(valorDo(ID_VENDE)).toBe("");
   });
 
   it("F4d sem cadastro e outro é o dono: 'Configurar' fica travado com a frase do dono", async () => {
@@ -613,7 +682,7 @@ describe("Cadastro fiscal: a folha", () => {
 
     await clicar(botao("Continuar escrevendo"));
     expect(document.querySelector('[role="alertdialog"]')).toBeNull();
-    expect(campo(ID_REGIME).value).toBe("real");
+    expect(valorDo(ID_REGIME)).toBe("real");
 
     await clicar(fechar() as HTMLElement);
     await clicar(botao("Descartar"));
@@ -621,7 +690,7 @@ describe("Cadastro fiscal: a folha", () => {
     expect(rpc).not.toHaveBeenCalled();
     // Reabrir volta ao que está cadastrado, não ao rascunho descartado.
     await clicar(botao("Alterar"));
-    expect(campo(ID_REGIME).value).toBe("simples");
+    expect(valorDo(ID_REGIME)).toBe("simples");
   });
 
   it("voltar ao valor original deixa de ser 'suja' (fecha sem perguntar)", async () => {
@@ -630,6 +699,100 @@ describe("Cadastro fiscal: a folha", () => {
     await preencher(ID_REGIME, "simples");
     await clicar(fechar() as HTMLElement);
     expect(folha()).toBeNull();
+  });
+
+  it("C.1 regime e atividade são listas de escolha com as opções que a lojista lê (o 'Escolha…' não é opção)", async () => {
+    await montar(SEM_CADASTRO, DONO.souODono);
+    await clicar(botao("Configurar"));
+    expect(folha()?.querySelector("select")).toBeNull();
+    for (const id of [ID_REGIME, ID_ATIVIDADE]) {
+      expect(campo(id).tagName).toBe("BUTTON");
+      expect(campo(id).getAttribute("aria-haspopup")).toBe("listbox");
+      // Sem cadastro, o campo fechado mostra o convite e não tem valor.
+      expect(valorDo(id)).toBe("");
+      expect(campo(id).textContent).toContain("Escolha…");
+    }
+    expect(opcoesDaLista(ID_REGIME)).toEqual([
+      { valor: "mei", rotulo: "MEI", desabilitada: false },
+      { valor: "simples", rotulo: "Simples Nacional", desabilitada: false },
+      { valor: "presumido", rotulo: "Lucro Presumido", desabilitada: false },
+      { valor: "real", rotulo: "Lucro Real", desabilitada: false },
+      {
+        valor: "nao_sei",
+        rotulo: "Não sei, meu contador cuida",
+        desabilitada: false,
+      },
+    ]);
+    expect(opcoesDaLista(ID_ATIVIDADE)).toEqual([
+      { valor: "comercio", rotulo: "Só comércio", desabilitada: false },
+      { valor: "com_servico", rotulo: "Tem serviço", desabilitada: false },
+    ]);
+    // Abrir e fechar a lista (Esc) não fecha a folha nem a deixa "suja".
+    expect(folha()).not.toBeNull();
+    await clicar(
+      document.querySelector<HTMLElement>(
+        '[aria-label="Fechar"]',
+      ) as HTMLElement,
+    );
+    expect(folha()).toBeNull();
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
+  it("C.1 os DOIS erros ficam ligados ao campo por aria-describedby; escolher tira só o erro daquele campo", async () => {
+    await montar(SEM_CADASTRO, DONO.souODono);
+    await clicar(botao("Configurar"));
+    await clicar(botao("Salvar"));
+    expect(rpc).not.toHaveBeenCalled();
+    const esperados: readonly (readonly [string, string])[] = [
+      [ID_REGIME, "Escolha o regime da sua empresa."],
+      [ID_ATIVIDADE, "Diga se a sua empresa vende só produtos ou tem serviço."],
+    ];
+    for (const [id, frase] of esperados) {
+      expect(campo(id).getAttribute("aria-invalid")).toBe("true");
+      const ligados = (campo(id).getAttribute("aria-describedby") ?? "").split(
+        " ",
+      );
+      expect(ligados).toContain(`${id}-erro`);
+      const alerta = document.getElementById(`${id}-erro`);
+      expect(alerta?.getAttribute("role")).toBe("alert");
+      expect(alerta?.textContent).toBe(frase);
+    }
+    // Com erro, a ajuda da atividade dá lugar à frase do erro.
+    expect(texto()).not.toContain("Só comércio: vende apenas produtos.");
+
+    await preencher(ID_REGIME, "mei");
+    expect(valorDo(ID_REGIME)).toBe("mei");
+    expect(campo(ID_REGIME).getAttribute("aria-invalid")).toBeNull();
+    expect(
+      campo(ID_REGIME).getAttribute("aria-describedby") ?? "",
+    ).not.toContain("-erro");
+    expect(document.getElementById(`${ID_REGIME}-erro`)).toBeNull();
+    // A atividade continua com o erro dela.
+    expect(campo(ID_ATIVIDADE).getAttribute("aria-describedby")).toContain(
+      `${ID_ATIVIDADE}-erro`,
+    );
+
+    await preencher(ID_ATIVIDADE, "comercio");
+    expect(campo(ID_ATIVIDADE).getAttribute("aria-invalid")).toBeNull();
+    // Sem erro, a ajuda volta e fica ligada ao campo.
+    const ajuda = document.getElementById(
+      campo(ID_ATIVIDADE).getAttribute("aria-describedby") ?? "",
+    );
+    expect(ajuda?.textContent).toContain("Só comércio: vende apenas produtos.");
+  });
+
+  it("C.1 borda: escolher o MESMO regime que já está cadastrado não suja a folha", async () => {
+    await montar(CADASTRO_SIMPLES, DONO.souODono);
+    await clicar(botao("Alterar"));
+    expect(valorDo(ID_REGIME)).toBe("simples");
+    await preencher(ID_REGIME, "simples");
+    await clicar(
+      document.querySelector<HTMLElement>(
+        '[aria-label="Fechar"]',
+      ) as HTMLElement,
+    );
+    expect(folha()).toBeNull();
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   });
 
   it("sem regime e sem atividade: bloqueia com frase, foca o primeiro campo errado e não chama o servidor", async () => {
@@ -921,7 +1084,7 @@ describe("Cadastro fiscal: depois de salvar, a releitura trava o botão", () => 
     expect(texto()).not.toContain(ATUALIZANDO);
     await clicar(botao("Alterar"));
     expect(folha()).not.toBeNull();
-    expect(campo(ID_REGIME).value).toBe("mei");
+    expect(valorDo(ID_REGIME)).toBe("mei");
   });
 
   it("o intervalo ANTES de a leitura nova começar (carregando ainda falso) também fica travado", async () => {
@@ -1017,7 +1180,7 @@ describe("Cadastro fiscal: depois de salvar, a releitura trava o botão", () => 
     await preencher(ID_REGIME, "mei");
     await renderizarDeNovo(CADASTRO_SIMPLES, { carregando: true });
     expect(folha()).not.toBeNull();
-    expect(campo(ID_REGIME).value).toBe("mei");
+    expect(valorDo(ID_REGIME)).toBe("mei");
     expect(travado(botao("Salvar"))).toBe(false);
   });
 });
