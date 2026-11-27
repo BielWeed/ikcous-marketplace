@@ -208,6 +208,11 @@ export function useReviews() {
   // Quantas avaliações a página do produto aberto pede ao banco: volta a uma
   // leva ao trocar de produto e sobe a cada "Ver mais avaliações".
   const limiteDaListaRef = useRef(AVALIACOES_POR_LEITURA);
+  // O ref barra o segundo toque do mesmo instante (o estado ainda não mudou);
+  // o símbolo é o do "ver mais" em voo, e só ele pode encerrar o carregando.
+  const carregandoMaisRef = useRef<symbol | null>(null);
+  const [carregandoMaisAvaliacoes, setCarregandoMaisAvaliacoes] =
+    useState(false);
   const latestProductIdRef = useRef<string | null>(null);
   const rodadaAdminRef = useRef(0);
   const consultaDoProdutoRef = useRef(0);
@@ -226,6 +231,8 @@ export function useReviews() {
     setErroDaListagemProduto(null);
     setProdutoRespondido(null);
     setResumoDasAvaliacoes(null);
+    carregandoMaisRef.current = null;
+    setCarregandoMaisAvaliacoes(false);
     setLoading(false);
     setDonoDasAvaliacoes(user?.id);
   }, [user?.id]);
@@ -234,13 +241,20 @@ export function useReviews() {
     // `silencioso`: releitura de bastidor (depois de gravar a avaliação). Se
     // falhar, não avisa a cliente nem marca a lista como com erro: ela só
     // queria a lista fresca, e o que importava (a gravação) já deu certo.
-    async (productId: string, opcoes?: { silencioso?: boolean }) => {
+    // `mensagemDaFalha`: o "Ver mais" é silencioso para a lista (a que está
+    // na tela fica), mas a cliente tocou no botão e precisa saber que falhou.
+    async (
+      productId: string,
+      opcoes?: { silencioso?: boolean; mensagemDaFalha?: string },
+    ) => {
       if (usuarioAtualRef.current !== user?.id) return;
       const tokenDoCache = Symbol();
       ultimaConsultaDoCachePorProduto.set(productId, tokenDoCache);
       if (latestProductIdRef.current !== productId) {
         setVotosUteis(new Set());
         limiteDaListaRef.current = AVALIACOES_POR_LEITURA;
+        carregandoMaisRef.current = null;
+        setCarregandoMaisAvaliacoes(false);
       }
       latestProductIdRef.current = productId;
       const limite = limiteDaListaRef.current;
@@ -320,6 +334,12 @@ export function useReviews() {
               console.error("Error counting reviews:", erroDaContagem);
           }
           if (!atual()) return;
+        }
+        // A contagem que falha numa releitura (o "Ver mais", por exemplo) não
+        // apaga as barras: vale a última contagem certa do mesmo produto. Sem
+        // nenhuma guardada (primeira carga), segue vazia e a tela usa o catálogo.
+        if (temMais && !porNota) {
+          porNota = resumoDoBancoPorProduto.get(productId)?.porNota ?? null;
         }
         const resumo: ResumoDasAvaliacoes | null = temMais
           ? { productId, temMais, porNota }
@@ -426,6 +446,7 @@ export function useReviews() {
           setErroDaListagemProduto("Não foi possível carregar as avaliações.");
           toast.error("Erro ao carregar avaliações.");
         }
+        if (opcoes?.mensagemDaFalha) toast.error(opcoes.mensagemDaFalha);
       } finally {
         // Não restaura o token anterior: mesmo uma sucessora que falhou
         // impede a consulta antiga de devolver seu resultado ao cache.
@@ -450,11 +471,27 @@ export function useReviews() {
 
   // "Ver mais avaliações" depois da última que chegou: relê o produto com
   // uma leva a mais (a mesma leitura de sempre, com prazo, cache e votos).
+  // O segundo toque, com uma leva já em voo, não pede de novo.
   const carregarMaisAvaliacoes = useCallback(
     async (productId: string) => {
       if (latestProductIdRef.current !== productId) return;
+      if (carregandoMaisRef.current) return;
+      const vez = Symbol();
+      carregandoMaisRef.current = vez;
+      setCarregandoMaisAvaliacoes(true);
       limiteDaListaRef.current += AVALIACOES_POR_LEITURA;
-      await getReviewsByProduct(productId, { silencioso: true });
+      try {
+        await getReviewsByProduct(productId, {
+          silencioso: true,
+          mensagemDaFalha:
+            "Não foi possível carregar mais avaliações. Tente de novo.",
+        });
+      } finally {
+        if (carregandoMaisRef.current === vez) {
+          carregandoMaisRef.current = null;
+          setCarregandoMaisAvaliacoes(false);
+        }
+      }
     },
     [getReviewsByProduct],
   );
@@ -1319,6 +1356,7 @@ export function useReviews() {
     erroDaListagemProduto,
     produtoRespondido,
     getReviewsByProduct,
+    carregandoMaisAvaliacoes,
     carregarMaisAvaliacoes,
     addReview,
     markHelpful,

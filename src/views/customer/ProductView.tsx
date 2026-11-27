@@ -209,6 +209,7 @@ export const ProductView = React.memo(function ProductView({
     produtoRespondido,
     resumoDasAvaliacoes,
     getReviewsByProduct,
+    carregandoMaisAvaliacoes,
     carregarMaisAvaliacoes,
     markHelpful,
     votosUteis,
@@ -1904,9 +1905,13 @@ export const ProductView = React.memo(function ProductView({
                               void carregarMaisAvaliacoes(product.id);
                             }
                           }}
-                          className="mt-4 min-h-11 w-full rounded-xl border border-zinc-200 px-4 text-sm font-bold text-zinc-900 transition-colors hover:bg-zinc-50"
+                          disabled={carregandoMaisAvaliacoes}
+                          aria-busy={carregandoMaisAvaliacoes}
+                          className="mt-4 min-h-11 w-full rounded-xl border border-zinc-200 px-4 text-sm font-bold text-zinc-900 transition-colors hover:bg-zinc-50 disabled:cursor-wait disabled:opacity-60"
                         >
-                          Ver mais avaliações
+                          {carregandoMaisAvaliacoes
+                            ? "Carregando avaliações..."
+                            : "Ver mais avaliações"}
                         </button>
                       )}
                     </>
