@@ -257,6 +257,27 @@ const reprovadas = (rows) =>
 const LINHA_DO_CORPO =
   "devolucao_avisa_o_cliente: corpo exato (md5), o aviso do vale diz que a loja combina";
 
+/**
+ * Instala no ar o corpo vivo com uma linha a mais ("-- +1") e devolve o md5 dele. pg_get_functiondef SEMPRE fecha o
+ * corpo com `$function$` (nunca com o delimitador do arquivo, `$avisa_o_cliente$`): procurar o do arquivo devolvia -1 e
+ * a linha caia DEPOIS do corpo, que ficava igual ao desta migration — o "corpo estranho" nao era estranho e a prova
+ * ficava vermelha pelo motivo errado. Daqui em diante o corpo estranho TEM de ter md5 fora do par 1241/1645.
+ */
+async function instalarCorpoEstranho() {
+  const def = (
+    await C.query("SELECT pg_get_functiondef(to_regprocedure($1)) AS d", [SIG])
+  ).rows[0].d;
+  const fim = def.lastIndexOf("$function$");
+  assert.ok(fim > 0, "pg_get_functiondef sem o $function$ de fecho");
+  await C.query(`${def.slice(0, fim)}-- +1\n${def.slice(fim)}`);
+  const h = await hashVivo();
+  assert.ok(
+    h !== H_NOVO && h !== H_ANTES,
+    `o corpo estranho nao ficou estranho (md5 ${h})`,
+  );
+  return h;
+}
+
 // ---------------------------------------------------------------------------
 
 prova(
@@ -369,15 +390,8 @@ prova(
   "PRE-VOO: corpo estranho, gatilho desligado e EXECUTE aberto ao logado recusam B1_BASELINE_DIVERGENT sem escrever; o rollback recusa corpo estranho",
   () =>
     emTransacao(async () => {
-      const def = (
-        await C.query("SELECT pg_get_functiondef(to_regprocedure($1)) AS d", [
-          SIG,
-        ])
-      ).rows[0].d;
-      const fim = def.lastIndexOf("$avisa_o_cliente$");
-      const estranho = `${def.slice(0, fim)}-- +1\n${def.slice(fim)}`;
       const casos = [
-        ["corpo estranho", estranho, null],
+        ["corpo estranho", instalarCorpoEstranho, null],
         [
           "gatilho desligado",
           "ALTER TABLE public.devolucoes DISABLE TRIGGER tr_devolucao_avisa_o_cliente",
@@ -391,7 +405,8 @@ prova(
       ];
       for (const [nome, estragar, consertar] of casos) {
         await C.query("SAVEPOINT caso");
-        await C.query(estragar);
+        if (typeof estragar === "function") await estragar();
+        else await C.query(estragar);
         const h = await hashVivo();
         const cat = await catalogo();
         const r = await aplicar(MIGRATION);
@@ -454,13 +469,7 @@ prova(
       { estado: "antes" },
     );
     await emTransacao(async () => {
-      const def = (
-        await C.query("SELECT pg_get_functiondef(to_regprocedure($1)) AS d", [
-          SIG,
-        ])
-      ).rows[0].d;
-      const fim = def.lastIndexOf("$avisa_o_cliente$");
-      await C.query(`${def.slice(0, fim)}-- +1\n${def.slice(fim)}`);
+      await instalarCorpoEstranho();
       assert.deepEqual(reprovadas(await linhasDaConsulta(C205B)), [
         LINHA_DO_CORPO,
       ]);
