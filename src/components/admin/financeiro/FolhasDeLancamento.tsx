@@ -229,8 +229,8 @@ export function DetalheDoLancamentoFolha({
         ) : null}
         {cancelado ? (
           <p className="rounded-2xl bg-white/5 p-3 text-xs leading-relaxed text-zinc-400">
-            O registro fica guardado, sem contar nos totais. Nenhuma baixa ou
-            edição está disponível.
+            O registro fica guardado, sem contar nos totais. Para corrigir,
+            lance de novo.
           </p>
         ) : null}
         {linha.tipo === "transferencia" ? (
@@ -239,10 +239,10 @@ export function DetalheDoLancamentoFolha({
             é saída (−); na de destino, entrada (+). Fora do resultado.
           </p>
         ) : null}
-        {linha.status === "realizado" && linha.editavel ? (
+        {/* A tela não tem edição (nem do previsto): corrigir é cancelar e lançar de novo. */}
+        {podeMexer ? (
           <p className="text-xs text-zinc-400">
-            Lançamento realizado não se edita: cancele e lance de novo — assim
-            fica a trilha do que aconteceu.
+            Para corrigir, cancele e lance de novo.
           </p>
         ) : null}
       </div>

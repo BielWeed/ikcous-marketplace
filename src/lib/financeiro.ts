@@ -1679,6 +1679,30 @@ export function formularioInicialDoLancamento(
 }
 
 /**
+ * O "Mês de referência" acompanha a data do dinheiro (o vencimento no a pagar/a
+ * receber, que no parcelado é o 1º; senão o pago/recebido em) até a lojista mexer
+ * nele. O Extrato conta pela data do dinheiro e o Resultado pela competência:
+ * parado em hoje, o aluguel de outubro lançado em novembro caía no mês errado.
+ * Data apagada não apaga o mês.
+ */
+export function comMesQueAcompanhaODinheiro(
+  form: FormularioDoLancamento,
+): FormularioDoLancamento {
+  const data =
+    form.tipo !== "transferencia" && form.situacao === "previsto"
+      ? form.dataVencimento
+      : form.dataRealizacao;
+  return ehDataIso(data) ? { ...form, dataCompetencia: data } : form;
+}
+
+/** Quem abriu o formulário já trouxe o mês de referência: ele conta como escolhido. */
+export function mesDeReferenciaVeioPronto(
+  inicial?: Partial<FormularioDoLancamento>,
+): boolean {
+  return inicial?.dataCompetencia !== undefined;
+}
+
+/**
  * Valida o "Novo lançamento" e monta o corpo de `fin_lancamento_salvar`.
  * Transferência é sempre realizada, sem categoria e sem parcelas (não é
  * receita nem despesa — fica fora da DRE). Parcelar só vale para o que
