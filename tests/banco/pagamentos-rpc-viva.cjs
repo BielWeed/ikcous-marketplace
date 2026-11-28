@@ -1941,6 +1941,10 @@ async function desfazerPosterioresNaTransacao(c) {
   await require("./a-loja-ja-suspensa-tambem-pausa-posterior.cjs").desfazerASuspensaAntigaNaTransacao(
     c,
   );
+  // A 20261661000000 sucede o motivo da 20261600000000: sai junto, ANTES do laco (o rollback da 1600 recusa o motivo com o corpo dela).
+  await require("./a-loja-que-saiu-pausa-posterior.cjs").desfazerASaidaNaTransacao(
+    c,
+  );
   // A 20261645000000 (o aviso do vale-troca) sucede o devolucao_avisa_o_cliente da 20261241000000 (REEMBOLSO_EM_DUVIDA,
   // na lista abaixo): sai ANTES do laco (o rollback da 241 recusa o corpo dela). Nao chama is_admin_atual: nao entra na lista.
   await require("./o-aviso-do-vale-troca-posterior.cjs").desfazerAvisoDoValeTrocaNaTransacao(

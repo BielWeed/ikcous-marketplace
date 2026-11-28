@@ -1868,7 +1868,7 @@ const FALTA_TUDO_196A = [
   "a_loja_aceita_pedido_novo: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
   "data_da_pausa_de_vendas: uma so, corpo da 20261600000000 (md5), SQL IMMUTABLE com search_path fixo, EXECUTE de ninguem",
   "marcar_suspensa_desde: uma so, corpo da 20261600000000 ou da sucessora 20261630000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
-  "motivo_da_loja_nao_aceitar_pedido: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "motivo_da_loja_nao_aceitar_pedido: uma so, corpo da 20261600000000 ou da sucessora 20261661000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
   "situacao_das_vendas_da_loja: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE so de authenticated",
   "tr_a_loja_aceita_pedido_novo: BEFORE INSERT por linha em marketplace_orders, com o WHEN do balcao, ligado",
   "tr_assinatura_marca_suspensa_desde: AFTER INSERT OR UPDATE OF status por linha em assinatura_da_loja, ligado",
@@ -2097,6 +2097,13 @@ prova(
       )
     )
       console.log("  (a sucessora 20261630000000 foi desfeita no clone)");
+    // A sucessora 20261661000000 troca o corpo do motivo: sai do clone ANTES tambem.
+    if (
+      await require("./a-loja-que-saiu-pausa-posterior.cjs").desfazerASaida(
+        P.conexao(),
+      )
+    )
+      console.log("  (a sucessora 20261661000000 foi desfeita no clone)");
     await P.executar("a-loja-pausa-o-pedido-novo");
   } finally {
     await P.conexao()

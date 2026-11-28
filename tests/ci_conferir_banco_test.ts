@@ -452,6 +452,136 @@ Deno.test("199a/199b — rol fechado, um statement so de catalogo, md5 do pre-vo
   );
 });
 
+// 217 (28/11/2026): o lote da 20261661000000 (a loja que saiu pausa o pedido novo). Rol fechado de 5 linhas, o mesmo na 217a e na
+// 217b, so catalogo; a 217a espera o motivo desta e a 217b o da 20261600000000 ou o desta. Os md5 saem do PRE-VOO da propria migration.
+Deno.test("217a/217b — rol fechado, um statement so de catalogo, md5 do pre-voo da 20261661000000, menu, rpc-ci, release e lote no canais", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A217 = "217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado";
+  const B217 = "217b-antes-a-loja-que-saiu-pausa-o-pedido-novo-base-vigente";
+  const migration = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261661000000_a_loja_que_saiu_pausa_o_pedido_novo.sql`,
+  );
+  const par = /v_hash NOT IN \('([0-9a-f]{32})', '([0-9a-f]{32})'\)/.exec(
+    migration,
+  );
+  assert(par, "o pre-voo da 20261661000000 nao cita (vigente, desta)");
+  const [, vigente, desta] = par;
+  const fechadura =
+    /IS DISTINCT FROM '([0-9a-f]{32})' THEN\n {4}RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public\.a_loja_aceita_pedido_novo/.exec(
+      migration,
+    );
+  assert(fechadura, "o pre-voo da 20261661000000 nao confere a fechadura");
+  const itens = [
+    "motivo_da_loja_nao_aceitar_pedido: corpo exato (md5)",
+    "motivo_da_loja_nao_aceitar_pedido: uma so, plpgsql SECURITY DEFINER STABLE, retorno text, search_path fixo e EXECUTE de ninguem",
+    "a_loja_aceita_pedido_novo: a fechadura da 20261600000000 (md5), que recusa vendas_pausadas",
+    "tr_a_loja_aceita_pedido_novo: BEFORE INSERT por linha em marketplace_orders com o WHEN do balcao, chama a fechadura, ligado",
+    "pausa_de_vendas: a tabela de linha unica da 20261600000000 (4 colunas)",
+  ];
+  for (const consulta of [A217, B217]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(!/FROM\s+public\./i.test(limpo), `${consulta}: le so catalogo`);
+    assertStringIncludes(sql, `'${fechadura[1]}'`);
+    assertStringIncludes(
+      menu,
+      `- ${consulta}
+`,
+    );
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A217}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B217}.sql`),
+  );
+  // A 217a aceita SO o motivo desta; a 217b, o vigente (1600) OU o desta (reaplicacao idempotente).
+  assertStringIncludes(sqlA, `COALESCE(fn.h = '${desta}', false)`);
+  assert(!sqlA.includes(vigente), "a 217a nao pode aceitar o motivo da 1600");
+  assertStringIncludes(sqlB, `fn.h IN ('${vigente}', '${desta}')`);
+  // A 196a (lote da 1600) aceita o motivo desta como SUCESSOR: senao ela reprova em toda loja depois do apply.
+  const sql196a = sqlSemComentarios(
+    await Deno.readTextFile(
+      `${CONSULTAS_DIR}/196a-conferir-a-loja-pausa-o-pedido-novo-aplicado.sql`,
+    ),
+  );
+  assertStringIncludes(
+    sql196a,
+    `('motivo_da_loja_nao_aceitar_pedido', '${vigente}', '${desta}',`,
+  );
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-que-saiu-pausa-o-pedido-novo-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A217,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261661000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B217);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 217a: ${chave} nao se aplica`);
+  // Depois do lote da 1600 (a 1661 exige a 1600 no ar na mesma loja).
+  const ordem = canais.provasDeObjetos.map(
+    (p: { consulta: string }) => p.consulta,
+  );
+  assert(
+    ordem.indexOf("196a-conferir-a-loja-pausa-o-pedido-novo-aplicado") <
+      ordem.indexOf(A217),
+    "o lote da 217a vem depois do da 196a",
+  );
+});
+
 // 201 (27/11/2026): o lote da 20261641000000 (uma avaliacao por cliente e produto, e a media do painel so das publicadas). Rol fechado de 6
 // linhas, o mesmo na 201a e na 201b, so catalogo; a 201a espera os corpos desta e a 201b os vigentes (3996/381, sem funcao nem gatilho
 // novos) ou os desta. Os md5 saem do PRE-VOO da propria migration; as consultas das antecessoras (25a, 86a, 123a, 148a) aceitam os desta.
@@ -18084,6 +18214,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
     // 20261660000000: o caixa de ontem aberto nao some do saldo.
     "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
+    // 20261661000000: a loja que saiu pausa o pedido novo.
+    "217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado",
     // 20261663000000: a despesa nao entra no caixa fechado.
     "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
   ];

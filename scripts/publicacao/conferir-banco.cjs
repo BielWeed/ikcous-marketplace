@@ -3594,7 +3594,7 @@ const ROL_DA_196A = [
   "pausa_de_vendas: nenhum privilegio (tabela ou coluna) para anon, authenticated nem service_role",
   "data_da_pausa_de_vendas: uma so, corpo da 20261600000000 (md5), SQL IMMUTABLE com search_path fixo, EXECUTE de ninguem",
   "marcar_suspensa_desde: uma so, corpo da 20261600000000 ou da sucessora 20261630000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
-  "motivo_da_loja_nao_aceitar_pedido: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
+  "motivo_da_loja_nao_aceitar_pedido: uma so, corpo da 20261600000000 ou da sucessora 20261661000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
   "a_loja_aceita_pedido_novo: uma so, corpo da 20261600000000 (md5), SECURITY DEFINER com search_path fixo, EXECUTE de ninguem",
   "situacao_das_vendas_da_loja: uma so, corpo da 20261600000000 (md5), STABLE SECURITY DEFINER com search_path fixo, EXECUTE so de authenticated",
   "tr_a_loja_aceita_pedido_novo: BEFORE INSERT por linha em marketplace_orders, com o WHEN do balcao, ligado",
@@ -3874,7 +3874,20 @@ const ROL_DA_214 = [
   "solicitar_devolucao: uma so, assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, retorno jsonb)",
   "solicitar_devolucao: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
+// Lote 217 (20261661000000, a loja que saiu pausa o pedido novo: motivo_da_loja_nao_aceitar_pedido ganha o ramo da cancelada com a pausa
+// ligada). A 217a e a 217b tem o MESMO rol de 5 linhas. Somente catalogo: nenhuma linha do cartao nem da pausa e lida e o motivo nao e
+// chamado. A 217a espera o corpo desta (md5); a 217b, o da 20261600000000 ou o desta (reaplicacao idempotente). As duas exigem a fechadura
+// e o gatilho do pedido da 1600, que transformam 'vendas_pausadas' em recusa.
+const ROL_DA_217 = [
+  "motivo_da_loja_nao_aceitar_pedido: corpo exato (md5)",
+  "motivo_da_loja_nao_aceitar_pedido: uma so, plpgsql SECURITY DEFINER STABLE, retorno text, search_path fixo e EXECUTE de ninguem",
+  "a_loja_aceita_pedido_novo: a fechadura da 20261600000000 (md5), que recusa vendas_pausadas",
+  "tr_a_loja_aceita_pedido_novo: BEFORE INSERT por linha em marketplace_orders com o WHEN do balcao, chama a fechadura, ligado",
+  "pausa_de_vendas: a tabela de linha unica da 20261600000000 (4 colunas)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado": ROL_DA_217,
+  "217b-antes-a-loja-que-saiu-pausa-o-pedido-novo-base-vigente": ROL_DA_217,
   "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado": ROL_DA_219,
   "219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente": ROL_DA_219,
   "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado":

@@ -464,6 +464,8 @@ on:
           - 215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente
           - 216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado
           - 216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente
+          - 217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado
+          - 217b-antes-a-loja-que-saiu-pausa-o-pedido-novo-base-vigente
           - 219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado
           - 219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente
           - backups

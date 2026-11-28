@@ -79,11 +79,13 @@ interface VencimentoDaSuspensa {
  *   `em-aberto`, a mensalidade sem afirmar pausa.
  * - Sem resposta dele (loja sem a função, rede), manutenção (não é pausa por
  *   assinatura) ou sinal incompleto: `null`, o cartão de hoje.
+ * - A loja que SAIU (`cancelada`, migration 20261661000000) com o banco dizendo
+ *   `vendas_pausadas`: `encerrada`. Não é dívida: nenhuma frase de vencimento.
  */
 export function avisoDaSuspensa(
   assinatura: Pick<
     AssinaturaDaLoja,
-    "valorMensal" | "proximaCobrancaEm" | "testeAte"
+    "status" | "valorMensal" | "proximaCobrancaEm" | "testeAte"
   >,
   situacao: SituacaoDasVendas | null | undefined,
   sinalDaGestao: ReturnType<typeof avisoDasVendasPausadas>,
@@ -94,9 +96,11 @@ export function avisoDaSuspensa(
       vencimento: VencimentoDaSuspensa | null;
     }
   | { tipo: "em-aberto"; vencimento: VencimentoDaSuspensa }
+  | { tipo: "encerrada" }
   | null {
   if (!situacao) return null;
   if (!situacao.aceita && situacao.motivo === "vendas_pausadas") {
+    if (assinatura.status === "cancelada") return { tipo: "encerrada" };
     return {
       tipo: "pausadas",
       pausadasDesde: diaReal(situacao.pausadaDesde),

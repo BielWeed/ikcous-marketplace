@@ -394,6 +394,8 @@ on:
       - "scripts/publicacao/consultas/215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente.sql"
       - "scripts/publicacao/consultas/216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado.sql"
       - "scripts/publicacao/consultas/216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente.sql"
+      - "scripts/publicacao/consultas/217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado.sql"
+      - "scripts/publicacao/consultas/217b-antes-a-loja-que-saiu-pausa-o-pedido-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado.sql"
       - "scripts/publicacao/consultas/219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -764,6 +766,8 @@ on:
       - "scripts/publicacao/consultas/215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente.sql"
       - "scripts/publicacao/consultas/216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado.sql"
       - "scripts/publicacao/consultas/216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente.sql"
+      - "scripts/publicacao/consultas/217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado.sql"
+      - "scripts/publicacao/consultas/217b-antes-a-loja-que-saiu-pausa-o-pedido-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado.sql"
       - "scripts/publicacao/consultas/219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -2007,6 +2011,15 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         timeout-minutes: 4
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-ja-suspensa-tambem-pausa-viva.cjs
+      # Migration 20261661000000 (a loja que saiu pausa o pedido novo): o motivo devolve vendas_pausadas para a loja CANCELADA com a pausa
+      # ligada e a chave da gestao; desligada, sem linha ou sem chave aceita; manutencao vence; os outros status como na 1600. Pedidos reais
+      # pela v23/v24 (recusa com a frase da 1600 sem mexer em nada; desligada cria), balcao e pagamento do pedido de antes seguem, a leitura
+      # do painel; controle com o motivo da 1600; mutantes; reaplicar sem tocar dados; retrato; rollback byte a byte antes do da 1600;
+      # pre-voo, pos-voo, atomicidade e consultas 217a/217b/196a EXECUTADAS. CLONE proprio.
+      - name: Prova viva de que a loja que saiu pausa o pedido novo (migration 20261661000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        timeout-minutes: 4
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-que-saiu-pausa-o-pedido-novo-viva.cjs
       # Migration 20261384000000 (o pedido pago pelo app exige conta e nao prende o estoque de visitante): a
       # create_marketplace_order_v24 recusa 'online' sem sessao (anon) ANTES de ler carrinho, trancar, inserir pedido, baixar
       # estoque ou gastar cupom (ordem provada por sequencia movida por gatilhos); produto simples e com variacao ficam

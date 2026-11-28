@@ -12,7 +12,8 @@
 // pre-voo proprio e recusa estado desconhecido: isto nao afrouxa nada. So no Postgres EFEMERO (quem chama ja passou pela trava de
 // efemero.cjs) e so no clone do rodar-isolado.cjs: o COMMIT fica no clone, que some no fim. No-op quando a 1600 nao esta no ar.
 // A SUCESSORA 20261630000000 (a loja ja suspensa tambem pausa) troca o corpo da marca: sai ANTES, na mesma transacao (senao o pre-voo do
-// rollback daqui recusa a marca com o corpo dela). Definicao em a-loja-ja-suspensa-tambem-pausa-posterior.cjs.
+// rollback daqui recusa a marca com o corpo dela). Definicao em a-loja-ja-suspensa-tambem-pausa-posterior.cjs. A SUCESSORA 20261661000000 (a loja
+// que saiu pausa o pedido novo) troca o corpo do motivo e sai pelo mesmo motivo (a-loja-que-saiu-pausa-posterior.cjs).
 
 /* eslint-disable security/detect-non-literal-fs-filename -- caminhos fixos das migrations versionadas, sem entrada externa. */
 const fs = require("node:fs");
@@ -20,6 +21,9 @@ const path = require("node:path");
 const {
   desfazerASuspensaAntigaNaTransacao,
 } = require("./a-loja-ja-suspensa-tambem-pausa-posterior.cjs");
+const {
+  desfazerASaidaNaTransacao,
+} = require("./a-loja-que-saiu-pausa-posterior.cjs");
 
 const NOME = "20261600000000_a_loja_pausa_o_pedido_novo.sql";
 const PASTA = path.resolve(__dirname, "..", "..", "supabase", "migrations");
@@ -36,6 +40,7 @@ async function desfazerAPausaDeVendas(c) {
   await c.query("BEGIN");
   try {
     await desfazerASuspensaAntigaNaTransacao(c);
+    await desfazerASaidaNaTransacao(c);
     await c.query(ler(`rollback-manual-${NOME}`));
     await c.query("COMMIT");
   } catch (e) {
