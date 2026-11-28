@@ -7,6 +7,8 @@ import {
   aguardarComPrazo,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import { criarReligadorDaFila } from "@/lib/religar-fila-offline";
+import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
 import React, {
@@ -374,6 +376,14 @@ export function FavoritesProvider({
   // Quando a última leitura começou (qualquer origem): o "voltar ao app" não
   // relê se ela foi há menos de `INTERVALO_MIN_RELEITURA_VISIVEL_MS`.
   const ultimaLeituraEmRef = useRef(0);
+  // Leitura que voltou vazia sem a sessão da dona: o religador espera o aviso
+  // de sessão renovada DESTA conta e relê uma vez. Só ouve depois de uma
+  // recusa -- o SIGNED_IN reanunciado a cada volta ao app não vira leitura
+  // extra por cima da releitura ao voltar.
+  const religadorDaLeituraRef = useRef<{
+    dono: string;
+    religador: ReturnType<typeof criarReligadorDaFila>;
+  } | null>(null);
   // Leituras anteriores ou durante uma gravação podem trazer um retrato velho.
   // O controle pertence à sessão: terminar uma escrita de A não invalida B.
   const gravacoesRef = useRef({
@@ -434,16 +444,34 @@ export function FavoritesProvider({
           erroDeConsultaSemResposta,
         );
 
+        // Vazia sem a sessão da dona (caça 28/11/2026): na janela em que a
+        // renovação do token falhou a consulta sai com a chave anônima e a RLS
+        // devolve `[]`. Não é "a conta não tem favorito": segue como falha (a
+        // lista fica) e relê quando a sessão desta conta voltar.
+        const semSessaoDaDona =
+          !error &&
+          Array.isArray(data) &&
+          data.length === 0 &&
+          !(await sessaoAindaEhDoDono(donoDaRodada));
         if (ehVelha()) return;
         if (error) {
           console.error("Error fetching favorites", error);
           setErro("Não conseguimos carregar seus favoritos.");
+        } else if (semSessaoDaDona) {
+          console.error("Favorites came back empty without the owner session");
+          setErro("Não conseguimos carregar seus favoritos.");
+          if (religadorDaLeituraRef.current?.dono === donoDaRodada) {
+            religadorDaLeituraRef.current.religador.aoFimDaPassada(true);
+          }
         } else if (data) {
           const newIds = ordenarPorQuandoFoiSalvo(data).map(
             (f) => f.product_id,
           );
           setDbFavoriteIds(newIds);
           setErro(null);
+          if (religadorDaLeituraRef.current?.dono === donoDaRodada) {
+            religadorDaLeituraRef.current.religador.aoFimDaPassada(false);
+          }
         }
       } catch (err) {
         if (ehVelha()) return;
@@ -461,6 +489,32 @@ export function FavoritesProvider({
     },
     [userId],
   );
+
+  // Um religador por conta (ver `religadorDaLeituraRef`). A releitura sai fora
+  // do aviso: o supabase-js o entrega segurando a própria trava de sessão, e a
+  // leitura confere a sessão. Troca de conta e desmonte encerram a espera.
+  const fetchDbFavoritesRef = useRef(fetchDbFavorites);
+  useEffect(() => {
+    fetchDbFavoritesRef.current = fetchDbFavorites;
+  });
+  useEffect(() => {
+    if (!userId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const religador = criarReligadorDaFila(userId, () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void fetchDbFavoritesRef.current();
+      }, 0);
+    });
+    religadorDaLeituraRef.current = { dono: userId, religador };
+    return () => {
+      clearTimeout(timer);
+      religador.encerrar();
+      if (religadorDaLeituraRef.current?.religador === religador) {
+        religadorDaLeituraRef.current = null;
+      }
+    };
+  }, [userId]);
 
   // Fila serializada de gravações por produto de cada conta: toque do usuário
   // E drenagem da fila pendente passam por ela, para uma gravação em voo nunca
