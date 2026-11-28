@@ -17619,6 +17619,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
     // 20261654000000: o caixa pertence ao dia em que abriu.
     "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
+    // 20261655000000: a loja nova so vende o que confirmou.
+    "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

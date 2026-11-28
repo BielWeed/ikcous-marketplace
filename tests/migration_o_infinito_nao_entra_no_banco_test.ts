@@ -113,6 +113,11 @@ const SUCESSORAS = [
     versao: "20261654000000",
     consulta: "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
   },
+  // 20261655000000: a loja nova so vende o que confirmou.
+  {
+    versao: "20261655000000",
+    consulta: "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));
