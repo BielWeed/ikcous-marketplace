@@ -10,6 +10,10 @@
 //
 // Casco de mocks: admin-orders-rotina-de-despacho-na-bf (avanço e confirmação)
 // e admin-orders-cancelar-pela-edge (botão "Cancelar pedido" da ficha).
+import {
+  ErroCancelamentoNaoConcluido,
+  ErroPedidoMudou,
+} from "@/hooks/useOrders";
 import type { Order } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -223,6 +227,48 @@ describe("AdminOrdersView — cancelar logo depois de avançar", () => {
     expect(comWhatsapp).toHaveLength(0);
     expect(abrirWhatsapp).not.toHaveBeenCalled();
   });
+
+  // Lote 596: o cancelamento que FALHA (pago no meio, outro aparelho mexeu)
+  // deixava a marca em "cancelled". O pedido continuava na etapa nova, mas a
+  // resposta atrasada do aviso do avanço era descartada: a lojista não via
+  // mais "mande pelo WhatsApp" para uma cliente que não recebeu nada.
+  const falhasDoCancelamento: [string, () => Error][] = [
+    [
+      "ErroCancelamentoNaoConcluido (pago no meio)",
+      () =>
+        new ErroCancelamentoNaoConcluido({
+          desfecho: "ja_pago",
+          mensagem: "O pedido foi pago agora há pouco.",
+          pedido: { status: "processing", paymentStatus: "pago" },
+        }),
+    ],
+    [
+      "ErroPedidoMudou (outro aparelho mexeu)",
+      () => new ErroPedidoMudou("processing"),
+    ],
+  ];
+  it.each(falhasDoCancelamento)(
+    "cancelamento que falha com %s: a resposta atrasada do avanço volta a oferecer o WhatsApp",
+    async (_nome, criarErro) => {
+      updateOrderStatus
+        .mockResolvedValueOnce({ gravadoNoBancoEm: null })
+        .mockRejectedValueOnce(criarErro());
+      await abrirAFicha();
+      await avancar();
+      await cancelar();
+      const antes = sucessos().length;
+
+      await soltarARespostaDoAvanco();
+
+      expect(sucessos()).toHaveLength(antes + 1);
+      const [titulo, opcoes] = sucessos().at(-1)!;
+      expect(titulo).toBe("Status atualizado.");
+      expect(opcoes?.description).toBe(
+        "A cliente não ativou os avisos no celular: mande pelo WhatsApp.",
+      );
+      expect(opcoes?.action?.label).toBe("WhatsApp");
+    },
+  );
 
   it("controle: avanço sozinho com a mesma resposta atrasada continua trocando a confirmação para o WhatsApp", async () => {
     await abrirAFicha();

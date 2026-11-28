@@ -247,8 +247,10 @@ describe("OrderDetailsView — etapas, textos e contagem", () => {
       expect(await frase({ paymentStatus: "recebido_na_entrega" })).toContain(
         "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.",
       );
+      // Sem a devolução concluída no livro, não dá para saber se foi a loja
+      // que devolveu ou uma contestação no cartão: não afirma que voltou.
       expect(await frase({ paymentStatus: "estornado" })).toContain(
-        "Este pedido foi cancelado e o seu pagamento foi estornado: o dinheiro foi devolvido.",
+        "Este pedido foi cancelado e o pagamento foi estornado ou contestado no cartão. Se você contestou a compra, acompanhe o resultado com o banco do seu cartão. Se não, fale com a loja para confirmar a devolução.",
       );
       expect(
         await frase({ paymentStatus: "estornado", canal: "presencial" }),

@@ -92,11 +92,8 @@ const FONTES = import.meta.glob<string>(
     "/src/components/admin/orders/EstornoCard.tsx",
     "/src/views/admin/AlertasCancelados.tsx",
     "/supabase/functions/_shared/efeitos-do-pagamento.ts",
-    "/src/views/admin/AdminProductFormView.tsx",
     "/src/components/admin/orders/OrderDetail.tsx",
     "/src/lib/valor-devolver-agora.ts",
-    "/src/components/admin/products/AvisoDePecaSemTamanho.tsx",
-    "/src/lib/pecas-sem-tamanho.ts",
   ],
   { query: "?raw", import: "default", eager: true },
 );
@@ -349,47 +346,40 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     const texto = await textoDoGuia();
     expect(texto).toContain("“Pago fora do fluxo — precisa de atenção”");
     expect(texto).toContain("Nada é devolvido sozinho");
-    expect(texto).toContain("o painel não reabre pedido cancelado");
-    // Revisão financeira do C7: depois de ENVIAR, o pedido segue em "Estorno
-    // devido" com o botão de devolver na ficha — o guia tem de mandar NÃO
-    // tocar e deixar o registro em Anotações internas.
-    expect(texto).toContain(
-      // Revisão da onda 3: a lista se chama “Devolver ao cliente” e o guia
-      // manda NÃO devolver — a ressalva desfaz a contradição aparente.
-      "Esse pedido vai continuar no aviso de pedidos cancelados como “Devolver ao cliente” (mesmo com esse nome, não é para devolver), e a ficha dele vai continuar mostrando o botão “Devolver R$ …”.",
-    );
-    expect(texto).toContain(
-      "Não toque nele: depois de enviar, devolver é perder o produto e o dinheiro.",
-    );
-    expect(texto).toContain(
-      "escreva em “Anotações internas” da ficha: produto enviado em [data], combinado com o cliente, não devolver.",
-    );
-  });
-
-  // 20261642000000: produto vendido sem tamanho que ganhou a grade depois. A
-  // peça do pedido cancelado NÃO voltou ao estoque (espera o tamanho no aviso
-  // da tela do produto). Tirar 1 "à mão" de um tamanho tiraria uma peça que
-  // nunca entrou nele; o certo é dizer que ela não está mais na loja.
-  it("caso 2, enviar: a peça que voltou sem tamanho sai pelo aviso do produto, não tirando estoque à mão", async () => {
-    const texto = await textoDoGuia();
     expect(texto).toContain("mas a peça já tinha voltado para a loja.");
     expect(texto).not.toContain("o estoque já tinha voltado");
-    expect(texto).toContain(
-      "Se a peça aparece no topo da tela do produto, no aviso de peça que voltou sem tamanho, com o número deste pedido (acontece quando o produto ganhou tamanhos depois da venda ou quando o tamanho vendido foi desligado), ela não voltou ao estoque: ali, toque em “Não tenho essa peça” e não tire nada do estoque.",
+  });
+
+  // Decisão do sócio (28/11/2026): pago depois de vencer tem UM caminho —
+  // devolver o dinheiro pelo botão da ficha. O "enviar o produto por fora"
+  // saiu (o pedido seguia cancelado, em “Devolver ao cliente”, com o botão de
+  // devolver à mostra e estoque tirado à mão), e com ele o aviso de não tocar
+  // no “Devolver R$ …”, que só existia por causa do envio.
+  it("caso 2: um caminho só — combinar e devolver pelo app; quem ainda quiser a peça faz um pedido novo", async () => {
+    await textoDoGuia();
+    const caso2 = hospedeiro.querySelectorAll("div.rounded-2xl").item(1);
+    const passos = Array.from(
+      caso2.querySelector("ol")?.querySelectorAll(":scope > li") ?? [],
+    ).map((li) => (li.textContent ?? "").replace(/\s+/g, " ").trim());
+    expect(passos).toHaveLength(3);
+    expect(passos.at(0)).toBe(
+      "Fale com o cliente (o WhatsApp dele aparece na ficha do pedido) e combinem a devolução do dinheiro.",
     );
-    expect(texto).toContain(
-      "Nos outros casos a peça já voltou ao estoque — tire as unidades enviadas à mão no cadastro do produto",
+    expect(passos.at(1)).toContain(
+      "Para devolver: abra o pedido, desça até “Devolução de dinheiro” e toque em “Devolver R$ …”.",
     );
-    // A frase antiga afirmava o estoque para TODO pedido cancelado.
-    expect(texto).not.toContain(
-      "cancelado aqui, e a peça já voltou ao estoque",
+    expect(passos.at(2)).toBe(
+      "Depois que a devolução terminar, avise o cliente que, se ainda quiser a peça, ele pode fazer um pedido novo.",
     );
-    expect(
-      lerFonte("src/components/admin/products/AvisoDePecaSemTamanho.tsx"),
-    ).toContain("Não tenho essa peça");
-    expect(lerFonte("src/lib/pecas-sem-tamanho.ts")).toContain(
-      "esperam você escolher o tamanho (${origem})",
-    );
+    const texto = (caso2.textContent ?? "").replace(/\s+/g, " ");
+    expect(texto).not.toContain("enviar o produto");
+    expect(texto).not.toContain("Para enviar");
+    expect(texto).not.toContain("fora do app");
+    expect(texto).not.toContain("Não toque nele");
+    expect(texto).not.toContain("não é para devolver");
+    expect(texto).not.toContain("Não tenho essa peça");
+    expect(texto).not.toContain("Disponível para venda");
+    expect(texto).not.toContain("a decisão é sua");
   });
 
   it("não promete devolução automática em lugar nenhum", async () => {
@@ -459,11 +449,6 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
         rotulo: 'title: "Pagamento fora do fluxo"',
         arquivo: "supabase/functions/_shared/efeitos-do-pagamento.ts",
       },
-      // o campo de estoque do cadastro do produto
-      {
-        rotulo: "Disponível para venda *",
-        arquivo: "src/views/admin/AdminProductFormView.tsx",
-      },
     ];
     for (const { rotulo, arquivo } of citacoes) {
       expect(lerFonte(arquivo), `${rotulo} em ${arquivo}`).toContain(rotulo);
@@ -484,13 +469,6 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     // Rótulos de selo vêm do config do selo (não de cópia).
     expect(texto).toContain("“Estornado”");
     expect(texto).toContain("“Pagamento fora do fluxo”");
-    expect(texto).toContain("“Disponível para venda”");
-    expect(
-      lerFonte("src/views/admin/AdminProductFormView.tsx"),
-      "rótulo do estoque dentro do modal da variação",
-    ).toMatch(
-      /htmlFor="variant-stock"[^>]*>\s*Disponível para venda\s*<\/label>/,
-    );
   });
 });
 

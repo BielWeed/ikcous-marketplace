@@ -364,7 +364,7 @@ describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
     expect(revisao?.textContent).toContain("1× Tênis");
     expect(revisao?.textContent).toContain("art. 49");
     expect(revisao?.textContent).toContain(
-      "O frete de ida só é devolvido quando o pedido volta inteiro.",
+      "O frete de ida só é devolvido quando o pedido inteiro é reembolsado; peça trocada ou que virou vale-troca não entra nessa conta.",
     );
 
     await clicar(botao("Confirmar devolução"));

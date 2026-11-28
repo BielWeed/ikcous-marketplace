@@ -2069,7 +2069,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // Cancelar também é o último passo do pedido, e conta ANTES da gravação:
     // o envio do aviso de um avanço feito logo antes pode responder durante o
     // cancelamento ou depois dele, e não pode reabrir a confirmação com o
-    // WhatsApp da etapa abandonada (ver `ultimoAvancoRef`).
+    // WhatsApp da etapa abandonada (ver `ultimoAvancoRef`). O valor de antes
+    // fica guardado: se o cancelamento falhar, ele volta (ver o `catch`).
+    const marcaAntesDoCancelamento = ultimoAvancoRef.current.get(orderId);
     if (newStatus === "cancelled") {
       ultimoAvancoRef.current.set(orderId, newStatus);
     }
@@ -2127,6 +2129,19 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     } catch (err: any) {
       haptic.error();
       console.error("[handleStatusChange] Erro ao avançar status:", err);
+      // O cancelamento não aconteceu (pago no meio, outro aparelho mexeu): o
+      // pedido segue na etapa do avanço, e a resposta do aviso dele volta a
+      // valer. Só se a marca ainda é deste cancelamento.
+      if (
+        newStatus === "cancelled" &&
+        ultimoAvancoRef.current.get(orderId) === "cancelled"
+      ) {
+        if (marcaAntesDoCancelamento === undefined) {
+          ultimoAvancoRef.current.delete(orderId);
+        } else {
+          ultimoAvancoRef.current.set(orderId, marcaAntesDoCancelamento);
+        }
+      }
       // Rodada 2 (achado 1/3 do laudo, deep link): quando o pedido não
       // está em `orders` (deep link/paginação), a correção que o hook faz
       // em `orders`/`cachedAdminOrders` é um no-op — a ficha aberta é
