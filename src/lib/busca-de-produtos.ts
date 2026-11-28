@@ -11,7 +11,7 @@
  * (Etiquetas/tags NAO entram: nenhuma tela do painel preenche esse campo, e
  * a lista nunca as procurou -- entrando so na caixinha, ela prometia o que a
  * lista nao entrega.)
- * Variacao: entra so o valor das ATIVAS, nunca o nome do grupo ("Cor",
+ * Variacao: entra so o valor das ATIVAS COM ESTOQUE, nunca o nome do grupo ("Cor",
  * "Tamanho" -- senao "cor" acharia todo produto com variacao). O valor curto
  * (1 ou 2 letras: "M", "P", "42") vale como PALAVRA INTEIRA: por trecho, "m"
  * acharia "Marrom" e "4" acharia o 42.
@@ -272,12 +272,18 @@ interface VariacaoDaBusca {
   sku?: string | null;
   value: string;
   active: boolean;
+  stockIncrement?: number;
 }
 
-/** Uma variacao por linha, para a palavra inteira enxergar onde uma acaba. */
+/**
+ * Uma variacao por linha, para a palavra inteira enxergar onde uma acaba. So a
+ * variacao A VENDA casa: ligada E com estoque (o mesmo `stockIncrement > 0` da
+ * vitrine, preco-de-vitrine.ts). Sem o estoque, quem buscava "38" com o 38
+ * zerado achava o produto como se ele tivesse o tamanho.
+ */
 function textoDasVariacoes(variacoes?: VariacaoDaBusca[]): string {
   return (variacoes ?? [])
-    .filter((variacao) => variacao.active)
+    .filter((variacao) => variacao.active && (variacao.stockIncrement ?? 0) > 0)
     .flatMap((variacao) =>
       [variacao.value, variacao.sku].map(normalizarParaBusca),
     )

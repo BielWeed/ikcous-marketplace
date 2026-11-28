@@ -57,6 +57,31 @@ const TEXTO_SEM_RESPOSTA_DA_ACAO =
 const TEXTO_SEM_RESPOSTA_DA_CONCLUSAO =
   "Sem resposta da rede. Confira na ficha se a devolução foi concluída e se o reembolso aparece antes de tentar de novo.";
 
+/** Aviso fixo da ficha quando a geração do código de postagem é recusada. */
+export interface AvisoDaEtiquetaReversa {
+  readonly titulo: string;
+  /** A frase da edge como veio (com o status do Melhor Envio), em texto menor. */
+  readonly detalhe: string | null;
+}
+
+export const AVISO_COMPRA_REVERSA_NAO_CONCLUIDA =
+  "O Melhor Envio não concluiu a compra: nada foi cobrado. Antes de tentar de novo, abra o carrinho do Melhor Envio e apague o envio desta devolução, se ele estiver lá. Depois confira o saldo e toque em Gerar código de postagem de novo.";
+
+// As recusas DEFINIDAS do pagamento do envio reverso, sem `resgate` — a edge
+// `melhor-envio-etiqueta` já diz "nada foi pago": checkout 2xx com status de
+// não pago, checkout 4xx e a recusa em que o vínculo não soltou. A edge não
+// manda um campo para isso, então casa pelo começo da frase dela.
+const RE_COMPRA_REVERSA_RECUSADA =
+  /^O Melhor Envio (?:não fechou a compra|recusou a compra|recusou o pagamento) do envio reverso/;
+
+export function avisoDaRecusaDaEtiquetaReversa(
+  erro: string,
+): AvisoDaEtiquetaReversa {
+  return RE_COMPRA_REVERSA_RECUSADA.test(erro)
+    ? { titulo: AVISO_COMPRA_REVERSA_NAO_CONCLUIDA, detalhe: erro }
+    : { titulo: erro, detalhe: null };
+}
+
 /** O AdminLayout escuta este evento e reconta a bolinha vermelha do sino. */
 const EVENTO_RECONTAR_AVISOS = "admin:recontar-avisos";
 
@@ -333,6 +358,12 @@ export interface FichaDaDevolucao {
   marcarRecebida: () => Promise<boolean>;
   gerarEtiquetaReversa: () => Promise<boolean>;
   /**
+   * A última recusa do "Gerar código de postagem", fixa na ficha até a próxima
+   * tentativa (o toast some; a lojista precisa da orientação enquanto confere
+   * o carrinho do Melhor Envio). `null` sem recusa.
+   */
+  avisoDaEtiqueta: AvisoDaEtiquetaReversa | null;
+  /**
    * Achado 1 (rodada 6b, revisão de risco): a "saída" de painel para um
    * vínculo real preso sem código de postagem —
    * `admin_devolucao_liberar_vinculo_reverso` (20261179000000). SEMPRE com
@@ -391,6 +422,8 @@ export function useDevolucaoAdmin(
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(false);
   const [emVoo, setEmVoo] = useState<AcaoEmVoo | null>(null);
+  const [avisoDaEtiqueta, setAvisoDaEtiqueta] =
+    useState<AvisoDaEtiquetaReversa | null>(null);
   const emVooRef = useRef(false);
   const idRef = useRef(id);
   const aoMudarRef = useRef(aoMudar);
@@ -400,6 +433,11 @@ export function useDevolucaoAdmin(
     idRef.current = id;
     aoMudarRef.current = aoMudar;
   }, [id, aoMudar]);
+
+  // O aviso é desta devolução: outra ficha começa sem ele.
+  useEffect(() => {
+    setAvisoDaEtiqueta(null);
+  }, [id]);
 
   const carregar = useCallback(async () => {
     if (!id || idRef.current !== id) return;
@@ -523,6 +561,9 @@ export function useDevolucaoAdmin(
           PRAZO_DA_GRAVACAO_MS,
           () => erroDeConsultaSemResposta(),
         );
+        // A conexão que CAI no meio (iPhone trocando de app) é tão incerta
+        // quanto o prazo — a RPC pode ter gravado: segue o ramo do `catch`.
+        if (ehConexaoCaiuSemResposta(error)) throw error;
         if (error) {
           // O servidor escreve valores crus ("R$ 120.00"): vira real brasileiro.
           toast.error(reaisComVirgula(mensagemDoErro(error, ERRO_GENERICO)));
@@ -536,7 +577,7 @@ export function useDevolucaoAdmin(
         pedirRecontagemDoSino();
         return lido;
       } catch (e) {
-        if (ehConsultaSemResposta(e)) {
+        if (ehConsultaSemResposta(e) || ehConexaoCaiuSemResposta(e)) {
           // A gravação pode ter chegado ao servidor: nunca dizer "não foi
           // feito", nunca repetir sozinho. A trava só solta depois da
           // releitura, para a repetição só ser possível olhando a ficha real.
@@ -659,6 +700,7 @@ export function useDevolucaoAdmin(
     if (!id || emVooRef.current) return false;
     emVooRef.current = true;
     setEmVoo("etiqueta");
+    setAvisoDaEtiqueta(null);
     try {
       const { data, error } = await aguardarComPrazo(
         supabase.functions.invoke("melhor-envio-etiqueta", {
@@ -687,7 +729,11 @@ export function useDevolucaoAdmin(
           });
           await relerFicha();
         } else {
-          toast.error(base);
+          // Recusa com resposta: fica FIXA na ficha (e o toast, 15 s). A da
+          // compra recusada diz o que fazer antes de repetir.
+          const aviso = avisoDaRecusaDaEtiquetaReversa(base);
+          setAvisoDaEtiqueta(aviso);
+          toast.error(aviso.titulo, { duration: 15_000 });
         }
         return false;
       }
@@ -851,6 +897,7 @@ export function useDevolucaoAdmin(
     marcarEmTransito,
     marcarRecebida,
     gerarEtiquetaReversa,
+    avisoDaEtiqueta,
     liberarVinculoReverso,
     concluir,
     reprovar,

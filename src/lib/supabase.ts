@@ -32,6 +32,15 @@ export const supabase = createClient<Database>(
   },
 );
 
+/**
+ * A chave pública com que o cliente acima foi criado: é EXATAMENTE o que o
+ * supabase-js manda em `Authorization: Bearer` quando não há sessão (o
+ * `fetchWithAuth` cai nela). Quem precisa de uma chamada "sem sessão" mesmo com
+ * alguém logado no aparelho (o pedido da visitante, caça 28/11/2026) fixa o
+ * cabeçalho com ela — o servidor recebe o mesmo pedido de sempre.
+ */
+export const CHAVE_PUBLICA_DO_SUPABASE = SUPABASE_PUBLISHABLE_KEY;
+
 // Diagnostic check for development only
 if (import.meta.env.DEV) {
   supabase.auth.onAuthStateChange((event, session) => {

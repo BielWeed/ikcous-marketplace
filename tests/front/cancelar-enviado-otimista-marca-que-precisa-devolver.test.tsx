@@ -375,7 +375,7 @@ describe("confirmarRetornoDoProduto — o toast diz a verdade do que ESTE clique
     });
 
     expect(toast.success).toHaveBeenCalledWith(
-      "Retorno do produto confirmado. 2 peças voltaram sem tamanho: escolha o tamanho delas na tela do produto para elas voltarem à venda.",
+      "Retorno do produto confirmado. 2 peças ficaram esperando você escolher o tamanho delas na tela do produto para elas voltarem à venda.",
     );
     expect(toast.success).not.toHaveBeenCalledWith(
       "Retorno do produto confirmado. Estoque atualizado.",

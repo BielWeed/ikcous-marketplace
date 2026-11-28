@@ -1,10 +1,12 @@
 import {
   type NotaDaVersao,
+  conheceNotasAte,
   ehNotaDaVersao,
   notasEntre,
 } from "@/lib/novidades/notas";
 import {
   CHAVE_PENDENTES,
+  type FaixaPendente,
   lerFaixasPendentes,
 } from "@/lib/novidades/registro-do-boot";
 import { nucleoSemver, partesDoNucleoSemver } from "@/lib/versao-do-servidor";
@@ -128,7 +130,16 @@ function incorporarFaixa(
  * inofensivo — versão conhecida nunca entra de novo nem perde o "lida". */
 function absorverPendentes(textoPendentes: string): void {
   let entradas = retrato;
-  for (const { de, para, em } of lerFaixasPendentes(textoPendentes)) {
+  const guardadas: FaixaPendente[] = [];
+  for (const faixa of lerFaixasPendentes(textoPendentes)) {
+    // Aba aberta antes da atualização: o boot da aba nova já gravou a versão
+    // vista, então apagar a faixa sem o texto do destino perderia a nota para
+    // sempre. Ela fica inteira (nem a parte conhecida entra) para a aba nova.
+    if (!conheceNotasAte(faixa.para)) {
+      guardadas.push(faixa);
+      continue;
+    }
+    const { de, para, em } = faixa;
     entradas = incorporarFaixa(entradas, de, para, new Date(em)).entradas;
   }
   if (entradas !== retrato) {
@@ -139,9 +150,14 @@ function absorverPendentes(textoPendentes: string): void {
     window.localStorage.setItem(CHAVE, texto);
     textoLido = texto;
   }
+  const restante = guardadas.length > 0 ? JSON.stringify(guardadas) : null;
   // Outra aba pode ter anotado uma faixa nova no meio: essa fica.
-  if (window.localStorage.getItem(CHAVE_PENDENTES) === textoPendentes) {
-    window.localStorage.removeItem(CHAVE_PENDENTES);
+  if (
+    restante !== textoPendentes &&
+    window.localStorage.getItem(CHAVE_PENDENTES) === textoPendentes
+  ) {
+    if (restante === null) window.localStorage.removeItem(CHAVE_PENDENTES);
+    else window.localStorage.setItem(CHAVE_PENDENTES, restante);
   }
 }
 
