@@ -243,6 +243,31 @@ describe("OrderDetailsView — cancelado e estornado", () => {
     expect(tela).not.toMatch(/PIX cai|fatura/i);
   });
 
+  it("relê a devolução quando a lista viva muda um Pix tardio para estornado", async () => {
+    const pixTardio: Order = {
+      ...pedidoBase,
+      paymentStatus: "pago_apos_expirar",
+      metodoOnline: "pix",
+    };
+    const antes = await renderizar(pixTardio);
+    expect(antes).toContain("A loja vai devolver o valor");
+    expect(consultasAoLivro).toHaveBeenCalledTimes(1);
+
+    linhasDeDevolucao = [concluida(100)];
+    const estornado: Order = {
+      ...pixTardio,
+      paymentStatus: "estornado",
+      updatedAt: "2026-11-03T10:00:00.000Z",
+    };
+    const depois = await renderizar(estornado);
+    expect(depois).toMatch(/Devolução concluída: R\$\s?100,00/);
+    expect(depois).toContain("o dinheiro foi devolvido");
+    expect(consultasAoLivro).toHaveBeenCalledTimes(2);
+
+    await renderizar({ ...estornado, updatedAt: "2026-11-03T10:01:00.000Z" });
+    expect(consultasAoLivro).toHaveBeenCalledTimes(2);
+  });
+
   it("devolução em duas linhas concluídas: soma as duas", async () => {
     linhasDeDevolucao = [concluida(60), concluida(40)];
     const tela = await renderizar(pedidoBase);

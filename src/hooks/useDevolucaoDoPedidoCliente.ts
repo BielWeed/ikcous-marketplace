@@ -7,6 +7,7 @@ import {
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { LinhaDevolucaoDoCliente } from "@/lib/texto-estorno-do-cliente";
+import type { Order } from "@/types";
 
 const INTERVALO_DE_RECARGA_MS = 15_000;
 const ESTADOS_EM_CURSO = ["solicitado", "em_processamento"] as const;
@@ -54,6 +55,7 @@ interface DevolucaoDoPedidoCliente {
 export function useDevolucaoDoPedidoCliente(
   orderId: string,
   habilitado: boolean,
+  statusDoPagamento?: Order["paymentStatus"],
 ): DevolucaoDoPedidoCliente {
   const [linhas, setLinhas] = useState<LinhaDevolucaoDoCliente[]>([]);
   const [carregando, setCarregando] = useState(false);
@@ -137,6 +139,8 @@ export function useDevolucaoDoPedidoCliente(
     carregarRef.current = carregar;
   }, [carregar]);
 
+  // O pedido muda em tempo real, mas o livro não. Relê quando o pagamento
+  // muda, mesmo quando ainda não há linha ativa para ligar o intervalo.
   useEffect(() => {
     ativoRef.current = true;
     falhasRef.current = 0;
@@ -146,7 +150,7 @@ export function useDevolucaoDoPedidoCliente(
       ativoRef.current = false;
       if (novaTentativaRef.current) clearTimeout(novaTentativaRef.current);
     };
-  }, [habilitado, carregar]);
+  }, [habilitado, carregar, statusDoPagamento]);
 
   // Tela aberta por muito tempo, ou conexão que caiu e voltou: relê ao voltar
   // à aba ou à rede (a guarda de rodada de `carregar` descarta a resposta

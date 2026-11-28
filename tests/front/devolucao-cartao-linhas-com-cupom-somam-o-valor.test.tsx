@@ -144,6 +144,32 @@ function valorDaLinha(comeco: string) {
 const emCentavos = (texto: string) =>
   Number(texto.replace(/[^\d,]/g, "").replace(",", ".")) * 100;
 
+describe("cartão da devolução: frete de ida", () => {
+  it.each(["vale", "troca"] as const)(
+    "em aberto, %s mostra só o valor do item, sem frete",
+    async (resolucao_desejada) => {
+      await desenhar({
+        ...detalhe([item("i-1", "Camiseta", 1, 100)], 100, 25),
+        resolucao_desejada,
+      });
+
+      expect(valorDaLinha("Valor")).toBe("R$ 100,00");
+      expect(valorDaLinha("Frete de ida")).toBe("");
+    },
+  );
+
+  it("quando a resolução final é reembolso, mostra também o frete", async () => {
+    await desenhar({
+      ...detalhe([item("i-1", "Camiseta", 1, 100)], 100, 25),
+      resolucao_desejada: "vale",
+      resolucao_final: "reembolso",
+    });
+
+    expect(valorDaLinha("Valor")).toBe("R$ 125,00");
+    expect(valorDaLinha("Frete de ida")).toBe("R$ 25,00");
+  });
+});
+
 describe("cartão da devolução com cupom: as linhas somam o Valor", () => {
   it("30 x R$ 3,33 com cupom de 10%: a linha mostra R$ 89,91, igual ao Valor", async () => {
     await desenhar(detalhe([item("i-1", "Caneta", 30, 3)], 89.91));

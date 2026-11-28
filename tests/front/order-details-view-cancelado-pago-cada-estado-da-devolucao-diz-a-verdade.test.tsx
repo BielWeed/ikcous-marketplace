@@ -202,13 +202,40 @@ describe("OrderDetailsView — pedido cancelado e pago: cada estado da devoluç�
         expect(texto).not.toContain(CONFERINDO);
       });
 
-      it("lida, devolução CONCLUÍDA: só o fato, sem prometer o que já aconteceu", async () => {
+      it("mostra o valor devolvido e quanto falta mesmo com tentativas de estorno repetidas", async () => {
+        const falha = { ...linha("falhou"), amount: 120 };
+        estado.devolucao.linhas = [
+          { ...linha("concluido"), amount: 80 },
+          falha,
+          falha,
+        ];
+
+        const texto = (
+          await abrir({
+            total: 200,
+            subtotal: 200,
+            paymentStatus: pagamento,
+          })
+        ).replace(/\s+/g, " ");
+        expect(texto).toContain(
+          "R$ 80,00 devolvidos. Fale com a loja sobre os R$ 120,00 que faltam.",
+        );
+        const descricao = Array.from(host.querySelectorAll("p")).find((p) =>
+          p.textContent?.startsWith(BASE),
+        );
+        expect(descricao?.textContent).toContain("Fale com a loja");
+        expect(texto).not.toContain("Devolução concluída:");
+      });
+
+      it("lida, devolução CONCLUÍDA por inteiro: uma falha antiga não muda o desfecho", async () => {
         estado.devolucao = {
           ...estado.devolucao,
-          linhas: [linha("concluido")],
+          linhas: [linha("falhou"), linha("concluido")],
         };
         const texto = await abrir({ paymentStatus: pagamento });
         expect(texto).toContain(BASE);
+        expect(texto).toMatch(/Devolução concluída: R\$\s?100,00/);
+        expect(texto).not.toContain("Fale com a loja sobre");
         expect(texto).not.toContain(VOLTA_SOZINHO);
         expect(texto).not.toContain("Fale com a loja para resolver");
         expect(texto).not.toContain(CONFERINDO);
