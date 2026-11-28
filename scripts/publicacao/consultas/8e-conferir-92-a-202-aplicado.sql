@@ -35,7 +35,8 @@
 --                                e, DEPOIS dela, 20261242000000 (o lucro usa o custo do dia da venda)
 --                                e, DEPOIS dela, 20261399970000 (o ranking de lucro desconta a devolucao e o estorno)
 --                                e, DEPOIS dela, 20261399994000 (o item "Nao veio" fica com a cliente no ranking de lucro)
---                                e, DEPOIS dela, 20261399995000 (o lucro do ranking casa com o Financeiro, pedido a pedido);
+--                                e, DEPOIS dela, 20261399995000 (o lucro do ranking casa com o Financeiro, pedido a pedido)
+--                                e, DEPOIS dela, 20261659000000 (o vale-troca nao e dinheiro no ranking de lucro);
 --   * `fin_dre`                → 20261242000000 (a DRE usa o custo do dia da venda; parte do corpo da 99);
 --                                e, DEPOIS dela, 20261382000000 (o resultado mostra tarifa, juro e quebra como despesa)
 --                                e, DEPOIS dela, 20261399600000 (o resultado credita o custo da devolucao de outro mes);
@@ -56,7 +57,8 @@
 --   * `admin_devolucao_concluir` → ..., 20261343000000 e, DEPOIS dela, 20261395200000 (a conclusão da devolução tranca o estoque na mesma ordem da compra)
 --                                e, DEPOIS dela, 20261642000000 (a peça que volta sem tamanho espera a lojista)
 --                                e, DEPOIS dela, 20261653000000 (a peça da variação desligada espera a lojista)
---                                e, DEPOIS dela, 20261657000000 (o produto todo desligado não volta à venda);
+--                                e, DEPOIS dela, 20261657000000 (o produto todo desligado não volta à venda)
+--                                e, DEPOIS dela, 20261659000000 (a peça de produto excluído fica fora do estoque);
 --   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento)
 --                                e, DEPOIS dela, 20261392100000 (a busca do CRM acha o número com o +55);
 --   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita)
@@ -221,6 +223,7 @@ WITH corpos AS (
     ('admin_devolucao_concluir', '1a548896acb8248f1b1771d765c92fcb', '20261642000000'),
     ('admin_devolucao_concluir', 'd146dc7aefb07a0bf580ed7265d9453e', '20261653000000'),
     ('admin_devolucao_concluir', 'b55bf2488a1d5165afddaa4d103d3e18', '20261657000000'),
+    ('admin_devolucao_concluir', '9ec7a021b965b7abdc77bc4b2b900c35', '20261659000000'),
     ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000'),
     ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
     ('get_admin_analytics_v2', 'ab25e738a3101cccbb0c09450b660ee0', '20261245000000'),
@@ -229,6 +232,7 @@ WITH corpos AS (
     ('get_admin_analytics_v2', '0ea0841208f326971e4f92241929e088', '20261399970000'),
     ('get_admin_analytics_v2', 'de8648a7783c12f1be7abd7986c8a2fc', '20261399994000'),
     ('get_admin_analytics_v2', '4f8fb94f6cb0018e10d0ef71541f1cbf', '20261399995000'),
+    ('get_admin_analytics_v2', '1624212a7096b6f49a80370b30191a15', '20261659000000'),
     ('get_category_analytics', 'd7e1e413ac805f598d8657992f43c706', '20261409000000'),
     ('get_category_analytics', 'a332d6b7c4ab58425c60343883d873d6', '20261620000000'),
     ('fin_dre', 'afc3e13805ce37819cfdcd094043087c', '20261242000000'),

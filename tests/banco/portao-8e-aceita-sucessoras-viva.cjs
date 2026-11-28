@@ -139,6 +139,13 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // 210a/210b fazem com ela em tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs, e a 8e ja traz os dois pares; `noEstado` a desfaz antes
     // (o-caixa-pertence-ao-dia-posterior.cjs, o rollback dela devolve as quatro de uma vez).
     s.nome !== "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql" &&
+    // A 20261659000000 (a peca de produto excluido fica fora do estoque, e o vale nao e dinheiro no ranking) e a DECIMA sucessora de
+    // get_admin_analytics_v2 (... -> 3994 -> 3995 -> 1659) e a de admin_devolucao_concluir (... -> 1653 -> 1659); as outras duas funcoes dela
+    // nao sao da 8e. Tem a PROVA PROPRIA do que a 8e, a 35a, a 45a, a 48a, a 53a, a 54a, a 135a, a 146a e a 147a fazem com ela (as
+    // fichas dizem o mesmo com ela e com o corpo anterior) em tests/banco/a-peca-de-produto-excluido-viva.cjs; `noEstado` a desfaz antes
+    // (a cadeia do lucro: o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs chama a-peca-de-produto-excluido-posterior.cjs primeiro).
+    s.nome !==
+      "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql" &&
     // A 20261660000000 (o caixa de ontem aberto nao some do saldo) e a SEGUNDA sucessora de fin_conta_salvar (99 -> 3999300 -> 1660) e a PRIMEIRA
     // de fin_lancamento_cancelar (99 -> 1660); a terceira funcao dela (fin_caixa_movimentar_com_chave, da 252/1654) nao e da 8e. Tem a PROVA PROPRIA
     // do que as consultas 216a/216b, 128a e 210a fazem com ela em tests/banco/o-caixa-de-ontem-aberto-nao-some-do-saldo-viva.cjs, e a 8e ja traz os

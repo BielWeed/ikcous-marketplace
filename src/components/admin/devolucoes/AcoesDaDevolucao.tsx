@@ -313,6 +313,35 @@ export function AcoesDaDevolucao({
 
   if (acoes.length === 0) return null;
 
+  // O mesmo aviso no reembolso e no vale: os dois mostram o valor sugerido.
+  const avisoDosItensForaDoValor = (itensAusentes.length > 0 ||
+    itensDanificados.length > 0) && (
+    <div
+      data-testid="aviso-item-fora-do-valor"
+      role="status"
+      className="space-y-1 text-xs font-medium leading-snug text-amber-400"
+    >
+      {itensAusentes.length > 0 && (
+        <p className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>
+            {`Você marcou ${itensAusentes.map((item) => nomeComVariacao(item, rotulosDasVariacoes, "Produto")).join(", ")} como "Não veio": o valor sugerido já desconta ${formatarReais(centavosAusentes / 100)} ${itensAusentes.length > 1 ? "desses itens" : "desse item"}.`}
+            {centavosFrete > 0 &&
+              " Frete não incluído: nem todos os itens voltaram."}
+          </span>
+        </p>
+      )}
+      {itensDanificados.length > 0 && (
+        <p className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>
+            {`Você marcou ${itensDanificados.map((item) => nomeComVariacao(item, rotulosDasVariacoes, "Produto")).join(", ")} como "Danificada": o valor sugerido continua cheio. Confira se deve devolver tudo.`}
+          </span>
+        </p>
+      )}
+    </div>
+  );
+
   function escolherModo(novo: Modo) {
     setErro(null);
     setModo((atual) => (atual === novo ? null : novo));
@@ -866,6 +895,33 @@ export function AcoesDaDevolucao({
                 )}
               </fieldset>
 
+              {/* Vale: sem campo (o app não emite o vale), mas com o número
+                  para o cupom — a MESMA conta do reembolso sugerido: desconta
+                  o "Não veio", soma o frete de ida só se tudo voltou e para no
+                  saldo do pedido. */}
+              {resolucao === "vale" && (
+                <div className="space-y-1.5">
+                  <p
+                    data-testid="valor-sugerido-do-vale"
+                    className="text-[11px] leading-relaxed text-zinc-500"
+                  >
+                    <span className="font-bold text-white">
+                      Valor sugerido do vale:{" "}
+                      <span className="tabular-nums">
+                        {formatarReais(Number(valorPadrao))}
+                      </span>
+                    </span>
+                    {!limitadoAoSaldo &&
+                      freteIncluido > 0 &&
+                      ` (itens + frete de ida ${formatarReais(freteIncluido / 100)})`}
+                    .
+                    {limitadoAoSaldo &&
+                      ` O valor sugerido é o que ainda pode ser devolvido deste pedido (${formatarReais(disponivel ?? 0)}).`}
+                  </p>
+                  {avisoDosItensForaDoValor}
+                </div>
+              )}
+
               {resolucao === "reembolso" && (
                 <div className="space-y-1.5">
                   <label htmlFor="devolucao-valor" className={ROTULO}>
@@ -904,33 +960,7 @@ export function AcoesDaDevolucao({
                     {limitadoAoSaldo &&
                       ` O valor sugerido é o que ainda pode ser devolvido deste pedido (${formatarReais(disponivel ?? 0)}).`}
                   </p>
-                  {(itensAusentes.length > 0 ||
-                    itensDanificados.length > 0) && (
-                    <div
-                      data-testid="aviso-item-fora-do-valor"
-                      role="status"
-                      className="space-y-1 text-xs font-medium leading-snug text-amber-400"
-                    >
-                      {itensAusentes.length > 0 && (
-                        <p className="flex items-start gap-2">
-                          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                          <span>
-                            {`Você marcou ${itensAusentes.map((item) => nomeComVariacao(item, rotulosDasVariacoes, "Produto")).join(", ")} como "Não veio": o valor sugerido já desconta ${formatarReais(centavosAusentes / 100)} ${itensAusentes.length > 1 ? "desses itens" : "desse item"}.`}
-                            {centavosFrete > 0 &&
-                              " Frete não incluído: nem todos os itens voltaram."}
-                          </span>
-                        </p>
-                      )}
-                      {itensDanificados.length > 0 && (
-                        <p className="flex items-start gap-2">
-                          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                          <span>
-                            {`Você marcou ${itensDanificados.map((item) => nomeComVariacao(item, rotulosDasVariacoes, "Produto")).join(", ")} como "Danificada": o valor sugerido continua cheio. Confira se deve devolver tudo.`}
-                          </span>
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  {avisoDosItensForaDoValor}
                 </div>
               )}
 

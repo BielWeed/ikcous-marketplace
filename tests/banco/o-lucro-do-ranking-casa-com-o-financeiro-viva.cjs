@@ -548,6 +548,9 @@ const CENARIOS = [
     novo: { v: [0, 0], b: [1, 3000] },
     fin: false,
   },
+  // O corpo da 3995 conta o vale como dinheiro devolvido (o vestido sai do lucro). A SUCESSORA 20261659000000 muda isso (decisao do
+  // socio, 28/11/2026: o vale e' credito, nao dinheiro que saiu, como no Financeiro); a regra nova e o Financeiro como oraculo do vale
+  // sao provados em tests/banco/a-peca-de-produto-excluido-viva.cjs (6a/6b). Aqui o cenario segue medindo o corpo da 3995.
   {
     nome: "vale-troca com o vestido de volta: conta como devolvido (credito), como sempre",
     opts: { montar: com({ linhas: [L(0, 1, "nova", true)], final: "vale" }) },
@@ -716,6 +719,14 @@ async function main() {
   const c = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await c.connect();
   try {
+    // A 20261659000000 (o vale-troca nao e dinheiro no ranking) sucede o corpo desta: esta prova mede o corpo e o comportamento da
+    // 20261399995000 (inclusive o vale como credito, o cenario "vale-troca com o vestido de volta"), entao a tira antes, gravando no
+    // clone proprio do rodar-isolado.cjs (a parte sem BEGIN, no fim, desfaz e reaplica esta migration nele).
+    await c.query("BEGIN");
+    await require("./a-peca-de-produto-excluido-posterior.cjs").desfazerProdutoExcluidoNaTransacao(
+      c,
+    );
+    await c.query("COMMIT");
     await c.query("BEGIN");
     // O topo instalado pelo CI (todas as migrations do zero) e o desta migration.
     const topo = await funcao(c);

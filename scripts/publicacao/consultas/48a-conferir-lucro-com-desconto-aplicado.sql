@@ -1,6 +1,8 @@
 -- 48a: DEPOIS da 20261245. SO LEITURA, catálogo, rol fechado de 4 linhas.
 -- Corpo exato (md5 sem CR), assinatura/atributos e ACL iguais aos pré/pós-voos.
 -- Não prova comportamento; tests/banco/lucro-com-desconto-viva.cjs o mede no clone.
+-- SUCESSORA: a 20261659000000 (o vale-troca nao e dinheiro no ranking de lucro) troca so o pm do vale nas duas copias do CTE devs;
+-- o corpo dela conta como o desta (a 215a confere qual).
 WITH fn AS (
   SELECT p.oid,
          md5(replace(p.prosrc, chr(13), '')) AS m,
@@ -27,7 +29,7 @@ WITH fn AS (
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo e o da 20261245000000, com o desconto proporcional (md5)',
          'ab25e738a3101cccbb0c09450b660ee0',
-         COALESCE((SELECT CASE WHEN f.m IN ('ab25e738a3101cccbb0c09450b660ee0', '5746d8a1df216ca4a5569901c45a2a07', '060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088', 'de8648a7783c12f1be7abd7986c8a2fc', '4f8fb94f6cb0018e10d0ef71541f1cbf')
+         COALESCE((SELECT CASE WHEN f.m IN ('ab25e738a3101cccbb0c09450b660ee0', '5746d8a1df216ca4a5569901c45a2a07', '060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088', 'de8648a7783c12f1be7abd7986c8a2fc', '4f8fb94f6cb0018e10d0ef71541f1cbf', '1624212a7096b6f49a80370b30191a15')
                                THEN 'ab25e738a3101cccbb0c09450b660ee0' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)',

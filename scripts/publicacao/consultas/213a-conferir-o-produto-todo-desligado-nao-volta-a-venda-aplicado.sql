@@ -4,6 +4,8 @@
 -- ligada fica na propria variacao e nao credita o pai) e os atributos e a ACL de sempre. NAO le nenhuma linha de pedido, devolucao,
 -- produto nem peca e NAO chama funcao nenhuma. Tudo true = aplicado; qualquer false = PARE e leia a linha. Depois do rollback-manual as
 -- linhas dos corpos reprovam (voltam os da 20261653000000).
+-- SUCESSORA: a 20261659000000 (a peca de produto excluido fica fora do estoque) so acrescenta o bloco do produto excluido aos corpos
+-- da 20261657000000; os corpos dela contam como os da 1657 (a 215a confere qual).
 WITH fn AS (
   SELECT p.proname::text AS nome, md5(replace(p.prosrc, chr(13), '')) AS h, p.oid,
          p.prosecdef AND p.proconfig = ARRAY['search_path=public']::text[]
@@ -29,12 +31,12 @@ WITH fn AS (
   FROM fn f
 ), itens(item, esperado, vivo, ok) AS (
   SELECT 'devolver_estoque: corpo esperado (md5)', 'c98a1d49d63e0174f4bdd95dcffc54f4',
-         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1) = 'c98a1d49d63e0174f4bdd95dcffc54f4', false)
+         COALESCE((SELECT CASE WHEN h = 'e42582a472fd79ba987c11f161ad9a7a' THEN 'c98a1d49d63e0174f4bdd95dcffc54f4' ELSE h END FROM fn WHERE nome = 'devolver_estoque' LIMIT 1), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1) IN ('c98a1d49d63e0174f4bdd95dcffc54f4', 'e42582a472fd79ba987c11f161ad9a7a'), false)
   UNION ALL
   SELECT 'admin_devolucao_concluir: corpo esperado (md5)', 'b55bf2488a1d5165afddaa4d103d3e18',
-         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1) = 'b55bf2488a1d5165afddaa4d103d3e18', false)
+         COALESCE((SELECT CASE WHEN h = '9ec7a021b965b7abdc77bc4b2b900c35' THEN 'b55bf2488a1d5165afddaa4d103d3e18' ELSE h END FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1) IN ('b55bf2488a1d5165afddaa4d103d3e18', '9ec7a021b965b7abdc77bc4b2b900c35'), false)
   UNION ALL
   SELECT 'devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role',
          'sim',

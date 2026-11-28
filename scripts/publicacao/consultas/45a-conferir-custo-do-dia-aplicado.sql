@@ -39,6 +39,8 @@
 -- depois do rollback, um negativo por linha). LIMITES: nao prova o COMPORTAMENTO (isso e' de
 -- tests/banco/custo-do-dia-viva.cjs). Evidencia LOCAL nao prova a IKCOUS nem a Savy: so o run desta consulta contra o
 -- ref de cada loja.
+-- SUCESSORA: a 20261659000000 (o vale-troca nao e dinheiro no ranking de lucro) troca so o pm do vale nas duas copias do CTE devs;
+-- o corpo dela conta como o desta (a 215a confere qual).
 WITH alvo(chave, assinatura, nome, lingua, volatilidade, retorno) AS (
   VALUES ('analytics', 'public.get_admin_analytics_v2(integer)', 'get_admin_analytics_v2', 'plpgsql', 'v', 'json'),
          ('dre', 'public.fin_dre(date,date)', 'fin_dre', 'plpgsql', 's', 'jsonb'),
@@ -99,7 +101,7 @@ WITH alvo(chave, assinatura, nome, lingua, volatilidade, retorno) AS (
   SELECT 'get_admin_analytics_v2: corpo e o da 20261242000000, com o custo do dia da venda (md5)',
          'dceb62881ebf8fa404ba3ac295041691',
          -- A 45 sucede só o analytics: aceita os dois corpos EXATOS; normaliza ao esperado histórico do rol.
-         COALESCE((SELECT CASE WHEN f.m IN ('dceb62881ebf8fa404ba3ac295041691', 'ab25e738a3101cccbb0c09450b660ee0', '5746d8a1df216ca4a5569901c45a2a07', '060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088', 'de8648a7783c12f1be7abd7986c8a2fc', '4f8fb94f6cb0018e10d0ef71541f1cbf')
+         COALESCE((SELECT CASE WHEN f.m IN ('dceb62881ebf8fa404ba3ac295041691', 'ab25e738a3101cccbb0c09450b660ee0', '5746d8a1df216ca4a5569901c45a2a07', '060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088', 'de8648a7783c12f1be7abd7986c8a2fc', '4f8fb94f6cb0018e10d0ef71541f1cbf', '1624212a7096b6f49a80370b30191a15')
                               THEN 'dceb62881ebf8fa404ba3ac295041691' ELSE f.m END FROM fn f WHERE f.chave = 'analytics'), 'AUSENTE')
   UNION ALL
   SELECT 'fin_dre: corpo e o da 20261242000000, com o custo do dia da venda (md5)',
