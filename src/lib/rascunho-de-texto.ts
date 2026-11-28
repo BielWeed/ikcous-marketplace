@@ -47,13 +47,33 @@ export function apagarRascunhoDeTexto(chave: string): void {
   }
 }
 
-/** Apaga o rascunho da conta ("Descartar e Sair" do aviso de saída). */
+// As chaves cujo rascunho antigo ainda espera a decisão dela (o "Restaurar?"
+// sem resposta, ou nem mostrado porque a tela está escondida). Quem marca é a
+// tela (`useRascunhoDeTexto`); quem lê é o "Descartar e Sair".
+const rascunhosEsperandoDecisao = new Set<string>();
+
+/** A tela diz se o rascunho desta chave ainda espera a decisão dela. */
+export function marcarRascunhoDeTextoEsperandoDecisao(
+  chave: string,
+  esperando: boolean,
+): void {
+  if (esperando) rascunhosEsperandoDecisao.add(chave);
+  else rascunhosEsperandoDecisao.delete(chave);
+}
+
+/**
+ * Apaga o rascunho da conta ("Descartar e Sair" do aviso de saída). O aviso
+ * de saída acende por qualquer seção da tela: um rascunho que ela ainda não
+ * respondeu (ou nunca viu, grupo fechado) não é o que ela está descartando, e
+ * fica para ser oferecido depois.
+ */
 export function descartarRascunhoDeTexto(
   nome: NomeDoRascunhoDeTexto,
   userId: string | undefined,
 ): void {
   const chave = chaveDoRascunhoDeTexto(nome, userId);
-  if (chave) apagarRascunhoDeTexto(chave);
+  if (chave && !rascunhosEsperandoDecisao.has(chave))
+    apagarRascunhoDeTexto(chave);
 }
 
 /**

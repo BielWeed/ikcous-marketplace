@@ -307,3 +307,65 @@ describe("Política de devolução — rascunho do texto sobrevive à aba descar
     expect(ofertaDeRascunho()).toBeDefined();
   });
 });
+
+// "Descartar e Sair" do aviso de saída (App.tsx) chama
+// `descartarRascunhoDeTexto`. Esse aviso acende também por e-mail, pagamentos
+// e privacidade: descartar ali não pode apagar um rascunho da política que ela
+// nunca viu (grupo "Trocas e devoluções" fechado) — só o que era dela na tela.
+describe("Política de devolução — Descartar e Sair só apaga o rascunho que ela viu", () => {
+  async function descartarESair() {
+    const { descartarRascunhoDeTexto } = await import(
+      "@/lib/rascunho-de-texto"
+    );
+    descartarRascunhoDeTexto("politica-de-devolucao", "admin-1");
+  }
+
+  it("grupo fechado: o rascunho que nunca foi oferecido continua guardado", async () => {
+    const rascunho = JSON.stringify({
+      texto: "Política longa que o celular guardou",
+      base: "Política salva",
+      salvoEm: Date.now(),
+    });
+    localStorage.setItem(chave("admin-1"), rascunho);
+    await montar(false);
+    expect(ofertaDeRascunho()).toBeUndefined();
+
+    // Ela mudou outra seção de Ajustes e descartou ao sair.
+    await descartarESair();
+    expect(localStorage.getItem(chave("admin-1"))).toBe(rascunho);
+
+    // Ao abrir o grupo depois, o rascunho ainda é oferecido.
+    await montar(true);
+    expect(ofertaDeRascunho()).toBeDefined();
+  });
+
+  it("controle: texto da política sendo editado e sem salvar sai no descartar", async () => {
+    await montar();
+    await digitar("Texto que ela desistiu de salvar");
+    await ocultarAAba();
+    expect(localStorage.getItem(chave("admin-1"))).not.toBeNull();
+
+    await descartarESair();
+    expect(localStorage.getItem(chave("admin-1"))).toBeNull();
+    await remontar();
+    expect(ofertaDeRascunho()).toBeUndefined();
+  });
+
+  it("controle: rascunho restaurado, editado e descartado sai do aparelho", async () => {
+    localStorage.setItem(
+      chave("admin-1"),
+      JSON.stringify({
+        texto: "Rascunho guardado",
+        base: "Política salva",
+        salvoEm: Date.now(),
+      }),
+    );
+    await montar();
+    await act(async () => ofertaDeRascunho()?.[1].action.onClick());
+    await digitar("Rascunho guardado e mais um trecho");
+    await ocultarAAba();
+
+    await descartarESair();
+    expect(localStorage.getItem(chave("admin-1"))).toBeNull();
+  });
+});
