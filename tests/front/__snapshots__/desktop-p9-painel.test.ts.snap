@@ -132,6 +132,7 @@ exports[`P9 — painel no computador > src/views/admin/AdminBannersView.tsx pres
   ""min-w-0 truncate"",
   ""text-[11px] font-medium text-amber-400"",
   ""text-[11px] font-medium text-amber-400"",
+  ""text-[11px] font-medium text-amber-400"",
   ""flex items-center gap-2 pt-0.5"",
   ""h-0.5 flex-1 overflow-hidden rounded-full bg-white/5"",
   ""h-full rounded-full bg-emerald-400/80"",
