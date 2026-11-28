@@ -3800,6 +3800,17 @@ const ROL_DA_211B = [
   "v_store_config: as 48 colunas da 20261310000000 (ou as 50 desta), security_invoker",
   "tr_a_loja_so_entrega_o_confirmado: ausente, ou o desta (reaplicacao)",
 ];
+// Lote 212 (20261656000000, a visitante deixa o e-mail depois da compra: nascem informar_email_da_visitante, a porta da tela
+// "Pedido recebido!", e reivindicar_comprovante_da_visitante, a reserva do comprovante com o teto valendo tambem para pedido pago).
+// Somente catalogo: nenhuma le pedido nem contador e nenhuma chama funcao. A 212a espera as duas com o corpo desta (md5); a 212b, as
+// duas AUSENTES ou com o corpo desta (reaplicacao). Rol de 4, o mesmo nas duas (as duas funcoes, o teto da 20261217000000 e as colunas
+// de marketplace_orders que elas leem).
+const ROL_DA_212 = [
+  "informar_email_da_visitante: corpo exato (md5), uma so, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE de anon e authenticated (nem PUBLIC nem service_role)",
+  "reivindicar_comprovante_da_visitante: corpo exato (md5), uma so, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE so do service_role",
+  "o teto de e-mail da 20261217000000: reservar_vaga_de_email e chave_do_destinatario com os corpos dela, liberar_email_de_confirmacao no ar",
+  "marketplace_orders: as colunas que as duas leem, com o tipo esperado",
+];
 // Lote 213 (20261657000000, o produto com todos os tamanhos desligados nao volta a venda sozinho: os corpos de devolver_estoque e de
 // admin_devolucao_concluir mudam, um sub-bloco cada, dentro do bloco da 20261653000000). Somente catalogo: nenhuma le pedido, devolucao,
 // produto nem peca e nenhuma chama funcao. A 213a espera os corpos desta (md5); a 213b, os da 20261653000000 ou os desta (reaplicacao
@@ -3809,11 +3820,27 @@ const ROL_DA_213 = [
   "admin_devolucao_concluir: corpo esperado (md5)",
   "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
 ];
+// Lote 214 (20261658000000, o frete de ida so volta com reembolso: solicitar_devolucao e devolucao_elegibilidade trocam so o corpo).
+// A 214a e a 214b tem o MESMO rol de 7 linhas (controle e, para cada funcao, o md5, os atributos e a ACL); a 214a espera os corpos desta
+// e a 214b os vigentes de antes (20261399992000 e 20261405400000). So catalogo: nenhuma le devolucao nem chama as funcoes.
+const ROL_DA_214 = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolucao_elegibilidade: corpo exato (md5)",
+  "devolucao_elegibilidade: uma so, assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=public, retorno jsonb)",
+  "devolucao_elegibilidade: EXECUTE authenticated, sem PUBLIC ou anon",
+  "solicitar_devolucao: corpo exato (md5)",
+  "solicitar_devolucao: uma so, assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, retorno jsonb)",
+  "solicitar_devolucao: EXECUTE authenticated, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado": ROL_DA_214,
+  "214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente": ROL_DA_214,
   "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado":
     ROL_DA_213,
   "213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente":
     ROL_DA_213,
+  "212a-conferir-a-visitante-deixa-o-email-aplicado": ROL_DA_212,
+  "212b-antes-a-visitante-deixa-o-email-ausente": ROL_DA_212,
   "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado": ROL_DA_211A,
   "211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente": ROL_DA_211B,
   "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado": ROL_DA_210,

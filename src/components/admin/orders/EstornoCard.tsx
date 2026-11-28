@@ -570,11 +570,13 @@ export function EstornoCard({
                 </Button>
               )}
               {porForaAposEspera && (
+                // Texto longo (~254 px): quebra linha em vez de passar da
+                // borda do cartão no celular, como o de ReembolsoDaDevolucao.
                 <Button
                   type="button"
                   variant="link"
                   size="sm"
-                  className="min-h-11"
+                  className="h-auto min-h-11 whitespace-normal"
                   disabled={enviando || isOffline}
                   onClick={() =>
                     confirmouPorForaAposEspera(formatCurrency(linha.amount)) &&

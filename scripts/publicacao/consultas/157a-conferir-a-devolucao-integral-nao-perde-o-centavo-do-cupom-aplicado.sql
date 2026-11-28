@@ -18,7 +18,9 @@ WITH fn AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'solicitar_devolucao: corpo exato (md5)', '94ecd75ba32dd0a8ce7d433f4b6f7961', COALESCE((SELECT h FROM fn), 'AUSENTE')
+  -- aceita os dois corpos EXATOS (o desta migration e o da sucessora 20261658000000); normaliza ao esperado historico do rol.
+  SELECT 'solicitar_devolucao: corpo exato (md5)', '94ecd75ba32dd0a8ce7d433f4b6f7961',
+    COALESCE((SELECT CASE WHEN h IN ('94ecd75ba32dd0a8ce7d433f4b6f7961', 'e3f83a07f0a4909fb879ac653c115871') THEN '94ecd75ba32dd0a8ce7d433f4b6f7961' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'solicitar_devolucao: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, retorno jsonb) e EXECUTE de authenticated, sem PUBLIC nem anon', 'sim',
     CASE WHEN COALESCE((SELECT ok FROM fn), false) THEN 'sim' ELSE 'nao' END

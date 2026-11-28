@@ -556,6 +556,15 @@ export async function lerEmailDaConta(
 export async function enviarComprovantePedido(args: {
   supabase: ReturnType<typeof createClient>;
   orderId: string;
+  /**
+   * Qual reserva usar. Ausente (ou qualquer outro valor) = a de sempre,
+   * `reivindicar_email_de_confirmacao`. A porta da VISITANTE da
+   * `send-order-confirmation` (lote 579) pede a
+   * `reivindicar_comprovante_da_visitante` (migration 20261656000000): os
+   * mesmos contadores e tetos, SEM a passagem do pedido pago. Só estes dois
+   * nomes existem aqui — ninguém escolhe uma RPC arbitrária pelo nome.
+   */
+  reivindicacao?: string;
   deps?: {
     enviarEmail?: typeof enviarEmailReal;
     resolverRemetente?: typeof resolverRemetenteReal;
@@ -623,9 +632,14 @@ export async function enviarComprovantePedido(args: {
 
   // A TRAVA anti-duplicata: UPDATE condicional atomico, so' a PRIMEIRA
   // chamada ganha. Chamar esta funcao direto (por import) nao muda nada
-  // aqui — e a MESMA RPC, alcancada da mesma forma.
+  // aqui — e a MESMA RPC, alcancada da mesma forma. A da visitante (lote 579)
+  // e' a mesma trava com o teto valendo tambem para o pedido pago.
+  const rpcDaReserva =
+    args.reivindicacao === "reivindicar_comprovante_da_visitante"
+      ? "reivindicar_comprovante_da_visitante"
+      : "reivindicar_email_de_confirmacao";
   const { data: reservou, error: erroReserva } = await supabase.rpc(
-    "reivindicar_email_de_confirmacao",
+    rpcDaReserva,
     { p_order_id: orderId },
   );
   if (erroReserva) {

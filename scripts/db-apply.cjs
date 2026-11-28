@@ -699,6 +699,41 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261658000000: o frete de ida so volta com reembolso. DUAS funcoes: solicitar_devolucao (a soma do frete de ida conta so esta
+  // devolucao e as concluidas com reembolso; a lista negativa fica so na conta da quantidade) e devolucao_elegibilidade (o campo
+  // ja_reembolsada ao lado de ja_devolvida). O corpo exato (md5), os atributos e a ACL sao da consulta 214a; o comportamento, da prova viva.
+  "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql": [
+    {
+      funcao: "solicitar_devolucao",
+      esperado: [
+        {
+          texto:
+            "AND (d.id = v_id OR (d.status = 'concluida' AND d.resolucao_final = 'reembolso'))",
+          vezes: 1,
+        },
+        {
+          texto: "d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "devolucao_elegibilidade",
+      esperado: [
+        { texto: "'ja_devolvida', x.ja,", vezes: 1 },
+        { texto: "'ja_reembolsada', x.reembolsada,", vezes: 1 },
+        {
+          texto:
+            "AND d.status = 'concluida' AND d.resolucao_final = 'reembolso'",
+          vezes: 1,
+        },
+        {
+          texto: "d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   "20261650000000_a_categoria_so_com_produto_excluido_pode_sair.sql": [
     {
       funcao: "apagar_categoria_vazia",
@@ -790,6 +825,47 @@ const VERIFICACOES = {
         { texto: "WHERE p.resolvida_em IS NULL", vezes: 1 },
         { texto: "AND p.devolucao_item_id IS NOT NULL", vezes: 1 },
         { texto: "AND p.order_id = p_order_id", vezes: 1 },
+      ],
+    },
+  ],
+  // 20261656000000: a visitante deixa o e-mail depois da compra. DUAS funcoes novas. informar_email_da_visitante: as quatro condicoes
+  // (formato, visitante, sem e-mail, 15 minutos), a trava da linha e a gravacao que so acrescenta o e-mail. reivindicar_comprovante_da_
+  // visitante: os dois tetos SEM a passagem do pedido pago (nenhum CASE de pago) e a marca uma vez. O corpo exato (md5) e' da consulta
+  // 212a e do pos-voo; o comportamento, da prova viva a-visitante-deixa-o-email-viva.cjs.
+  "20261656000000_a_visitante_deixa_o_email_depois_da_compra.sql": [
+    {
+      funcao: "informar_email_da_visitante",
+      esperado: [
+        { texto: "OR v_pedido.user_id IS NOT NULL", vezes: 1 },
+        { texto: "OR v_pedido.canal IS DISTINCT FROM 'online'", vezes: 1 },
+        { texto: "IF v_pedido.email <> '' THEN", vezes: 1 },
+        { texto: "IF v_pedido.created_at <= now() - v_janela THEN", vezes: 1 },
+        { texto: "FOR UPDATE;", vezes: 1 },
+        {
+          texto:
+            "SET customer_data = customer_data || jsonb_build_object('email', v_email)",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "reivindicar_comprovante_da_visitante",
+      esperado: [
+        { texto: "v_teto_por_destinatario CONSTANT integer := 10;", vezes: 1 },
+        {
+          texto: "v_teto_do_comprovante_na_loja CONSTANT integer := 40;",
+          vezes: 1,
+        },
+        {
+          texto: "'destinatario:' || public.chave_do_destinatario(v_email),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "public.reservar_vaga_de_email('comprovante:loja', v_teto_do_comprovante_na_loja)",
+          vezes: 1,
+        },
+        { texto: "AND o.user_id IS NULL", vezes: 1 },
       ],
     },
   ],

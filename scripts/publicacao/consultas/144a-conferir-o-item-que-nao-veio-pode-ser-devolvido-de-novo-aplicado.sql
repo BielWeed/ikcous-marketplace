@@ -40,11 +40,13 @@ WITH el AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
          CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'devolucao_elegibilidade: corpo exato (md5)', 'bedd211bba45261dfbf962241ca3c9dd', COALESCE((SELECT h FROM el), 'AUSENTE')
+  -- aceita os dois corpos EXATOS (o desta migration e o da sucessora 20261658000000); normaliza ao esperado historico do rol.
+  SELECT 'devolucao_elegibilidade: corpo exato (md5)', 'bedd211bba45261dfbf962241ca3c9dd',
+         COALESCE((SELECT CASE WHEN h IN ('bedd211bba45261dfbf962241ca3c9dd', '4776618e9ccd401f7c7eb9518ceaa62d') THEN 'bedd211bba45261dfbf962241ca3c9dd' ELSE h END FROM el), 'AUSENTE')
   UNION ALL
-  -- aceita os dois corpos EXATOS (o desta migration e o da sucessora 20261405400000); normaliza ao esperado historico do rol.
+  -- aceita os tres corpos EXATOS (o desta migration e os das sucessoras 20261405400000 e 20261658000000); normaliza ao esperado historico do rol.
   SELECT 'solicitar_devolucao: corpo exato (md5)', '52e5c30c06f9767a97e98f3a393b8496',
-         COALESCE((SELECT CASE WHEN h IN ('52e5c30c06f9767a97e98f3a393b8496', '94ecd75ba32dd0a8ce7d433f4b6f7961') THEN '52e5c30c06f9767a97e98f3a393b8496' ELSE h END FROM so), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN h IN ('52e5c30c06f9767a97e98f3a393b8496', '94ecd75ba32dd0a8ce7d433f4b6f7961', 'e3f83a07f0a4909fb879ac653c115871') THEN '52e5c30c06f9767a97e98f3a393b8496' ELSE h END FROM so), 'AUSENTE')
   UNION ALL
   -- aceita os dois corpos EXATOS (o desta migration e o da sucessora 20261404000000); normaliza ao esperado historico do rol.
   SELECT 'devolucao_detalhe: corpo exato (md5)', 'a439e320641d553e3a21883c6606c6f2',

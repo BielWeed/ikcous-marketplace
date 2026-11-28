@@ -222,9 +222,11 @@ describe("OrderList — card do pedido redesenhado", () => {
       "recebido_na_entrega",
       "Seu pagamento foi recebido. Fale com a loja para resolver.",
     ],
+    // Pago depois de o pedido já estar cancelado: a loja devolve (decisão do
+    // sócio, 28/11/2026), como diz a ficha do pedido.
     [
       "pago_apos_expirar",
-      "Seu pagamento foi recebido. Fale com a loja para resolver.",
+      "Seu pagamento foi recebido. A loja vai devolver o valor.",
     ],
     ["recusado", "O pagamento não foi aprovado e o pedido foi cancelado."],
     // A lista não lê o livro de devoluções: não distingue a devolução da loja
@@ -235,7 +237,7 @@ describe("OrderList — card do pedido redesenhado", () => {
     ],
     [undefined, "Toque para ver os detalhes do pedido."],
   ])(
-    "cancelado com %s: frase do gabarito sem prometer devolução",
+    "cancelado com %s: frase do gabarito, sem prometer devolução que a loja não decidiu",
     async (paymentStatus, frase) => {
       await renderizar({ ...pedidoBase, status: "cancelled", paymentStatus });
       const painel = hospedeiro.querySelector(
