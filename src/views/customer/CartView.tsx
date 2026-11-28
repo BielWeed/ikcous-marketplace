@@ -18,7 +18,6 @@ import {
 import { chaveDaLinha } from "@/lib/escolhas-do-item";
 import type { PromessaDeCanal } from "@/lib/estrategias-de-frete";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
-import { pagamentoOnlineLigado } from "@/lib/flags";
 import {
   ehModalidadeDaLoja,
   ehRetiradaNaLoja,
@@ -26,6 +25,7 @@ import {
 } from "@/lib/guarda-de-frete";
 import { formasNaEntregaOferecidas } from "@/lib/loja-se-preparando";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
+import { usePagamentoPeloAppNaSessao } from "@/lib/pagamento-pelo-app-na-sessao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
   EVENTO_RETRATO_LIMPO,
@@ -305,6 +305,7 @@ function ConteudoDoCarrinho({
   onAddToCart?: (product: Product, quantity?: number) => void;
 }) {
   const { config } = useStore();
+  const onlineLigado = usePagamentoPeloAppNaSessao();
   // 20261655000000: a loja nova que ainda não confirmou o pagamento na entrega
   // não o oferece (a lista vem vazia, como a da loja que só vende pelo app).
   const [primeiraFormaNaEntrega] = formasNaEntregaOferecidas(config);
@@ -1108,7 +1109,6 @@ function ConteudoDoCarrinho({
   // resumos (computador e rodapé do celular) dizem "Retirada na loja" e não
   // anunciam "frete grátis", que seria promessa que a loja pode não ter.
   const retiradaEscolhida = ehRetiradaNaLoja(selectedShippingOption?.id);
-  const onlineLigado = pagamentoOnlineLigado();
   const freteIncompativelComPagamentoNaEntrega =
     !onlineLigado &&
     primeiraFormaNaEntrega !== undefined &&

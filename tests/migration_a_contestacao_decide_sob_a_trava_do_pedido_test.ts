@@ -780,6 +780,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-peca-de-produto-excluido-viva.cjs",
     // 20261660000000: o caixa de ontem aberto nao some do saldo (o saldo inicial e a sangria nao passam do dia do caixa aberto; o cancelamento trava a sessao).
     "tests/banco/o-caixa-de-ontem-aberto-nao-some-do-saldo-viva.cjs",
+    // 20261663000000: a despesa nao entra no caixa fechado (a despesa e a baixa travam a sessao na leitura; corridas reais com o fechamento).
+    "tests/banco/a-despesa-nao-entra-no-caixa-fechado-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
     // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;

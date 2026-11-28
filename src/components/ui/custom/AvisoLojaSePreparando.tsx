@@ -1,7 +1,6 @@
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { useStore } from "@/contexts/StoreContext";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
-import { pagamentoOnlineLigado } from "@/lib/flags";
 import {
   type ItemDoPedidoPeloWhatsapp,
   fatosDoPedidoPossivel,
@@ -9,6 +8,7 @@ import {
   lojaAindaNaoRecebePedido,
 } from "@/lib/loja-se-preparando";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { usePagamentoPeloAppNaSessao } from "@/lib/pagamento-pelo-app-na-sessao";
 import type { CartItem } from "@/types";
 
 export const FRASE_LOJA_SE_PREPARANDO_PARA_PEDIDOS =
@@ -48,10 +48,9 @@ export function AvisoLojaSePreparando({
   className?: string;
 }) {
   const { config } = useStore();
+  const pagamentoPeloApp = usePagamentoPeloAppNaSessao();
   if (
-    !lojaAindaNaoRecebePedido(
-      fatosDoPedidoPossivel(config, pagamentoOnlineLigado()),
-    )
+    !lojaAindaNaoRecebePedido(fatosDoPedidoPossivel(config, pagamentoPeloApp))
   )
     return null;
   const temWhatsapp = lojaTemWhatsapp(config.whatsappNumber);

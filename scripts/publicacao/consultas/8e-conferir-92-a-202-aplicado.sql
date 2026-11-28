@@ -69,8 +69,10 @@
 --                                a entrega e o pagamento);
 --   * `salvar_politica_de_devolucao` → 20261643000000 (as listas dos ajustes não somem entre aparelhos: confere a lista vista);
 --   * `fin_lancamento_salvar`  → 20261246000000 (o lançamento repetido não duplica)
---                                e, DEPOIS dela, 20261654000000 (o caixa pertence ao dia em que abriu);
---   * `fin_lancamento_baixar`  → 20261654000000 (o caixa pertence ao dia em que abriu: a baixa do dia da abertura entra na gaveta);
+--                                e, DEPOIS dela, 20261654000000 (o caixa pertence ao dia em que abriu)
+--                                e 20261663000000 (a despesa não entra no caixa fechado: trava a sessão na leitura);
+--   * `fin_lancamento_baixar`  → 20261654000000 (o caixa pertence ao dia em que abriu: a baixa do dia da abertura entra na gaveta)
+--                                e, DEPOIS dela, 20261663000000 (a despesa não entra no caixa fechado: trava a sessão na leitura);
 --   * `fin_conta_salvar`       → 20261399930000 (o caixa e a conta recusam valor que não é número)
 --                                e, DEPOIS dela, 20261660000000 (o caixa de ontem aberto não some do saldo);
 --   * `fin_lancamento_cancelar` → 20261660000000 (o caixa de ontem aberto não some do saldo: trava a sessão antes de conferir);
@@ -244,6 +246,8 @@ WITH corpos AS (
     ('fin_lancamento_salvar', '1356dbfc037a9202ef163ba598854891', '20261246000000'),
     ('fin_lancamento_salvar', '3e31817ce1d13bb091ce2d0871cbd718', '20261654000000'),
     ('fin_lancamento_baixar', '7d1204cdf214a290cfdb378482795f1b', '20261654000000'),
+    ('fin_lancamento_salvar', '729fc6e3e4a643459df835d214fa082e', '20261663000000'),
+    ('fin_lancamento_baixar', '0abf8da5b460d8b8236ffb5ffc111524', '20261663000000'),
     ('devolucao_elegibilidade', 'bedd211bba45261dfbf962241ca3c9dd', '20261399992000'),
     ('devolucao_elegibilidade', '4776618e9ccd401f7c7eb9518ceaa62d', '20261658000000'),
     ('devolucao_detalhe', 'a439e320641d553e3a21883c6606c6f2', '20261399992000'),

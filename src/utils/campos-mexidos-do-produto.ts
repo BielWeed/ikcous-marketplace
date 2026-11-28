@@ -190,6 +190,44 @@ export function variacoesAposConflito<
   return [...mescladas, ...banco.filter((v) => !idsConhecidos.has(v.id))];
 }
 
+/** Um preço próprio da grade que mudou na tela E no banco, cada um para um lado. */
+export interface PrecoDaGradeEmConflito {
+  id: string;
+  /** O preço próprio que o banco tem agora (`null` = segue o produto). */
+  atual: number | null;
+}
+
+/**
+ * Os preços próprios que `variacoesAposConflito` mantém da tela por cima de um
+ * valor NOVO do banco: ela mexeu no preço da variação, e outro aparelho também
+ * (para um valor diferente do dela). A junção não muda — campo editado fica —,
+ * mas o segundo salvar não pode gravar por cima sem ela ver: a tela lista
+ * estes na confirmação. Mesmas exclusões da junção (nova, apagada no banco,
+ * não lida na abertura, troca de valor já gravada). R$ 0 não é "sem preço".
+ */
+export function precosDaGradeEmConflito(
+  tela: VariacaoComparavel[],
+  abertura: VariacaoComparavel[],
+  banco: VariacaoComparavel[],
+): PrecoDaGradeEmConflito[] {
+  const antesPorId = new Map(abertura.map((v) => [v.id, v]));
+  const hojePorId = new Map(banco.map((v) => [v.id, v]));
+  const jaTrocadas = new Set(
+    trocasJaGravadasNoBanco(tela, abertura, banco).map((t) => t.idAntigo),
+  );
+  return tela.flatMap((v): PrecoDaGradeEmConflito[] => {
+    const antes = antesPorId.get(v.id);
+    const hoje = hojePorId.get(v.id);
+    if (!antes || !hoje || jaTrocadas.has(v.id)) return [];
+    const digitado = v.priceOverride ?? null;
+    const deAbertura = antes.priceOverride ?? null;
+    const atual = hoje.priceOverride ?? null;
+    return digitado !== deAbertura && atual !== deAbertura && atual !== digitado
+      ? [{ id: v.id, atual }]
+      : [];
+  });
+}
+
 /**
  * As fotos que o formulário passa a mostrar depois de o salvar ser recusado
  * porque OUTRO aparelho mexeu no produto (a versão lida na abertura ficou

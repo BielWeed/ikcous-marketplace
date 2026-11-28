@@ -5,11 +5,8 @@ import { haptic } from "@/utils/haptic";
 
 /**
  * "Meus pedidos" de quem está na conta: o pedido que não aparece nela
- * (27/11/2026). A consulta (e-mail + código) só acha pedido pelo e-mail
- * gravado nele ou pelo da conta que comprou — a compra SEM conta não grava
- * e-mail (get_orders_by_otp_v2) —, então ela é o caminho do pedido feito em
- * OUTRA conta; o feito sem conta é com a loja. Nenhum dado de pedido aparece
- * aqui: o WhatsApp só abre a conversa com a loja.
+ * A consulta também acha o pedido sem conta quando há um e-mail salvo nele.
+ * Sem esse e-mail, o WhatsApp só abre uma conversa com a loja.
  *
  * Só elementos de linha: vive dentro do `<p>` da lista vazia (OrderList) e do
  * rodapé da conta com pedidos (CartView). Módulo próprio: os testes que trocam
@@ -39,8 +36,10 @@ export function PedidoQueNaoApareceAqui({
     : null;
   return (
     <>
-      Comprou sem entrar na conta? Esse pedido não aparece aqui nem na consulta:
-      fale com a loja informando o número do pedido.
+      Comprou sem entrar na conta? Esse pedido não aparece nesta lista. Se você
+      deixou seu e-mail, consulte com ele, o WhatsApp da compra e o número do
+      pedido; vamos mandar um código para esse e-mail. Se não deixou, fale com a
+      loja e informe o número do pedido.
       {falarComALoja && (
         <span className="mt-3 block">
           <button
@@ -59,7 +58,7 @@ export function PedidoQueNaoApareceAqui({
             onClick={onConsultarOutraConta}
             className="min-h-11 px-2 text-sm font-semibold text-foreground underline underline-offset-4"
           >
-            Consultar pedido feito em outra conta (outro e-mail)
+            Consultar pedido
           </button>
         </span>
       )}

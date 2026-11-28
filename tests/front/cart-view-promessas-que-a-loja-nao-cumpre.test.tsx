@@ -31,7 +31,19 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CartItem } from "@/types";
+import {
+  esquecerRecusaDoPagamentoPeloApp,
+  marcarPagamentoPeloAppRecusado,
+} from "@/lib/pagamento-pelo-app-na-sessao";
+import type { CartItem, ShippingOption } from "@/types";
+
+const transportadora: ShippingOption = {
+  id: "melhorenvio-1",
+  name: "PAC",
+  price: 10,
+  deliveryDays: 5,
+  provider: "melhorenvio",
+};
 
 const itemNoCarrinho: CartItem = {
   product: {
@@ -54,6 +66,7 @@ const itemNoCarrinho: CartItem = {
 // A loja do teste: o que ela oferece agora (20261655000000) e o pagamento pelo app mudam por caso.
 const duble = vi.hoisted(() => ({
   pagamentoOnline: false,
+  opcaoDeFrete: null as ShippingOption | null,
   config: { shippingFee: 10, freeShippingMin: 0 } as Record<string, unknown>,
 }));
 vi.mock("@/contexts/StoreContext", () => ({
@@ -76,7 +89,7 @@ vi.mock("@/hooks/useCart", () => ({
     shippingFee: 10,
     updateQuantity: vi.fn(),
     removeFromCart: vi.fn(),
-    selectedShippingOption: null,
+    selectedShippingOption: duble.opcaoDeFrete,
     setSelectedShippingOption: vi.fn(),
     setShippingCep: vi.fn(),
   }),
@@ -136,7 +149,9 @@ describe("CartView — o carrinho não promete o que a loja não cumpre", () => 
       raiz.unmount();
     });
     hospedeiro.remove();
+    esquecerRecusaDoPagamentoPeloApp();
     duble.pagamentoOnline = false;
+    duble.opcaoDeFrete = null;
     duble.config = { shippingFee: 10, freeShippingMin: 0 };
     vi.restoreAllMocks();
   });
@@ -209,6 +224,41 @@ describe("CartView — o carrinho não promete o que a loja não cumpre", () => 
     duble.pagamentoOnline = true;
     duble.config = { ...duble.config, pagamentoNaEntregaLiberado: false };
     expect(await renderizarCarrinho()).not.toContain("se preparando");
+  });
+
+  it("com transportadora, não promete pagar pelo app depois da recusa do checkout", async () => {
+    duble.pagamentoOnline = true;
+    duble.opcaoDeFrete = transportadora;
+    marcarPagamentoPeloAppRecusado();
+
+    const texto = await renderizarCarrinho();
+
+    expect(texto).not.toContain(
+      "Pagamento pelo app processado pelo Mercado Pago.",
+    );
+    expect(texto).toContain("fale com a loja.");
+  });
+
+  it("controle: sem recusa, a transportadora ainda permite pagamento pelo app", async () => {
+    duble.pagamentoOnline = true;
+    duble.opcaoDeFrete = transportadora;
+
+    const texto = await renderizarCarrinho();
+
+    expect(texto).toContain("Pagamento pelo app processado pelo Mercado Pago.");
+    expect(texto).not.toContain("fale com a loja.");
+  });
+
+  it("avisa que a loja ainda não recebe pedidos se o app foi recusado e o pagamento na entrega não está liberado", async () => {
+    duble.pagamentoOnline = true;
+    duble.config = { ...duble.config, pagamentoNaEntregaLiberado: false };
+    expect(await renderizarCarrinho()).not.toContain("se preparando");
+
+    act(() => marcarPagamentoPeloAppRecusado());
+
+    expect(hospedeiro.textContent).toContain(
+      "Esta loja ainda está se preparando para receber pedidos pelo site.",
+    );
   });
 
   it("não promete envio expresso nem rastreio automático", async () => {
