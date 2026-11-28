@@ -108,6 +108,14 @@ interface SolicitarDevolucaoSheetProps {
    * sem a linha nele), a folha mostra só o nome, como sempre.
    */
   readonly rotulosDosItens?: Readonly<Record<string, string>>;
+  /**
+   * O pedido teve desconto (cupom). O preço de cada item da elegibilidade já
+   * vem com o desconto e arredondado por unidade, e o servidor fecha o valor
+   * da devolução com o proporcional acumulado (20261405400000): a soma daqui
+   * pode diferir alguns centavos do que ele grava. Com desconto, a revisão diz
+   * "valor estimado" e explica; sem (ou sem a informação), nada muda.
+   */
+  readonly pedidoComDesconto?: boolean;
 }
 
 type Passo = 1 | 2 | 3 | 4;
@@ -487,6 +495,7 @@ function FluxoDaDevolucao({
   enviarFoto,
   descartarFotos,
   rotulosDosItens,
+  pedidoComDesconto = false,
   aoMudarRascunho,
 }: SolicitarDevolucaoSheetProps & {
   readonly aoMudarRascunho: (estado: EstadoDoRascunho) => void;
@@ -1245,9 +1254,19 @@ function FluxoDaDevolucao({
                   />
                 )}
                 <LinhaDeRevisao
-                  rotulo="Valor dos itens"
+                  rotulo={
+                    pedidoComDesconto
+                      ? "Valor estimado dos itens"
+                      : "Valor dos itens"
+                  }
                   valor={formatarReais(valor)}
                 />
+                {pedidoComDesconto && (
+                  <p className="pt-0.5 text-xs leading-relaxed text-muted-foreground">
+                    Com o cupom, o valor final é calculado com o desconto
+                    proporcional e pode variar alguns centavos.
+                  </p>
+                )}
               </div>
             </div>
 
