@@ -296,6 +296,12 @@ describe("classificação dos erros do servidor", () => {
       "PGRST301",
       "Só o administrador da loja mexe no Financeiro. Entre de novo com a conta de administrador.",
     ],
+    // PostgREST 13+: token VENCIDO responde PGRST303 (o 301 ficou para
+    // inválido). Tentar de novo não adianta; entrar de novo, sim.
+    [
+      "PGRST303",
+      "Só o administrador da loja mexe no Financeiro. Entre de novo com a conta de administrador.",
+    ],
     ["23503", "O banco recusou os dados. Confira os campos e tente de novo."],
     ["22P02", "O banco recusou os dados. Confira os campos e tente de novo."],
     ["XX000", "Algo deu errado no servidor. Tente de novo em instantes."],

@@ -12,6 +12,7 @@
 // Dinheiro sempre em CENTAVOS inteiros antes de somar/subtrair — `50 - 4.23`
 // em ponto flutuante dá `45.769999…`, não `45.77`.
 
+import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import { semMenosZero } from "@/lib/percentual";
 import { reaisComVirgula } from "@/lib/utils";
 import type {
@@ -2053,7 +2054,9 @@ export function mensagemDeErroFinanceiro(erro: unknown): string {
   if (!codigo) {
     return "Não consegui falar com o servidor. Confira a conexão e tente de novo.";
   }
-  if (codigo === "42501" || codigo === "PGRST301") {
+  // Sessão vencida ou sem permissão (42501, PGRST301 inválido, PGRST303
+  // vencido no PostgREST 13+): a mesma classificação do resto do painel.
+  if (mensagemDeErroDeSessaoDoPainel(erro) !== null) {
     return "Só o administrador da loja mexe no Financeiro. Entre de novo com a conta de administrador.";
   }
   if ((codigo === "P0001" || codigo === "22023") && mensagem) {
