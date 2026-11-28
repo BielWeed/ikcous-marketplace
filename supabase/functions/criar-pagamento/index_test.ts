@@ -12766,10 +12766,13 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (1): verificar + cartão pago com PROVA -> con
 
   assertEquals(r.status, 200, JSON.stringify(r.corpo));
   assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
-  assertEquals(db.chamadasRpc, [{
-    nome: "confirmar_pagamento",
-    args: { p_order_id: UUID, p_payment_id: VAGA_CI, p_status: "pago" },
-  }]);
+  // lote-582: depois da RPC de pagamento, só a reserva do aviso "Pedido pago"
+  // (`pedido_pago:<pedido>`), que o push entregue confirma.
+  assertEquals(db.chamadasRpc, [
+    { nome: "confirmar_pagamento", args: { p_order_id: UUID, p_payment_id: VAGA_CI, p_status: "pago" } },
+    { nome: "reservar_aviso_ao_lojista", args: { p_chave: `pedido_pago:${UUID}` } },
+    { nome: "confirmar_aviso_ao_lojista", args: { p_chave: `pedido_pago:${UUID}` } },
+  ]);
   assertEquals(db.linha.payment_status, "pago");
   assertEquals(ef.pushes, [PUSH_PAGO_CI]);
   assertEquals(ef.comprovantes, [UUID]);
