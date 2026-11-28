@@ -386,10 +386,10 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "ml-1 mt-1 block text-[11px] font-bold text-red-500",
   "ml-1 mt-1 block text-[11px] font-bold text-emerald-500",
   // Lote 607: aviso novo das variações presas no preço antigo (elemento novo;
-  // o resto do bloco segue congelado).
+  // o resto do bloco segue congelado). Lote 618: os nomes quebram linha (break-words).
   "ml-1 mt-1 space-y-1.5",
-  "block text-[11px] font-bold leading-tight text-amber-400",
-  "block text-[11px] font-bold leading-tight text-zinc-400",
+  "block break-words text-[11px] font-bold leading-tight text-amber-400",
+  "block break-words text-[11px] font-bold leading-tight text-zinc-400",
   "min-h-11 max-w-full rounded-xl border border-admin-border bg-admin-raised px-3 py-2 text-left text-[11px] font-bold text-white",
   "border-emerald-500/30 text-emerald-400",
   "produto-campo space-y-1 max-[480px]:col-span-2",
@@ -578,7 +578,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-4 text-sm font-bold",
 ];
 const SHA256_CLASSES_CELULAR_BASE =
-  "5d25f8ceec26f41eb7636566883ad28dc52e3fd0c08252740db8fe3404809072";
+  "c372e61937f75f30602aad534f59c356f2a51f08c0857bb8c91afc05f64b66b7";
 const TOKENS_LG_DA_BASE = [
   "lg:grid-cols-12",
   "lg:col-span-8",
