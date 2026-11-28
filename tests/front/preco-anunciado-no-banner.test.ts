@@ -228,6 +228,7 @@ describe("precoAnunciadoVelho — o texto bate com o preço de agora?", () => {
   it.each([
     "Blusas por R$ 70 cada\n2 cores disponíveis",
     "Compre 2 blusas a R$ 70\ncada",
+    "Meias avulsas: R$ 70 cada meia",
   ])("'%s' é preço da peça e é conferido", (texto) => {
     expect(precoAnunciadoVelho([texto], vestido(90))).toEqual({
       tipo: "preco",
