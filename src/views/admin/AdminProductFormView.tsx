@@ -181,6 +181,11 @@ import {
   travaDeUmGrupoSo,
 } from "@/utils/um-grupo-de-variacao";
 import {
+  juntarNomes,
+  semPrecoProprio,
+  variacoesQueNaoSeguemOPreco,
+} from "@/utils/variacoes-que-nao-seguem-o-preco";
+import {
   type ParDeAtributo,
   SEPARADOR_DE_ATRIBUTOS,
   alinharPelaOrdemGravada,
@@ -1061,6 +1066,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // rascunho — é só um recado da tela, o preço em si fica no `formData`.
   const [precoVeioDaGrade, setPrecoVeioDaGrade] = useState(false);
   const [precoDeVendaDigitado, setPrecoDeVendaDigitado] = useState(false);
+  // O Preço de Venda (em centavos) para o qual o botão "Mudar esses N" do
+  // aviso sob o campo já fez as variações presas seguirem o produto: o botão
+  // vira "Pronto, salve para valer" enquanto o preço digitado for esse.
+  const [presasSeguemDesde, setPresasSeguemDesde] = useState<number | null>(
+    null,
+  );
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(
     null,
   );
@@ -3618,6 +3629,44 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // como número (rascunho de produto copiado do banco), e `.trim()` em número
   // derrubava a tela inteira na restauração.
   const precoDoProdutoTexto = String(formData.price ?? "");
+
+  // Aviso sob o Preço de Venda (sócio, 28/11/2026): ao mudar o preço de um
+  // produto já gravado, as variações com preço próprio IGUAL ao preço antigo
+  // continuariam cobrando o antigo. Só na edição: produto novo não tem preço
+  // salvo (mesma regra de `precoDeVendaSalvo`).
+  const avisoDoPrecoDasVariacoes = variacoesQueNaoSeguemOPreco(
+    productId ? String(initialData.price ?? "") : "",
+    precoDoProdutoTexto,
+    formData.variants,
+  );
+  const centavosDoPrecoDigitado = Math.round(
+    (Number.parseFloat(precoDoProdutoTexto) || 0) * 100,
+  );
+  // Depois do botão as presas saem do aviso (já seguem o produto) e ele pode
+  // até sumir; o "Pronto" fica enquanto o preço digitado for o do clique e
+  // ainda não estiver gravado (depois de salvar, salvo = digitado).
+  const presasJaSeguem =
+    !!productId &&
+    presasSeguemDesde === centavosDoPrecoDigitado &&
+    centavosDoPrecoDigitado !==
+      Math.round(
+        (Number.parseFloat(String(initialData.price ?? "")) || 0) * 100,
+      ) &&
+    (avisoDoPrecoDasVariacoes?.presas.length ?? 0) === 0;
+  // Tira o preço próprio só no formulário; vale quando a lojista salvar.
+  // `semPrecoProprio` grava `null` (nunca `undefined`, ver o util).
+  const seguirOPrecoDoProduto = () => {
+    if (!avisoDoPrecoDasVariacoes) return;
+    const ids = new Set(avisoDoPrecoDasVariacoes.presas.map((v) => v.id));
+    if (ids.size === 0) return;
+    setFormData((prev) => ({
+      ...prev,
+      variants: prev.variants.map((v) =>
+        ids.has(v.id) ? semPrecoProprio(v) : v,
+      ),
+    }));
+    setPresasSeguemDesde(centavosDoPrecoDigitado);
+  };
 
   /**
    * Grade: as linhas que o modal entregou entram na lista como variantes
@@ -6450,6 +6499,79 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     >
                       As variações sem preço usam este.
                     </DicaExpansivel>
+                  )}
+                {/* As variações que não acompanham o preço novo (sócio,
+                  28/11/2026). Mesmo tom do aviso da promoção logo abaixo. */}
+                {!priceError &&
+                  (avisoDoPrecoDasVariacoes || presasJaSeguem) && (
+                    <div
+                      role="status"
+                      data-testid="aviso-variacoes-nao-seguem-o-preco"
+                      className="ml-1 mt-1 space-y-1.5"
+                    >
+                      {avisoDoPrecoDasVariacoes &&
+                        avisoDoPrecoDasVariacoes.presas.length > 0 && (
+                          <p className="block text-[11px] font-bold leading-tight text-amber-400">
+                            {juntarNomes(
+                              avisoDoPrecoDasVariacoes.presas.map(
+                                (v) => v.value,
+                              ),
+                            )}{" "}
+                            {avisoDoPrecoDasVariacoes.presas.length === 1
+                              ? "está"
+                              : "estão"}{" "}
+                            com preço próprio de{" "}
+                            {formatCurrency(
+                              avisoDoPrecoDasVariacoes.precoAntigo,
+                            )}{" "}
+                            e não{" "}
+                            {avisoDoPrecoDasVariacoes.presas.length === 1
+                              ? "vai"
+                              : "vão"}{" "}
+                            mudar para{" "}
+                            {formatCurrency(avisoDoPrecoDasVariacoes.precoNovo)}
+                            .
+                          </p>
+                        )}
+                      {avisoDoPrecoDasVariacoes &&
+                        avisoDoPrecoDasVariacoes.diferentes.length > 0 && (
+                          <p className="block text-[11px] font-bold leading-tight text-zinc-400">
+                            {juntarNomes(
+                              avisoDoPrecoDasVariacoes.diferentes.map(
+                                (v) =>
+                                  `${v.value} (${formatCurrency(v.priceOverride ?? 0)})`,
+                              ),
+                            )}{" "}
+                            {avisoDoPrecoDasVariacoes.diferentes.length === 1
+                              ? "tem preço próprio e continua como está."
+                              : "têm preço próprio e continuam como estão."}
+                          </p>
+                        )}
+                      {(presasJaSeguem ||
+                        (avisoDoPrecoDasVariacoes?.presas.length ?? 0) > 0) && (
+                        <button
+                          type="button"
+                          data-testid="seguir-o-preco-do-produto"
+                          disabled={presasJaSeguem}
+                          onClick={seguirOPrecoDoProduto}
+                          className={cn(
+                            "min-h-11 max-w-full rounded-xl border border-admin-border bg-admin-raised px-3 py-2 text-left text-[11px] font-bold text-white",
+                            presasJaSeguem &&
+                              "border-emerald-500/30 text-emerald-400",
+                          )}
+                        >
+                          {presasJaSeguem
+                            ? "Pronto, salve para valer"
+                            : `Mudar ${
+                                avisoDoPrecoDasVariacoes?.presas.length === 1
+                                  ? "esse"
+                                  : `esses ${avisoDoPrecoDasVariacoes?.presas.length ?? 0}`
+                              } para ${formatCurrency(
+                                avisoDoPrecoDasVariacoes?.precoNovo ?? 0,
+                              )}`}
+                        </button>
+                      )}
+                    </div>
                   )}
               </div>
 

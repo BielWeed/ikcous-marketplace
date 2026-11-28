@@ -259,7 +259,7 @@ describe("LinhasDaGrade: o que se diz sobre o preço do produto", () => {
     );
     expect(texto("preco-do-produto-na-grade")).toContain('("Auto")');
     expect(texto("preco-do-produto-na-grade")).toContain(
-      "Deixe o preço vazio para a variação usar esse mesmo preço",
+      "Deixe vazio, ou digite o mesmo preço do produto, para a variação seguir o preço dele",
     );
     expect(texto("preco-do-produto-na-grade")).toContain(
       "não muda o preço do produto",
