@@ -118,6 +118,11 @@ const SUCESSORAS = [
     versao: "20261655000000",
     consulta: "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
   },
+  // 20261656000000: a visitante deixa o e-mail depois da compra.
+  {
+    versao: "20261656000000",
+    consulta: "212a-conferir-a-visitante-deixa-o-email-aplicado",
+  },
   // 20261657000000: o produto todo desligado nao volta a venda (devolver_estoque e admin_devolucao_concluir).
   {
     versao: "20261657000000",
