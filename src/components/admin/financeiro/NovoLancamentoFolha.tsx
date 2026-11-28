@@ -17,6 +17,7 @@ import {
   TAMANHO_MAXIMO_DA_DESCRICAO,
   comMesQueAcompanhaODinheiro,
   ehDataIso,
+  ehFalhaDeRedeSemCodigo,
   formatarBRL,
   formatarData,
   formularioInicialDoLancamento,
@@ -358,10 +359,15 @@ export function NovoLancamentoFolha({
           : "Lançamento salvo.",
       );
     } catch (erro) {
+      // A conexão que cai sem resposta é tão incerta quanto o prazo: o
+      // servidor pode ter gravado. A chave da tentativa fica guardada (só o
+      // sucesso a esquece), então salvar de novo igual não duplica.
       setErroDoServidor(
         erro === erroDePrazo
           ? erroDePrazo.message
-          : mensagemDeErroFinanceiro(erro),
+          : ehFalhaDeRedeSemCodigo(erro)
+            ? "A conexão caiu antes da resposta. O lançamento pode ter sido salvo; se salvar de novo sem mudar os campos, não duplica."
+            : mensagemDeErroFinanceiro(erro),
       );
     } finally {
       enviandoRef.current = false;

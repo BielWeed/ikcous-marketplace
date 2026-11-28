@@ -59,6 +59,7 @@ function arquivos(pasta: string): string[] {
 }
 
 describe("loja enxuta — nenhum consumidor pede caminhos retirados", () => {
+  // Varre o disco, como o grafico-enxuto que passou de 5 s no CI lento (28/11, run 46121436423).
   it("varre toda a implementação do app, não só os imports diretos", () => {
     const fontes = arquivos("src");
     expect(fontes.length).toBeGreaterThan(0);
@@ -69,7 +70,7 @@ describe("loja enxuta — nenhum consumidor pede caminhos retirados", () => {
         ),
       ),
     ).toEqual([]);
-  });
+  }, 30_000);
 
   it.each([
     "z.toJSONSchema(schema)",
