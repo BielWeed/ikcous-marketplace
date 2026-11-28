@@ -262,6 +262,101 @@ describe.each(["touch", "mouse"] as const)(
   },
 );
 
+// Depois de escolher na lista, tocar no véu da folha tem de SÓ fechar. A
+// escolha foi um gesto vindo de portal filho (a lista), que a folha marca como
+// "clique de dentro"; se essa marca sobrevivesse ao gesto seguinte, o toque no
+// véu passaria pelo guardião como se fosse de dentro: a folha fecha, mas o
+// mesmo clique atravessa até o que está por trás (o card que abre o produto).
+// O fundo espiado é ANCESTRAL da folha (anatomia do ProductCard): no toque o
+// click cai no véu vivo e borbulha pela árvore React até ele; no mouse o véu
+// some no pointerdown e o click cai no fundo, que ficou por baixo.
+function CenaComFundo({
+  aoFechar,
+  aoFundo,
+}: {
+  readonly aoFechar: () => void;
+  readonly aoFundo: () => void;
+}) {
+  const [aberta, setAberta] = useState(true);
+  return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- mesmo padrão do wrapper do ProductCard: div clicável intencional (é o "fundo" que não pode receber o click)
+    <div data-testid="fundo" onClick={aoFundo}>
+      {aberta ? (
+        <FolhaFinanceira
+          titulo="Novo lançamento"
+          aoFechar={() => {
+            aoFechar();
+            setAberta(false);
+          }}
+        >
+          <Conta aoMudar={vi.fn()} />
+        </FolhaFinanceira>
+      ) : null}
+    </div>
+  );
+}
+
+describe.each(["touch", "mouse"] as const)(
+  "depois de escolher na lista, tocar no véu da folha só fecha — %s",
+  (ponteiro) => {
+    beforeEach(() => telaDe(false));
+
+    it("a folha fecha e o clique não atravessa até o fundo", async () => {
+      const aoFechar = vi.fn();
+      const aoFundo = vi.fn();
+      act(() => {
+        raiz.render(<CenaComFundo aoFechar={aoFechar} aoFundo={aoFundo} />);
+      });
+      await esperar();
+      await tocar(
+        document.getElementById("fin-conta") as HTMLElement,
+        ponteiro,
+      );
+      await esperar();
+      await tocar(textoDaOpcao("mp") as HTMLElement, ponteiro);
+      await esperar();
+      expect(lista()).toBeNull();
+      expect(folhaMae()).not.toBeNull();
+      expect(document.getElementById("fin-conta")?.dataset.valor).toBe("mp");
+      // Os cliques legítimos de dentro da folha também borbulham até o
+      // ancestral: o que se mede é só o gesto no véu.
+      aoFundo.mockClear();
+
+      // O gesto como o aparelho manda: cada evento cai no que está no ponto
+      // tocado NAQUELE instante — o véu enquanto vive, o fundo depois.
+      const veu = document.querySelector(
+        '[data-slot="sheet-overlay"]',
+      ) as HTMLElement;
+      const fundo = hospedeiro.querySelector(
+        '[data-testid="fundo"]',
+      ) as HTMLElement;
+      const noPonto = () => (veu.isConnected ? veu : fundo);
+      await act(async () => {
+        veu.dispatchEvent(eventoDePonteiro("pointerdown", ponteiro));
+        noPonto().dispatchEvent(
+          new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+        );
+        noPonto().dispatchEvent(eventoDePonteiro("pointerup", ponteiro));
+        noPonto().dispatchEvent(
+          new MouseEvent("mouseup", { bubbles: true, cancelable: true }),
+        );
+        noPonto().dispatchEvent(
+          new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+          }),
+        );
+      });
+      await esperar();
+
+      expect(aoFechar).toHaveBeenCalledTimes(1);
+      expect(folhaMae()).toBeNull();
+      expect(aoFundo).not.toHaveBeenCalled();
+    });
+  },
+);
+
 // A tela inteira, com o Voltar ligado como o App liga (`onSetBackOverride` e o
 // ouvinte de `popstate` que entrega primeiro às folhas): é o caminho do dono.
 function AppFalso() {

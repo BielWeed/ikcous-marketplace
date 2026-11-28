@@ -107,6 +107,26 @@ describe("faixa de métricas: o toque não deixa o carrossel parado", () => {
     expect(embla.scrollNext).toHaveBeenCalled();
   });
 
+  // O navegador emula o `mouseenter` um pouco DEPOIS do toque, não no mesmo
+  // instante: o teste acima dispara os dois no mesmo tique do relógio falso e
+  // passaria com qualquer janela, até 1 ms. Aqui o mouse emulado chega 300 ms
+  // depois — dentro da janela de 1 s, então ainda é toque.
+  it("mouse emulado que chega 300 ms depois do toque também não pausa", async () => {
+    await montar();
+    toca(faixa());
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    const giros = vi.mocked(embla.scrollNext).mock.calls.length;
+    mouseEntra(faixa());
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(vi.mocked(embla.scrollNext).mock.calls.length).toBeGreaterThan(
+      giros,
+    );
+  });
+
   it("controle: mouse de verdade em cima (sem toque) pausa a faixa", async () => {
     await montar();
     mouseEntra(faixa());
