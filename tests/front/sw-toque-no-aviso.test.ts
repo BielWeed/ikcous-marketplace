@@ -214,6 +214,33 @@ describe("toque no aviso (notificationclick)", () => {
       expect(openWindow).not.toHaveBeenCalled();
     });
 
+    // O toque já tirou a notificação da bandeja: o que ela dizia vai junto
+    // para o app mostrar (contestação, cancelamento… não é "pedido novo").
+    it("leva ao app o título e o corpo da notificação tocada", async () => {
+      const { j } = janelaDoPainel(`${ORIGEM}/admin-orders?id=A`, "responde");
+      const { clique } = await importar([j]);
+      const waitUntil = vi.fn();
+      clique({
+        notification: {
+          close: vi.fn(),
+          title: "Contestação de pagamento para conferir",
+          body: "00000B · confira no painel do Mercado Pago",
+          data: { url: ALVO, orderId: "B" },
+        },
+        waitUntil,
+      });
+      await waitUntil.mock.calls[0][0];
+
+      expect(j.postMessage).toHaveBeenCalledExactlyOnceWith(
+        {
+          ...MENSAGEM,
+          titulo: "Contestação de pagamento para conferir",
+          corpo: "00000B · confira no painel do Mercado Pago",
+        },
+        [expect.anything()],
+      );
+    });
+
     it("a lojista está na LISTA de pedidos: mesmo caminho, o app é avisado", async () => {
       const { j, navegarPara } = janelaDoPainel(
         `${ORIGEM}/admin-orders`,

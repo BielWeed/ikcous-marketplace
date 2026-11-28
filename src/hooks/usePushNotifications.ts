@@ -10,6 +10,7 @@ import {
 import { dequemEAInscricao } from "@/lib/inscricao-de-push-da-conta";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
+import { TIPO_INSCRICAO_DE_PUSH_TROCOU } from "@/lib/troca-da-inscricao-de-push";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -955,6 +956,30 @@ export function usePushNotifications() {
     if (!reservarTentativaDeReligar(userId)) return;
     void inscrever(true);
   }, [userId, isSupported, sondado, subscription, permission, inscrever]);
+
+  // O navegador trocou a inscrição sozinho (`pushsubscriptionchange`) e o
+  // Service Worker, que não tem a sessão para gravar, chama as janelas abertas
+  // (`troca-da-inscricao-de-push.ts`). Grava a nova pelo caminho do religar
+  // sozinho: só com conta, permissão já "granted" e o marcador desta conta
+  // (quem desligou de propósito não é religada); nada é perguntado nem
+  // mostrado. `subscribe` com a mesma chave devolve a inscrição que o SW já
+  // criou, e o `upsert` por endpoint não duplica se mais de uma tela gravar.
+  useEffect(() => {
+    if (!userId || !isSupported) return;
+    const container = navigator.serviceWorker;
+    if (typeof container?.addEventListener !== "function") return;
+    const aoReceber = (evento: MessageEvent) => {
+      const { data } = evento;
+      if (typeof data !== "object" || data === null) return;
+      if ((data as { tipo?: unknown }).tipo !== TIPO_INSCRICAO_DE_PUSH_TROCOU) {
+        return;
+      }
+      if (!avisosEstavamLigados(userId)) return;
+      void inscrever(true);
+    };
+    container.addEventListener("message", aoReceber);
+    return () => container.removeEventListener("message", aoReceber);
+  }, [userId, isSupported, inscrever]);
 
   // Devolve `true` quando o aparelho ficou sem inscrição (inclusive quando já
   // não havia, e quando o navegador cancelou mas o banco não confirmou: o

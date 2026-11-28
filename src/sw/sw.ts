@@ -22,6 +22,7 @@ import {
   avisoMaisNovoQue,
   carimboDoAviso,
 } from "../lib/ordem-do-aviso-do-pedido";
+import { TIPO_INSCRICAO_DE_PUSH_TROCOU } from "../lib/troca-da-inscricao-de-push";
 
 const sw = self as any;
 
@@ -1463,8 +1464,15 @@ sw.addEventListener("push", (event: any) => {
 const ESPERA_DA_RESPOSTA_DO_APP_MS = 1500;
 
 /** Entrega ao app da janela o pedido do aviso e diz se ele CONFIRMOU o recebimento
- * (aberto por dentro, ou só avisado por ter texto não salvo). Nunca rejeita. */
-function avisarOApp(client: any, pedidoId: string): Promise<boolean> {
+ * (aberto por dentro, ou só avisado por ter texto não salvo). Nunca rejeita.
+ * Vai junto o que a notificação dizia: o toque já a tirou da bandeja, e o app
+ * que não pode trocar de pedido agora o repete na tela (pode ser contestação,
+ * cancelamento, pagamento — não só "pedido novo"). App de antes ignora. */
+function avisarOApp(
+  client: any,
+  pedidoId: string,
+  notificacao: { title?: unknown; body?: unknown },
+): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     if (typeof client.postMessage !== "function") return resolve(false);
     let canal: MessageChannel;
@@ -1485,9 +1493,17 @@ function avisarOApp(client: any, pedidoId: string): Promise<boolean> {
     );
     canal.port1.onmessage = () => encerrar(true);
     try {
-      client.postMessage({ tipo: TIPO_ABRIR_PEDIDO_DO_AVISO, pedidoId }, [
-        canal.port2,
-      ]);
+      const mensagem: Record<string, string> = {
+        tipo: TIPO_ABRIR_PEDIDO_DO_AVISO,
+        pedidoId,
+      };
+      if (typeof notificacao.title === "string") {
+        mensagem.titulo = notificacao.title;
+      }
+      if (typeof notificacao.body === "string") {
+        mensagem.corpo = notificacao.body;
+      }
+      client.postMessage(mensagem, [canal.port2]);
     } catch {
       encerrar(false);
     }
@@ -1550,7 +1566,9 @@ sw.addEventListener("notificationclick", (event: any) => {
           const client = janelas[decisao.indice];
           return Promise.resolve(client.focus())
             .catch(() => undefined)
-            .then(() => avisarOApp(client, decisao.pedidoId))
+            .then(() =>
+              avisarOApp(client, decisao.pedidoId, event.notification),
+            )
             .then((respondeu) =>
               respondeu ? undefined : navegarJanela(client),
             );
@@ -1558,6 +1576,49 @@ sw.addEventListener("notificationclick", (event: any) => {
         return abrirJanelaNova();
       }),
   );
+});
+
+/**
+ * O navegador trocou a inscrição de push sozinho. Sem isto o próximo aviso ia
+ * para o endereço velho, dava 410 e a linha era apagada no servidor: a
+ * lojista ficava sem aviso até abrir o painel. Reinscreve com a MESMA chave
+ * da inscrição antiga (o Firefox às vezes já entrega a nova pronta) e chama
+ * as janelas abertas para GRAVAR — o SW não tem a sessão que a RLS de
+ * `push_subscriptions` exige (ver `troca-da-inscricao-de-push.ts`). Sem a
+ * chave antiga não se inventa outra: a janela inscreve com a chave da loja.
+ * Nada aqui rejeita: falhar ao reinscrever ainda chama as janelas.
+ */
+async function renovarInscricaoDePush(event: any): Promise<void> {
+  const chave = event.oldSubscription?.options?.applicationServerKey;
+  if (!event.newSubscription && chave) {
+    try {
+      await sw.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: chave,
+      });
+    } catch (e) {
+      console.warn("[SW] Não foi possível renovar a inscrição de push:", e);
+    }
+  }
+  try {
+    const janelas = await sw.clients.matchAll({
+      type: "window",
+      includeUncontrolled: true,
+    });
+    for (const janela of janelas) {
+      try {
+        janela.postMessage({ tipo: TIPO_INSCRICAO_DE_PUSH_TROCOU });
+      } catch {
+        // Janela fechando: as outras ainda são chamadas.
+      }
+    }
+  } catch (e) {
+    console.warn("[SW] Não foi possível chamar as janelas abertas:", e);
+  }
+}
+
+sw.addEventListener("pushsubscriptionchange", (event: any) => {
+  event.waitUntil(renovarInscricaoDePush(event));
 });
 
 /**
