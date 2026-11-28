@@ -208,7 +208,8 @@ module.exports = [
     // 27/11/2026 (1.5.244): 704 -> 708 kB (o CI mediu 704,08 kB, 76 B acima de 704 kB, com o aviso de status que sai quando a fila sem internet grava; vem mais tela na fila: total na entrega e consulta sem conta). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 27/11/2026 (1.5.246): 708 -> 711 kB (o CI mediu 708,14 kB, 142 B acima de 708 kB, com os avisos do vale-troca, da devolucao e do pedido guardado sem internet; subo 3 kB para a folga do ruido de hash dos chunks). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 28/11/2026 (1.5.246): 711 -> 716 kB (o CI mediu 713,59 kB, 2,59 kB acima de 711 kB, com o aviso do pedido aguardando pagamento no Inicio e no carrinho vazio, que so baixa para quem tem conta). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
-    limit: "716 kB",
+    // 28/11/2026 (1.5.247): 716 -> 720 kB (o CI do PR #2078 mediu 716,13 kB, 125 B acima de 716 kB, com o aviso do pedido novo fora das datas filtradas e o cartao com a janela aberta). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
+    limit: "720 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
@@ -384,7 +385,10 @@ module.exports = [
     // 27/11/2026 (peca que volta sem tamanho, PR #2028): 596 -> 600 kB. O painel mediu 596,01 kB
     // no CI (6 B acima): o aviso da peca sem tamanho na tela do produto e o selo no cartao. Degrau
     // de 4 kB. Nada trocado por codigo mais arriscado. Regra do dono: o teto sobe.
-    limit: "600 kB",
+    // 28/11/2026 (pedidos fora do periodo, PR #2078): 600 -> 604 kB. O painel mediu 600,28 kB no
+    // CI (280 B acima): o aviso do pedido novo fora das datas e o cartao com a janela aberta.
+    // Degrau de 4 kB. Nada trocado por codigo mais arriscado. Regra do dono: o teto sobe.
+    limit: "604 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },
