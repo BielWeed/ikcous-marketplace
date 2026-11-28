@@ -40,7 +40,7 @@
 -- superior neste arquivo, regra da casa (AGENTS.md): o aplicador fornece a transação inteira, e uma falha no meio
 -- não grava metade. ORDEM: depois da 20261246000000 e da 20261252000000 (o pré-voo recusa os corpos anteriores a elas).
 -- Banco antes do front (o aviso novo da folha de lançamento descreve a regra nova).
--- FICHA DE VERIFICAÇÃO (só leitura, só catálogo): consultas 209a (depois) e 209b (antes) em scripts/publicacao/consultas/;
+-- FICHA DE VERIFICAÇÃO (só leitura, só catálogo): consultas 210a (depois) e 210b (antes) em scripts/publicacao/consultas/;
 -- comportamento em tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs (somente Postgres efêmero do CI).
 -- ROLLBACK MANUAL: rollback-manual-20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql devolve os quatro corpos
 -- anteriores byte a byte (LF); recusa corpo desconhecido e segundo rollback. Reabre o defeito. Nenhuma linha é removida

@@ -136,7 +136,7 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     s.nome !== "20261652000000_a_loja_nova_confirma_entrega_e_pagamento.sql" &&
     // A 20261654000000 (o caixa pertence ao dia em que abriu) e a SEGUNDA sucessora de fin_lancamento_salvar (99 -> 246 -> 1654) e a PRIMEIRA de
     // fin_lancamento_baixar (99 -> 1654); as outras duas funcoes dela (as RPCs do caixa da 252) nao sao da 8e. Tem a PROVA PROPRIA do que as consultas
-    // 209a/209b fazem com ela em tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs, e a 8e ja traz os dois pares; `noEstado` a desfaz antes
+    // 210a/210b fazem com ela em tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs, e a 8e ja traz os dois pares; `noEstado` a desfaz antes
     // (o-caixa-pertence-ao-dia-posterior.cjs, o rollback dela devolve as quatro de uma vez).
     s.nome !== "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql" &&
     // A 20261350000000 (a compra online trava o preco e espera a mesma chave) so redefine v23 e v24, em cima da 44; nenhuma

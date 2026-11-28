@@ -1,5 +1,5 @@
 // O CAIXA PERTENCE AO DIA EM QUE ABRIU: prova offline do par 20261654000000 + rollback. O COMPORTAMENTO (a virada da meia-noite,
-// o caixa de um dia so igual ao de antes, controle, mutantes, dado antigo, reaplicacao, pre-voo, rollback e consultas 209a/209b) e'
+// o caixa de um dia so igual ao de antes, controle, mutantes, dado antigo, reaplicacao, pre-voo, rollback e consultas 210a/210b) e'
 // provado em tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs, que so roda no Postgres efemero do CI. Aqui fica o que se
 // prova so lendo o texto.
 import assert from "node:assert/strict";
@@ -299,15 +299,15 @@ Deno.test("1654: db-apply exige o principio, as funcoes vigentes sao estas e o i
   for (const { depois } of FUNCOES) assert.ok(hashes.has(depois), depois);
 });
 
-Deno.test("1654: consultas 209a/209b so de catalogo, treze linhas fechadas, hashes certos e registros de publicacao", async () => {
+Deno.test("1654: consultas 210a/210b so de catalogo, treze linhas fechadas, hashes certos e registros de publicacao", async () => {
   const { contarStatements, ROL_FECHADO_POR_CONSULTA, estruturaDoRolFechado } =
     require("../scripts/publicacao/conferir-banco.cjs");
   const { CONSULTAS_DE_ROL_FECHADO } = await import(
     "../scripts/frota/publicar-release.mjs"
   );
   const consultas: Array<[string, "antes" | "depois"]> = [
-    ["209a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado", "depois"],
-    ["209b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente", "antes"],
+    ["210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado", "depois"],
+    ["210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente", "antes"],
   ];
   for (const [nomeConsulta, ponta] of consultas) {
     const consulta = ler(`scripts/publicacao/consultas/${nomeConsulta}.sql`);

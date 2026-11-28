@@ -54,7 +54,8 @@
 --   * `admin_devolucoes_listar` → 20261395000000 (a busca de devolução acha o número do pedido; ramo novo no filtro)
 --                                e, DEPOIS dela, 20261399910000 (a busca de devolução ignora o acento);
 --   * `admin_devolucao_concluir` → ..., 20261343000000 e, DEPOIS dela, 20261395200000 (a conclusão da devolução tranca o estoque na mesma ordem da compra)
---                                e, DEPOIS dela, 20261642000000 (a peça que volta sem tamanho espera a lojista);
+--                                e, DEPOIS dela, 20261642000000 (a peça que volta sem tamanho espera a lojista)
+--                                e, DEPOIS dela, 20261653000000 (a peça da variação desligada espera a lojista);
 --   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento)
 --                                e, DEPOIS dela, 20261392100000 (a busca do CRM acha o número com o +55);
 --   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita)
@@ -212,6 +213,7 @@ WITH corpos AS (
     ('admin_devolucao_concluir', 'ea651d52157521c0fe7ffccc948b4b1a', '20261343000000'),
     ('admin_devolucao_concluir', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '20261395200000'),
     ('admin_devolucao_concluir', '1a548896acb8248f1b1771d765c92fcb', '20261642000000'),
+    ('admin_devolucao_concluir', 'd146dc7aefb07a0bf580ed7265d9453e', '20261653000000'),
     ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000'),
     ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
     ('get_admin_analytics_v2', 'ab25e738a3101cccbb0c09450b660ee0', '20261245000000'),

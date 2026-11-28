@@ -1054,6 +1054,194 @@ Deno.test("207a/207b — rol fechado, um statement so de catalogo, md5 do pre-vo
   );
 });
 
+// 209 (27/11/2026): o lote da 20261653000000 (a peca que volta para uma variacao desligada espera a lojista). Rol fechado de 5 linhas, o
+// mesmo na 209a e na 209b, so catalogo; a 209a espera os corpos desta e a 209b os da 20261642000000 ou os desta. Os md5 saem do PRE-VOO da
+// propria migration e sao RECALCULADOS dos arquivos (os desta e os da 642, que o rollback devolve byte a byte); as consultas das
+// antecessoras (202a, 96a, 110a, 43a, 67a e 8e) aceitam os desta como sucessora.
+Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-voo da 20261653000000 recalculado dos arquivos, menu, rpc-ci, release e lote no canais", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { createHash } = require("node:crypto");
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A209 =
+    "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado";
+  const B209 =
+    "209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente";
+  const NOME =
+    "20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql";
+  const migration = await Deno.readTextFile(`${MIGRATIONS_DIR}/${NOME}`);
+  const rollback = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/rollback-manual-${NOME}`,
+  );
+  const m642 = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql`,
+  );
+  const parDev = /v_hash NOT IN \('([0-9a-f]{32})', '([0-9a-f]{32})'\)/.exec(
+    migration,
+  );
+  assert(parDev, "o pre-voo cita (vigente, desta) de devolver_estoque");
+  const [, devVigente, devDesta] = parDev;
+  const parConcl =
+    /'public\.admin_devolucao_concluir\(uuid,text,jsonb,numeric,text\)', '([0-9a-f]{32})', '([0-9a-f]{32})'/.exec(
+      migration,
+    );
+  assert(
+    parConcl,
+    "o pre-voo cita (anterior, desta) de admin_devolucao_concluir",
+  );
+  const [, conclVigente, conclDesta] = parConcl;
+  // O corpo entre o delimitador de dolar do UM CREATE OR REPLACE da funcao no arquivo.
+  const corpo = (sql: string, fn: string) => {
+    const marca = `CREATE OR REPLACE FUNCTION public.${fn}(`;
+    assertEquals(sql.split(marca).length - 1, 1, `${fn}: uma definicao so`);
+    const i = sql.indexOf(marca);
+    const m = /\bAS (\$\w*\$)/.exec(sql.slice(i));
+    assert(m, "sem delimitador");
+    const a = i + m.index + m[0].length;
+    return sql.slice(a, sql.indexOf(m[1], a)).replace(/\r/g, "");
+  };
+  const md5 = (s: string) =>
+    createHash("md5").update(s).digest("hex") as string;
+  assertEquals(md5(corpo(migration, "devolver_estoque")), devDesta);
+  assertEquals(md5(corpo(m642, "devolver_estoque")), devVigente);
+  assertEquals(md5(corpo(migration, "admin_devolucao_concluir")), conclDesta);
+  assertEquals(md5(corpo(m642, "admin_devolucao_concluir")), conclVigente);
+  for (const fn of ["devolver_estoque", "admin_devolucao_concluir"])
+    assertEquals(
+      corpo(rollback, fn),
+      corpo(m642, fn),
+      `o rollback e' o corpo da 642 byte a byte (${fn})`,
+    );
+  const itens = [
+    "devolver_estoque: corpo esperado (md5)",
+    "admin_devolucao_concluir: corpo esperado (md5)",
+    "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
+    "o destino da peca que espera: pecas_sem_tamanho e as RPCs da 20261642000000 no ar, com a forma e os corpos dela",
+    "pecas_sem_tamanho_da_devolucao: corpo exato (md5), uma so, plpgsql SECURITY DEFINER STABLE, search_path=public, EXECUTE so de authenticated",
+  ];
+  // A leitura NOVA da ficha da devolucao: o md5 do pos-voo e' o do corpo do arquivo, e o rollback confere o mesmo antes de tira-la.
+  const daDesta = md5(corpo(migration, "pecas_sem_tamanho_da_devolucao"));
+  assertEquals(
+    migration.split(`IS DISTINCT FROM '${daDesta}'`).length - 1,
+    2,
+    "pre-voo e pos-voo citam o md5 da leitura",
+  );
+  assertStringIncludes(rollback, `IS DISTINCT FROM '${daDesta}'`);
+  for (const consulta of [A209, B209]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(
+      !/FROM\s+public\.(marketplace_orders|marketplace_order_items|devolucoes|devolucao_itens|produtos|product_variants|pecas_sem_tamanho)\b/i.test(
+        limpo,
+      ),
+      `${consulta}: le so catalogo`,
+    );
+    assert(
+      !/\b(public\.)?(devolver_estoque|admin_devolucao_concluir|resolver_peca_sem_tamanho|pecas_sem_tamanho_pendentes)\s*\(/i.test(
+        limpo,
+      ),
+      `${consulta}: nao chama funcao da loja`,
+    );
+    assertStringIncludes(menu, `- ${consulta}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A209}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B209}.sql`),
+  );
+  // A 209a aceita SO os corpos desta; a 209b, os da 642 OU os desta (reaplicacao idempotente).
+  assertStringIncludes(sqlA, `= '${devDesta}'`);
+  assertStringIncludes(sqlA, `= '${conclDesta}'`);
+  assert(
+    !sqlA.includes(devVigente) && !sqlA.includes(conclVigente),
+    "a 209a nao pode aceitar os corpos da 642",
+  );
+  assertStringIncludes(sqlB, `IN ('${devVigente}', '${devDesta}')`);
+  assertStringIncludes(sqlB, `IN ('${conclVigente}', '${conclDesta}')`);
+  // A leitura: a 209a exige a desta; a 209b aceita AUSENTE (antes do apply) ou a desta.
+  assertStringIncludes(sqlA, `n = 1 AND h = '${daDesta}'`);
+  assert(!sqlA.includes("n = 0"), "a 209a nao aceita a leitura ausente");
+  assertStringIncludes(sqlB, `n = 0 OR (n = 1 AND h = '${daDesta}'`);
+  // A consulta da antecessora direta (202a) aceita os desta como SUCESSORA: senao reprova em toda loja depois do apply.
+  const a202 = sqlSemComentarios(
+    await Deno.readTextFile(
+      `${CONSULTAS_DIR}/202a-conferir-a-peca-que-volta-sem-tamanho-aplicado.sql`,
+    ),
+  );
+  assertStringIncludes(a202, `IN ('${devVigente}', '${devDesta}')`);
+  assertStringIncludes(a202, `IN ('${conclVigente}', '${conclDesta}')`);
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-da-variacao-desligada-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A209,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261653000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B209);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 209a: ${chave} nao se aplica`);
+  const ordem = canais.provasDeObjetos.map(
+    (p: { consulta: string }) => p.consulta,
+  );
+  const a202lote = "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado";
+  assert(
+    ordem.indexOf(a202lote) >= 0 &&
+      ordem.indexOf(a202lote) < ordem.indexOf(A209),
+    "o lote da 209a vem depois do da 202a",
+  );
+});
+
 // 129: medicao ANTES; nao autoriza apply nem registra uma prova de pos-aplicacao.
 const CONSULTAS_129 = [
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
@@ -3237,6 +3425,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "1a548896acb8248f1b1771d765c92fcb",
           versao: "20261642000000",
         },
+        // 27/11/2026: a peca da variacao desligada espera a lojista (a cadeia 241 -> 343 -> 395200 -> 1642 -> 1653).
+        {
+          fn: "admin_devolucao_concluir",
+          h: "d146dc7aefb07a0bf580ed7265d9453e",
+          versao: "20261653000000",
+        },
         // 27/10/2026 (lote 231): a busca de devolucao acha o numero do pedido (a cadeia 199 -> 395).
         {
           fn: "admin_devolucoes_listar",
@@ -3331,7 +3525,7 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "a27c9649621b3ac1502f458576120259",
           versao: "20261405900000",
         },
-        // 28/11/2026 (lote 209): o caixa pertence ao dia em que abriu (a cadeia 99 -> 1654).
+        // 28/11/2026 (lote 210): o caixa pertence ao dia em que abriu (a cadeia 99 -> 1654).
         {
           fn: "fin_lancamento_baixar",
           h: "7d1204cdf214a290cfdb378482795f1b",
@@ -3342,7 +3536,7 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "1356dbfc037a9202ef163ba598854891",
           versao: "20261246000000",
         },
-        // 28/11/2026 (lote 209): o caixa pertence ao dia em que abriu (a cadeia 99 -> 246 -> 1654).
+        // 28/11/2026 (lote 210): o caixa pertence ao dia em que abriu (a cadeia 99 -> 246 -> 1654).
         {
           fn: "fin_lancamento_salvar",
           h: "3e31817ce1d13bb091ce2d0871cbd718",
@@ -17421,8 +17615,10 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado",
     // 20261652000000: a loja nova confirma a entrega e o pagamento.
     "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
+    // 20261653000000: a peca da variacao desligada espera a lojista.
+    "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
     // 20261654000000: o caixa pertence ao dia em que abriu.
-    "209a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
+    "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

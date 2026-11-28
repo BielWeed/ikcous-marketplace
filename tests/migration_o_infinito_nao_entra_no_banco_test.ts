@@ -102,10 +102,16 @@ const SUCESSORAS = [
     versao: "20261652000000",
     consulta: "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
   },
+  // 20261653000000: a peca da variacao desligada espera a lojista (devolver_estoque e admin_devolucao_concluir).
+  {
+    versao: "20261653000000",
+    consulta:
+      "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+  },
   // 20261654000000: o caixa pertence ao dia em que abriu.
   {
     versao: "20261654000000",
-    consulta: "209a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
+    consulta: "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
   },
 ];
 const lerBruto = (n) =>

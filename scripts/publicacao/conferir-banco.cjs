@@ -3752,11 +3752,23 @@ const ROL_DA_208B = [
   "store_config: colunas de confirmacao ausentes as duas, ou as duas timestamptz anulaveis sem default (reaplicacao)",
   "is_admin() e is_admin_atual() existem",
 ];
-// Lote 209 (20261654000000, o caixa pertence ao dia em que abriu: fin_lancamento_salvar, fin_lancamento_baixar, fin_caixa_fechar_sessao e
-// fin_caixa_movimentar_com_chave trocam so o corpo). A 209a e a 209b tem o MESMO rol de 13 linhas (controle e, para cada funcao, o md5,
-// os atributos e a ACL); a 209a espera os corpos desta e a 209b os vigentes de antes (20261246000000, 20261199000000 e 20261252000000).
-// So catalogo: nenhuma le lancamento, conta ou sessao de caixa.
+// Lote 209 (20261653000000, a peca que volta para uma variacao desligada espera a lojista: os corpos de devolver_estoque e de
+// admin_devolucao_concluir mudam, um bloco cada, e nasce a leitura pecas_sem_tamanho_da_devolucao da ficha). Somente catalogo: nenhuma
+// le pedido, devolucao, produto nem peca e nenhuma chama funcao. A 209a espera os corpos e a leitura desta (md5); a 209b, os corpos da
+// 20261642000000 ou os desta e a leitura AUSENTE ou a desta (reaplicacao idempotente). Rol de 5, o mesmo nas duas (atributos e ACL de
+// sempre, o destino da peca que espera: a tabela e as RPCs da 20261642000000, e a leitura nova).
 const ROL_DA_209 = [
+  "devolver_estoque: corpo esperado (md5)",
+  "admin_devolucao_concluir: corpo esperado (md5)",
+  "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
+  "o destino da peca que espera: pecas_sem_tamanho e as RPCs da 20261642000000 no ar, com a forma e os corpos dela",
+  "pecas_sem_tamanho_da_devolucao: corpo exato (md5), uma so, plpgsql SECURITY DEFINER STABLE, search_path=public, EXECUTE so de authenticated",
+];
+// Lote 210 (20261654000000, o caixa pertence ao dia em que abriu: fin_lancamento_salvar, fin_lancamento_baixar, fin_caixa_fechar_sessao e
+// fin_caixa_movimentar_com_chave trocam so o corpo). A 210a e a 210b tem o MESMO rol de 13 linhas (controle e, para cada funcao, o md5,
+// os atributos e a ACL); a 210a espera os corpos desta e a 210b os vigentes de antes (20261246000000, 20261199000000 e 20261252000000).
+// So catalogo: nenhuma le lancamento, conta ou sessao de caixa.
+const ROL_DA_210 = [
   "controle: funcoes de public visiveis a este papel",
   "fin_lancamento_salvar: corpo exato (md5)",
   "fin_lancamento_salvar: assinatura e atributos conhecidos",
@@ -3772,8 +3784,12 @@ const ROL_DA_209 = [
   "fin_caixa_movimentar_com_chave: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
-  "209a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado": ROL_DA_209,
-  "209b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente": ROL_DA_209,
+  "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado": ROL_DA_210,
+  "210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente": ROL_DA_210,
+  "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado":
+    ROL_DA_209,
+  "209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente":
+    ROL_DA_209,
   "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado":
     ROL_DA_208A,
   "208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente":

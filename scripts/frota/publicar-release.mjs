@@ -1124,8 +1124,10 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente",
   "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
   "208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente",
-  "209a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
-  "209b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente",
+  "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+  "209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente",
+  "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
+  "210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
@@ -2840,7 +2842,8 @@ function rodar(comando, args, opcoes = {}) {
         maxBuffer: 64 * 1024 * 1024,
         windowsHide: true,
         cwd: opcoes.cwd ?? RAIZ,
-        env: process.env,
+        // só o download do nova-loja passa env (lote 573); o portão, nunca
+        env: opcoes.env ?? process.env,
       },
       (erro, stdout, stderr) => {
         if (erro) {
@@ -3271,14 +3274,21 @@ export function dependenciasReais({ rodarGh, rodarSupabase } = {}) {
  * antes de apagar a pasta. `executarSupabase(args, opcoes)` é o executor do
  * CLI (padrão: o `supabase` do PATH, com o login de quem roda); os testes
  * passam um dublê e nunca chegam ao CLI de verdade.
+ *
+ * O PORTÃO chama `(ref, nome)` e nada muda para ele: uma chamada, o ambiente
+ * do processo (o login de quem roda). O nova-loja (lote 573) passa também
+ * `{ token }` (async → o access token OAuth da ORG central desta rodada): a
+ * 1ª tentativa roda o CLI com SUPABASE_ACCESS_TOKEN = esse token (o CLI dá a
+ * ele precedência sobre o login salvo) e, se ela falhar ou o token não vier,
+ * a 2ª é a de hoje, pelo login. Ler é igual pelas duas: o ref é único, e o
+ * que se compara é o mesmo arquivo. O token só vive no ambiente do filho e
+ * nunca sai em mensagem.
  */
 export function baixadorDeFuncaoPeloCli(
   executarSupabase = (args, opcoes) =>
     rodar(comandoNoWindows("supabase"), args, opcoes),
 ) {
-  return async (ref, nome) => {
-    if (!RE_REF.test(ref) || !RE_FUNCAO.test(nome))
-      throw new Error("ref ou nome inválido");
+  const umaVez = async (ref, nome, env) => {
     const dir = mkdtempSync(path.join(os.tmpdir(), `frota-fn-${nome}-`));
     try {
       mkdirSync(path.join(dir, "supabase"), { recursive: true });
@@ -3297,7 +3307,7 @@ export function baixadorDeFuncaoPeloCli(
           dir,
           "--use-api",
         ],
-        { cwd: dir },
+        env === undefined ? { cwd: dir } : { cwd: dir, env },
       );
       const raiz = path.join(dir, "supabase", "functions");
       if (!existsSync(raiz)) return [];
@@ -3309,6 +3319,29 @@ export function baixadorDeFuncaoPeloCli(
     } finally {
       apagarPastaTemporaria(dir);
     }
+  };
+  return async (ref, nome, { token } = {}) => {
+    if (!RE_REF.test(ref) || !RE_FUNCAO.test(nome))
+      throw new Error("ref ou nome inválido");
+    if (typeof token === "function") {
+      let valor = null;
+      try {
+        valor = await token();
+      } catch {
+        valor = null; // sem o token da org, fica a tentativa pelo login
+      }
+      if (typeof valor === "string" && valor !== "") {
+        try {
+          return await umaVez(ref, nome, {
+            ...process.env,
+            SUPABASE_ACCESS_TOKEN: valor,
+          });
+        } catch {
+          // recusado (formato, escopo, rede): a tentativa de hoje, abaixo
+        }
+      }
+    }
+    return await umaVez(ref, nome);
   };
 }
 

@@ -27,7 +27,7 @@
 // regra e tem de derrubar EXATAMENTE os cenarios que prometeu, e nenhum outro. DADO QUE JA EXISTIA: o lancamento gravado pelo corpo
 // anterior com a sessao aberta fica como estava (o apply nao reescreve nada); o que vem depois segue a regra nova.
 // Migration: apply 2x e CRLF iguais, pre-voo recusa sem escrever, rollback byte a byte, segundo rollback recusa, o rollback da 252 e o
-// da 246 recusam com esta no ar, consultas 209a/209b.
+// da 246 recusam com esta no ar, consultas 210a/210b.
 const assert = require("node:assert/strict");
 const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
@@ -54,10 +54,10 @@ const rollback246 = ler(
   "supabase/migrations/rollback-manual-20261246000000_o_lancamento_repetido_nao_duplica.sql",
 );
 const consultaAntes = ler(
-  "scripts/publicacao/consultas/209b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql",
+  "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql",
 );
 const consultaDepois = ler(
-  "scripts/publicacao/consultas/209a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado.sql",
+  "scripts/publicacao/consultas/210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado.sql",
 );
 const bloco = (sql, fn) => {
   const ini = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${fn}(`);
@@ -198,7 +198,7 @@ async function conferir(c, sql, positivo, rotulo) {
   assert.equal(
     linhas.length,
     13,
-    `${rotulo}: o rol fechado das consultas 209 tem 13 linhas`,
+    `${rotulo}: o rol fechado das consultas 210 tem 13 linhas`,
   );
   assert.equal(
     linhas.every((l) => l.ok === true),
@@ -841,8 +841,8 @@ async function main() {
       "o clone devia estar com os quatro corpos da 20261654000000",
     );
     const topo = await funcoes(c);
-    await conferir(c, consultaDepois, true, "209a depois do apply");
-    await conferir(c, consultaAntes, false, "209b depois do apply");
+    await conferir(c, consultaDepois, true, "210a depois do apply");
+    await conferir(c, consultaAntes, false, "210b depois do apply");
     // As consultas da 246 (49a) e da 252 (55a) aceitam os corpos desta como sucessora: com ela no ar seguem POSITIVAS
     // (as provas da 246 e da 252 a tiram do clone antes de medir, entao so aqui se mede a 49a/55a com ela no ar).
     for (const nome of [
@@ -934,8 +934,8 @@ async function main() {
           `o rollback nao devolveu ${sig} byte a byte`,
         );
       }
-      await conferir(c, consultaAntes, true, "209b depois do rollback");
-      await conferir(c, consultaDepois, false, "209a depois do rollback");
+      await conferir(c, consultaAntes, true, "210b depois do rollback");
+      await conferir(c, consultaDepois, false, "210a depois do rollback");
       // O defeito existe e a prova o enxerga: so os cenarios da virada caem; os de um dia so ja passavam.
       exigirVermelhosExatos(
         await rodarCenarios(c),
@@ -1098,7 +1098,7 @@ async function main() {
       );
     }
     resumo.push(
-      "rollback byte a byte, segundo rollback recusa; 209a/209b nas duas pontas",
+      "rollback byte a byte, segundo rollback recusa; 210a/210b nas duas pontas",
     );
 
     console.log(`PASSOU 20261654000000: ${resumo.join("; ")}.`);

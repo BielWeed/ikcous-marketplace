@@ -1,4 +1,4 @@
--- 209b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente: ANTES da 20261654000000 (o caixa pertence ao dia em que abriu).
+-- 210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente: ANTES da 20261654000000 (o caixa pertence ao dia em que abriu).
 -- SO LEITURA, so catalogo; rol fechado de 13 linhas. Nao le nenhuma linha financeira.
 -- Hash = md5(replace(prosrc, chr(13), '')); corpo desconhecido ou ausente recusa.
 WITH alvo(nome, assinatura, argumentos) AS (

@@ -37,6 +37,27 @@ function comparar(
   return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 }
 
+/** O pacote tem o texto de toda versão até `para`? Toda release publica a
+ * própria nota, então ter uma nota igual ou mais nova que o destino prova que
+ * este pacote foi montado depois dele. Pacote mais velho (aba aberta antes da
+ * atualização) responde não: a faixa espera por quem conhece o destino. */
+export function conheceNotasAte(para: string): boolean {
+  const destino = partesDoNucleoSemver(para);
+  const catalogo: unknown = notas;
+  if (!destino || !catalogo || typeof catalogo !== "object") return false;
+  if (Array.isArray(catalogo)) return false;
+  return Object.entries(catalogo as Record<string, unknown>).some(
+    ([versao, nota]) => {
+      const partes = partesDoNucleoSemver(versao);
+      return (
+        partes !== null &&
+        ehNotaDaVersao(nota) &&
+        comparar(partes, destino) >= 0
+      );
+    },
+  );
+}
+
 /** Sem origem conhecida, não anuncia todo o passado na primeira abertura. */
 export function notasEntre(
   de: string | null,
