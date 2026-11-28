@@ -2720,6 +2720,18 @@ Deno.test("baixador (lote 573): COM o token da org, o CLI roda com SUPABASE_ACCE
   );
 });
 
+Deno.test("baixador (lote 585): token da org que chega VAZIO é o mesmo que sem token — UMA chamada, sem ambiente próprio (nunca SUPABASE_ACCESS_TOKEN vazio)", async () => {
+  const cli = cliFalso();
+  const r = await baixadorDeFuncaoPeloCli(cli.executar)(
+    REF,
+    "criar-pagamento",
+    { token: async () => "" },
+  );
+  assertEquals(r, BAIXADO("criar-pagamento"));
+  assertEquals(cli.chamadas.length, 1);
+  assertEquals(Object.keys(cli.chamadas[0].opcoes).sort(), ["cwd"]);
+});
+
 Deno.test("baixador (lote 573): token da org recusado ou que não se obtém = 2ª tentativa pelo login do CLI (sem ambiente próprio); as duas falhando = erro SEM o token", async () => {
   // recusado pelo CLI: cai no login, que baixa
   const cli = cliFalso((o) => o?.env !== undefined);
