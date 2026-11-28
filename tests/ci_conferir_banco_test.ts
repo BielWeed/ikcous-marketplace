@@ -1242,6 +1242,157 @@ Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-vo
   );
 });
 
+// 212 (28/11/2026): o lote da 20261656000000 (a visitante deixa o e-mail depois da compra). Rol fechado de 4 linhas, o mesmo na 212a e
+// na 212b, so catalogo; a 212a exige as duas funcoes novas com o corpo desta e a 212b as aceita AUSENTES ou com o corpo desta. Os md5
+// saem do PRE-VOO e do POS-VOO da propria migration e sao RECALCULADOS do arquivo; o rollback confere os mesmos antes de tira-las.
+Deno.test("212a/212b — rol fechado, um statement so de catalogo, md5 das duas funcoes novas recalculado do arquivo, menu, rpc-ci, release e lote no canais", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { createHash } = require("node:crypto");
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A212 = "212a-conferir-a-visitante-deixa-o-email-aplicado";
+  const B212 = "212b-antes-a-visitante-deixa-o-email-ausente";
+  const NOME = "20261656000000_a_visitante_deixa_o_email_depois_da_compra.sql";
+  const migration = await Deno.readTextFile(`${MIGRATIONS_DIR}/${NOME}`);
+  const rollback = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/rollback-manual-${NOME}`,
+  );
+  const corpo = (sql: string, fn: string) => {
+    const marca = `CREATE OR REPLACE FUNCTION public.${fn}(`;
+    assertEquals(sql.split(marca).length - 1, 1, `${fn}: uma definicao so`);
+    const i = sql.indexOf(marca);
+    const m = /\bAS (\$\w*\$)/.exec(sql.slice(i));
+    assert(m, "sem delimitador");
+    const a = i + m.index + m[0].length;
+    return sql.slice(a, sql.indexOf(m[1], a)).replace(/\r/g, "");
+  };
+  const md5 = (s: string) =>
+    createHash("md5").update(s).digest("hex") as string;
+  const hInf = md5(corpo(migration, "informar_email_da_visitante"));
+  const hRei = md5(corpo(migration, "reivindicar_comprovante_da_visitante"));
+  for (const h of [hInf, hRei]) {
+    // pre-voo (reaplicacao) e pos-voo citam o md5; o rollback confere o mesmo antes do DROP.
+    assertEquals(
+      migration.split(`'${h}'`).length - 1,
+      2,
+      `pre-voo e pos-voo citam ${h}`,
+    );
+    assertStringIncludes(rollback, `'${h}'`);
+  }
+  const itens = [
+    "informar_email_da_visitante: corpo exato (md5), uma so, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE de anon e authenticated (nem PUBLIC nem service_role)",
+    "reivindicar_comprovante_da_visitante: corpo exato (md5), uma so, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE so do service_role",
+    "o teto de e-mail da 20261217000000: reservar_vaga_de_email e chave_do_destinatario com os corpos dela, liberar_email_de_confirmacao no ar",
+    "marketplace_orders: as colunas que as duas leem, com o tipo esperado",
+  ];
+  for (const consulta of [A212, B212]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(
+      !/FROM\s+public\.(marketplace_orders|email_da_loja_contadores)\b/i.test(
+        limpo,
+      ),
+      `${consulta}: le so catalogo`,
+    );
+    assert(
+      !/\b(public\.)?(informar_email_da_visitante|reivindicar_comprovante_da_visitante|reservar_vaga_de_email|chave_do_destinatario|liberar_email_de_confirmacao)\s*\(/i.test(
+        limpo,
+      ),
+      `${consulta}: nao chama funcao da loja`,
+    );
+    assertStringIncludes(menu, `- ${consulta}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A212}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B212}.sql`),
+  );
+  // A 212a exige as duas com o corpo desta; a 212b aceita AUSENTE (antes do apply) ou o corpo desta.
+  for (const h of [hInf, hRei]) {
+    assertStringIncludes(
+      sqlA,
+      `COALESCE(f.n = 1 AND f.h = '${h}' AND f.atributos, false)`,
+    );
+    assertStringIncludes(
+      sqlB,
+      `COALESCE(f.n = 0 OR (f.n = 1 AND f.h = '${h}' AND f.atributos), false)`,
+    );
+  }
+  assert(!sqlA.includes("f.n = 0"), "a 212a nao aceita a funcao ausente");
+  // O teto que as duas usam: os corpos da 20261217000000, os mesmos do pre-voo.
+  for (const h of [
+    "373815e668edf9480d2dce94fb59d467",
+    "b5a9a0f8bb405c082cdb8cb7ee662d1e",
+  ]) {
+    assertStringIncludes(sqlA, `'${h}'`);
+    assertStringIncludes(sqlB, `'${h}'`);
+    assertStringIncludes(migration, `'${h}'`);
+  }
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/a-visitante-deixa-o-email-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A212,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261656000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B212);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 212a: ${chave} nao se aplica`);
+  for (const pedaco of [hInf, hRei, "212b", "212a", "rollback-manual-"])
+    assertStringIncludes(lote[0]._comentario, pedaco);
+});
+
 // 129: medicao ANTES; nao autoriza apply nem registra uma prova de pos-aplicacao.
 const CONSULTAS_129 = [
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
@@ -17605,6 +17756,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
     // 20261653000000: a peca da variacao desligada espera a lojista.
     "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+    // 20261656000000: a visitante deixa o e-mail depois da compra.
+    "212a-conferir-a-visitante-deixa-o-email-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

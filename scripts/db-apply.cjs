@@ -691,6 +691,47 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261656000000: a visitante deixa o e-mail depois da compra. DUAS funcoes novas. informar_email_da_visitante: as quatro condicoes
+  // (formato, visitante, sem e-mail, 15 minutos), a trava da linha e a gravacao que so acrescenta o e-mail. reivindicar_comprovante_da_
+  // visitante: os dois tetos SEM a passagem do pedido pago (nenhum CASE de pago) e a marca uma vez. O corpo exato (md5) e' da consulta
+  // 212a e do pos-voo; o comportamento, da prova viva a-visitante-deixa-o-email-viva.cjs.
+  "20261656000000_a_visitante_deixa_o_email_depois_da_compra.sql": [
+    {
+      funcao: "informar_email_da_visitante",
+      esperado: [
+        { texto: "OR v_pedido.user_id IS NOT NULL", vezes: 1 },
+        { texto: "OR v_pedido.canal IS DISTINCT FROM 'online'", vezes: 1 },
+        { texto: "IF v_pedido.email <> '' THEN", vezes: 1 },
+        { texto: "IF v_pedido.created_at <= now() - v_janela THEN", vezes: 1 },
+        { texto: "FOR UPDATE;", vezes: 1 },
+        {
+          texto:
+            "SET customer_data = customer_data || jsonb_build_object('email', v_email)",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "reivindicar_comprovante_da_visitante",
+      esperado: [
+        { texto: "v_teto_por_destinatario CONSTANT integer := 10;", vezes: 1 },
+        {
+          texto: "v_teto_do_comprovante_na_loja CONSTANT integer := 40;",
+          vezes: 1,
+        },
+        {
+          texto: "'destinatario:' || public.chave_do_destinatario(v_email),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "public.reservar_vaga_de_email('comprovante:loja', v_teto_do_comprovante_na_loja)",
+          vezes: 1,
+        },
+        { texto: "AND o.user_id IS NULL", vezes: 1 },
+      ],
+    },
+  ],
   // 20261399993000: o CRM e a lista de clientes nao contam a mesma pessoa duas vezes. DUAS funcoes, uma checagem cada. crm__nunca_comprou ganha SO a
   // CTE wa_nao_pagos (le crm__pedidos_nao_pagos, user_id nulo, o 55 cortado como em wa_pagos) e o terceiro NOT EXISTS; get_admin_customers_paged troca SO
   // o LEFT JOIN de user_addresses por UM endereco principal (LATERAL ... LIMIT 1) antes de juntar os pedidos. As travas de admin, a busca, o GROUP BY e o

@@ -3972,6 +3972,10 @@ export type Database = {
       increment_helpful: { Args: { review_id: string }; Returns: undefined };
       is_admin: { Args: never; Returns: boolean };
       is_admin_atual: { Args: never; Returns: boolean };
+      informar_email_da_visitante: {
+        Args: { p_email: string; p_order_id: string };
+        Returns: Json;
+      };
       informar_envio_devolucao: {
         Args: { p_codigo_rastreio: string; p_id: string };
         Returns: Json;
@@ -4171,6 +4175,10 @@ export type Database = {
           p_total_esperado?: number | null;
         };
         Returns: Json;
+      };
+      reivindicar_comprovante_da_visitante: {
+        Args: { p_order_id: string };
+        Returns: boolean;
       };
       reivindicar_email_de_confirmacao: {
         Args: { p_order_id: string };

@@ -1126,6 +1126,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente",
   "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
   "209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente",
+  "212a-conferir-a-visitante-deixa-o-email-aplicado",
+  "212b-antes-a-visitante-deixa-o-email-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

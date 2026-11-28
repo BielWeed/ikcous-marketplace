@@ -3,6 +3,7 @@ import {
   CartaoDeResumo,
   QuadradinhoDoIcone,
 } from "@/components/checkout/CartoesDeResumo";
+import { ConviteDoComprovante } from "@/components/checkout/ConviteDoComprovante";
 import { CuponsDoCheckout } from "@/components/checkout/CuponsDoCheckout";
 import type { CartaoEmCurso } from "@/components/checkout/PagamentoComCartao";
 import {
@@ -9869,6 +9870,10 @@ function useGuardarReciboDoPedido(orderId: string) {
 // mesmo mecanismo já usado em PagamentoForaDoPrazoView (linha ~3508
 // abaixo): WhatsApp da loja com o número do pedido na mensagem — nunca um
 // botão que promete um recurso que não funciona para ele.
+// Lote 579 (28/11/2026): a tela de sucesso da visitante passou a convidar,
+// uma vez, a deixar o e-mail DEPOIS da compra (`ConviteDoComprovante`, RPC
+// informar_email_da_visitante): com ele gravado, o comprovante sai e o
+// "Rastrear sem Conta" acha o pedido. O WhatsApp continua como saída.
 // Mesmo mecanismo de contato já usado em PagamentoForaDoPrazoView (WhatsApp da
 // loja com o número do pedido na mensagem), compartilhado pela tela de sucesso
 // e pela tela do recibo.
@@ -10082,11 +10087,16 @@ function SuccessView({
             Ver Meus Pedidos
           </button>
         ) : (
-          <AcompanharPedidoSemConta
-            orderId={orderId}
-            classeDoBotao="h-16 whitespace-normal text-[11px] font-black uppercase leading-snug tracking-[0.3em]"
-            aviso="Guarde o número do pedido. Para acompanhar, fale com a loja pelo WhatsApp."
-          />
+          <>
+            {/* Lote 579: a visitante pode deixar o e-mail AQUI, uma vez, para
+                receber o comprovante e acompanhar pelo "Rastrear sem Conta". */}
+            <ConviteDoComprovante orderId={orderId} />
+            <AcompanharPedidoSemConta
+              orderId={orderId}
+              classeDoBotao="h-16 whitespace-normal text-[11px] font-black uppercase leading-snug tracking-[0.3em]"
+              aviso="Guarde o número do pedido. Para acompanhar, fale com a loja pelo WhatsApp."
+            />
+          </>
         )}
       </div>
     </div>

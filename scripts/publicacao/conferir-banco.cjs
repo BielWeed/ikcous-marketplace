@@ -3764,7 +3764,20 @@ const ROL_DA_209 = [
   "o destino da peca que espera: pecas_sem_tamanho e as RPCs da 20261642000000 no ar, com a forma e os corpos dela",
   "pecas_sem_tamanho_da_devolucao: corpo exato (md5), uma so, plpgsql SECURITY DEFINER STABLE, search_path=public, EXECUTE so de authenticated",
 ];
+// Lote 212 (20261656000000, a visitante deixa o e-mail depois da compra: nascem informar_email_da_visitante, a porta da tela
+// "Pedido recebido!", e reivindicar_comprovante_da_visitante, a reserva do comprovante com o teto valendo tambem para pedido pago).
+// Somente catalogo: nenhuma le pedido nem contador e nenhuma chama funcao. A 212a espera as duas com o corpo desta (md5); a 212b, as
+// duas AUSENTES ou com o corpo desta (reaplicacao). Rol de 4, o mesmo nas duas (as duas funcoes, o teto da 20261217000000 e as colunas
+// de marketplace_orders que elas leem).
+const ROL_DA_212 = [
+  "informar_email_da_visitante: corpo exato (md5), uma so, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE de anon e authenticated (nem PUBLIC nem service_role)",
+  "reivindicar_comprovante_da_visitante: corpo exato (md5), uma so, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE so do service_role",
+  "o teto de e-mail da 20261217000000: reservar_vaga_de_email e chave_do_destinatario com os corpos dela, liberar_email_de_confirmacao no ar",
+  "marketplace_orders: as colunas que as duas leem, com o tipo esperado",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "212a-conferir-a-visitante-deixa-o-email-aplicado": ROL_DA_212,
+  "212b-antes-a-visitante-deixa-o-email-ausente": ROL_DA_212,
   "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado":
     ROL_DA_209,
   "209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente":

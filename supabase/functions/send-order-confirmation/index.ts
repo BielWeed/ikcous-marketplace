@@ -148,12 +148,54 @@ export async function handler(
     }
   }
 
-  const authorization = req.headers.get("Authorization");
-  const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
   const recusar = (status: number) => new Response(
     JSON.stringify({ ok: false, motivo: "nao_autorizado" }),
     { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
+
+  // A PORTA DA VISITANTE (lote 579, migration 20261656000000). Quem compra sem
+  // conta não tem sessão: a tela "Pedido recebido!" grava o e-mail dela pela
+  // RPC `informar_email_da_visitante` e chama esta edge com `comoVisitante:
+  // true` e o id COMPLETO do pedido, que só existe no navegador de quem
+  // comprou (para fora sai só "#" + 6 letras). Sem Auth a consultar: a
+  // capacidade é o id. Só pedido de visitante (sem conta, da loja online, não
+  // pago pelo app) — o mesmo recorte da RPC; ausente e alheio têm a MESMA
+  // resposta. A reserva é a `reivindicar_comprovante_da_visitante`, que
+  // respeita o teto diário de e-mails MESMO com o pedido pago (o e-mail novo
+  // nunca come a cota do código de login), e o destinatário continua vindo do
+  // banco, no miolo. Só `=== true` abre: qualquer outro valor segue a porta de
+  // sempre, que não muda.
+  if (corpo?.comoVisitante === true) {
+    let pedido;
+    try {
+      const lido = await supabase
+        .from("marketplace_orders")
+        .select("user_id, canal, payment_method")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (lido.error) return montarResposta({ ok: false, motivo: "envio_falhou" });
+      pedido = lido.data;
+    } catch {
+      return montarResposta({ ok: false, motivo: "envio_falhou" });
+    }
+    if (
+      !pedido ||
+      pedido.user_id != null ||
+      pedido.canal !== "online" ||
+      pedido.payment_method === "online"
+    ) {
+      return recusar(403);
+    }
+    const desfecho = await (deps.enviarComprovante ?? enviarComprovantePedido)({
+      supabase,
+      orderId,
+      reivindicacao: "reivindicar_comprovante_da_visitante",
+    });
+    return montarResposta(desfecho);
+  }
+
+  const authorization = req.headers.get("Authorization");
+  const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return recusar(401);
   try {
     // getUser consulta o Auth; decodificar o JWT não valida a sessão.
