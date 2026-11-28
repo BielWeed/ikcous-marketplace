@@ -148,10 +148,12 @@ WITH fns AS (
                      WHERE p.oid = to_regprocedure('public.store_config_so_retirada_exige_retirada()'))
               THEN 'trigger e funcao como o desenho diz' ELSE 'DIFERENTE' END
   UNION ALL
+  -- A sucessora 20261655000000 (a loja nova so vende o que confirmou) acrescenta entrega_local_liberada e
+  -- pagamento_na_entrega_liberado no FIM: as 50 colunas dela tambem contam.
   SELECT 'v_store_config: as 47 colunas na ordem (as 45 de antes + local_delivery_enabled e local_delivery_days no fim), legivel por anon, authenticated e service_role',
          'e27d843e36ba4197f400d010aefe930e SELECT=anon,authenticated,service_role',
          CASE WHEN to_regclass('public.v_store_config') IS NULL THEN 'AUSENTE'
-              ELSE (SELECT CASE WHEN v.m = 'b7ee2c31d91549a168a502de0ac4c5d2' THEN 'e27d843e36ba4197f400d010aefe930e' ELSE v.m END FROM visao v)
+              ELSE (SELECT CASE WHEN v.m IN ('b7ee2c31d91549a168a502de0ac4c5d2', '39fbabdd4cd002cb626ecaa7c5112cdb') THEN 'e27d843e36ba4197f400d010aefe930e' ELSE v.m END FROM visao v)
                    || ' SELECT=' || CASE WHEN to_regrole('anon') IS NOT NULL AND has_table_privilege('anon', 'public.v_store_config', 'SELECT')
                                           AND to_regrole('authenticated') IS NOT NULL AND has_table_privilege('authenticated', 'public.v_store_config', 'SELECT')
                                           AND to_regrole('service_role') IS NOT NULL AND has_table_privilege('service_role', 'public.v_store_config', 'SELECT')

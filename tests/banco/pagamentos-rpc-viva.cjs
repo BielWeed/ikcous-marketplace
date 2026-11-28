@@ -1946,6 +1946,11 @@ async function desfazerPosterioresNaTransacao(c) {
   await require("./o-aviso-do-vale-troca-posterior.cjs").desfazerAvisoDoValeTrocaNaTransacao(
     c,
   );
+  // A 20261655000000 (a loja nova so vende o que confirmou) poe na vitrine duas colunas calculadas das datas da 20261652000000
+  // (sucessora da 99, na lista abaixo), cujo rollback apaga essas colunas: sai ANTES do laco. Nao chama is_admin_atual: nao entra na lista.
+  await require("./a-loja-nova-so-vende-posterior.cjs").desfazerSoVendeOConfirmadoNaTransacao(
+    c,
+  );
   for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,

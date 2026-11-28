@@ -187,6 +187,11 @@ async function emTransacao(fn, { estado = "depois" } = {}) {
   await C.query("BEGIN");
   try {
     await C.query("SET LOCAL TIME ZONE 'UTC'");
+    // A 20261655000000 (a loja nova so vende o que confirmou) le as duas colunas desta na vitrine: com ela no ar o
+    // rollback daqui recusaria apagar as colunas. As provas desta medem a 1652 sozinha.
+    await require("./a-loja-nova-so-vende-posterior.cjs").desfazerSoVendeOConfirmadoNaTransacao(
+      C,
+    );
     assert.equal(
       await hashVivo(),
       H_NOVO,
