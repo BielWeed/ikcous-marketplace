@@ -5,6 +5,9 @@
 -- como o desta (a 202a confere qual). A 20261653000000 (a peca da variacao desligada) sucede a 20261642000000 e tambem mantem a trava;
 -- o corpo dela conta igual (a 209a confere qual). A 20261657000000 (o produto todo desligado) sucede a 20261653000000 e tambem
 -- mantem a trava; o corpo dela conta igual (a 213a confere qual).
+-- o corpo dela conta igual (a 209a confere qual).
+-- SUCESSORA: a 20261659000000 (a peca de produto excluido fica fora do estoque) mantem os corpos e so acrescenta o bloco do produto
+-- excluido; os corpos dela contam como os desta (a 215a confere qual).
 WITH fn AS (
   SELECT p.oid, md5(replace(p.prosrc, chr(13), '')) AS h, l.lanname, p.prosecdef, p.provolatile, p.proisstrict, p.proconfig,
          pg_get_function_result(p.oid) AS resultado
@@ -14,7 +17,7 @@ WITH fn AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'devolver_estoque: uma so, com o corpo da 20261389100000 (md5)', 'sim', CASE WHEN
     (SELECT count(*) FROM fn) = 1
-    AND EXISTS (SELECT 1 FROM fn WHERE h IN ('943b226906e91013e7cccf4992617e35', '80b1a90baf10d1b4c59484772e4864c4', '2913f3178498938d0a79e3b47a1084d1', 'c98a1d49d63e0174f4bdd95dcffc54f4')) THEN 'sim' ELSE 'nao' END
+    AND EXISTS (SELECT 1 FROM fn WHERE h IN ('943b226906e91013e7cccf4992617e35', '80b1a90baf10d1b4c59484772e4864c4', '2913f3178498938d0a79e3b47a1084d1', 'c98a1d49d63e0174f4bdd95dcffc54f4', 'e42582a472fd79ba987c11f161ad9a7a')) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'devolver_estoque: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path=public, retorna integer, argumento p_order_id uuid) e EXECUTE de ninguem de aplicacao (anon, authenticated, PUBLIC)', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(f.lanname = 'plpgsql' AND f.prosecdef AND f.provolatile = 'v' AND NOT f.proisstrict AND f.resultado = 'integer'
         AND f.proconfig = ARRAY['search_path=public']::text[]

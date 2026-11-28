@@ -12,8 +12,8 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
  * que existe aqui — sem campo a mais: vazio quer dizer "usa o preço padrão do
  * produto" (o "Auto" do modal de uma variante). Produto sem preço ainda: o
  * preço digitado aqui vira o Preço de Venda dele (`preco-da-grade.ts` decide);
- * produto que já tem preço: ele aparece de sugestão e o que se digita vale só
- * para estas combinações novas.
+ * produto que já tem preço: ele aparece de sugestão, o MESMO valor dele deixa a
+ * linha em "Auto" e um valor diferente vale só para estas combinações novas.
  */
 
 /** Uma combinação do passo 2, com o que o lojista digitou para ela. */
@@ -161,10 +161,10 @@ export function LinhasDaGrade({
             className="ml-1 text-[11px] leading-tight text-zinc-500"
             data-testid="preco-do-produto-na-grade"
           >
-            O preço do produto é R$ {precoDoProdutoEmReais}. Deixe o preço vazio
-            para a variação usar esse mesmo preço ("Auto"); um valor digitado
-            aqui vale só para estas combinações novas e não muda o preço do
-            produto.
+            O preço do produto é R$ {precoDoProdutoEmReais}. Deixe vazio, ou
+            digite o mesmo preço do produto, para a variação seguir o preço dele
+            ("Auto"); um valor diferente vale só para estas combinações novas e
+            não muda o preço do produto.
           </p>
         )}
       </div>

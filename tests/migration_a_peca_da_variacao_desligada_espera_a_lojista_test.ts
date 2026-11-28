@@ -145,18 +145,24 @@ Deno.test("20261653: os corpos de partida ainda sao os vigentes (os da 202616420
     /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.admin_devolucao_concluir\s*\(/i,
   ]) {
     const f = fontes(re);
-    // A 20261657000000 (o produto todo desligado) e' a sucessora desta, e a UNICA: o rollback dela devolve este corpo byte a byte.
+    // A 20261657000000 (o produto todo desligado) e' a sucessora desta, e a 20261659000000 (a peca de produto excluido) a dela: o
+    // rollback de cada uma devolve o corpo da anterior byte a byte.
     assertEquals(
       f.at(-1),
-      "20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql",
-      `${re}: outra redefine depois da sucessora`,
+      "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
+      `${re}: outra redefine depois das sucessoras`,
     );
     assertEquals(
       f.at(-2),
+      "20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql",
+      `${re}: outra redefine entre as sucessoras`,
+    );
+    assertEquals(
+      f.at(-3),
       NOME,
       `${re}: outra redefine entre esta e a sucessora`,
     );
-    assertEquals(f.at(-3), NOME_642, `${re}: a antecessora e' a 642`);
+    assertEquals(f.at(-4), NOME_642, `${re}: a antecessora e' a 642`);
   }
 });
 

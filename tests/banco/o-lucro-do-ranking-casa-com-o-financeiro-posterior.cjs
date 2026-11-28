@@ -17,6 +17,10 @@ const LUCRO_CASA_COM_O_FINANCEIRO = Object.freeze({
     = '4f8fb94f6cb0018e10d0ef71541f1cbf', false) AS sim`,
 });
 async function desfazerLucroCasaComOFinanceiroNaTransacao(c) {
+  // A 20261659000000 (o vale-troca nao e dinheiro no ranking) sucede o analytics da 3995: cai antes de qualquer rollback da 3995.
+  await require("./a-peca-de-produto-excluido-posterior.cjs").desfazerProdutoExcluidoNaTransacao(
+    c,
+  );
   if ((await c.query(LUCRO_CASA_COM_O_FINANCEIRO.noAr)).rows[0]?.sim !== true)
     return false;
   await c.query(

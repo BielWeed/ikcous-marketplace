@@ -775,6 +775,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-visitante-deixa-o-email-viva.cjs",
     // 20261657000000: o produto todo desligado nao volta a venda (sem nenhuma variacao ligada a peca fica na propria variacao, o pai nao recebe).
     "tests/banco/o-produto-todo-desligado-nao-volta-a-venda-viva.cjs",
+    // 20261659000000: a peca de produto excluido fica fora do estoque (devolver_estoque, admin_devolucao_concluir com fora_do_estoque e
+    // resolver_peca_sem_tamanho) e o vale-troca nao e dinheiro no ranking de lucro (get_admin_analytics_v2 igual ao Financeiro).
+    "tests/banco/a-peca-de-produto-excluido-viva.cjs",
     // 20261660000000: o caixa de ontem aberto nao some do saldo (o saldo inicial e a sangria nao passam do dia do caixa aberto; o cancelamento trava a sessao).
     "tests/banco/o-caixa-de-ontem-aberto-nao-some-do-saldo-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).

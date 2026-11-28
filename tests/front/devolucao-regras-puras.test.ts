@@ -315,6 +315,8 @@ describe("leitores do jsonb das RPCs", () => {
       reestocados: 2,
       // Banco sem a 20261642000000 nao manda a chave: nenhuma peca esperando.
       sem_tamanho: 0,
+      // Banco sem a 20261659000000 nao manda a chave: nenhuma peca de produto excluido.
+      fora_do_estoque: 0,
     });
     expect(
       lerResultadoConclusao({
@@ -328,6 +330,19 @@ describe("leitores do jsonb das RPCs", () => {
         sem_tamanho: 2,
       })?.sem_tamanho,
     ).toBe(2);
+    expect(
+      lerResultadoConclusao({
+        id: "d-1",
+        status: "concluida",
+        resolucao: "troca",
+        valor_reembolso: null,
+        refund_id: null,
+        reembolso_manual: false,
+        reestocados: 0,
+        sem_tamanho: 0,
+        fora_do_estoque: 3,
+      })?.fora_do_estoque,
+    ).toBe(3);
   });
 
   it("etiqueta reversa: `codigo_postagem` é a verdade; `resgate` vira aviso", () => {

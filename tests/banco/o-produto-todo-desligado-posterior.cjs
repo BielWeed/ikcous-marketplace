@@ -40,6 +40,11 @@ const PRODUTO_TODO_DESLIGADO = Object.freeze({
 
 /** Desfaz a 20261657000000 na conexao aberta, se no ar; repetir e' no-op. Devolve true se desfez. */
 async function desfazerProdutoTodoDesligadoNaTransacao(cliente) {
+  // A 20261659000000 (a peca de produto excluido fica fora do estoque) sucede os dois corpos desta: sai ANTES (o pre-voo do rollback
+  // desta recusa o corpo dela). So se no ar; repetir e' no-op.
+  await require("./a-peca-de-produto-excluido-posterior.cjs").desfazerProdutoExcluidoNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(PRODUTO_TODO_DESLIGADO.noAr);
   if (r.rows[0]?.sim !== true) return false;
   await cliente.query(

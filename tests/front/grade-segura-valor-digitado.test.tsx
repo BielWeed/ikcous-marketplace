@@ -204,6 +204,21 @@ describe("grade — preço segurado preenche as linhas vazias ao efetivar", () =
     expect(entregue().map((l) => l.priceOverride)).toEqual([50, 50, 50]);
   });
 
+  it("produto com preço 89,90 e o MESMO valor segurado (sem tocar Aplicar): as variantes ficam Auto, sem preço próprio", () => {
+    montar("89.90");
+    irParaOPasso2();
+    segurarPreco("8990");
+    efetivar();
+
+    expect(onEfetivar).toHaveBeenCalledTimes(1);
+    expect(precoEntregue()).toBeUndefined();
+    expect(entregue().map((l) => l.priceOverride)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
   it("grade com preço só em algumas linhas e segurado vazio: não chuta, o produto continua pedindo o Preço de Venda", () => {
     montar("");
     irParaOPasso2();

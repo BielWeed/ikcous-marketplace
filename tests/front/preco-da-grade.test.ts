@@ -7,7 +7,8 @@
 //  (1) produto sem preço + preço na grade: o produto recebe o preço, as
 //      variações ficam Auto (preço próprio vazio);
 //  (2) produto JÁ com preço: a grade só dá preço próprio às combinações novas
-//      e o preço do produto não muda;
+//      e o preço do produto não muda — exceto a linha com o MESMO valor do
+//      produto, que vira Auto (sócio, 28/11/2026);
 //  (3) preço só em algumas linhas: não se chuta, o produto continua pedindo;
 //  (4) todas as linhas com preço e produto vazio: o produto recebe o MENOR e as
 //      linhas iguais a ele viram Auto.
@@ -104,8 +105,28 @@ describe("resolverPrecoDaGrade — produto que JÁ tem preço", () => {
     expect(r.precos).toEqual([60, undefined, 120]);
   });
 
-  it("(2) linha com o MESMO valor do produto continua com preço próprio (foi digitado de propósito)", () => {
+  // Decisão do sócio (28/11/2026) inverte o ponto (2) para o valor IGUAL ao do
+  // produto: "89,90" em todas as linhas gravava 89,90 como preço próprio, e ao
+  // baixar o Preço de Venda depois a loja seguia cobrando 89,90 sem avisar.
+  it("linha com o MESMO valor do produto vira Auto (segue o preço do produto)", () => {
     const r = resolverPrecoDaGrade("89.90", ["89.90", "89.90"]);
+    expect(r.precoDoProduto).toBeUndefined();
+    expect(r.precos).toEqual([undefined, undefined]);
+  });
+
+  it("só a linha igual ao produto vira Auto; a de preço diferente mantém o preço próprio", () => {
+    const r = resolverPrecoDaGrade("89.90", ["89.90", "99.90"]);
+    expect(r.precoDoProduto).toBeUndefined();
+    expect(r.precos).toEqual([undefined, 99.9]);
+  });
+
+  it('o produto escrito com vírgula ("89,9") e a linha "89.90" são o mesmo preço', () => {
+    const r = resolverPrecoDaGrade("89,9", ["89.90", "60"]);
+    expect(r.precos).toEqual([undefined, 60]);
+  });
+
+  it('produto com texto que não é preço ("abc"): a grade não mexe, as linhas mantêm o preço próprio', () => {
+    const r = resolverPrecoDaGrade("abc", ["89.90", "89.90"]);
     expect(r.precoDoProduto).toBeUndefined();
     expect(r.precos).toEqual([89.9, 89.9]);
   });

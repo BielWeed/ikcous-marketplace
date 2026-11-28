@@ -141,4 +141,51 @@ describe("cartão da devolução — cancelar recusado pelo servidor", () => {
       document.querySelector('[data-testid="cartao-devolucao"]')?.textContent,
     ).not.toContain(JA_AVANCOU);
   });
+
+  // A ficha relê e a devolução chega com OUTRO status depois da recusa: só o
+  // rastreio recusado vira "já avançou"; a recusa do cancelar continua a
+  // mesma, porque o erro dele não guarda o status de quando foi enviado.
+  it("a ficha relê com outro status depois da recusa: continua a recusa do servidor, não 'já avançou'", async () => {
+    const { DevolucaoDoPedidoCard } = await import(
+      "@/components/devolucao/DevolucaoDoPedidoCard"
+    );
+    const onCancelar = vi.fn(
+      async (): Promise<Desfecho> => ({ ok: false, erro: RECUSA_DO_SERVIDOR }),
+    );
+    const desenhar = (atual: DevolucaoDetalhe) =>
+      raiz.render(
+        <DevolucaoDoPedidoCard
+          atual={atual}
+          anteriores={[]}
+          enderecoDaLoja={null}
+          horarioDaLoja={null}
+          onCancelar={onCancelar}
+          onInformarEnvio={vi.fn()}
+        />,
+      );
+    await act(async () => {
+      desenhar(DEVOLUCAO);
+    });
+
+    await act(async () => {
+      botao("Cancelar devolução")?.click();
+    });
+    await act(async () => {
+      botao("Sim, cancelar")?.click();
+      await esperarHistorico();
+    });
+    expect(onCancelar).toHaveBeenCalledExactlyOnceWith("d-1");
+
+    await act(async () => {
+      desenhar({ ...DEVOLUCAO, status: "aprovada" });
+      await esperarHistorico();
+    });
+
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(
+      RECUSA_DO_SERVIDOR,
+    );
+    expect(
+      document.querySelector('[data-testid="cartao-devolucao"]')?.textContent,
+    ).not.toContain(JA_AVANCOU);
+  });
 });

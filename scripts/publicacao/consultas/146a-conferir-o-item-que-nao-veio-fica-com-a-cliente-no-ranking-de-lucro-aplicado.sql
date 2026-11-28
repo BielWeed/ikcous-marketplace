@@ -1,6 +1,8 @@
 -- 146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado: DEPOIS da 20261399994000. SO LEITURA, catalogo, rol fechado de 4 linhas.
 -- Corpo exato (md5 sem CR), assinatura/atributos e ACL iguais aos pre/pos-voos.
 -- Comportamento e fail-closed provados por tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs no CI.
+-- SUCESSORA: a 20261659000000 (o vale-troca nao e dinheiro no ranking de lucro) troca so o pm do vale nas duas copias do CTE devs;
+-- o corpo dela conta como o desta (a 215a confere qual).
 WITH fn AS (
   SELECT p.oid,
          md5(replace(p.prosrc, chr(13), '')) AS m,
@@ -28,7 +30,7 @@ WITH fn AS (
          'de8648a7783c12f1be7abd7986c8a2fc',
          -- A 20261399995000 (o lucro do ranking casa com o Financeiro) sucede esta e so troca a conta do lucro (pedido a pedido, com o dinheiro devolvido):
          -- aceita os dois corpos EXATOS; normaliza ao esperado historico do rol (a 147a distingue).
-         COALESCE((SELECT CASE WHEN f.m IN ('de8648a7783c12f1be7abd7986c8a2fc', '4f8fb94f6cb0018e10d0ef71541f1cbf') THEN 'de8648a7783c12f1be7abd7986c8a2fc' ELSE f.m END FROM fn f), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m IN ('de8648a7783c12f1be7abd7986c8a2fc', '4f8fb94f6cb0018e10d0ef71541f1cbf', '1624212a7096b6f49a80370b30191a15') THEN 'de8648a7783c12f1be7abd7986c8a2fc' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)',
          'atributos de sempre',
