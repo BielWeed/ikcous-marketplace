@@ -76,7 +76,7 @@ describe("textos", () => {
     const pecas = lerPecasSemTamanho([linha("a", PEDIDO_A)])!;
     expect(textoDoAviso(pecas)).toEqual({
       titulo:
-        "1 peça deste produto voltou sem tamanho (pedido #00A1B2, vendido antes de você criar os tamanhos). Ela não está à venda.",
+        "1 peça deste produto voltou e espera você escolher o tamanho (pedido #00A1B2, vendido sem tamanho ou num tamanho hoje desligado). Ela não está à venda.",
       pergunta: "Em qual tamanho ela entra?",
     });
   });
@@ -84,7 +84,7 @@ describe("textos", () => {
   it("uma peca de pedido que sumiu: sem numero, sem inventar", () => {
     const pecas = lerPecasSemTamanho([linha("a", null)])!;
     expect(textoDoAviso(pecas).titulo).toBe(
-      "1 peça deste produto voltou sem tamanho (vendida antes de você criar os tamanhos). Ela não está à venda.",
+      "1 peça deste produto voltou e espera você escolher o tamanho (vendida sem tamanho ou num tamanho hoje desligado). Ela não está à venda.",
     );
   });
 
@@ -95,7 +95,7 @@ describe("textos", () => {
     ])!;
     expect(textoDoAviso(pecas)).toEqual({
       titulo:
-        "2 peças deste produto voltaram sem tamanho (pedido #00A1B2, vendido antes de você criar os tamanhos). Elas não estão à venda.",
+        "2 peças deste produto voltaram e esperam você escolher o tamanho (pedido #00A1B2, vendido sem tamanho ou num tamanho hoje desligado). Elas não estão à venda.",
       pergunta: "Em qual tamanho entra a do pedido #00A1B2?",
     });
   });
@@ -106,7 +106,7 @@ describe("textos", () => {
       linha("b", PEDIDO_B),
     ])!;
     expect(textoDoAviso(duas).titulo).toContain(
-      "(pedidos #00A1B2 e #00C3D4, vendidos antes de você criar os tamanhos)",
+      "(pedidos #00A1B2 e #00C3D4, vendidos sem tamanho ou em tamanhos hoje desligados)",
     );
     const quatro = lerPecasSemTamanho([
       linha("a", PEDIDO_A),
@@ -115,7 +115,7 @@ describe("textos", () => {
       linha("d", PEDIDO_D),
     ])!;
     expect(textoDoAviso(quatro).titulo).toBe(
-      "4 peças deste produto voltaram sem tamanho (pedidos #00A1B2, #00C3D4, #00E5F6 e mais 1, vendidos antes de você criar os tamanhos). Elas não estão à venda.",
+      "4 peças deste produto voltaram e esperam você escolher o tamanho (pedidos #00A1B2, #00C3D4, #00E5F6 e mais 1, vendidos sem tamanho ou em tamanhos hoje desligados). Elas não estão à venda.",
     );
   });
 

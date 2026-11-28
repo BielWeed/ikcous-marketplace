@@ -48,6 +48,7 @@ import {
   SQL_LEDGER,
   SQL_MARCA,
   SQL_PRIVILEGIOS,
+  arquivosDoCommit,
   arquivosDoRepo,
   ddlDoLedger,
   envelopeDoArquivo,
@@ -1484,4 +1485,113 @@ Deno.test("T9: db-ci.yml roda a prova viva do instalador e dispara quando o inst
       `${gatilho} em pull_request e push`,
     );
   }
+});
+
+// ─── lote 573: as migrations do COMMIT aprovado, nunca da árvore ────────────
+
+const SHA_FALSO = "0123456789abcdef0123456789abcdef01234567";
+const enc = new TextEncoder();
+const bytes = (t: string) => enc.encode(t);
+const OBJ = (n: number) => String(n).padStart(40, "a");
+
+/** git falso: `ls-tree -z` e `cat-file --batch` como o git devolve (bytes).
+ * Cada entrada: [tipo, nome na pasta, objeto, conteúdo (ausente = missing)]. */
+function gitDoCommitFalso(entradas: [string, string, string, string?][]) {
+  const chamadas: { args: string[]; entrada?: string }[] = [];
+  const objetos = new Map(
+    entradas.filter((e) => e[3] !== undefined).map((e) => [e[2], e[3]]),
+  );
+  const fn = (args: string[], entrada?: string) => {
+    chamadas.push({ args, entrada });
+    if (args[0] === "ls-tree") {
+      return bytes(
+        entradas
+          .map(
+            ([tipo, nome, obj]) =>
+              `${tipo === "tree" ? "040000" : "100644"} ${tipo} ${obj}\tsupabase/migrations/${nome}\0`,
+          )
+          .join(""),
+      );
+    }
+    if (args[0] === "cat-file") {
+      const partes: Uint8Array[] = [];
+      for (const obj of String(entrada).split("\n").filter(Boolean)) {
+        const c = objetos.get(obj);
+        if (c === undefined) {
+          partes.push(bytes(`${obj} missing\n`));
+          continue;
+        }
+        const corpo = bytes(c);
+        partes.push(bytes(`${obj} blob ${corpo.length}\n`), corpo, bytes("\n"));
+      }
+      const total = new Uint8Array(partes.reduce((n, p) => n + p.length, 0));
+      let i = 0;
+      for (const p of partes) {
+        total.set(p, i);
+        i += p.length;
+      }
+      return total;
+    }
+    throw new Error(`git falso: ${args.join(" ")}`);
+  };
+  return Object.assign(fn, { chamadas });
+}
+
+Deno.test("lote 573: arquivosDoCommit lê a pasta do COMMIT com a régua de listarMigrations (raiz, 13/14 dígitos, .sql, sem subpasta nem rollback-manual) e o corpo byte a byte, multibyte inclusive", () => {
+  const git = gitDoCommitFalso([
+    ["tree", "_arquivadas", OBJ(1)],
+    ["blob", "rollback-manual-20261024000000_x.sql", OBJ(2), "SELECT 0;"],
+    ["blob", "README.md", OBJ(3), "# não"],
+    ["blob", "20260102000000_dois.sql", OBJ(4), "-- ação ✓ çã\nSELECT 2;\n"],
+    ["blob", "2026010100000_um.sql", OBJ(5), "SELECT 1;"],
+    ["blob", "20260103000000_tres.txt", OBJ(6), "não"],
+  ]);
+  const r = arquivosDoCommit(SHA_FALSO, { git });
+  assertEquals(r, [
+    { arquivo: "2026010100000_um.sql", corpo: "SELECT 1;" },
+    { arquivo: "20260102000000_dois.sql", corpo: "-- ação ✓ çã\nSELECT 2;\n" },
+  ]);
+  // o ls-tree é do SHA pedido e só da pasta das migrations
+  assert(
+    git.chamadas[0].args.includes(SHA_FALSO),
+    git.chamadas[0].args.join(" "),
+  );
+  assert(
+    git.chamadas[0].args.some((a) => a.startsWith("supabase/migrations")),
+    git.chamadas[0].args.join(" "),
+  );
+  // só os blobs da fila vão ao cat-file, numa chamada só
+  assertEquals(git.chamadas.length, 2);
+  assertEquals(
+    String(git.chamadas[1].entrada).split("\n").filter(Boolean).sort(),
+    [OBJ(4), OBJ(5)].sort(),
+  );
+});
+
+Deno.test("lote 573: arquivosDoCommit recusa SHA fora do formato SEM chamar o git, e blob que o git não acha", () => {
+  const git = gitDoCommitFalso([["blob", "20260101000000_um.sql", OBJ(1)]]);
+  for (const sha of ["", "HEAD", "abc", `${SHA_FALSO} `, "--output=x"]) {
+    assertThrows(() => arquivosDoCommit(sha, { git }));
+  }
+  assertEquals(git.chamadas.length, 0);
+  // o blob listado não existe (missing): erro, nunca fila pela metade
+  assertThrows(() => arquivosDoCommit(SHA_FALSO, { git }));
+});
+
+Deno.test("lote 573 (repo real): as migrations do commit HEAD são byte a byte as da pasta (árvore limpa, eol=lf)", async () => {
+  const saida = await new Deno.Command("git", {
+    args: ["-C", RAIZ, "rev-parse", "HEAD"],
+    stdout: "piped",
+    stderr: "null",
+  }).output();
+  const head = new TextDecoder().decode(saida.stdout).trim();
+  const doCommit = arquivosDoCommit(head);
+  const daPasta = arquivosDoRepo(join(RAIZ, "supabase/migrations"));
+  assert(doCommit.length >= 276, `fila do commit com ${doCommit.length}`);
+  assertEquals(
+    doCommit.map((a) => a.arquivo),
+    daPasta.map((a) => a.arquivo),
+  );
+  for (let i = 0; i < daPasta.length; i++)
+    assert(doCommit[i].corpo === daPasta[i].corpo, daPasta[i].arquivo);
 });

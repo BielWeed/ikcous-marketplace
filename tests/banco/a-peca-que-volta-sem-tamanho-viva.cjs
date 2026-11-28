@@ -1182,6 +1182,13 @@ async function main() {
       "use rodar-isolado.cjs: nunca mutar o banco base",
     );
     await D.connect();
+    // A 20261653000000 (a peca da variacao desligada) sucede os dois corpos desta: esta prova mede o corpo e o comportamento da
+    // 20261642000000, entao a tira antes. O banco e' o clone proprio do rodar-isolado.cjs: desfazer e gravar aqui nao toca outra prova.
+    await C.query("BEGIN");
+    await require("./a-peca-da-variacao-desligada-posterior.cjs").desfazerVariacaoDesligadaNaTransacao(
+      C,
+    );
+    await C.query("COMMIT");
     assert.equal(
       await hashDevolver(),
       HASH_DEVOLVER_DESTA,

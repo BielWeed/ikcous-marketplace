@@ -375,7 +375,7 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     expect(texto).toContain("mas a peça já tinha voltado para a loja.");
     expect(texto).not.toContain("o estoque já tinha voltado");
     expect(texto).toContain(
-      "Se o produto não tinha tamanhos quando foi vendido e ganhou tamanhos depois, a peça não voltou ao estoque: ela aparece no topo da tela do produto, no aviso de peça que voltou sem tamanho, com o número deste pedido. Ali, toque em “Não tenho essa peça” e não tire nada do estoque.",
+      "Se a peça aparece no topo da tela do produto, no aviso de peça que voltou sem tamanho, com o número deste pedido (acontece quando o produto ganhou tamanhos depois da venda ou quando o tamanho vendido foi desligado), ela não voltou ao estoque: ali, toque em “Não tenho essa peça” e não tire nada do estoque.",
     );
     expect(texto).toContain(
       "Nos outros casos a peça já voltou ao estoque — tire as unidades enviadas à mão no cadastro do produto",
@@ -388,7 +388,7 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
       lerFonte("src/components/admin/products/AvisoDePecaSemTamanho.tsx"),
     ).toContain("Não tenho essa peça");
     expect(lerFonte("src/lib/pecas-sem-tamanho.ts")).toContain(
-      "voltou sem tamanho (${origem})",
+      "esperam você escolher o tamanho (${origem})",
     );
   });
 

@@ -103,9 +103,10 @@ de `criar-projeto` até `login` numa loja de ensaio, e para no `cadastro`.
    - **Como saber que deu certo:** `Test-Path scripts/frota/nova-loja.mjs` responde `True`.
    - **Se responder `False`:** a pasta está errada. Pare e me chame.
 3. **O checkout tem de ser o da release aprovada** (o topo da branch
-   `claude/app-major-upgrade-wmc8x2` no GitHub). O passo `banco` instala as migrations **que estão
-   na pasta**, e o `functions` publica o código da pasta: versão errada = loja montada com código
-   errado. **Quem confere isso é o agente**, antes de você rodar qualquer passo.
+   `claude/app-major-upgrade-wmc8x2` no GitHub). O passo `banco` instala as migrations **desse
+   commit**, e o `functions` publica o código desse commit: versão errada = loja montada com código
+   errado. Os dois **recusam sozinhos** (NÃO, sem mandar nada ao Supabase) se o checkout não estiver
+   exatamente no topo, mas **quem confere isso antes é o agente**, antes de você rodar qualquer passo.
 
 ### Onde o comando guarda as coisas (no PC do dono, fora do repositório)
 
@@ -329,6 +330,12 @@ node scripts/frota/nova-loja.mjs banco --loja <slug> --aplicar
   concluída.`
 - **NÃO:**
   - `rode criar-projeto --aplicar até dar SIM antes de banco`: falta o passo 2.
+  - `RECUSADO: o HEAD local (...) não é o topo de origin/<branch> (...)`: o checkout não é o da
+    release aprovada (outra branch, ou a release andou). Nada foi enviado ao banco e o estado não
+    mudou. Faça checkout do SHA que a mensagem mostra e rode de novo. O `banco` lê as migrations
+    **do commit**, não da pasta: um arquivo solto ou editado na pasta nunca vai para a loja.
+  - `não consegui ler as migrations do commit aprovado ... pelo git`: o `git` não respondeu nesta
+    pasta. Nada foi enviado. Rode `git status` na mesma janela; se der erro, pare e me chame.
   - `FALHOU em <arquivo> (código ...)`: o banco recusou aquela migration, e nada dela ficou
     gravado. Leve o arquivo e o código ao programador antes de rodar de novo.
   - `RECUSADO: ... loja já instalada` numa loja que **não** foi este comando que instalou (sem a
@@ -411,9 +418,13 @@ organização.
 `supabase/config.toml`, e confere cada uma antes da próxima. Só pula a que já está no ar com o
 `verify_jwt` certo **e o mesmo código** do commit (comparado do mesmo jeito que o portão da
 release compara: baixa o código no ar pelo CLI do Supabase). A que tem código diferente (uma
-release nova mudou) é publicada de novo, e só conta quando a versão no ar sobe. Se o download do
-código falhar, ela é publicada de novo do mesmo jeito. Só publica com o checkout **exatamente**
-no topo da branch da release.
+release nova mudou) é publicada de novo, e só conta quando a versão no ar sobe. O download tenta
+primeiro com a autorização da organização (a mesma do resto do comando) e, se ela não servir, com
+o login do CLI `supabase` deste PC. Se os dois falharem, a function é publicada de novo do mesmo
+jeito, e a saída diz a causa provável e o que fazer (`supabase --version` tem de responder;
+`supabase projects list` tem de mostrar o projeto; se não mostrar, `supabase login` com uma conta
+da organização — quem digita é o dono, na tela dele). Só publica com o checkout **exatamente** no
+topo da branch da release.
 
 ```powershell
 node scripts/frota/nova-loja.mjs functions --loja <slug> --aplicar
@@ -502,7 +513,7 @@ node scripts/frota/nova-loja.mjs conferir --loja <slug> --aplicar
 - **`banco`** com a instalação concluída e migrations novas faltando diz qual é o caminho: `banco
   --aplicar` (loja ainda fora do cadastro) ou o `aplicar-migrations.yml` (loja do cadastro).
 - **`functions`** só dá SIM com o código no ar igual ao do commit; INCERTO se o download do código
-  falhou.
+  falhou, e aí o item já diz a causa provável e o que fazer (o mesmo roteiro do passo 8).
 - A frase `a loja está pronta para vender` só aparece com **todos** os itens SIM.
 
 ### Trocar a dona — `trocar-dono` (raro; só com o pedido escrito)

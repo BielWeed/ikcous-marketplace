@@ -1,8 +1,10 @@
 import { lerChaveSupabase, lerSupabaseUrl } from "@/lib/env-valores";
 import {
   type PecaSemTamanho,
+  type PecasQueEsperamNaDevolucao,
   type ResolucaoDaPeca,
   contarPorProduto,
+  lerItensQueEsperamTamanho,
   lerPecasSemTamanho,
   lerResolucao,
 } from "@/lib/pecas-sem-tamanho";
@@ -185,41 +187,82 @@ export function useContagemDePecasSemTamanho(
   return contagem;
 }
 
+// A RPC nova não existe nesta loja (o front sobe antes do banco numa loja
+// atrasada): PGRST202 no PostgREST, 42883 no Postgres. Só aí vale a leitura
+// antiga; qualquer outro erro é "não sei".
+function rpcAusente(error: { code?: string } | null | undefined): boolean {
+  return error?.code === "PGRST202" || error?.code === "42883";
+}
+
+async function lerPecasDaDevolucao(
+  orderId: string,
+): Promise<PecasQueEsperamNaDevolucao | null> {
+  try {
+    const supabase = await clienteDoBanco();
+    if (!supabase) return null;
+    const {
+      data: { session },
+    } = await comPrazo(supabase.auth.getSession(), PRAZO_DA_LEITURA_MS);
+    if (!session) return null;
+    const { data, error } = await comPrazo(
+      Promise.resolve(
+        supabase.rpc("pecas_sem_tamanho_da_devolucao", {
+          p_order_id: orderId,
+        }),
+      ),
+      PRAZO_DA_LEITURA_MS,
+    );
+    if (!error) {
+      const itens = lerItensQueEsperamTamanho(data);
+      return itens ? { porItem: new Set(itens) } : null;
+    }
+    if (!rpcAusente(error)) return null;
+    // Loja sem a 20261653000000: a lista antiga só diz o produto (e ali só o
+    // item SEM variação vai para o cantinho).
+    const lidas = await lerPendentes(null);
+    if (lidas === null) return null;
+    return {
+      porProdutoSemVariacao: new Set(
+        lidas
+          .filter((p) => p.orderId === orderId && p.origem === "devolucao")
+          .map((p) => p.produtoId),
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Os produtos com peça desta devolução esperando o tamanho (origem
- * 'devolucao', pedido `orderId`): a ficha da devolução troca "voltou ao
- * estoque" pelo aviso da peça sem tamanho. `undefined` não pergunta nada (a
- * ficha só pergunta quando há item sem variação que voltou). `null` = não sei
- * (loja sem a migration, rede, forma torta): a ficha diz o que dizia antes.
- * Peça já decidida sai da lista do banco, e o item volta a "voltou ao estoque".
- * `releitura` muda quando os itens que voltaram mudam (a ficha relida).
+ * Quais itens desta devolução (pedido `orderId`) deixaram peça esperando o
+ * tamanho: a ficha troca "voltou ao estoque" pelo aviso da peça sem tamanho
+ * NESSES itens (`itemEsperaTamanho`). `undefined` não pergunta nada (a ficha só
+ * pergunta quando algum item voltou). `null` = não sei (rede, permissão, forma
+ * torta): a ficha diz o que dizia antes. Peça já decidida sai da resposta do
+ * banco, e o item volta a "voltou ao estoque". `releitura` muda quando os
+ * itens que voltaram mudam (a ficha relida).
  */
-export function useProdutosComPecaSemTamanhoDaDevolucao(
+export function useItensDaDevolucaoQueEsperamTamanho(
   orderId: string | undefined,
   releitura: string,
-): ReadonlySet<string> | null {
-  const [produtos, setProdutos] = useState<{
+): PecasQueEsperamNaDevolucao | null {
+  const [lidas, setLidas] = useState<{
     chave: string;
-    ids: ReadonlySet<string>;
+    pecas: PecasQueEsperamNaDevolucao;
   } | null>(null);
   const chave = orderId ? `${orderId}|${releitura}` : "";
 
   useEffect(() => {
     if (!orderId) return;
     let vivo = true;
-    void lerPendentes(null).then((lidas) => {
-      if (!vivo || lidas === null) return;
-      const ids = new Set(
-        lidas
-          .filter((p) => p.orderId === orderId && p.origem === "devolucao")
-          .map((p) => p.produtoId),
-      );
-      setProdutos({ chave: `${orderId}|${releitura}`, ids });
+    void lerPecasDaDevolucao(orderId).then((pecas) => {
+      if (!vivo || pecas === null) return;
+      setLidas({ chave: `${orderId}|${releitura}`, pecas });
     });
     return () => {
       vivo = false;
     };
   }, [orderId, releitura]);
 
-  return produtos?.chave === chave ? produtos.ids : null;
+  return lidas?.chave === chave ? lidas.pecas : null;
 }
