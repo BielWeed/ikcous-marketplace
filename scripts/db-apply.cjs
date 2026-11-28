@@ -810,9 +810,10 @@ const VERIFICACOES = {
         },
         { texto: "v_item.variant_id := NULL;", vezes: 1 },
         { texto: "v_item.product_id := COALESCE(v_item.product_id,", vezes: 1 },
+        // O destino da 642, contiguo ao INSERT que ele guarda pelo mesmo motivo da entrada da 642: a 1657 repete o predicado.
         {
           texto:
-            "WHERE v.product_id = v_item.product_id AND v.active = true) THEN",
+            "WHERE v.product_id = v_item.product_id AND v.active = true) THEN\n            INSERT INTO public.pecas_sem_tamanho (produto_id, order_id, order_item_id, origem)",
           vezes: 1,
         },
       ],
@@ -1789,13 +1790,17 @@ const VERIFICACOES = {
   // de produto que tem variacao ligada (a peca vai para pecas_sem_tamanho e nao conta como creditada); resolver_peca_sem_tamanho credita a
   // variacao escolhida uma vez so. Os marcadores sao as decisoes que, tiradas, voltam o defeito ou o pioram. Os corpos exatos (md5) sao da
   // consulta 202a e do pos-voo; o comportamento e da prova viva a-peca-que-volta-sem-tamanho-viva.cjs.
+  // O predicado do ELSIF ("variacao LIGADA no produto") vai CONTIGUO ao INSERT em pecas_sem_tamanho que ele guarda: a
+  // 20261657000000 repete o mesmo predicado no sub-bloco dela, e solto ele casa 2x no corpo vivo depois dela (divergencia
+  // falsa na conferencia de um lote 642..657) e ainda deixa a copia do sub-bloco cobrir o ELSIF sem o filtro. Contiguo, casa
+  // exatamente 1x no corpo da 642, da 1653 e da 1657 -- o "1x" continua sendo o contrato: um segundo ELSIF igual e' A MAIS.
   "20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql": [
     {
       funcao: "devolver_estoque",
       esperado: [
         {
           texto:
-            "WHERE v.product_id = v_item.product_id AND v.active = true) THEN",
+            "WHERE v.product_id = v_item.product_id AND v.active = true) THEN\n            INSERT INTO public.pecas_sem_tamanho (produto_id, order_id, order_item_id, origem)",
           vezes: 1,
         },
         { texto: "FROM generate_series(1, v_credito);", vezes: 1 },
@@ -1811,7 +1816,7 @@ const VERIFICACOES = {
       esperado: [
         {
           texto:
-            "WHERE v.product_id = v_di.product_id AND v.active = true) THEN",
+            "WHERE v.product_id = v_di.product_id AND v.active = true) THEN\n        INSERT INTO public.pecas_sem_tamanho (produto_id, order_id, order_item_id, devolucao_item_id, origem)",
           vezes: 1,
         },
         { texto: "FROM generate_series(1, v_di.quantidade);", vezes: 1 },

@@ -778,3 +778,89 @@ Deno.test("o bloco de frete grátis guarda as três checagens do caminho vivo", 
     );
   }
 });
+
+// --------------------------------------------------------------------------
+// A 1642 e a 1653 contra o corpo da 1657, que as sucede.
+//
+// A 20261657000000 redefine devolver_estoque e admin_devolucao_concluir com um
+// sub-bloco cujo IF repete, letra por letra, o predicado do ELSIF da 642
+// ("variacao LIGADA no produto"). No corpo vivo depois dela o predicado
+// aparece 2x; a 1642 e a 1653 o declaravam como marcador solto de 1x. Num lote
+// que aplica as tres juntas, a conferencia pos-COMMIT das antecessoras roda
+// contra esse corpo e saia "A MAIS" -- divergencia falsa, apontando o rollback
+// de uma aplicacao correta. E o solto ainda mascarava o contrario: tirar o
+// filtro de ligada SO do ELSIF da 642 deixava a copia do sub-bloco contando 1x.
+// --------------------------------------------------------------------------
+
+Deno.test("1642 e 1653: o corpo da 20261657000000 que as sucede não vira divergência falsa, e o ELSIF da 642 segue conferido", () => {
+  const SUCESSORA =
+    "20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql";
+  const ANTECESSORAS = [
+    "20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql",
+    "20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql",
+  ];
+  // O predicado do ELSIF da 642, que o sub-bloco da 1657 repete igual.
+  const PREDICADO = new Map([
+    [
+      "devolver_estoque",
+      "WHERE v.product_id = v_item.product_id AND v.active = true) THEN",
+    ],
+    [
+      "admin_devolucao_concluir",
+      "WHERE v.product_id = v_di.product_id AND v.active = true) THEN",
+    ],
+  ]);
+  const mapa = new Map(Object.entries(VERIFICACOES));
+  let conferidas = 0;
+  for (const arquivo of ANTECESSORAS) {
+    for (const checagem of checagensDe(mapa.get(arquivo))) {
+      const predicado = PREDICADO.get(checagem.funcao);
+      if (!predicado) continue;
+      conferidas += 1;
+      const corpo1657 = corpoDaMigration(SUCESSORA, checagem.funcao);
+      // A premissa: sem as 2 copias no corpo da 1657, este teste nao prova nada.
+      assertEquals(conferirMarcador(corpo1657, predicado).achou, 2);
+      const avaliacao = avaliarChecagem(corpo1657, checagem);
+      assertEquals(
+        avaliacao.situacao,
+        "verificada",
+        `${arquivo} / ${checagem.funcao} contra o corpo da 1657:\n${avaliacao.linhas.join("\n")}`,
+      );
+
+      const confereOElsif = checagem.esperado.some((m) =>
+        (typeof m === "string" ? m : m.texto).includes(predicado),
+      );
+      if (!confereOElsif) continue;
+      // CONTROLE 1: o filtro de ligada some SO do ELSIF da 642 (a ultima
+      // copia, a que guarda o INSERT em pecas_sem_tamanho). A copia do
+      // sub-bloco sobrevive; a verificacao tem de reprovar mesmo assim.
+      const noElsif = corpo1657.lastIndexOf(predicado);
+      assert(
+        corpo1657
+          .slice(noElsif + predicado.length)
+          .trimStart()
+          .startsWith("INSERT INTO public.pecas_sem_tamanho"),
+        `${checagem.funcao}: a ultima copia do predicado nao e' a do ELSIF da 642`,
+      );
+      const semFiltroNoElsif =
+        corpo1657.slice(0, noElsif) +
+        predicado.replace(" AND v.active = true", "") +
+        corpo1657.slice(noElsif + predicado.length);
+      assertEquals(
+        avaliarChecagem(semFiltroNoElsif, checagem).situacao,
+        "falhou",
+        `${arquivo} / ${checagem.funcao}: o ELSIF da 642 sem o filtro de ligada passaria`,
+      );
+      // CONTROLE 2: corpo SEM o predicado nenhuma vez -- a divergencia real.
+      assertEquals(
+        avaliarChecagem(corpo1657.replaceAll(predicado, "XX"), checagem)
+          .situacao,
+        "falhou",
+        `${arquivo} / ${checagem.funcao}: o corpo sem o predicado passaria`,
+      );
+    }
+  }
+  // 1642: as duas funcoes; 1653: as duas tambem (a de admin_devolucao_concluir
+  // nao confere o ELSIF, mas tem de passar contra o corpo da 1657 igual).
+  assertEquals(conferidas, 4);
+});
