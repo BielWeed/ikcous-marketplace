@@ -3783,7 +3783,26 @@ const ROL_DA_210 = [
   "fin_caixa_movimentar_com_chave: assinatura e atributos conhecidos",
   "fin_caixa_movimentar_com_chave: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
+// Lote 211 (20261655000000, a loja nova so vende o que confirmou: o corpo de forma_de_pagamento_aceita, a funcao e o gatilho da
+// entrega na cidade e dois booleanos no fim da vitrine). Somente catalogo: nenhuma le a ficha nem pedido (a trava das lojas que ja
+// venderam mora na propria migration). A 211a espera os corpos desta (md5), o gatilho e as 50 colunas; a 211b, o vigente (1174) ou o
+// desta, as colunas da 1652 e a vitrine de 48 (ou 50). Rol de 5 na 211a, de 4 na 211b.
+const ROL_DA_211A = [
+  "controle: funcoes de public visiveis a este papel",
+  "forma_de_pagamento_aceita: corpo exato (md5), pagar na entrega so com a confirmacao, atributos de sempre",
+  "a_loja_so_entrega_na_cidade_o_que_confirmou: corpo exato (md5), SECURITY DEFINER, EXECUTE so do dono",
+  "tr_a_loja_so_entrega_o_confirmado: ligado em marketplace_orders com a definicao exata",
+  "v_store_config: as 50 colunas (os dois booleanos no fim), security_invoker e leitura publica",
+];
+const ROL_DA_211B = [
+  "forma_de_pagamento_aceita: corpo da 20261174000000 ou desta (md5), atributos de sempre",
+  "store_config: entrega_confirmada_em e pagamento_confirmado_em da 20261652000000 (timestamptz, anulaveis, sem default)",
+  "v_store_config: as 48 colunas da 20261310000000 (ou as 50 desta), security_invoker",
+  "tr_a_loja_so_entrega_o_confirmado: ausente, ou o desta (reaplicacao)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado": ROL_DA_211A,
+  "211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente": ROL_DA_211B,
   "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado": ROL_DA_210,
   "210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente": ROL_DA_210,
   "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado":

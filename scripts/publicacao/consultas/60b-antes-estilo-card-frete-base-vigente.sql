@@ -39,7 +39,7 @@ WITH fn AS (
     CASE WHEN (NOT EXISTS (SELECT 1 FROM coluna) OR (COALESCE((SELECT ok FROM coluna), false) AND (SELECT ok FROM restricao))) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'v_store_config: colunas na ordem e leitura publica preservada', 'sim',
-    CASE WHEN (SELECT m FROM vista) IN ('e27d843e36ba4197f400d010aefe930e', 'b7ee2c31d91549a168a502de0ac4c5d2')
+    CASE WHEN (SELECT m FROM vista) IN ('e27d843e36ba4197f400d010aefe930e', 'b7ee2c31d91549a168a502de0ac4c5d2', '39fbabdd4cd002cb626ecaa7c5112cdb')
       AND 'security_invoker=on' = ANY((SELECT reloptions FROM pg_class WHERE oid = to_regclass('public.v_store_config'))::text[])
       AND has_table_privilege('anon', 'public.v_store_config', 'SELECT')
       AND has_table_privilege('authenticated', 'public.v_store_config', 'SELECT')

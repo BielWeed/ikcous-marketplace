@@ -312,7 +312,9 @@ describe("ShippingCalculator — o grátis da calculadora é o mesmo veredito do
     estado.config = { ...estado.config, freeShippingMin: 0 };
     const texto = await montarECotar([item(produto())]);
 
-    expect(texto).toContain("Nenhuma opção de entrega para este endereço.");
+    expect(texto).toContain(
+      "Esta loja ainda não entrega neste CEP. Confira se o CEP está certo.",
+    );
     expect(texto).not.toContain("41,90");
   });
 });

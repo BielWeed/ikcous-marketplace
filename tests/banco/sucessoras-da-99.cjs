@@ -368,6 +368,13 @@ async function devolverAoEstadoAnteriorAoCustoDoDia(c) {
  */
 async function desfazerSucessorasDa99(c) {
   conferirLista();
+  // A 20261655000000 (a loja nova só vende o que confirmou) não redefine nenhum dos 42, mas a vitrine
+  // dela (v_store_config) lê as duas colunas da 1652, e o rollback da 1652 apaga essas colunas: ela cai
+  // ANTES, pelo rollback-manual dela (a mesma ordem que valeria em produção). Não entra em `desfeitas`
+  // (não é sucessora); reaplicarSucessorasDa99 a põe de volta por último.
+  await require("./a-loja-nova-so-vende-posterior.cjs").desfazerSoVendeOConfirmadoNaTransacao(
+    c,
+  );
   const desfeitas = [];
   const desfeitasNestaChamada = new Set();
   for (const s of [...SUCESSORAS_DA_99].reverse()) {
@@ -404,6 +411,14 @@ async function reaplicarSucessorasDa99(c) {
       `${s.nome}: reaplicar não deixou o corpo dela`,
     );
   }
+  // A dependente que desfazerSucessorasDa99 tirou antes da 1652 volta por último (estado da árvore).
+  const soVende = require("./a-loja-nova-so-vende-posterior.cjs");
+  await c.query(ler(soVende.NOME_DA_MIGRATION));
+  assert.equal(
+    await hashVivo(c, "public.forma_de_pagamento_aceita(text)"),
+    soVende.HASH_ACEITA_DESTA,
+    `${soVende.NOME_DA_MIGRATION}: reaplicar não deixou o corpo dela`,
+  );
 }
 
 module.exports = {
