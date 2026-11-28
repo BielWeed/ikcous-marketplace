@@ -3833,6 +3833,15 @@ const ROL_DA_213 = [
   "admin_devolucao_concluir: corpo esperado (md5)",
   "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
 ];
+// Lote 220 (20261664000000, o reembolso por fora nao conta duas vezes: fin__movimentos troca so o corpo). A 220a e a 220b tem o MESMO
+// rol de 4 linhas (o do lote 100: controle, md5, atributos e ACL); a 220a espera o corpo desta e a 220b o da 20261391200000. So
+// catalogo: nenhuma le pedido, devolucao, estorno ou lancamento, e nenhuma chama a fin__movimentos.
+const ROL_DA_220 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin__movimentos: corpo exato (md5)",
+  "fin__movimentos: assinatura e atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public, uma so)",
+  "fin__movimentos: sem EXECUTE para PUBLIC, anon ou authenticated",
+];
 // Lote 216 (20261660000000, o caixa de ontem aberto nao some do saldo: fin_conta_salvar, fin_caixa_movimentar_com_chave e
 // fin_lancamento_cancelar trocam so o corpo). A 216a e a 216b tem o MESMO rol de 10 linhas (controle e, para cada funcao, o md5, os
 // atributos e a ACL); a 216a espera os corpos desta e a 216b os vigentes de antes (20261399930000, 20261654000000 e 20261199000000).
@@ -3862,6 +3871,10 @@ const ROL_DA_214 = [
   "solicitar_devolucao: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
+  "220a-conferir-o-reembolso-por-fora-nao-conta-duas-vezes-aplicado":
+    ROL_DA_220,
+  "220b-antes-o-reembolso-por-fora-nao-conta-duas-vezes-base-vigente":
+    ROL_DA_220,
   "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado":
     ROL_DA_216,
   "216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente":

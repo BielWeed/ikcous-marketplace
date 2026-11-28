@@ -99,6 +99,47 @@ const MARCADORES_RETIRADA_PRONTA = [
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261664000000: o reembolso por fora nao conta duas vezes. fin__movimentos (sucessora da 20261391200000) ganha a regra "ja devolvi
+  // por fora" do ranking: a linha 'sistema' do MP depois de um reembolso de devolucao resolvido por fora conta so o resto, e a saida
+  // estornado fora do app desconta so o que a linha nao contou. Os marcadores da 1b (20261177000000) e os textos da 20261391200000
+  // seguem com a mesma contagem. O corpo exato (md5), os atributos e a ACL sao da consulta 220a; o comportamento, da prova viva.
+  "20261664000000_o_reembolso_por_fora_nao_conta_duas_vezes.sql": [
+    {
+      funcao: "fin__movimentos",
+      esperado: [
+        {
+          texto: "AND dvp.refund_id IS NULL AND dvp.reembolso_manual",
+          vezes: 1,
+        },
+        { texto: "AND sp.mp_chargeback_id IS NULL", vezes: 1 },
+        { texto: "AND sp.created_at >= pf.desde", vezes: 1 },
+        {
+          texto: "PARTITION BY sp.order_id ORDER BY sp.created_at, sp.id",
+          vezes: 1,
+        },
+        { texto: "(r.amount - COALESCE(jc.valor, 0))::numeric,", vezes: 1 },
+        { texto: "LEFT JOIN ja_coberto jc ON jc.id = r.id", vezes: 1 },
+        { texto: "AND r.amount > COALESCE(jc.valor, 0)", vezes: 1 },
+        {
+          texto:
+            "- COALESCE((SELECT sum(jc.valor) FROM ja_coberto jc WHERE jc.order_id = v.id), 0) AS valor",
+          vezes: 1,
+        },
+        {
+          texto:
+            "(v.total - COALESCE(v.valor_estornado, 0) - COALESCE(dm.valor, 0))::numeric,",
+          vezes: 1,
+        },
+        {
+          texto:
+            "AND o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega', 'estornado')",
+          vezes: 1,
+        },
+        { texto: "upper(right(v.id::text, 6))", vezes: 4 },
+        { texto: "upper(right(o.id::text, 6))", vezes: 1 },
+      ],
+    },
+  ],
   // 20261660000000: o caixa de ontem aberto nao some do saldo. TRES funcoes; so a recusa do saldo inicial depois do dia do caixa aberto
   // (fin_conta_salvar), a recusa da sangria/suprimento para conta que so conta o saldo depois desse dia e a contrapartida lida FOR SHARE
   // (fin_caixa_movimentar_com_chave) e a trava da sessao antes de conferir se fechou (fin_lancamento_cancelar) mudam. As travas de admin

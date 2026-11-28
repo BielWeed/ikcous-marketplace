@@ -337,6 +337,12 @@ async function main() {
   try {
     await c.query("BEGIN");
 
+    // A 20261664000000 (o reembolso por fora nao conta duas vezes) sucede o corpo desta: esta prova mede o corpo da
+    // 20261391200000, entao a tira antes, dentro da transacao (o ROLLBACK do fim a devolve).
+    await require("./o-reembolso-por-fora-posterior.cjs").desfazerReembolsoPorForaNaTransacao(
+      c,
+    );
+
     // ---- 0. O topo instalado pelo CI e' o desta migration; o anterior e' o da 20261177000000. ----
     const topo = await funcao(c);
     assert.equal(

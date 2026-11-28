@@ -18072,6 +18072,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
     // 20261660000000: o caixa de ontem aberto nao some do saldo.
     "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
+    // 20261664000000: o reembolso por fora nao conta duas vezes.
+    "220a-conferir-o-reembolso-por-fora-nao-conta-duas-vezes-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos
