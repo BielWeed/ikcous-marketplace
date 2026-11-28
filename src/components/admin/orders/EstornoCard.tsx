@@ -41,8 +41,14 @@ const RE_VALOR_MILHAR_PT_BR = /^\d{1,3}(\.\d{3})*(,\d{1,2})?$/;
 // eslint-disable-next-line security/detect-unsafe-regex -- medido linear (<2 ms em 200 mil chars, laudo Opus 08/09 rodada 2): \d{3} de tamanho fixo dentro de (...)* não é ambíguo
 const RE_VALOR_SIMPLES = /^\d+([.,]\d+)?$/;
 
+// O "R$" da frente (com ou sem espaço), como `parseValorBR` aceita nos outros
+// campos de dinheiro: colar "R$ 50" virava NaN e a tela falava de faixa. Só o
+// prefixo sai; o resto passa pelas MESMAS regras de antes, então todo texto
+// sem "R$" dá o mesmo número (e a mesma chave de idempotência) de antes.
+const RE_PREFIXO_REAIS = /^R\$\s*/i;
+
 function paraNumero(valorBruto: string): number {
-  const texto = valorBruto.trim();
+  const texto = valorBruto.trim().replace(RE_PREFIXO_REAIS, "");
   if (RE_VALOR_MILHAR_PT_BR.test(texto)) {
     return Number(texto.replace(/\./g, "").replace(",", "."));
   }
@@ -336,6 +342,9 @@ export function EstornoCard({
     (Number.isFinite(valorNumericoDoCampo) &&
       valorNumericoDoCampo >= VALOR_MINIMO &&
       valorNumericoDoCampo <= disponivel);
+  // Texto que não é número (ou vazio) não está "fora da faixa": a frase diz
+  // como escrever. A faixa só aparece para um número de verdade.
+  const campoSemNumero = !Number.isFinite(valorNumericoDoCampo);
 
   const valorAlvo = campoAberto ? valorNumericoDoCampo : disponivel;
   const valorParaOLabel = campoAberto
@@ -468,8 +477,14 @@ export function EstornoCard({
                   id={`valor-outro-estorno-aviso-${order.id}`}
                   className="text-xs font-medium text-red-400"
                 >
-                  O valor tem de ficar entre {formatCurrency(VALOR_MINIMO)} e{" "}
-                  {formatCurrency(disponivel)}
+                  {campoSemNumero ? (
+                    "Digite só o valor, por exemplo 50,00."
+                  ) : (
+                    <>
+                      O valor tem de ficar entre {formatCurrency(VALOR_MINIMO)}{" "}
+                      e {formatCurrency(disponivel)}
+                    </>
+                  )}
                 </p>
               )}
             </div>
