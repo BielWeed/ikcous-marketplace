@@ -208,9 +208,29 @@ describe("AdminProductFormView — um tipo de variação por produto", () => {
     // aviso que não diz o que fazer é o mesmo defeito que a tela do produto já
     // corrigiu uma vez no toast de variação.
     expect(titulo).toContain("Cor");
-    expect(opcoes.description).toMatch(/Rosa P/);
+    // O caminho real (excluir e gerar a grade de novo), nunca o "Rosa P"
+    // combinado à mão dentro de um tipo só.
+    expect(opcoes.description).toContain("exclua as opções");
+    expect(opcoes.description).not.toMatch(/Rosa P/);
 
     expect(variantesNaTela()).toEqual(antes);
+  });
+
+  it("produto que já usa Cor: '+ Novo' não oferece outra coisa que muda e explica antes", async () => {
+    await montar();
+    await cadastrarVariante("Cor", "Rosa");
+
+    await act(async () => {
+      clicarObrigatorio("+ Novo");
+    });
+    expect(botaoPorTexto(document.body, "+ Outra coisa que muda")).toBe(
+      undefined,
+    );
+    const explicacao =
+      document.body.querySelector('[data-testid="outro-tipo-de-variacao"]')
+        ?.textContent ?? "";
+    expect(explicacao).toContain('já varia por "Cor"');
+    expect(explicacao).toContain("exclua as opções");
   });
 
   it("recusa o segundo tipo mesmo escrito com outra caixa", async () => {

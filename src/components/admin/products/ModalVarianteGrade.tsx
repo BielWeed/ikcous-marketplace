@@ -33,6 +33,7 @@ import {
   precoPositivoOuVazio,
   resolverPrecoDaGrade,
 } from "@/utils/preco-da-grade";
+import { explicacaoDeOutroTipoDeVariacao } from "@/utils/um-grupo-de-variacao";
 import {
   SEPARADOR_DE_ATRIBUTOS,
   dividirEmAtributos,
@@ -773,15 +774,31 @@ export function ModalVarianteGrade({
                   </div>
                 ))}
 
-              {passo === 1 && grupos.length < MAX_ATRIBUTOS_DA_GRADE && (
-                <button
-                  type="button"
-                  onClick={() => setGrupos((prev) => [...prev, grupoNovo()])}
-                  className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-admin-bg/60 px-5 py-3 text-sm font-bold text-zinc-300 transition-all hover:border-admin-border-strong hover:text-foreground active:scale-95"
+              {/* Produto que já usa um tipo: outro atributo seria recusado no
+                  "Gerar", depois de montado. Explica antes o caminho real. */}
+              {passo === 1 && grupoUnicoEmUso && (
+                <p
+                  data-testid="outro-tipo-de-variacao"
+                  className="rounded-2xl border border-admin-border bg-admin-bg/60 px-4 py-3 text-sm leading-relaxed text-zinc-400"
                 >
-                  + Adicionar outro atributo
-                </button>
+                  {explicacaoDeOutroTipoDeVariacao(
+                    grupoUnicoEmUso,
+                    variantesExistentes.some((v) => !v.id.startsWith("temp-")),
+                  )}
+                </p>
               )}
+
+              {passo === 1 &&
+                !grupoUnicoEmUso &&
+                grupos.length < MAX_ATRIBUTOS_DA_GRADE && (
+                  <button
+                    type="button"
+                    onClick={() => setGrupos((prev) => [...prev, grupoNovo()])}
+                    className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-admin-bg/60 px-5 py-3 text-sm font-bold text-zinc-300 transition-all hover:border-admin-border-strong hover:text-foreground active:scale-95"
+                  >
+                    + Adicionar outro atributo
+                  </button>
+                )}
 
               {passo === 1 &&
                 mostrarAtalhos &&

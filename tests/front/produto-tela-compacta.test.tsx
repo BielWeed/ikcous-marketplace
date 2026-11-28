@@ -384,6 +384,18 @@ describe("AdminProductFormView — tela compacta (u186)", () => {
       expect(galeria.textContent).toContain("Galeria");
     });
 
+    it("a dica de várias fotos fica no cartão, perto do 'Tirar foto'", async () => {
+      await montar();
+      const cartao = q('[aria-label="Fotos do produto"]') as HTMLElement;
+      // "Tirar foto" sobe uma foto por vez: a dica diz o caminho de várias.
+      expect(
+        cartao.querySelector('[data-testid="dica-de-varias-fotos"]')
+          ?.textContent,
+      ).toBe(
+        'Para várias fotos: tire todas com a câmera do celular e escolha juntas na "Galeria".',
+      );
+    });
+
     it("os dois campos de arquivo de sempre: galeria sem `capture`, câmera com `capture`", async () => {
       await montar();
       const galeria = q("#product-image-upload") as HTMLInputElement;
