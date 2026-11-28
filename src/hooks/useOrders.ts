@@ -1172,7 +1172,10 @@ export type EstadoDaVerificacao =
  * edge) — serve só para a tela trocar a configuração e oferecer PIX pela
  * guarda da vaga.
  */
-export type CodigoDoErroDePagamento = "CARTAO_FORMA_DESLIGADA";
+export type CodigoDoErroDePagamento =
+  | "CARTAO_FORMA_DESLIGADA"
+  | "pagamento_pausado"
+  | "parcelas_acima_do_limite";
 
 /**
  * Só o literal EXATO vira código; qualquer outra coisa (ausente, outro texto,
@@ -1182,7 +1185,11 @@ export type CodigoDoErroDePagamento = "CARTAO_FORMA_DESLIGADA";
 function codigoDoErroDePagamento(
   valor: unknown,
 ): CodigoDoErroDePagamento | undefined {
-  return valor === "CARTAO_FORMA_DESLIGADA" ? valor : undefined;
+  return valor === "CARTAO_FORMA_DESLIGADA" ||
+    valor === "pagamento_pausado" ||
+    valor === "parcelas_acima_do_limite"
+    ? valor
+    : undefined;
 }
 
 /**

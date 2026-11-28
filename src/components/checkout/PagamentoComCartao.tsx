@@ -7,6 +7,8 @@ import { useOrders } from "@/hooks/useOrders";
 import {
   type ConfigDoCartao,
   type TipoDeCartao,
+  esquecerConfigDoCartao,
+  lerConfigDoCartao,
   parcelasMaximasNoBrick,
   tiposDeCartaoAceitos,
 } from "@/lib/config-do-cartao";
@@ -139,6 +141,7 @@ export type ResultadoDoCartao =
   // ESTA chamada enviou: a tela tira só ele, sem esconder o outro tipo que
   // ainda está ligado (ex.: só o débito desligado no meio do pagamento).
   | { readonly tipo: "forma-desligada"; readonly tipoRecusado: TipoDeCartao }
+  | { readonly tipo: "limite-de-parcelas" }
   // C5 (front B2, 02/10/2026): a resposta voltou SEM order confirmada e nada
   // prova que não houve cobrança. Nunca "em análise" (isso exige
   // `paymentId`), nunca PIX nem outro cartão: o pai abre a verificação do C4
@@ -150,6 +153,8 @@ export type ResultadoDoCartao =
 
 /** O literal do contrato — o mesmo que `useOrders` transporta em `Error.codigo`. */
 const CODIGO_FORMA_DESLIGADA = "CARTAO_FORMA_DESLIGADA";
+const AVISO_LIMITE_DE_PARCELAS =
+  "A loja mudou o número de parcelas. Escolha de novo.";
 
 /**
  * O que a tela mostra para a forma desligada ENQUANTO ela é tratada como o
@@ -170,6 +175,7 @@ type EtapaDoCartao =
       ResultadoDoCartao,
       | { tipo: "erro" }
       | { tipo: "forma-desligada" }
+      | { tipo: "limite-de-parcelas" }
       | { tipo: "em-duvida" }
       | { tipo: "dados-invalidos" }
     >;
@@ -188,6 +194,7 @@ type TipoDeAviso =
   | "sem-limite"
   | "autorizacao"
   | "parcelamento"
+  | "limite-da-loja"
   | "desabilitado"
   | "recusa"
   | "carga-falhou";
@@ -230,6 +237,8 @@ function tituloDoAviso(aviso: AvisoDoFormulario): string {
       return TEXTOS_DO_CARTAO.autorizacao;
     case "parcelamento":
       return TEXTOS_DO_CARTAO.parcelamento;
+    case "limite-da-loja":
+      return AVISO_LIMITE_DE_PARCELAS;
     case "desabilitado":
       return TEXTOS_DO_CARTAO.desabilitado;
     case "carga-falhou":
@@ -775,6 +784,22 @@ export async function enviarPagamentoComCartao({
         tipoRecusado: montagem.corpo.paymentTypeId,
       };
     }
+    if (err?.cartaoEmAnalise !== true) {
+      if (err?.codigo === "pagamento_pausado") {
+        return {
+          tipo: "erro",
+          mensagem: err.message,
+          categoria: "terminal",
+          sinal: "pagamentoPausado",
+        };
+      }
+      if (
+        err?.codigo === "parcelas_acima_do_limite" &&
+        err?.terminal !== true
+      ) {
+        return { tipo: "limite-de-parcelas" };
+      }
+    }
     return {
       tipo: "erro",
       mensagem: err?.message ?? "Não foi possível gerar a cobrança.",
@@ -1111,7 +1136,9 @@ export function PagamentoComCartao({
   const idDoContainer = `mp-cartao-${idCru.replace(/[^\w-]/g, "")}`;
   const idTitulo = useId();
 
-  const { credito, debito, parcelasMax } = config;
+  const { credito, debito } = config;
+  const [tetoRelido, setTetoRelido] = useState<number | null>(null);
+  const parcelasMax = tetoRelido ?? config.parcelasMax;
   const formularioAtivo = etapa.tipo === "formulario" && !pedidoMortoNoServidor;
   const semNovoEnvio =
     pedidoMortoNoServidor &&
@@ -1230,6 +1257,19 @@ export function PagamentoComCartao({
           }
           // Relança para o Brick sair do "processando" (mesmo motivo do erro).
           throw new Error(MENSAGEM_COBRANCA_EM_DUVIDA);
+        }
+        if (resultado.tipo === "limite-de-parcelas") {
+          // O checkout abriu com a config antiga. Atualiza também o cache
+          // para a próxima montagem, sem reenviar o pagamento.
+          esquecerConfigDoCartao();
+          const leitura = await lerConfigDoCartao();
+          if (!montadoRef.current) return;
+          if (leitura.ok && leitura.config.parcelasMax !== parcelasMax) {
+            setFormularioPronto(false);
+            setTetoRelido(leitura.config.parcelasMax);
+          }
+          mostrarAviso("limite-da-loja");
+          throw new Error(AVISO_LIMITE_DE_PARCELAS);
         }
         if (resultado.tipo === "dados-invalidos") {
           // Nada saiu daqui: o Brick fica como está, com o que a pessoa
@@ -1680,7 +1720,7 @@ export function PagamentoComCartao({
   // que não vieram de POST, a guarda do pai se mantém: com a cobrança do pedido
   // já incerta, nada de PIX (ver `AvisoDoFormulario.semEnvio`).
   const podeOferecerPix = (a: AvisoDoFormulario) =>
-    !(a.semEnvio && cobrancaIncerta);
+    a.tipo !== "limite-da-loja" && !(a.semEnvio && cobrancaIncerta);
   const pagarComPixComCartaoMorto = () => onPagarComPix(false);
   const mostrarPrazo = formularioAtivo && prazoEmMs !== null;
   // Região viva e foco do formulário: ver `AvisoDoFormulario`.
@@ -1725,7 +1765,7 @@ export function PagamentoComCartao({
         {/* O app NÃO sabe se o cartão cobra juros: quem decide é o banco
             emissor e o Brick mostra o total de cada parcela. Por isso só
             "pode cobrar" — nunca "sem juros". Só crédito parcela. */}
-        {parcelasMaximasNoBrick(config) > 1 && (
+        {credito && parcelasMax > 1 && (
           <p className="text-sm leading-snug text-zinc-600">
             {TEXTOS_DO_CARTAO.juros}
           </p>

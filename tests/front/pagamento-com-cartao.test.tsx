@@ -28,12 +28,22 @@ import {
   origemDoMercadoPago,
   urlDoDesafioValida,
 } from "@/components/checkout/PagamentoComCartao";
-import { PagamentoOnline } from "@/components/checkout/PagamentoOnline";
+import {
+  PagamentoOnline,
+  dispararPagamentoPix,
+} from "@/components/checkout/PagamentoOnline";
 import { carregarSdkMercadoPago } from "@/components/checkout/sdk-mercado-pago";
-import type { ConfigDoCartao } from "@/lib/config-do-cartao";
+import { type ConfigDoCartao, lerConfigDoCartao } from "@/lib/config-do-cartao";
 
+const { lerLinhaDoCartao } = vi.hoisted(() => ({ lerLinhaDoCartao: vi.fn() }));
 vi.mock("@/lib/supabase", () => ({
-  supabase: { rpc: vi.fn(), functions: { invoke: vi.fn() } },
+  supabase: {
+    rpc: vi.fn(),
+    functions: { invoke: vi.fn() },
+    from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: lerLinhaDoCartao }) }),
+    }),
+  },
 }));
 
 const { criarPagamento } = vi.hoisted(() => ({ criarPagamento: vi.fn() }));
@@ -795,6 +805,35 @@ describe("montarBrickDeCartao — ciclo de vida do Card Payment Brick", () => {
   });
 });
 
+it("PIX pausado avisa o motivo sem oferecer nova tentativa", async () => {
+  const mensagem =
+    "A loja pausou o pagamento pelo app. Fale com a loja para combinar o pagamento.";
+  const onErro = vi.fn();
+  const criarPix = vi
+    .fn()
+    .mockRejectedValue(
+      Object.assign(new Error(mensagem), { codigo: "pagamento_pausado" }),
+    );
+  const cancelar = dispararPagamentoPix({
+    orderId: "ped-pix-pausado",
+    criarPagamento: criarPix,
+    onErro,
+    onPix: vi.fn(),
+  });
+
+  try {
+    await esperarMicrotarefas();
+    expect(onErro).toHaveBeenCalledWith(
+      mensagem,
+      "terminal",
+      "pagamentoPausado",
+    );
+    expect(criarPix).toHaveBeenCalledTimes(1);
+  } finally {
+    cancelar();
+  }
+});
+
 describe("PagamentoOnline em modo cartão (render de verdade)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -858,6 +897,92 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     });
     return erro;
   }
+
+  it.each([1, 6])(
+    "quando a loja recusa parcelas, relê a config sem cache (teto atual: %i)",
+    async (novoTeto) => {
+      esquecerConfigDoCartao();
+      lerLinhaDoCartao.mockReset();
+      lerLinhaDoCartao.mockResolvedValueOnce({
+        data: { credito: true, debito: false, parcelas_max: 6 },
+        error: null,
+      });
+      await lerConfigDoCartao(); // A tela já abriu com o teto anterior em cache.
+      lerLinhaDoCartao.mockResolvedValueOnce({
+        data: { credito: true, debito: false, parcelas_max: novoTeto },
+        error: null,
+      });
+      criarPagamento.mockRejectedValue(
+        Object.assign(
+          new Error("Esse parcelamento não está disponível nesta loja."),
+          {
+            codigo: "parcelas_acima_do_limite",
+          },
+        ),
+      );
+      const { create } = instalarSdkFalso();
+      const { onErro } = await renderCartao();
+
+      await enviarCartao(create);
+
+      expect(hospedeiro.textContent).toContain(
+        "A loja mudou o número de parcelas. Escolha de novo.",
+      );
+      expect(onErro).not.toHaveBeenCalled();
+      expect(await lerConfigDoCartao()).toMatchObject({
+        ok: true,
+        config: { parcelasMax: novoTeto },
+      });
+      expect(lerLinhaDoCartao).toHaveBeenCalledTimes(2);
+      expect(
+        ultimaConfig(create).customization.paymentMethods.maxInstallments,
+      ).toBe(novoTeto);
+      expect(create).toHaveBeenCalledTimes(novoTeto === 6 ? 1 : 2);
+      expect(criarPagamento).toHaveBeenCalledTimes(1);
+      esquecerConfigDoCartao();
+    },
+  );
+
+  it("não relê o parcelamento quando a cobrança ainda está em análise", async () => {
+    lerLinhaDoCartao.mockClear();
+    criarPagamento.mockRejectedValue(
+      Object.assign(new Error("Cobrança em análise."), {
+        codigo: "parcelas_acima_do_limite",
+        cartaoEmAnalise: true,
+      }),
+    );
+    const { create } = instalarSdkFalso();
+    const { onErro } = await renderCartao();
+
+    await enviarCartao(create);
+
+    expect(onErro).toHaveBeenCalledWith(
+      "Cobrança em análise.",
+      "recuperavel",
+      "cartaoEmAnalise",
+    );
+    expect(lerLinhaDoCartao).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("avisa que o pagamento pelo app foi pausado sem pedir nova tentativa no cartão", async () => {
+    const mensagem =
+      "A loja pausou o pagamento pelo app. Fale com a loja para combinar o pagamento.";
+    criarPagamento.mockRejectedValue(
+      Object.assign(new Error(mensagem), { codigo: "pagamento_pausado" }),
+    );
+    const { create } = instalarSdkFalso();
+    const { onErro } = await renderCartao();
+
+    await enviarCartao(create);
+
+    expect(onErro).toHaveBeenCalledWith(
+      mensagem,
+      "terminal",
+      "pagamentoPausado",
+    );
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+  });
 
   it("monta o Brick no contêiner da tela e NÃO cria PIX sozinho", async () => {
     const { create } = instalarSdkFalso();

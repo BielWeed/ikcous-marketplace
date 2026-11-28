@@ -978,6 +978,19 @@ async function lerConfigDoCartao(
   }
 }
 
+/** Lê a ficha da loja sem cache. Sem confirmação da ficha não nasce cobrança. */
+async function lerPagamentoOnline(supabase: ReturnType<typeof createClient>): Promise<boolean | null> {
+  try {
+    const { data, error } = await supabase.from("store_config")
+      .select("pagamento_online").limit(1).maybeSingle();
+    if (!error && typeof data?.pagamento_online === "boolean") return data.pagamento_online;
+  } catch {
+    // A leitura pode lançar (rede). A recusa abaixo não expõe detalhes do banco.
+  }
+  console.error("criar-pagamento: não foi possível ler pagamento_online na ficha da loja");
+  return null;
+}
+
 /**
  * `liberar_cobranca_do_pedido` (RPC, só service role): com `idGateway`, solta
  * a vaga SE ela ainda for dessa cobrança e o pedido ainda estiver
@@ -2039,6 +2052,24 @@ async function handler(
     return json({ error: decisao.motivo, terminal: true }, 409);
   }
 
+  // Só quem vai criar uma cobrança consulta a pausa, antes de cancelar ou
+  // liberar a anterior para substituí-la. Consultas e confirmações não dependem dela.
+  let leituraPagamentoOnline: Promise<boolean | null> | undefined;
+  const conferirPausaAntesDeCriar = async (): Promise<Response | null> => {
+    const ligado = await (leituraPagamentoOnline ??= lerPagamentoOnline(supabase));
+    if (ligado === false) {
+      return json(
+        {
+          error: "A loja pausou o pagamento pelo app. Fale com a loja para combinar o pagamento.",
+          codigo: "pagamento_pausado",
+        },
+        409,
+      );
+    }
+    if (ligado === null) return json({ error: "Não foi possível conferir o pagamento pelo app agora." }, 503);
+    return null;
+  };
+
   // Trava do PIX sem chave de assinatura (ver o comentário dela, lá em cima):
   // vaga LIVRE — a única saída daqui é um PIX novo.
   if (pixSemChaveDeAssinatura && decisao.acao === "criar") return respostaPixSemChaveDeAssinatura();
@@ -2071,7 +2102,10 @@ async function handler(
       );
     }
     if (dadosCartao.parcelas > configCartao.parcelasMax) {
-      return json({ error: "Esse parcelamento não está disponível nesta loja." }, 400);
+      return json(
+        { error: "Esse parcelamento não está disponível nesta loja.", codigo: "parcelas_acima_do_limite" },
+        400,
+      );
     }
   }
 
@@ -2514,6 +2548,8 @@ async function handler(
             (statusBrutoNaVaga === "action_required" || statusBrutoNaVaga === "created");
           let cartaoCanceladoParaPix = false;
           if (cartaoCancelavelParaPix) {
+            const recusa = await conferirPausaAntesDeCriar();
+            if (recusa) return recusa;
             const cancelamento3ds = await cancelarOrder({
               token: mpToken,
               orderId: idGatewayReconsulta,
@@ -2645,6 +2681,8 @@ async function handler(
         // pagável — nunca se cancela um PIX para depois negar o cartão.
         const teto = await tetoDoCartaoAtingido(supabase, pedido, 1);
         if (teto) return respostaTetoDoCartao(teto);
+        const recusa = await conferirPausaAntesDeCriar();
+        if (recusa) return recusa;
         const cancelamento = await cancelarOrder({
           token: mpToken,
           orderId: idGatewayReconsulta,
@@ -2737,6 +2775,8 @@ async function handler(
     // regra para o PIX sem a chave.
     if (cartaoSemChaveDeAssinatura) return respostaCartaoSemChaveDeAssinatura();
     if (pixSemChaveDeAssinatura) return respostaPixSemChaveDeAssinatura();
+    const recusa = await conferirPausaAntesDeCriar();
+    if (recusa) return recusa;
     const liberacao = await liberarCobranca(supabase, pedido.id, idGatewayReconsulta);
     if (!liberacao.ok) {
       // Falha de banco: nada foi cobrado ainda, e o próximo retry reencontra
@@ -2844,6 +2884,9 @@ async function handler(
   }
 
   // decisao.acao === "criar" a partir daqui.
+  const recusaDaPausa = await conferirPausaAntesDeCriar();
+  if (recusaDaPausa) return recusaDaPausa;
+
   // LAUDO 31/08 (menor E5): o e-mail da sessão entra na corrente antes do
   // fallback genérico — o MP passa a ver quem de verdade paga.
   const email =

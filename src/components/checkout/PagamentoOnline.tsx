@@ -74,7 +74,11 @@ export type CategoriaErroPagamento = "recuperavel" | "terminal";
  * segurança é não oferecer PIX (evita a corrida provada: duas cobranças
  * vivas para o mesmo pedido).
  */
-export type SinalDeErroPagamento = "cartaoEmAnalise" | "semCobranca";
+export type SinalDeErroPagamento =
+  | "cartaoEmAnalise"
+  | "semCobranca"
+  // A pausa não invalida cobranças emitidas: não oferece novo pagamento nem cancelamento.
+  | "pagamentoPausado";
 
 type CriarPagamento = (
   args: ArgsCriarPagamento,
@@ -388,6 +392,8 @@ export function dispararPagamentoPix({
       // (achado B3, revisão de risco pré-publicação).
       if (err?.cartaoEmAnalise === true) {
         onErro(mensagem, categoria, "cartaoEmAnalise");
+      } else if (err?.codigo === "pagamento_pausado") {
+        onErro(mensagem, "terminal", "pagamentoPausado");
       } else {
         onErro(mensagem, categoria);
       }
