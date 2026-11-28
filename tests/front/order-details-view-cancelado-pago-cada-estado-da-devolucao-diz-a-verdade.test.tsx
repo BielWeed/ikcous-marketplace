@@ -85,6 +85,10 @@ const CONFERINDO = "Conferindo sua devolução…";
 const NAO_CONSEGUI = "Não consegui conferir agora.";
 const VOLTA_SOZINHO = "O dinheiro volta sozinho para você.";
 const FALE_COM_A_LOJA = `${BASE} Fale com a loja para resolver.`;
+// Pago depois de o pedido já estar cancelado (decisão do sócio, 28/11/2026):
+// o caminho é um só — a loja devolve; quem ainda quer a peça faz pedido novo.
+const PAGO_DEPOIS =
+  "Este pedido foi cancelado antes de o seu pagamento chegar. A loja vai devolver o valor; se ainda quiser a peça, faça um pedido novo.";
 
 function pedido(extra: Partial<Order>): Record<string, unknown> {
   return {
@@ -210,17 +214,25 @@ describe("OrderDetailsView — pedido cancelado e pago: cada estado da devoluç�
         expect(texto).not.toContain(CONFERINDO);
       });
 
-      it("lida, SEM devolução automática (nenhuma linha, ou só 'falhou'): fale com a loja", async () => {
+      it("lida, SEM devolução automática (nenhuma linha, ou só 'falhou'): fale com a loja — ou, se pagou depois do cancelamento, a loja devolve", async () => {
+        const esperado =
+          pagamento === "pago_apos_expirar" ? PAGO_DEPOIS : FALE_COM_A_LOJA;
         const vazio = await abrir({ paymentStatus: pagamento });
-        expect(vazio).toContain(FALE_COM_A_LOJA);
+        expect(vazio).toContain(esperado);
         expect(vazio).not.toContain(VOLTA_SOZINHO);
 
         act(() => raiz.unmount());
         raiz = createRoot(host);
         estado.devolucao = { ...estado.devolucao, linhas: [linha("falhou")] };
         const falhou = await abrir({ paymentStatus: pagamento });
-        expect(falhou).toContain(FALE_COM_A_LOJA);
+        expect(falhou).toContain(esperado);
         expect(falhou).not.toContain(VOLTA_SOZINHO);
+        if (pagamento === "pago_apos_expirar") {
+          expect(vazio).not.toContain("Fale com a loja para resolver");
+          expect(falhou).not.toContain("Fale com a loja para resolver");
+        } else {
+          expect(vazio).not.toContain(PAGO_DEPOIS);
+        }
       });
     },
   );
@@ -354,12 +366,77 @@ describe("OrderDetailsView — pedido cancelado e pago: cada estado da devoluç�
     });
   });
 
-  it("estornado de pedido online: o dinheiro já foi devolvido", async () => {
-    const texto = await abrir({ paymentStatus: "estornado" });
-    expect(texto).toContain(
-      "Este pedido foi cancelado e o seu pagamento foi estornado: o dinheiro foi devolvido.",
+  // `estornado` chega por dois caminhos com o MESMO par de status: a devolução
+  // pedida pela loja/cliente e a contestação no cartão (chargeback em análise,
+  // ganha pela loja ou perdida). Só a devolução concluída POR INTEIRO pedida
+  // por pessoa (a mesma prova do selo do painel) diz "o dinheiro foi
+  // devolvido"; o resto lê o texto que vale para qualquer desfecho.
+  describe("estornado de pedido online", () => {
+    const DEVOLVIDO =
+      "Este pedido foi cancelado e o seu pagamento foi estornado: o dinheiro foi devolvido.";
+    const SEM_PROVA =
+      "Este pedido foi cancelado e o pagamento foi estornado ou contestado no cartão. Se você contestou a compra, acompanhe o resultado com o banco do seu cartão. Se não, fale com a loja para confirmar a devolução.";
+    const linhaDe = (solicitadoPor: string, amount = 100) => ({
+      amount,
+      status: "concluido",
+      solicitado_por: solicitadoPor,
+      concluido_em: new Date(0).toISOString(),
+    });
+
+    it.each(["lojista", "cliente"])(
+      "devolução concluída por inteiro, pedida por '%s': o dinheiro foi devolvido",
+      async (quem) => {
+        estado.devolucao = { ...estado.devolucao, linhas: [linhaDe(quem)] };
+        const texto = await abrir({ paymentStatus: "estornado" });
+        expect(texto).toContain(DEVOLVIDO);
+        expect(texto).not.toContain("contestado no cartão");
+        expect(texto).not.toContain("anulada pela loja");
+      },
     );
-    expect(texto).not.toContain("anulada pela loja");
+
+    it("contestação no cartão (linha do sistema): não afirma que o dinheiro voltou", async () => {
+      estado.devolucao = { ...estado.devolucao, linhas: [linhaDe("sistema")] };
+      const texto = await abrir({ paymentStatus: "estornado" });
+      expect(texto).toContain(SEM_PROVA);
+      expect(texto).not.toContain("o dinheiro foi devolvido");
+    });
+
+    it("contestação em análise (linha do sistema em processamento): não afirma que o dinheiro voltou", async () => {
+      estado.devolucao = {
+        ...estado.devolucao,
+        linhas: [{ ...linhaDe("sistema"), status: "em_processamento" }],
+      };
+      const texto = await abrir({ paymentStatus: "estornado" });
+      expect(texto).toContain(SEM_PROVA);
+      expect(texto).not.toContain("o dinheiro foi devolvido");
+    });
+
+    it("sem linha no livro (pedido antigo, estorno feito fora do app): não afirma que o dinheiro voltou", async () => {
+      const texto = await abrir({ paymentStatus: "estornado" });
+      expect(texto).toContain(SEM_PROVA);
+      expect(texto).not.toContain("o dinheiro foi devolvido");
+    });
+
+    it("devolução da loja só PARCIAL (o resto contestado): não afirma que o dinheiro voltou", async () => {
+      estado.devolucao = {
+        ...estado.devolucao,
+        linhas: [linhaDe("lojista", 40), linhaDe("sistema", 60)],
+      };
+      const texto = await abrir({ paymentStatus: "estornado" });
+      expect(texto).toContain(SEM_PROVA);
+      expect(texto).not.toContain("o dinheiro foi devolvido");
+    });
+
+    it("ainda conferindo o livro: não afirma que o dinheiro voltou, mesmo com a linha da loja na memória", async () => {
+      estado.devolucao = {
+        ...estado.devolucao,
+        linhas: [linhaDe("lojista")],
+        lido: false,
+      };
+      const texto = await abrir({ paymentStatus: "estornado" });
+      expect(texto).toContain(SEM_PROVA);
+      expect(texto).not.toContain("o dinheiro foi devolvido");
+    });
   });
 
   it("estornado de venda do BALCÃO: compra anulada, valor combinado com a loja (não afirma devolução)", async () => {

@@ -191,9 +191,11 @@ function fraseDoCancelado(
       if (noBalcao) {
         return "Esta compra foi anulada pela loja. A devolução do valor é combinada com a loja.";
       }
-      // Pedido cancelado e estornado é o fim do reembolso: o dinheiro voltou.
-      // Não diz o meio (PIX/cartão): o app não sabe qual foi.
-      return "O dinheiro deste pedido foi devolvido. Toque para ver os detalhes.";
+      // `estornado` vale tanto para a devolução da loja quanto para a
+      // contestação no cartão (chargeback), inclusive a que a loja venceu e o
+      // dinheiro ficou com ela. A lista não lê o livro de devoluções, então
+      // não afirma que o dinheiro voltou: a ficha, que lê, decide.
+      return "Pagamento estornado ou contestado no cartão. Toque para ver os detalhes.";
     default:
       return "Toque para ver os detalhes do pedido.";
   }
