@@ -166,7 +166,7 @@ describe("aviso da peca que voltou sem tamanho", () => {
     banco.pendentes = [peca("x-1")];
     await montar();
     expect(host.textContent).toContain(
-      "1 peça deste produto voltou sem tamanho (pedido #00A1B2, vendido antes de você criar os tamanhos). Ela não está à venda.",
+      "1 peça deste produto voltou e espera você escolher o tamanho (pedido #00A1B2, vendido sem tamanho ou num tamanho hoje desligado). Ela não está à venda.",
     );
     expect(host.textContent).toContain("Em qual tamanho ela entra?");
     expect(botao("P")?.getAttribute("aria-pressed")).toBe("false");
@@ -221,7 +221,7 @@ describe("aviso da peca que voltou sem tamanho", () => {
     banco.pendentes = [peca("x-1"), peca("x-2", null)];
     await montar();
     expect(host.textContent).toContain(
-      "2 peças deste produto voltaram sem tamanho (pedido #00A1B2, vendido antes de você criar os tamanhos). Elas não estão à venda.",
+      "2 peças deste produto voltaram e esperam você escolher o tamanho (pedido #00A1B2, vendido sem tamanho ou num tamanho hoje desligado). Elas não estão à venda.",
     );
     expect(host.textContent).toContain(
       "Em qual tamanho entra a do pedido #00A1B2?",
@@ -236,7 +236,7 @@ describe("aviso da peca que voltou sem tamanho", () => {
       "Peça somada ao tamanho P. Já está à venda.",
     );
     expect(host.textContent).toContain(
-      "1 peça deste produto voltou sem tamanho (vendida antes de você criar os tamanhos).",
+      "1 peça deste produto voltou e espera você escolher o tamanho (vendida sem tamanho ou num tamanho hoje desligado).",
     );
     expect(botao("P")?.getAttribute("aria-pressed")).toBe("false");
   });

@@ -14,7 +14,7 @@ const base = { name: "Camisa", category: "Roupas", description: "" };
 describe("busca — palavra curta contra o valor de uma variação", () => {
   const verde = {
     ...base,
-    variants: [{ value: "Verde", active: true }],
+    variants: [{ value: "Verde", active: true, stockIncrement: 1 }],
   };
 
   it("duas letras só acham variação como palavra inteira, nunca como trecho ('ve' não acha Verde)", () => {
@@ -26,8 +26,14 @@ describe("busca — palavra curta contra o valor de uma variação", () => {
   });
 
   it("'gg' acha o tamanho GG inteiro, mas não o GGG", () => {
-    const gg = { ...base, variants: [{ value: "GG", active: true }] };
-    const ggg = { ...base, variants: [{ value: "GGG", active: true }] };
+    const gg = {
+      ...base,
+      variants: [{ value: "GG", active: true, stockIncrement: 1 }],
+    };
+    const ggg = {
+      ...base,
+      variants: [{ value: "GGG", active: true, stockIncrement: 1 }],
+    };
     expect(produtoCombinaComBusca(gg, "gg")).toBe(true);
     expect(produtoCombinaComBusca(ggg, "gg")).toBe(false);
   });
@@ -58,7 +64,12 @@ describe("busca — ordem da relevância", () => {
       category?: string;
       description?: string;
       sku?: string;
-      variants?: { value: string; active: boolean; sku?: string }[];
+      variants?: {
+        value: string;
+        active: boolean;
+        stockIncrement?: number;
+        sku?: string;
+      }[];
     },
   ) => pontuadorDaBusca(busca)({ category: "Outros", ...produto });
 
@@ -109,11 +120,11 @@ describe("busca — ordem da relevância", () => {
   it("o código de uma variação INATIVA não pontua; o da ativa sim", () => {
     const ativa = nota("v-77", {
       name: "Peça",
-      variants: [{ value: "P", active: true, sku: "V-77" }],
+      variants: [{ value: "P", active: true, stockIncrement: 1, sku: "V-77" }],
     });
     const inativa = nota("v-77", {
       name: "Peça",
-      variants: [{ value: "P", active: false, sku: "V-77" }],
+      variants: [{ value: "P", active: false, stockIncrement: 1, sku: "V-77" }],
     });
     expect(ativa).toBeGreaterThan(inativa);
   });

@@ -378,6 +378,8 @@ on:
       - "scripts/publicacao/consultas/207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente.sql"
       - "scripts/publicacao/consultas/208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado.sql"
       - "scripts/publicacao/consultas/208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente.sql"
+      - "scripts/publicacao/consultas/209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado.sql"
+      - "scripts/publicacao/consultas/209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -730,6 +732,8 @@ on:
       - "scripts/publicacao/consultas/207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente.sql"
       - "scripts/publicacao/consultas/208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado.sql"
       - "scripts/publicacao/consultas/208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente.sql"
+      - "scripts/publicacao/consultas/209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado.sql"
+      - "scripts/publicacao/consultas/209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1583,6 +1587,14 @@ jobs:
       - name: Prova viva da loja nova que confirma a entrega e o pagamento (20261652000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nova-confirma-entrega-e-pagamento-viva.cjs
+      # Migration 20261653000000 (a peca que volta para uma variacao desligada espera a lojista): devolver_estoque e admin_devolucao_concluir nao creditam mais
+      # a variacao DESLIGADA (ou que nao existe mais); o item segue o caminho da peca sem tamanho da 20261642000000 (cantinho se ha variacao ligada, pai se nao ha).
+      # Controle com os corpos da 642 (a peca vai para o M desligado), cancelar, Pix vencido e devolucao com o M desligado, CONTROLE com o M ligado, nenhum credito
+      # em dobro (repetir, achado C), produto sem variacao ligada, a leitura da ficha da devolucao (so o item do M desligado, nunca o do P ligado; religar nao muda;
+      # permissao), mutantes, reaplicar 2x e CRLF, pre-voo, rollback byte a byte (a leitura sai) e consultas 209a/209b. CLONE proprio.
+      - name: Prova viva da peca da variacao desligada que espera a lojista (20261653000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-da-variacao-desligada-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais
