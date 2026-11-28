@@ -395,7 +395,10 @@ module.exports = [
     // novidades que saiu da vitrine agora mora no painel (onde a lojista le as notas): o painel
     // mediu 616,68 kB no build local. E transferencia, nao crescimento: a vitrine desceu 15 kB.
     // Nada trocado por codigo mais arriscado. Regra do dono: o teto sobe.
-    limit: "620 kB",
+    // 28/11/2026 (pix pelo app recusado some do checkout, PR #2128): 620 -> 624 kB. O painel mediu
+    // 620,38 kB no CI (375 B acima) com a base que ja trazia a grade que segue o preco (#2126).
+    // Degrau de 4 kB. Nada trocado por codigo mais arriscado. Regra do dono: o teto sobe.
+    limit: "624 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },
