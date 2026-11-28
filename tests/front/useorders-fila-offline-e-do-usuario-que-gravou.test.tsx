@@ -134,7 +134,7 @@ let atualizarStatus: (
   status: any,
   notes?: string,
   silent?: boolean,
-) => Promise<void> = async () => {};
+) => Promise<unknown> = async () => {};
 function Sonda() {
   const { updateOrderStatus } = useOrders(false, auth.admin);
   useEffect(() => {

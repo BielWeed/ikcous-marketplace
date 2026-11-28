@@ -99,12 +99,18 @@ Deno.test("3645: o corpo novo so troca a frase do vale (e o comentario dela); ti
     )
     .replace(FRASE_NOVA, FRASE_ANTIGA);
   assert.equal(desfeito, corpo(sql1241));
-  // A frase e' a mesma que a ficha do pedido mostra a cliente (instrucaoParaOCliente, src/lib/devolucao.ts).
+  // A ficha do pedido (instrucaoParaOCliente, src/lib/devolucao.ts) abre com a MESMA frase do aviso.
+  // Depois dela a ficha pode acrescentar orientacao (ex.: a peca nova comprada com o vale tem
+  // devolucao propria), mas nunca troca nem contradiz o que o aviso disse.
   const front = ler("src/lib/devolucao.ts");
   assert.ok(
     front.includes(
-      '"A devolução foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja."',
+      '"A devolução foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja.',
     ),
+  );
+  assert.ok(
+    !front.includes("vale-troca foi emitido"),
+    "a ficha nao promete vale emitido",
   );
 });
 

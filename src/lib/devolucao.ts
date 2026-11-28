@@ -588,6 +588,48 @@ export function centavosDosItensQueNaoVieram(
 }
 
 /**
+ * Quanto do `valor_itens` da devolução (em centavos, o do SERVIDOR) cabe a cada linha, na ordem de `itens`.
+ *
+ * Com cupom, `quantidade x preço` de uma linha não é o que o servidor devolve por ela (mesma razão de
+ * `centavosDosItensQueNaoVieram`): 30 x R$ 3,33 com cupom de 10% guarda R$ 3,00 por unidade (R$ 90,00), e o servidor grava
+ * R$ 89,91. Aqui o valor do servidor é repartido na proporção de `quantidade x preço` de cada linha pelo método do maior
+ * resto: cada linha leva a parte inteira dela e os centavos que sobram vão, um a um, para as de maior resto (empate: a
+ * primeira). As linhas somam exatamente o valor do servidor; sem cupom, a parte é o próprio `quantidade x preço`.
+ * Conta em BigInt: valor x peso passa do inteiro seguro do JavaScript em pedido grande.
+ */
+export function centavosDeCadaLinha(
+  centavosDosItens: number,
+  itens: readonly { quantidade: number; valor_unitario: number }[],
+): number[] {
+  const pesos = itens.map((item) =>
+    BigInt(
+      Math.max(
+        Math.round(item.quantidade * paraCentavos(item.valor_unitario)),
+        0,
+      ),
+    ),
+  );
+  const totalDasLinhas = pesos.reduce((total, peso) => total + peso, 0n);
+  if (centavosDosItens <= 0 || totalDasLinhas <= 0n) return pesos.map(() => 0);
+  const valor = BigInt(Math.round(centavosDosItens));
+  const linhas = pesos.map((peso, ordem) => ({
+    ordem,
+    parte: (valor * peso) / totalDasLinhas,
+    resto: (valor * peso) % totalDasLinhas,
+  }));
+  let sobra = valor - linhas.reduce((total, linha) => total + linha.parte, 0n);
+  const porMaiorResto = [...linhas].sort((a, b) =>
+    a.resto === b.resto ? a.ordem - b.ordem : a.resto > b.resto ? -1 : 1,
+  );
+  for (const linha of porMaiorResto) {
+    if (sobra <= 0n) break;
+    linha.parte += 1n;
+    sobra -= 1n;
+  }
+  return linhas.map((linha) => Number(linha.parte));
+}
+
+/**
  * Arrependimento e defeito devolvem também o frete de ida quando o pedido
  * volta INTEIRO (CDC art. 49, parágrafo único) — mesma conta do servidor:
  * o que já está em devolução ativa + o que vai agora cobre o pedido todo.
@@ -1030,9 +1072,9 @@ export function instrucaoParaOCliente(
           : TEXTO_REEMBOLSO_CONFIRMANDO_CLIENTE;
       }
       if (d.resolucao_final === "troca") {
-        return "A troca foi confirmada. A loja combina com você a entrega do novo produto.";
+        return "A troca foi confirmada. A loja combina com você a entrega do novo produto. Se a peça nova tiver algum problema, fale com a loja informando o protocolo.";
       }
-      return "A devolução foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja.";
+      return "A devolução foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja. Se usar o vale numa compra pelo app, a peça nova tem devolução própria naquele pedido.";
     }
     case "recusada":
       return "A loja não aprovou esta devolução.";

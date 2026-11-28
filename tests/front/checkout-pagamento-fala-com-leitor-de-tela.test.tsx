@@ -538,6 +538,47 @@ describe("CheckoutView — o pagamento fala com o leitor de tela", () => {
     expect(paragrafoComTexto(frase)?.getAttribute("role")).toBe("alert");
   });
 
+  // A `key` da caixa âmbar (o motivo): a cobrança em dúvida JÁ levou o foco e
+  // a edge troca o motivo para a frase terminal sem a cliente tocar em nada.
+  // Sem a `key`, o React reaproveita o MESMO parágrafo: o foco fica parado nele,
+  // o efeito do foco não tem o que mover e o motivo novo nasce com
+  // `role="alert"` no elemento focado — o leitor de tela pode calar ou ler duas
+  // vezes. Com a `key`, o motivo novo é outro elemento e recebe o foco.
+  it("caixa âmbar troca de motivo com o foco no texto: o motivo novo é outro elemento, recebe o foco e fala uma vez", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+    largarOFoco();
+
+    await act(async () => {
+      pagamentoOnlineOnErro[0](
+        "Erro qualquer do servidor",
+        "recuperavel",
+        "cartaoEmAnalise",
+      );
+    });
+    const antigo = paragrafoComTexto(
+      "Não conseguimos confirmar se a tentativa de pagamento com cartão",
+    );
+    expect(document.activeElement).toBe(antigo);
+
+    const terminal =
+      "O prazo deste PIX venceu antes do pagamento ser confirmado. Faça um pedido novo para gerar um QR code novo.";
+    await act(async () => {
+      pagamentoOnlineOnErro[0](terminal, "terminal", "cartaoEmAnalise");
+    });
+
+    const novo = paragrafoComTexto(terminal);
+    expect(novo).toBeDefined();
+    expect(
+      novo,
+      "o motivo novo reaproveitou o parágrafo que já tinha o foco",
+    ).not.toBe(antigo);
+    expect(antigo?.isConnected).toBe(false);
+    expect(document.activeElement).toBe(novo);
+    expect(novo?.getAttribute("role")).toBeNull();
+    expect(hospedeiro.querySelectorAll('[role="alert"]')).toHaveLength(0);
+  });
+
   it("foco que está num lugar vivo da tela não é puxado para o erro", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);

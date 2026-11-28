@@ -324,26 +324,36 @@ async function pecasDoPedidoSemTamanho(orderId: string): Promise<number> {
 }
 
 /**
- * Depois de um avanço sem resposta: o banco está na etapa pedida? Só `true`
- * quando a leitura VOLTOU e confirma; sem resposta de novo é `false` ("não
- * sei" nunca vira "gravou").
+ * Depois de um avanço sem resposta (ou de um cancelamento pela edge, que não
+ * devolve a linha): o banco está na etapa pedida? Só confirma quando a
+ * leitura VOLTOU e mostra a etapa; sem resposta, erro ou outra etapa é `null`
+ * ("não sei" nunca vira "gravou"). Confirmado, devolve também o `updated_at`
+ * que o banco gravou — o carimbo do aviso à cliente, no lugar do relógio do
+ * aparelho —, `null` se a linha não o trouxer: a prova é a etapa, a hora é
+ * só o carimbo. Nunca lança: quem chama pode já ter a mudança provada e não
+ * pode perdê-la por esta leitura.
  */
 async function avancoGravouNoBanco(
   orderId: string,
   status: OrderStatus,
-): Promise<boolean> {
-  const { data, error } = await aguardarComPrazo(
-    Promise.resolve(
-      supabase
-        .from("marketplace_orders")
-        .select("status")
-        .eq("id", orderId)
-        .single(),
-    ),
-    PRAZO_DA_CONFERENCIA_DO_AVANCO_MS,
-    () => erroDeConsultaSemResposta(),
-  ).catch((erro: unknown) => ({ data: null, error: erro }));
-  return !error && data?.status === status;
+): Promise<{ gravadoNoBancoEm: string | null } | null> {
+  try {
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(
+        supabase
+          .from("marketplace_orders")
+          .select("status, updated_at")
+          .eq("id", orderId)
+          .single(),
+      ),
+      PRAZO_DA_CONFERENCIA_DO_AVANCO_MS,
+      () => erroDeConsultaSemResposta(),
+    ).catch((erro: unknown) => ({ data: null, error: erro }));
+    if (error || data?.status !== status) return null;
+    return { gravadoNoBancoEm: horaGravadaNoBanco(data) };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -4690,7 +4700,22 @@ export function useOrders(
             pedidosCanceladosLocalmenteRef.current.set(orderId, Date.now());
             fetchPedidosCancelados().catch(() => {});
           }
-          return;
+          // A resposta da edge não traz `updated_at`: o carimbo do aviso à
+          // cliente sai de uma leitura curta do banco (só a ficha do painel
+          // avisa, e só sem `silent`). Falhou, pendurou ou o pedido já não
+          // está cancelado: `null`, e o aviso cai no relógio local como antes.
+          const conferido =
+            isAdmin && !silent
+              ? await avancoGravouNoBanco(orderId, "cancelled")
+              : null;
+          const gravadoNoBancoEm = conferido?.gravadoNoBancoEm ?? null;
+          // "Já estava cancelado" segue o MESMO caminho e a ficha avisa a
+          // cliente do mesmo jeito: pode ser a 1ª tentativa desta lojista que
+          // gravou e perdeu a resposta (nenhum aviso saiu). `jaEstava` só
+          // informa; nunca cala o aviso.
+          return resposta.jaEstava
+            ? { gravadoNoBancoEm, jaEstava: true as const }
+            : { gravadoNoBancoEm };
         }
 
         // L-9 front (08/09/2026): a lojista está com a ficha aberta
@@ -4747,7 +4772,7 @@ export function useOrders(
               Promise.resolve(
                 supabase
                   .from("marketplace_orders")
-                  .select("status")
+                  .select("status, updated_at")
                   .eq("id", orderId)
                   .single(),
               ),
@@ -4815,7 +4840,9 @@ export function useOrders(
             if (eraOAvancoSemResposta) {
               clearAnalyticsCache();
               if (!silent) toast.success("Status atualizado com sucesso");
-              return;
+              // A hora da releitura é a da gravação perdida (o banco está na
+              // etapa pedida): o carimbo do aviso, não o relógio local.
+              return { gravadoNoBancoEm: horaGravadaNoBanco(linhaAtual) };
             }
             if (!silent) {
               toast.warning(
@@ -4970,17 +4997,23 @@ export function useOrders(
         // pode ter gravado. Confere uma vez; se está na etapa pedida, segue o
         // caminho do sucesso (a ficha avisa a cliente). Se não deu para
         // confirmar, fica a marca para a próxima tentativa reconhecer.
+        //
+        // Passou: devolve a conferência, com a hora que ela leu do banco (o
+        // carimbo do aviso: a resposta perdida não trouxe a linha). Não
+        // passou: `null`.
         const avancoSemRespostaPassou = async (erro: unknown) => {
           if (!isAdmin || status === "cancelled" || !ehGravacaoIncerta(erro)) {
-            return false;
+            return null;
           }
-          if (await avancoGravouNoBanco(orderId, status)) return true;
+          const conferido = await avancoGravouNoBanco(orderId, status);
+          if (conferido) return conferido;
           avancosSemRespostaRef.current.set(orderId, {
             status,
             em: Date.now(),
           });
-          return false;
+          return null;
         };
+        let conferencia = null as { gravadoNoBancoEm: string | null } | null;
         const { data: linhaGravada, error } = await aguardarComPrazo(
           // `rpc` devolve um "thenable", não uma Promise: sem isto o tipo do
           // retorno vira `unknown`.
@@ -5006,12 +5039,15 @@ export function useOrders(
             erroDeConsultaSemResposta(MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA),
         ).catch(async (erroDaEspera: unknown) => {
           // Prazo estourado: mesma conferência da rede caída, logo abaixo.
-          if (await avancoSemRespostaPassou(erroDaEspera))
-            return { data: null, error: null };
+          conferencia = await avancoSemRespostaPassou(erroDaEspera);
+          if (conferencia) return { data: null, error: null };
           throw erroDaEspera;
         });
 
-        if (error && !(await avancoSemRespostaPassou(error))) throw error;
+        if (error) {
+          conferencia = await avancoSemRespostaPassou(error);
+          if (!conferencia) throw error;
+        }
 
         avancosSemRespostaRef.current.delete(orderId);
         clearAnalyticsCache();
@@ -5047,9 +5083,15 @@ export function useOrders(
         // A hora em que o BANCO gravou (a linha que a RPC devolve) é o
         // carimbo de ordem do aviso à cliente que a ficha manda em seguida
         // (`avisarOClienteDoStatus`): o relógio deste aparelho pode estar
-        // adiantado. `null` quando a resposta não a traz (gravação confirmada
-        // pela releitura): o aviso cai no relógio local.
-        return { gravadoNoBancoEm: horaGravadaNoBanco(linhaGravada) };
+        // adiantado. Resposta perdida e gravação confirmada pela conferência:
+        // a hora que ela leu. `null` só quando nenhuma das duas a traz: o
+        // aviso cai no relógio local.
+        return {
+          gravadoNoBancoEm:
+            horaGravadaNoBanco(linhaGravada) ??
+            conferencia?.gravadoNoBancoEm ??
+            null,
+        };
       } catch (err: any) {
         console.error("Error updating status:", err);
         // Gravação que falhou: nada foi feito, o aviso do realtime de uma

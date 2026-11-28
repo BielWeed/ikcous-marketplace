@@ -30,6 +30,7 @@ import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
   acoesDoCliente,
   cancelamentoDependeDaLoja,
+  centavosDeCadaLinha,
   etapasDaDevolucao,
   formatarDia,
   formatarReais,
@@ -110,6 +111,12 @@ interface DevolucaoDoPedidoCardProps {
   readonly horarioDaLoja: string | null;
   readonly onCancelar: (id: string) => Promise<Desfecho>;
   readonly onInformarEnvio: (id: string, codigo: string) => Promise<Desfecho>;
+  /**
+   * Troca concluída e a peça nova veio com problema: abre o WhatsApp da loja
+   * com o protocolo (quem chama monta a mensagem e o link). Só vem quando a
+   * loja tem WhatsApp; sem ele o cartão mostra só a frase da orientação.
+   */
+  readonly onPecaDaTrocaComProblema?: (protocolo: string) => void;
 }
 
 const COR_DO_TOM = new Map([
@@ -132,6 +139,7 @@ export function DevolucaoDoPedidoCard({
   horarioDaLoja,
   onCancelar,
   onInformarEnvio,
+  onPecaDaTrocaComProblema,
 }: DevolucaoDoPedidoCardProps) {
   const [codigo, setCodigo] = useState("");
   const [enviando, setEnviando] = useState<"cancelar" | "envio" | null>(null);
@@ -174,6 +182,12 @@ export function DevolucaoDoPedidoCard({
   );
   const tom = tomDoStatus(atual.status);
   const valorTotal = atual.valor_itens + atual.valor_frete_ida;
+  // Com cupom, quantidade x preço (preço de uma unidade, arredondado) não soma
+  // o valor que o servidor gravou: cada linha mostra a parte dela desse valor.
+  const centavosPorLinha = centavosDeCadaLinha(
+    paraCentavos(atual.valor_itens),
+    atual.itens,
+  );
   const concluidaSemReembolso =
     atual.status === "concluida" &&
     (atual.resolucao_final === "troca" || atual.resolucao_final === "vale");
@@ -331,6 +345,19 @@ export function DevolucaoDoPedidoCard({
         {instrucao}
       </p>
 
+      {atual.status === "concluida" &&
+        atual.resolucao_final === "troca" &&
+        onPecaDaTrocaComProblema && (
+          <button
+            type="button"
+            onClick={() => onPecaDaTrocaComProblema(atual.protocolo)}
+            className="mt-3 flex min-h-11 w-full items-center gap-2 rounded-2xl border border-zinc-100 px-3 text-left text-sm font-bold text-zinc-800"
+          >
+            <MessageCircle className="size-4 shrink-0 text-zinc-500" />A peça da
+            troca veio com problema
+          </button>
+        )}
+
       {atual.mensagem_loja && (
         <div className="mt-3 flex gap-2.5 rounded-2xl bg-zinc-50 p-3">
           <MessageCircle className="mt-0.5 size-4 shrink-0 text-zinc-500" />
@@ -396,7 +423,7 @@ export function DevolucaoDoPedidoCard({
         )}
 
       <dl className="mt-4 space-y-1 border-t border-dashed border-zinc-200 pt-3 text-[13px]">
-        {atual.itens.map((item) => (
+        {atual.itens.map((item, indice) => (
           <div key={item.id} className="flex justify-between gap-3">
             <dt className="min-w-0 break-words text-zinc-600">
               <span className="line-clamp-2">
@@ -424,7 +451,7 @@ export function DevolucaoDoPedidoCard({
               )}
             </dt>
             <dd className="shrink-0 font-semibold tabular-nums text-zinc-900">
-              {formatarReais(item.quantidade * item.valor_unitario)}
+              {formatarReais((centavosPorLinha.at(indice) ?? 0) / 100)}
             </dd>
           </div>
         ))}

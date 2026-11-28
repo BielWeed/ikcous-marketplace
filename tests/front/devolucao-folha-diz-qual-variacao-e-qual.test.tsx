@@ -109,14 +109,14 @@ const ELEGIBILIDADE = {
   politica: POLITICA,
 } as unknown as ElegibilidadeDevolucao;
 
-const pedido = (itens: Order["items"]): Order => ({
+const pedido = (itens: Order["items"], discount = 0): Order => ({
   id: "pedido-dev",
   customer: { name: "Cliente Teste", whatsapp: "34999999999" },
   items: itens,
   subtotal: 200,
   shipping: 0,
-  discount: 0,
-  total: 200,
+  discount,
+  total: 200 - discount,
   paymentMethod: "online",
   paymentStatus: "pago",
   status: "delivered",
@@ -186,10 +186,13 @@ afterEach(() => {
   act(() => raiz.unmount());
   hospedeiro.remove();
   document.body.innerHTML = "";
+  // A folha guarda o rascunho na aba (por conta e pedido) e reabre com ele:
+  // sem limpar, o teste seguinte herdaria a folha aberta no passo da revisão.
+  sessionStorage.clear();
 });
 
-async function abrirAFolha(itens: Order["items"]) {
-  estado.pedido = pedido(itens);
+async function abrirAFolha(itens: Order["items"], discount = 0) {
+  estado.pedido = pedido(itens, discount);
   fetchUserOrders.mockResolvedValue([estado.pedido]);
   const { OrderDetailsView } = await import(
     "@/views/customer/OrderDetailsView"
@@ -362,5 +365,48 @@ describe("o pedido da cliente guarda o id de cada linha (para ligar à folha)", 
 
     expect(pedidoMapeado.items[0].id).toBe("oi-1");
     expect("id" in pedidoMapeado.items[1]).toBe(false);
+  });
+});
+
+// A tela do pedido conta à folha se o pedido teve desconto (cupom): com ele, o
+// valor da revisão é estimado (o servidor fecha a conta com o proporcional e
+// pode dar alguns centavos de diferença); sem ele, a revisão é como sempre.
+describe("folha de devolução da cliente: o pedido com cupom chega à revisão", () => {
+  async function ateARevisao(discount: number) {
+    await abrirAFolha(DUAS_LINHAS, discount);
+    await clicar(botao("Aumentar Camiseta (Cor Preta · Tamanho M)"));
+    await clicar(botao("Continuar"));
+    await clicar(
+      folha()?.querySelector<HTMLInputElement>(
+        'input[type="radio"][value="tamanho_pequeno"]',
+      ),
+    );
+    await clicar(botao("Continuar"));
+    await clicar(
+      folha()?.querySelector<HTMLInputElement>(
+        'input[type="radio"][value="reembolso"]',
+      ),
+    );
+    await clicar(
+      folha()?.querySelector<HTMLInputElement>(
+        'input[type="radio"][value="envio_proprio"]',
+      ),
+    );
+    await clicar(botao("Continuar"));
+    return (
+      folha()?.querySelector('[data-testid="passo-revisao"]')?.textContent ?? ""
+    );
+  }
+
+  it("pedido com desconto: a revisão mostra o valor como estimado", async () => {
+    const revisao = await ateARevisao(10);
+    expect(revisao).toContain("Valor estimado dos itens");
+    expect(revisao).toContain("pode variar alguns centavos");
+  });
+
+  it("pedido sem desconto: a revisão continua com 'Valor dos itens'", async () => {
+    const revisao = await ateARevisao(0);
+    expect(revisao).toContain("Valor dos itens");
+    expect(revisao).not.toContain("estimado");
   });
 });

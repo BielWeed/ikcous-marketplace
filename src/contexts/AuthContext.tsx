@@ -55,6 +55,7 @@ import {
   cancelarInscricaoDaConta,
   soltarInscricaoDoAparelho,
 } from "@/lib/inscricao-de-push-da-conta";
+import { limparTodosOsRascunhosDaDevolucao } from "@/lib/limpar-rascunhos-da-devolucao";
 import {
   type LoginAudience,
   MENSAGEM_CREDENCIAIS_CLIENTE,
@@ -352,6 +353,8 @@ function clearLocalUserData() {
   // sessão de quem saiu: só caía no sucesso da compra, e a próxima pessoa da
   // aba lia o que a anterior digitou. `sessionStorageSeguro` nunca lança.
   limparRascunhoDoCheckout(sessionStorageSeguro());
+  // O rascunho do pedido de devolução (texto da cliente) idem. Nunca lança.
+  limparTodosOsRascunhosDaDevolucao();
   limparPedidoSemResposta();
   // As chaves anti-repetição de lançamentos do Financeiro que ficaram "pode
   // ter sido salvo" (tentativasEmAberto.ts) ficam DE PROPÓSITO: levam o dono

@@ -357,7 +357,8 @@ export function DetalheDaDevolucao({
                           </p>
                         )}
                       <p className="text-[11px] tabular-nums text-zinc-400">
-                        {item.quantidade} × {formatarReais(item.valor_unitario)}
+                        {item.quantidade} × {formatarReais(item.valor_unitario)}{" "}
+                        un.
                         {item.condicao && ` · ${rotuloCondicao(item.condicao)}`}
                         {item.reestocado_em &&
                           (esperaTamanho(item)

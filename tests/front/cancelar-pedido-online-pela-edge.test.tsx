@@ -105,7 +105,7 @@ type Atualiza = (
   notes?: string,
   silent?: boolean,
   statusEsperado?: OrderStatus,
-) => Promise<void>;
+) => Promise<unknown>;
 
 async function montarSonda(
   pedido: Order | null,
