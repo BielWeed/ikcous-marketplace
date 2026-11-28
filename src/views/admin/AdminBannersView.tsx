@@ -90,6 +90,10 @@ import {
   ehConsultaSemResposta,
   ehGravacaoIncerta,
 } from "@/lib/prazo-da-requisicao";
+import {
+  type PrecoAnunciadoVelho,
+  precoAnunciadoVelho,
+} from "@/lib/preco-anunciado-no-banner";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import {
   AVISO_BANNER_ALTERADO_DEPOIS,
@@ -101,7 +105,12 @@ import {
 } from "@/lib/rascunho-do-banner";
 import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { distanciaCurta } from "@/lib/tempo-relativo";
-import { cn, formatCurrency, normalizeText } from "@/lib/utils";
+import {
+  cn,
+  formatCurrency,
+  normalizeText,
+  reaisComEspacoComum,
+} from "@/lib/utils";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type { Banner, View } from "@/types";
 import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
@@ -421,6 +430,22 @@ const AVISO_PRODUTO_PAUSADO =
 // apaga o banner: quem decide é a lojista.
 const AVISO_PRODUTO_EXCLUIDO =
   "O produto deste banner foi excluído: o toque no banner leva à Home";
+// Preço velho: o texto congelou o preço de quando o produto foi escolhido e a
+// promoção acabou (oferta anunciada, CDC art. 30). O painel avisa; o texto é
+// da lojista e não se reescreve sozinho.
+const avisoDePrecoVelho = (velho: PrecoAnunciadoVelho) => {
+  const anunciado =
+    velho.tipo === "preco"
+      ? reaisComEspacoComum(velho.citado)
+      : `${String(velho.citado).replace(".", ",")}% OFF`;
+  const agora =
+    velho.tipo === "preco"
+      ? `o produto custa ${velho.aPartirDe ? "a partir de " : ""}${reaisComEspacoComum(velho.atual)} agora`
+      : velho.atual > 0
+        ? `o desconto do produto é ${velho.atual}% agora`
+        : "o produto está sem desconto agora";
+  return `Este banner anuncia ${anunciado}, mas ${agora}. Atualize o texto ou desligue o banner.`;
+};
 
 /** O prefixo da frase de preço do banner: o mesmo no subtítulo automático e na sugestão. */
 const prefixoDoPreco = (vitrine: { aPartirDe: boolean }) =>
@@ -447,6 +472,8 @@ interface CartaoDoBannerProps {
   readonly produtoPausado: boolean;
   /** O banco confirmou que o produto do link foi excluído. */
   readonly produtoExcluido: boolean;
+  /** O texto anuncia um valor que o produto não pratica mais (`null` = bate). */
+  readonly avisoDePreco: string | null;
   /** Rótulo curto da posição (mostrado só quando a lista mistura setores). */
   readonly posicaoCurta: string | null;
   readonly indice: number;
@@ -484,6 +511,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
   banner,
   produtoPausado,
   produtoExcluido,
+  avisoDePreco,
   posicaoCurta,
   indice,
   total,
@@ -606,6 +634,12 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
                   {AVISO_PRODUTO_PAUSADO}
                 </p>
               )
+            )}
+
+            {avisoDePreco && (
+              <p className="text-[11px] font-medium text-amber-400">
+                {avisoDePreco}
+              </p>
             )}
 
             {banner.startDate &&
@@ -1325,6 +1359,21 @@ export const AdminBannersView = memo(function AdminBannersView({
         .filter((id): id is string => id !== null),
     [banners],
   );
+  // Mesmo recorte do aviso de pausado: só o produto que a lista carregada ACHOU.
+  const avisosDePrecoVelho = useMemo(() => {
+    const avisos = new Map<string, string>();
+    for (const banner of banners) {
+      const id = idDoProdutoDoLink(banner.link);
+      const produto = id ? products.find((p) => p.id === id) : undefined;
+      if (!produto) continue;
+      const velho = precoAnunciadoVelho(
+        [banner.title, banner.subtitle],
+        produto,
+      );
+      if (velho) avisos.set(banner.id, avisoDePrecoVelho(velho));
+    }
+    return avisos;
+  }, [banners, products]);
   const idsDeProdutosExcluidos = useProdutosExcluidosDosBanners(
     idsDeProdutosDosBanners,
     active,
@@ -2827,6 +2876,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           produtoExcluido={idsDeProdutosExcluidos.has(
                             idDoProdutoDoLink(b.link) ?? "",
                           )}
+                          avisoDePreco={avisosDePrecoVelho.get(b.id) ?? null}
                           posicaoCurta={null}
                           indice={todosNaPosicao.findIndex(
                             (t) => t.id === b.id,
