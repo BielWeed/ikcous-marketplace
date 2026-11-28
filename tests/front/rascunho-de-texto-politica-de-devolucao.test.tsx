@@ -368,4 +368,95 @@ describe("Política de devolução — Descartar e Sair só apaga o rascunho que
     await descartarESair();
     expect(localStorage.getItem(chave("admin-1"))).toBeNull();
   });
+
+  it("controle: aviso sem resposta, salvou, digitou de novo e descartou: a edição desta tela sai", async () => {
+    localStorage.setItem(
+      chave("admin-1"),
+      JSON.stringify({
+        texto: "Rascunho A",
+        base: "Política salva",
+        salvoEm: Date.now(),
+      }),
+    );
+    await montar();
+    expect(ofertaDeRascunho()).toBeDefined();
+    // Sem responder ao "Restaurar?", ela edita e salva: o rascunho A sai.
+    await digitar("Política nova salva");
+    await act(async () => {
+      botao("Salvar política")?.click();
+    });
+    await act(async () => {
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    // Digita B e a aba some (`pagehide`): B é a edição desta tela.
+    await digitar("Rascunho B");
+    await act(async () => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    const guardado = JSON.parse(localStorage.getItem(chave("admin-1")) ?? "{}");
+    expect(guardado.texto).toBe("Rascunho B");
+
+    await descartarESair();
+    expect(localStorage.getItem(chave("admin-1"))).toBeNull();
+  });
+
+  // Rede lenta: a política ainda não chegou (ou a leitura falhou) e ela mudou
+  // outra seção de Ajustes. O rascunho que o celular guardou nunca pôde ser
+  // oferecido: o descarte não é sobre ele, e ele espera a seção carregar.
+  it("política ainda carregando: o rascunho fica e é oferecido quando ela chega", async () => {
+    const rascunho = JSON.stringify({
+      texto: "Política longa que o celular guardou",
+      base: "Política salva",
+      salvoEm: Date.now(),
+    });
+    localStorage.setItem(chave("admin-1"), rascunho);
+    let entregar: (r: { data: typeof LINHA; error: null }) => void = () => {};
+    maybeSingle.mockReturnValueOnce(
+      new Promise((resolver) => {
+        entregar = resolver;
+      }),
+    );
+    await montar();
+    expect(hospedeiro.textContent).toContain("Carregando política");
+
+    await descartarESair();
+    expect(localStorage.getItem(chave("admin-1"))).toBe(rascunho);
+
+    await act(async () => {
+      entregar({ data: LINHA, error: null });
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    expect(campo().value).toBe("Política salva");
+    expect(ofertaDeRascunho()).toBeDefined();
+  });
+
+  it("leitura da política falhou: o rascunho fica e é oferecido no Tentar de novo", async () => {
+    const rascunho = JSON.stringify({
+      texto: "Política longa que o celular guardou",
+      base: "Política salva",
+      salvoEm: Date.now(),
+    });
+    localStorage.setItem(chave("admin-1"), rascunho);
+    maybeSingle.mockResolvedValueOnce({
+      data: null,
+      error: { code: "XX000", message: "falhou" },
+    });
+    await montar();
+    expect(hospedeiro.textContent).toContain(
+      "Não consegui carregar a política de devolução.",
+    );
+
+    await descartarESair();
+    expect(localStorage.getItem(chave("admin-1"))).toBe(rascunho);
+
+    await act(async () => {
+      botao("Tentar de novo")?.click();
+    });
+    await act(async () => {
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    expect(campo().value).toBe("Política salva");
+    expect(ofertaDeRascunho()).toBeDefined();
+  });
 });

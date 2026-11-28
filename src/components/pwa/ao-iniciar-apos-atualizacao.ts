@@ -6,7 +6,7 @@ import {
   descreveMotivoDeRecarga,
   limpaMotivoDeRecarga,
 } from "@/lib/motivo-de-recarga";
-import { registrarNovidadesAoIniciar } from "@/lib/novidades/armazenamento-local";
+import { registrarNovidadesAoIniciar } from "@/lib/novidades/registro-do-boot";
 
 // Arquivo SEM animação de propósito: o App.tsx importa isto no caminho estático
 // do primeiro paint, e a ilha (que usa framer-motion) fica fora dele.
