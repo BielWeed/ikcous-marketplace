@@ -311,3 +311,18 @@ describe("LinhasDaGrade: textos fixos", () => {
     );
   });
 });
+
+describe("LinhasDaGrade: teclado do celular", () => {
+  it("os campos de estoque (para todas e de cada linha) abrem o teclado numérico", () => {
+    montar();
+    expect(por("#grade-aplicar-estoque")?.getAttribute("inputmode")).toBe(
+      "numeric",
+    );
+    expect(por("#grade-linha-estoque-0")?.getAttribute("inputmode")).toBe(
+      "numeric",
+    );
+    expect(por("#grade-linha-estoque-1")?.getAttribute("inputmode")).toBe(
+      "numeric",
+    );
+  });
+});
