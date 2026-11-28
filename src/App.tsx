@@ -41,6 +41,7 @@ import {
   aguardarComPrazo,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import { descartarRascunhoDeTexto } from "@/lib/rascunho-de-texto";
 import { descartarRascunhoDoProduto } from "@/lib/rascunho-do-produto";
 import { instalarReceptorDoPedidoDoAviso } from "@/lib/receptor-do-pedido-do-aviso";
 import { esquecerReciboDeVisitanteDoCheckout } from "@/lib/recibo-do-checkout";
@@ -3591,6 +3592,9 @@ const AppContent = () => {
                       sortBy: sortBy,
                       onSortByChange: setSortBy,
                       onHeaderDockChange: setIsHeaderDocked,
+                      // Só a cliente logada vê o aviso do pedido aguardando pagamento.
+                      userId: user?.id,
+                      isActive: currentView === "home",
                     }}
                   />
                 </DeferredTabContent>
@@ -3713,6 +3717,9 @@ const AppContent = () => {
                         sortBy: sortBy,
                         onSortByChange: setSortBy,
                         onHeaderDockChange: setIsHeaderDocked,
+                        // Só a cliente logada vê o aviso do pedido aguardando pagamento.
+                        userId: user?.id,
+                        isActive: currentView === "home",
                       }}
                     />
                   </DeferredTabContent>
@@ -4106,6 +4113,16 @@ const AppContent = () => {
                     user?.id,
                     selectedProductId || undefined,
                   );
+                }
+                // O mesmo para os textos longos com rascunho: a descrição de
+                // Minha loja (e o apelido Atendimento) e, em Ajustes, a política.
+                if (
+                  currentView === "admin-about-store" ||
+                  currentView === "admin-whatsapp-config"
+                ) {
+                  descartarRascunhoDeTexto("sobre-a-loja", user?.id);
+                } else if (currentView === "admin-settings") {
+                  descartarRascunhoDeTexto("politica-de-devolucao", user?.id);
                 }
                 if (pendingNavigation?.viaPopstate) {
                   // A guarda já empurrou a entrada do formulário por cima do

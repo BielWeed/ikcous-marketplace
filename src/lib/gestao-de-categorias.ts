@@ -197,23 +197,73 @@ export function trocarNomeNaLista(
   return trocada.filter((item, i) => trocada.indexOf(item) === i);
 }
 
-/** A categoria está em uso: produto, banner ou regra de devolução aponta para ela. */
+/**
+ * Produtos que a lojista vê na lista (à venda ou pausados): os de `produtos`
+ * menos os EXCLUÍDOS. Desde a migration 20261650000000 só esses seguram a
+ * categoria; o excluído fica com o nome escrito (o relatório de vendas por
+ * categoria o lê) e não impede apagar.
+ */
+function produtosQueSeguram(c: {
+  readonly produtos: number;
+  readonly produtosExcluidos?: number;
+}): number {
+  return Math.max(0, c.produtos - (c.produtosExcluidos ?? 0));
+}
+
+/**
+ * A categoria está em uso: produto da lista (à venda ou pausado), banner ou
+ * regra de devolução aponta para ela. Produto EXCLUÍDO não conta: a mesma
+ * regra de `apagar_categoria_vazia` (migration 20261650000000).
+ */
 export function categoriaEmUso(c: {
   readonly produtos: number;
+  readonly produtosExcluidos?: number;
   readonly banners: number;
   readonly regraDeDevolucao: number;
 }): boolean {
-  return c.produtos > 0 || c.banners > 0 || c.regraDeDevolucao > 0;
+  return produtosQueSeguram(c) > 0 || c.banners > 0 || c.regraDeDevolucao > 0;
 }
 
 const plural = (n: number, um: string, varios: string) =>
   `${n} ${n === 1 ? um : varios}`;
 
 /**
+ * O que IMPEDE apagar, em português ("1 produto e 2 banners"), ou `null`
+ * quando nada impede. Conta só o produto que a lojista vê na lista: o
+ * excluído não segura a categoria e não entra aqui (a confirmação de apagar
+ * fala dele, com `avisoDosExcluidosAoApagar`).
+ */
+export function descreverUsoQueImpede(c: {
+  readonly produtos: number;
+  readonly produtosExcluidos?: number;
+  readonly banners: number;
+  readonly regraDeDevolucao: number;
+}): string | null {
+  return descreverUso({
+    produtos: produtosQueSeguram(c),
+    banners: c.banners,
+    regraDeDevolucao: c.regraDeDevolucao,
+  });
+}
+
+/**
+ * Ao apagar uma categoria que tem produto EXCLUÍDO: eles não são mexidos e
+ * continuam com o nome dela, que é o que o relatório de vendas por categoria
+ * mostra. `null` quando não há excluído.
+ */
+export function avisoDosExcluidosAoApagar(excluidos: number): string | null {
+  if (excluidos <= 0) return null;
+  return excluidos === 1
+    ? "1 produto excluído dela continua no histórico de vendas com este nome."
+    : `${excluidos} produtos excluídos dela continuam no histórico de vendas com este nome.`;
+}
+
+/**
  * "3 produtos, 1 banner e a regra de devolução" — ou `null` quando não há uso.
- * Produto EXCLUÍDO conta (o banco o troca e ele impede apagar), mas a lojista
- * não o vê na lista de produtos: o texto diz quantos são, em vez de deixá-la
- * contando "3 produtos" quando enxerga 1.
+ * É o que ACOMPANHA o nome novo ao renomear: produto EXCLUÍDO conta (o banco o
+ * troca também), mas a lojista não o vê na lista de produtos: o texto diz
+ * quantos são, em vez de deixá-la contando "3 produtos" quando enxerga 1. Para
+ * o que impede APAGAR (o excluído não impede), `descreverUsoQueImpede`.
  */
 export function descreverUso(c: {
   readonly produtos: number;

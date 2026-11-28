@@ -46,6 +46,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { CLASSES_DO_BOTAO_CANCELAR_DO_AVISO } from "@/components/ui/classes-do-aviso";
 import { ImageAdjuster } from "@/components/ui/custom/ImageAdjuster";
 import { LimiteDePedaco } from "@/components/ui/custom/LimiteDePedaco";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -2123,6 +2124,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             // trava própria, `variacoesPendentes`).
             ofertaDeRascunhoPendenteRef.current = !pendente;
             setOfertaDeRascunhoPendente(!pendente);
+            const descartar = () => {
+              decidiuOfertaDeRascunho();
+              setVariacoesPendentes(false);
+              gradeDoRascunhoPendenteRef.current = false;
+              restaurarPendenteRef.current = null;
+              localStorage.removeItem(draftKey);
+              toast.info("Rascunho descartado.");
+            };
             toast.info("Rascunho não salvo encontrado para este produto", {
               description: `Deseja restaurar as alterações que você fez anteriormente?${
                 estoqueDoRascunhoDiferia
@@ -2134,17 +2143,27 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   : ""
               }`,
               action: { label: "Restaurar", onClick: restaurar },
-              cancel: {
-                label: "Descartar",
-                onClick: () => {
-                  decidiuOfertaDeRascunho();
-                  setVariacoesPendentes(false);
-                  gradeDoRascunhoPendenteRef.current = false;
-                  restaurarPendenteRef.current = null;
-                  localStorage.removeItem(draftKey);
-                  toast.info("Rascunho descartado.");
-                },
-              },
+              // O rascunho antigo NÃO fecha por gesto (`dismissible: false`,
+              // abaixo), e no Sonner 2.0.8 o `cancel` comum sai sem chamar o
+              // onClick num aviso assim: lá o Descartar é um botão próprio,
+              // que decide ANTES de fechar (`toast.dismiss` fecha sem olhar o
+              // dismissible). O aviso da grade pendente segue com o comum.
+              cancel: pendente ? (
+                { label: "Descartar", onClick: descartar }
+              ) : (
+                <button
+                  type="button"
+                  data-button=""
+                  data-cancel=""
+                  className={CLASSES_DO_BOTAO_CANCELAR_DO_AVISO}
+                  onClick={() => {
+                    descartar();
+                    toast.dismiss(ID_DA_OFERTA_DE_RASCUNHO_ANTIGO);
+                  }}
+                >
+                  Descartar
+                </button>
+              ),
               // O aviso fica até a decisão: não some em 10 s (o que deixava o
               // rascunho sem dono e o salvamento automático o sobrescrevia) e
               // não fecha por gesto — só Restaurar ou Descartar.

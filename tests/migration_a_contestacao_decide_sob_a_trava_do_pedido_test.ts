@@ -757,6 +757,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/as-listas-dos-ajustes-viva.cjs",
     // 20261645000000: o aviso do vale-troca diz que a loja combina (so a frase do ramo vale de devolucao_avisa_o_cliente).
     "tests/banco/o-aviso-do-vale-troca-diz-que-a-loja-combina-viva.cjs",
+    // 20261650000000: a categoria so com produto excluido pode sair (so a recusa por produto de apagar_categoria_vazia).
+    "tests/banco/a-categoria-so-com-produto-excluido-pode-sair-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
     // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;
