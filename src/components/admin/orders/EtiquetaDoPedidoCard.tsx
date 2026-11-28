@@ -810,6 +810,25 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         // que está mostrando — defesa nas DUAS pontas.
         if (orderIdAtualRef.current !== orderIdDoClique) return;
         if (error) throw error;
+        if (data?.rastreio_preservado === true) {
+          const pedidoRelido = await fetchPedido({ silencioso: true });
+          if (orderIdAtualRef.current !== orderIdDoClique) return;
+          if (!pedidoRelido) {
+            toast.info(
+              "Não foi possível recarregar o pedido agora. Tente novamente.",
+            );
+            return;
+          }
+          const codigoSalvo = pedidoRelido.tracking_code ?? "";
+          // A ficha pode ainda mostrar um código mais velho que o do cartão:
+          // repassa sempre o salvo; o aviso só sai se mudou o que a lojista via.
+          onTrackingAtualizado?.(orderIdDoClique, codigoSalvo);
+          if (codigoSalvo === (pedido?.tracking_code ?? "")) return;
+          toast.info(
+            "O rastreio foi alterado em outro aparelho. Mostrando o que está salvo agora.",
+          );
+          return;
+        }
         // O código do provedor pode vir preenchido sem uma nova gravação.
         const codigoDoProvedor =
           typeof data?.tracking_code === "string"
@@ -901,6 +920,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       onTrackingAtualizado,
       fetchPedido,
       pedido?.shipping_label_id,
+      pedido?.tracking_code,
     ],
   );
 

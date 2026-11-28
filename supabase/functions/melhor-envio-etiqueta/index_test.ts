@@ -917,22 +917,24 @@ Deno.test('handler - compra já paga grava a etiqueta mesmo se cancelaram o pedi
 
 Deno.test('handler - emissão preserva rastreio salvo por outra aba durante as chamadas do Melhor Envio', async () => {
     await comEnvAdmin(async () => {
-        for (const tracking of [null, 'ME123456789BR']) {
+        for (const tracking of ['ME4822', null]) {
             for (const anterior of [null, 'MANUAL-ANTIGO']) {
                 const supa = clienteFalso({ pedido: { ...PEDIDO_FELIZ, tracking_code: anterior } })
                 const me = buscarMeFalso()
                 const buscar = async (input: any, init?: any) => {
                     const resposta = await me.buscar(input, init)
                     if (String(input).endsWith('/api/v2/me/shipment/tracking')) {
-                        supa.registro.pedidoAtual.tracking_code = 'MANUAL-NOVO'
+                        supa.registro.pedidoAtual.tracking_code = 'MANUAL4822'
                         return new Response(JSON.stringify({ [LABEL_ID]: { tracking, status: 'generated' } }))
                     }
                     return resposta
                 }
                 const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
                 assertEquals(res.status, 200)
-                assertEquals((await res.json()).success, true)
-                assertEquals(supa.registro.pedidoAtual.tracking_code, 'MANUAL-NOVO')
+                const corpo = await res.json()
+                assertEquals(corpo.success, true)
+                assertEquals(supa.registro.pedidoAtual.tracking_code, 'MANUAL4822')
+                assertEquals(corpo.tracking_code, 'MANUAL4822')
                 assertEquals(supa.registro.pedidoAtual.shipping_label_url, 'https://imprimir.teste/etiqueta')
             }
         }
@@ -949,21 +951,13 @@ Deno.test('handler - emissão grava o rastreio do Melhor Envio quando o pedido c
     })
 })
 
-// 27/11/2026 (caça): este teste nasceu com o status 'cancelled' e por isso
-// PRENDIA o defeito — etiqueta cancelada no Melhor Envio fazia o código morto
-// dela substituir o MANUAL-NOVO que a loja tinha acabado de digitar. A intenção
-// original (a gravação vale pelo pedido mesmo com outra aba editando durante a
-// consulta) continua aqui, agora com uma etiqueta VIVA ('posted'); a etiqueta
-// cancelada tem o teste próprio logo abaixo.
-Deno.test('handler - consulta mantém a gravação pelo pedido mesmo se outra aba editou durante a consulta', async () => {
+Deno.test('handler - consulta grava o código do provedor quando o pedido não mudou durante a consulta', async () => {
     await comEnvAdmin(async () => {
         for (const anterior of ['MANUAL-ANTIGO', null]) {
             const supa = clienteFalso({ pedido: { ...PEDIDO_FELIZ, shipping_label_id: LABEL_ID, tracking_code: anterior } })
             const me = buscarMeFalso()
             const buscar = async (input: any, init?: any) => {
                 if (String(input).endsWith('/api/v2/me/shipment/tracking')) {
-                    // A consulta já leu o pedido; outra aba grava enquanto o provedor responde.
-                    supa.registro.pedidoAtual.tracking_code = 'MANUAL-NOVO'
                     return new Response(JSON.stringify({ [LABEL_ID]: { tracking: 'ME-NOVO', status: 'posted' } }))
                 }
                 return me.buscar(input, init)
@@ -978,6 +972,31 @@ Deno.test('handler - consulta mantém a gravação pelo pedido mesmo se outra ab
             const evento = supa.registro.eventos.find((e) => e.event_type === 'rastreio_consultado')
             assertEquals(evento?.payload, { label_id: LABEL_ID, status_etiqueta: 'posted' })
             assertEquals(evento?.tracking_code, 'ME-NOVO')
+        }
+    })
+})
+
+Deno.test('handler - consulta preserva e devolve código salvo em outra aba durante a consulta', async () => {
+    await comEnvAdmin(async () => {
+        for (const [anterior, atual] of [
+            ['MANUAL-ANTIGO', 'NOVO4821'],
+            [null, 'NOVO4821'],
+            ['MANUAL-ANTIGO', null],
+            ['ANTIGO4821', 'NOVO4821'],
+        ] as const) {
+            const supa = clienteFalso({ pedido: { ...PEDIDO_FELIZ, shipping_label_id: LABEL_ID, tracking_code: anterior } })
+            const buscar = () => {
+                // O handler já leu o pedido; a edição chega antes da resposta do provedor.
+                supa.registro.pedidoAtual.tracking_code = atual
+                return Promise.resolve(new Response(JSON.stringify({ [LABEL_ID]: { tracking: 'ANTIGO4821', status: 'posted' } })))
+            }
+            const res = await comAdminFalso(() => handler(requisicaoGerar('consultar_rastreio'), { supabase: supa.cliente, buscar }))
+            assertEquals(res.status, 200)
+            assertEquals(supa.registro.pedidoAtual.tracking_code, atual)
+            const corpo = await res.json()
+            assertEquals(corpo.tracking_code, atual)
+            assertEquals(corpo.rastreio_atualizado, false)
+            assertEquals(corpo.rastreio_preservado, true)
         }
     })
 })
@@ -1018,7 +1037,7 @@ Deno.test('handler - consulta de etiqueta CANCELADA não grava nem devolve o có
     })
 })
 
-Deno.test('handler - status consultado continua vinculado à etiqueta original quando o id muda em voo', async () => {
+Deno.test('handler - consulta não usa código da etiqueta anterior quando o id muda em voo', async () => {
     await comEnvAdmin(async () => {
         const supa = clienteFalso({ pedido: { ...PEDIDO_FELIZ, shipping_label_id: LABEL_ID, tracking_code: 'MANUAL-ANTIGO' } })
         const me = buscarMeFalso()
@@ -1031,11 +1050,12 @@ Deno.test('handler - status consultado continua vinculado à etiqueta original q
         }
         const res = await comAdminFalso(() => handler(requisicaoGerar('consultar_rastreio'), { supabase: supa.cliente, buscar }))
         assertEquals(res.status, 200)
-        assertEquals(supa.registro.pedidoAtual.tracking_code, 'ME-ANTIGO')
+        assertEquals(supa.registro.pedidoAtual.tracking_code, 'MANUAL-ANTIGO')
         const corpo = await res.json()
         assertEquals(corpo.label_id, LABEL_ID)
-        assertEquals(corpo.tracking_code, 'ME-ANTIGO')
-        assertEquals(corpo.rastreio_atualizado, true)
+        assertEquals(corpo.tracking_code, 'MANUAL-ANTIGO')
+        assertEquals(corpo.rastreio_atualizado, false)
+        assertEquals(corpo.rastreio_preservado, true)
         assertEquals(corpo.status_etiqueta, 'posted')
         const evento = supa.registro.eventos.find((e) => e.event_type === 'rastreio_consultado')
         assertEquals(evento?.payload, { label_id: LABEL_ID, status_etiqueta: 'posted' })

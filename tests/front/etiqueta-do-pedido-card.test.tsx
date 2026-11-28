@@ -31,12 +31,14 @@ const AVISO_ETIQUETA_PAGA =
 const {
   invokeMock,
   pedidoState,
+  leituraDoPedidoMock,
   eventosState,
   tabelasLidas,
   eqChamadas,
   colunasPedidas,
 } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
+  leituraDoPedidoMock: vi.fn(),
   // O histórico de envio (`order_shipping_events`) é uma leitura À PARTE, só
   // quando o pedido já tem vínculo com etiqueta (lote 227).
   eventosState: {
@@ -86,11 +88,7 @@ vi.mock("@/lib/supabase", () => ({
             eq: (_coluna: string, valor: string) => {
               eqChamadas.push(valor);
               return {
-                maybeSingle: () =>
-                  Promise.resolve({
-                    data: pedidoState.data,
-                    error: pedidoState.error,
-                  }),
+                maybeSingle: leituraDoPedidoMock,
               };
             },
           };
@@ -159,6 +157,11 @@ describe("EtiquetaDoPedidoCard", () => {
     colunasPedidas.length = 0;
     pedidoState.data = pedido();
     pedidoState.error = null;
+    leituraDoPedidoMock
+      .mockReset()
+      .mockImplementation(() =>
+        Promise.resolve({ data: pedidoState.data, error: pedidoState.error }),
+      );
     eventosState.data = [];
     eventosState.error = null;
     eventosState.lanca = false;
@@ -817,6 +820,184 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(toast.info).toHaveBeenCalledWith(
       "O código de rastreio já está atualizado.",
     );
+  });
+
+  it("relê o rastreio apagado em outro aparelho quando a consulta preserva a edição", async () => {
+    const etiqueta = {
+      shipping_label_id: "lbl-ja-existe",
+      shipping_label_url: "https://imprimir.teste/etiqueta",
+    };
+    pedidoState.data = pedido({ ...etiqueta, tracking_code: "MANUAL-ANTIGO" });
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(undefined, { onTrackingAtualizado });
+    expect(hospedeiro.textContent).toContain("MANUAL-ANTIGO");
+
+    pedidoState.data = pedido(etiqueta);
+    invokeMock.mockResolvedValue({
+      data: {
+        success: true,
+        label_id: "lbl-ja-existe",
+        tracking_code: null,
+        rastreio_atualizado: false,
+        rastreio_preservado: true,
+      },
+    });
+
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).not.toContain("MANUAL-ANTIGO");
+    expect(hospedeiro.textContent).toContain("Ainda sem código");
+    expect(onTrackingAtualizado).toHaveBeenCalledExactlyOnceWith(
+      "11111111-1111-1111-1111-111111111111",
+      "",
+    );
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining("O rastreio foi alterado em outro aparelho."),
+    );
+    expect(toast.info).not.toHaveBeenCalledWith(
+      expect.stringContaining("A transportadora ainda não publicou o código"),
+    );
+  });
+
+  it("relê a etiqueta trocada sem avisar que o código de rastreio mudou", async () => {
+    const tracking_code = "ME23002OWZ7BR";
+    const linkDaEtiqueta = () =>
+      hospedeiro.querySelector("a")?.getAttribute("href");
+    pedidoState.data = pedido({
+      shipping_label_id: "lbl-antiga",
+      shipping_label_url: "https://imprimir.teste/antiga",
+      tracking_code,
+    });
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(undefined, { onTrackingAtualizado });
+    expect(linkDaEtiqueta()).toBe("https://imprimir.teste/antiga");
+
+    pedidoState.data = pedido({
+      shipping_label_id: "lbl-nova",
+      shipping_label_url: "https://imprimir.teste/nova",
+      tracking_code,
+    });
+    invokeMock.mockResolvedValue({
+      data: {
+        success: true,
+        label_id: "lbl-antiga",
+        tracking_code,
+        rastreio_atualizado: false,
+        rastreio_preservado: true,
+      },
+    });
+
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+      await esperarMicrotarefas();
+    });
+
+    expect(linkDaEtiqueta()).toBe("https://imprimir.teste/nova");
+    expect(hospedeiro.textContent).toContain(tracking_code);
+    // A ficha pode estar com um código mais velho: recebe o salvo mesmo sem aviso.
+    expect(onTrackingAtualizado).toHaveBeenCalledExactlyOnceWith(
+      "11111111-1111-1111-1111-111111111111",
+      tracking_code,
+    );
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it("não avisa nem repassa o rastreio do pedido anterior ao trocar de ficha durante a releitura", async () => {
+    const etiqueta = {
+      shipping_label_id: "lbl-ja-existe",
+      shipping_label_url: "https://imprimir.teste/etiqueta",
+    };
+    pedidoState.data = pedido({ ...etiqueta, tracking_code: "ME-ANTIGO" });
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(ORDER_A, { onTrackingAtualizado });
+
+    const pedidoRelido = pedido({ ...etiqueta, tracking_code: "ME-NOVO" });
+    let concluirReleitura: () => void = () => {};
+    const releitura = new Promise((resolve) => {
+      concluirReleitura = () => resolve({ data: pedidoRelido, error: null });
+    });
+    leituraDoPedidoMock.mockClear().mockReturnValueOnce(releitura);
+    invokeMock.mockResolvedValue({ data: { rastreio_preservado: true } });
+
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+    });
+    expect(leituraDoPedidoMock).toHaveBeenCalledTimes(1);
+
+    pedidoState.data = pedido({
+      id: ORDER_B,
+      shipping_option_id: "store-pickup",
+    });
+    await abrirCard(ORDER_B, { onTrackingAtualizado });
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+
+    await act(async () => {
+      concluirReleitura();
+    });
+
+    expect(toast.info).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(onTrackingAtualizado).not.toHaveBeenCalled();
+  });
+
+  it("avisa quando não consegue recarregar o pedido em vez de dizer que o código está atualizado", async () => {
+    pedidoState.data = pedido({
+      shipping_label_id: "lbl-ja-existe",
+      shipping_label_url: "https://imprimir.teste/etiqueta",
+      tracking_code: "ME-ANTIGO",
+    });
+    await abrirCard();
+
+    pedidoState.data = null;
+    invokeMock.mockResolvedValue({ data: { rastreio_preservado: true } });
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+    });
+
+    expect(toast.info).toHaveBeenCalledWith(
+      "Não foi possível recarregar o pedido agora. Tente novamente.",
+    );
+    expect(toast.info).not.toHaveBeenCalledWith(
+      "O código de rastreio já está atualizado.",
+    );
+  });
+
+  it("não repete o aviso de edição em outro aparelho quando o cartão já mostra o código salvo", async () => {
+    const etiqueta = {
+      shipping_label_id: "lbl-ja-existe",
+      shipping_label_url: "https://imprimir.teste/etiqueta",
+    };
+    pedidoState.data = pedido({ ...etiqueta, tracking_code: "ME-ANTIGO" });
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(ORDER_A, { onTrackingAtualizado });
+    expect(hospedeiro.textContent).toContain("ME-ANTIGO");
+
+    pedidoState.data = pedido({ ...etiqueta, tracking_code: "ME-NOVO" });
+    invokeMock.mockResolvedValue({ data: { rastreio_preservado: true } });
+
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+    });
+    expect(hospedeiro.textContent).toContain("ME-NOVO");
+    const avisoDeEdicao = expect.stringContaining(
+      "O rastreio foi alterado em outro aparelho.",
+    );
+    expect(toast.info).toHaveBeenCalledWith(avisoDeEdicao);
+    vi.mocked(toast.info).mockClear();
+    onTrackingAtualizado.mockClear();
+
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+    });
+    expect(onTrackingAtualizado).toHaveBeenCalledExactlyOnceWith(
+      ORDER_A,
+      "ME-NOVO",
+    );
+    expect(toast.info).not.toHaveBeenCalledWith(avisoDeEdicao);
   });
 
   it("só o id reservado mantém o rótulo anterior sem nova compra nem aviso de etiqueta paga", async () => {

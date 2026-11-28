@@ -2513,16 +2513,47 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 ['canceled', 'cancelled'].includes(status.trim().toLowerCase())
             const trackingQueVale = etiquetaCancelada ? null : tracking
 
-            // Mantém a regra original: um código novo substitui o código do
-            // pedido, e ausência de código não apaga o que já estava salvo.
-            const atualizado = trackingQueVale !== null && trackingQueVale !== pedido.tracking_code
-            if (atualizado) {
-                const { error: rastreioError } = await supabaseClient
-                    .from('marketplace_orders')
-                    .update({ tracking_code: trackingQueVale })
-                    .eq('id', orderId)
-                if (rastreioError) {
-                    return respostaJson({ error: 'Não foi possível salvar o rastreio no pedido. Tente atualizar o rastreio novamente.' }, 500)
+            // O código do provedor só substitui o anterior se o rastreio e
+            // a etiqueta ainda forem os mesmos que lemos antes da consulta.
+            let atualizado = false
+            let preservado = false
+            let trackingSalvo = trackingQueVale
+            if (trackingQueVale !== null) {
+                const precisaGravar = trackingQueVale !== pedido.tracking_code
+                if (precisaGravar) {
+                    const atualizacao = supabaseClient
+                        .from('marketplace_orders')
+                        .update({ tracking_code: trackingQueVale })
+                        .eq('id', orderId)
+                        .eq('shipping_label_id', labelId)
+                    const { data: linhas, error: rastreioError } = await (pedido.tracking_code === null
+                        ? atualizacao.is('tracking_code', null)
+                        : atualizacao.eq('tracking_code', pedido.tracking_code))
+                        .select('id')
+                    if (rastreioError) {
+                        return respostaJson({ error: 'Não foi possível salvar o rastreio no pedido. Tente atualizar o rastreio novamente.' }, 500)
+                    }
+                    atualizado = linhas?.length === 1
+                }
+
+                // Mesmo sem precisar gravar, o código que coincidiu com a
+                // primeira leitura pode ter mudado enquanto o provedor respondia.
+                if (!atualizado) {
+                    const { data: pedidoAtual, error: releituraError } = await supabaseClient
+                        .from('marketplace_orders')
+                        .select('tracking_code, shipping_label_id')
+                        .eq('id', orderId)
+                        .maybeSingle()
+                    if (releituraError) {
+                        return respostaJson({ error: 'Não foi possível conferir o rastreio salvo no pedido. Tente novamente.' }, 500)
+                    }
+                    if (!pedidoAtual) {
+                        return respostaJson({ error: 'Pedido não encontrado.' }, 404)
+                    }
+                    trackingSalvo = pedidoAtual.tracking_code
+                    preservado = precisaGravar ||
+                        pedidoAtual.tracking_code !== pedido.tracking_code ||
+                        pedidoAtual.shipping_label_id !== labelId
                 }
             }
             // O evento guarda o que o provedor respondeu, cancelada ou não.
@@ -2535,8 +2566,9 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
             return respostaJson({
                 success: true,
-                tracking_code: trackingQueVale,
+                tracking_code: trackingSalvo,
                 rastreio_atualizado: atualizado,
+                ...(preservado ? { rastreio_preservado: true } : {}),
                 status_etiqueta: status,
                 label_id: labelId,
             })
@@ -3272,11 +3304,24 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 },
             })
 
+            // A escrita acima preserva o código manual. Responda com o que
+            // ficou no pedido, não com o código bruto que veio do provedor.
+            const { data: pedidoEmitido, error: erroAoRelerRastreio } = await supabaseClient
+                .from('marketplace_orders')
+                .select('tracking_code')
+                .eq('id', orderId)
+                .maybeSingle()
+            if (erroAoRelerRastreio) {
+                // A etiqueta segue paga e vinculada; uma falha de leitura não
+                // deve transformar a compra em erro nem exibir código não confirmado.
+                console.error('[melhor-envio-etiqueta] Falha ao reler o rastreio salvo após a emissão:', erroAoRelerRastreio)
+            }
+
             return new Response(
                 JSON.stringify({
                     success: true,
                     already: false,
-                    tracking_code: trackingCode,
+                    tracking_code: erroAoRelerRastreio ? null : (pedidoEmitido?.tracking_code ?? null),
                     label_url: labelUrl,
                     label_id: labelId,
                     protocol: cartData?.protocol || null,
