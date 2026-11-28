@@ -735,6 +735,8 @@ describe("CheckoutView com pagamentoOnlineLigado() ligada", () => {
     expect(createOrder).toHaveBeenCalledTimes(1);
     expect(createOrder).toHaveBeenCalledWith(expect.anything(), {
       comPagamentoOnline: false,
+      // A compra da visitante vai sempre sem sessão (caça 28/11/2026).
+      semSessao: true,
     });
     // Caminho de sucesso de sempre — nunca a tela de "Finalize o pagamento",
     // que só existe para a cobrança online.
@@ -859,7 +861,8 @@ describe("CheckoutView com pagamentoOnlineLigado() ligada", () => {
       expect.objectContaining({
         addressData: expect.objectContaining({ state: "SP" }),
       }),
-      { comPagamentoOnline: false },
+      // A sessão caiu: a compra é de visitante e vai sem sessão (28/11/2026).
+      { comPagamentoOnline: false, semSessao: true },
     );
   });
 });

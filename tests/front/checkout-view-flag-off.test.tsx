@@ -294,6 +294,8 @@ describe("CheckoutView com pagamentoOnlineLigado() desligada", () => {
     expect(createOrder).toHaveBeenCalledTimes(1);
     expect(createOrder).toHaveBeenCalledWith(expect.anything(), {
       comPagamentoOnline: false,
+      // A compra da visitante vai sempre sem sessão (caça 28/11/2026).
+      semSessao: true,
     });
     expect(clearCart).toHaveBeenCalledTimes(1);
     expect(clearCart).toHaveBeenCalledWith({ silencioso: true });

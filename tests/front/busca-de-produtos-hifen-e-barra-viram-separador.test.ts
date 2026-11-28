@@ -43,8 +43,8 @@ describe("produtoCombinaComBusca — hifen e barra viram separador", () => {
       name: "Conjunto Infantil",
       category: "Roupas por anos",
       variants: [
-        { value: "3", active: true },
-        { value: "4", active: true },
+        { value: "3", active: true, stockIncrement: 1 },
+        { value: "4", active: true, stockIncrement: 1 },
       ],
     };
     expect(produtoCombinaComBusca(roupa, "3-4 anos")).toBe(true);
@@ -55,7 +55,7 @@ describe("produtoCombinaComBusca — hifen e barra viram separador", () => {
     const roupa = {
       name: "Conjunto Infantil",
       category: "Roupas por anos",
-      variants: [{ value: "3", active: true }],
+      variants: [{ value: "3", active: true, stockIncrement: 1 }],
     };
     expect(produtoCombinaComBusca(roupa, "3-4 anos")).toBe(false);
   });
@@ -64,7 +64,7 @@ describe("produtoCombinaComBusca — hifen e barra viram separador", () => {
     const camisa = {
       name: "Camisa",
       category: "Geral",
-      variants: [{ value: "P-M", active: true }],
+      variants: [{ value: "P-M", active: true, stockIncrement: 1 }],
     };
     expect(produtoCombinaComBusca(camisa, "p m")).toBe(true);
     expect(produtoCombinaComBusca(camisa, "p-m")).toBe(true);

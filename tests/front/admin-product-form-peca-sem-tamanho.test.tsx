@@ -288,7 +288,7 @@ describe("a peca que voltou sem tamanho, na tela do produto", () => {
     const a = aviso();
     expect(a).not.toBeNull();
     expect(a!.textContent).toContain(
-      "1 peça deste produto voltou sem tamanho (pedido #00A1B2, vendido antes de você criar os tamanhos). Ela não está à venda.",
+      "1 peça deste produto voltou e espera você escolher o tamanho (pedido #00A1B2, vendido sem tamanho ou num tamanho hoje desligado). Ela não está à venda.",
     );
     // um tamanho so: vem marcado, mas nada foi somado
     expect(botao("M")?.getAttribute("aria-pressed")).toBe("true");
