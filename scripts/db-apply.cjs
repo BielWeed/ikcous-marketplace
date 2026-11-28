@@ -865,11 +865,10 @@ const VERIFICACOES = {
         },
         { texto: "v_di.variant_id := NULL;", vezes: 1 },
         { texto: "v_di.product_id := COALESCE(v_di.product_id,", vezes: 1 },
-        {
-          texto:
-            "'reestocados', v_reestocados - v_sem_tamanho, 'sem_tamanho', v_sem_tamanho",
-          vezes: 1,
-        },
+        // O retorno em DUAS metades, 1x cada: a 20261659000000 poe "- v_fora_do_estoque" entre elas e a soma 'fora_do_estoque' depois,
+        // e o marcador inteiro (contiguo) casava 0x no corpo vivo depois dela (divergencia falsa num lote que a inclui).
+        { texto: "'reestocados', v_reestocados - v_sem_tamanho", vezes: 1 },
+        { texto: "'sem_tamanho', v_sem_tamanho", vezes: 1 },
       ],
     },
     // A leitura NOVA da ficha da devolucao: a porta do admin de agora e o filtro pelo item gravado na conclusao (so o que ainda espera).
@@ -1858,11 +1857,10 @@ const VERIFICACOES = {
           vezes: 1,
         },
         { texto: "FROM generate_series(1, v_di.quantidade);", vezes: 1 },
-        {
-          texto:
-            "'reestocados', v_reestocados - v_sem_tamanho, 'sem_tamanho', v_sem_tamanho",
-          vezes: 1,
-        },
+        // O retorno em DUAS metades, 1x cada: a 20261659000000 poe "- v_fora_do_estoque" entre elas e a soma 'fora_do_estoque' depois,
+        // e o marcador inteiro (contiguo) casava 0x no corpo vivo depois dela (divergencia falsa num lote que a inclui).
+        { texto: "'reestocados', v_reestocados - v_sem_tamanho", vezes: 1 },
+        { texto: "'sem_tamanho', v_sem_tamanho", vezes: 1 },
       ],
     },
     {
