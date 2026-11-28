@@ -3259,40 +3259,56 @@ export function dependenciasReais({ rodarGh, rodarSupabase } = {}) {
         throw new Error("functions list não é uma lista");
       return lista.map((f) => ({ slug: f.slug, verify_jwt: f.verify_jwt }));
     },
-    baixarFuncao: async (ref, nome) => {
-      if (!RE_REF.test(ref) || !RE_FUNCAO.test(nome))
-        throw new Error("ref ou nome inválido");
-      const dir = mkdtempSync(path.join(os.tmpdir(), `frota-fn-${nome}-`));
-      try {
-        mkdirSync(path.join(dir, "supabase"), { recursive: true });
-        // `--use-api`: o `download` padrão (eszip extraído no Docker) passou a
-        // devolver o bundle TRANSPILADO (tipos apagados, código reformatado) e
-        // acusava "difere" em TODA function, até nas que a release não tocou
-        // (07/11/2026, release 1.5.153). Pela API sai o fonte que foi publicado.
-        await executarSupabase(
-          [
-            "functions",
-            "download",
-            nome,
-            "--project-ref",
-            ref,
-            "--workdir",
-            dir,
-            "--use-api",
-          ],
-          { cwd: dir },
-        );
-        const raiz = path.join(dir, "supabase", "functions");
-        if (!existsSync(raiz)) return [];
-        // o conteúdo é lido AQUI, antes do finally: quem chama só vê a memória
-        return listarArquivos(raiz).map((rel) => ({
-          caminho: `supabase/functions/${rel}`,
-          conteudo: readFileSync(path.join(raiz, rel), "utf8"),
-        }));
-      } finally {
-        apagarPastaTemporaria(dir);
-      }
-    },
+    baixarFuncao: baixadorDeFuncaoPeloCli(executarSupabase),
+  };
+}
+
+/**
+ * O download do código de UMA function no ar, como o portão o lê (exportado
+ * para o functions-da-loja.mjs comparar pelo MESMO critério, lote 566):
+ * `supabase functions download <nome> --use-api` numa pasta temporária, e
+ * devolve [{ caminho: "supabase/functions/...", conteudo }] lido em memória
+ * antes de apagar a pasta. `executarSupabase(args, opcoes)` é o executor do
+ * CLI (padrão: o `supabase` do PATH, com o login de quem roda); os testes
+ * passam um dublê e nunca chegam ao CLI de verdade.
+ */
+export function baixadorDeFuncaoPeloCli(
+  executarSupabase = (args, opcoes) =>
+    rodar(comandoNoWindows("supabase"), args, opcoes),
+) {
+  return async (ref, nome) => {
+    if (!RE_REF.test(ref) || !RE_FUNCAO.test(nome))
+      throw new Error("ref ou nome inválido");
+    const dir = mkdtempSync(path.join(os.tmpdir(), `frota-fn-${nome}-`));
+    try {
+      mkdirSync(path.join(dir, "supabase"), { recursive: true });
+      // `--use-api`: o `download` padrão (eszip extraído no Docker) passou a
+      // devolver o bundle TRANSPILADO (tipos apagados, código reformatado) e
+      // acusava "difere" em TODA function, até nas que a release não tocou
+      // (07/11/2026, release 1.5.153). Pela API sai o fonte que foi publicado.
+      await executarSupabase(
+        [
+          "functions",
+          "download",
+          nome,
+          "--project-ref",
+          ref,
+          "--workdir",
+          dir,
+          "--use-api",
+        ],
+        { cwd: dir },
+      );
+      const raiz = path.join(dir, "supabase", "functions");
+      if (!existsSync(raiz)) return [];
+      // o conteúdo é lido AQUI, antes do finally: quem chama só vê a memória
+      return listarArquivos(raiz).map((rel) => ({
+        caminho: `supabase/functions/${rel}`,
+        conteudo: readFileSync(path.join(raiz, rel), "utf8"),
+      }));
+    } finally {
+      apagarPastaTemporaria(dir);
+    }
   };
 }
 

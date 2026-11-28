@@ -15,7 +15,7 @@
  *
  *   abrir          --client-id <id> --redirect <url>   (client_secret pela ENTRADA)
  *   receber        (o código colado pela ENTRADA, nunca por argumento)
- *   criar-projeto  --org <slug da organização da lojista>
+ *   criar-projeto  [--org <slug>]   (padrão: a org central, scripts/frota/org-central.json)
  *   banco
  *   ficha          [--nome <apelido>]
  *   dominio        (grava <slug>.vercel.app em store_config.dominio_publico)
@@ -29,7 +29,10 @@
  *   definir-dono   (a administradora única vira a dona; só loja do nova-loja)
  *   trocar-dono    (o e-mail da nova dona, o nome da loja e as 2 primeiras
  *                   letras do e-mail da dona de HOJE, tudo pela ENTRADA)
- *   conferir       (só leitura: a lista do que torna a loja pronta)
+ *   conferir       (só leitura: a lista do que torna a loja pronta para
+ *                   vender; "pronta" só com TODOS os itens SIM — o e-mail de
+ *                   confirmação e o Mercado Pago inclusive; o que é da
+ *                   lojista aparece como ATENÇÃO e não vira "pronta")
  *
  * O QUE ESTE ARQUIVO GARANTE (tests/frota_nova_loja_comando_test.ts trava):
  *  - SEM --aplicar NADA sai nem se grava: nenhum fetch (nem o POST do
@@ -64,7 +67,13 @@
  *  - banco chama o instalador-banco.mjs (uma migration por chamada) e só diz
  *    SIM se, relido o banco depois, a fila INTEIRA está no ledger e a marca da
  *    instalação está concluída; envios sem erro com a releitura de conferência
- *    caída = INCERTO (não dá para dizer que não ficou);
+ *    caída = INCERTO (não dá para dizer que não ficou). Loja que ESTE comando
+ *    instalou e que uma release deixou para trás (ainda fora do cadastro da
+ *    frota) recebe só as migrations novas do fim (atualizarConcluida do
+ *    instalador, lote 566); a do cadastro, pelo aplicar-migrations.yml. Uma
+ *    RECUSA sem dano (nada gravado, a instalação de pé: checkout velho, loja
+ *    do cadastro atrasada, banco que mudou no meio) nunca rebaixa o SIM
+ *    gravado — a rodada diz NÃO e o estado fica SIM;
  *  - primeira-admin chama o primeira-admin.mjs (B3) com o acesso OAuth desta
  *    rodada: o e-mail entra pela entrada e só vai ao banco (nunca ao estado, à
  *    saída nem à mensagem); a transação do B3 tem o SET LOCAL ROLE postgres
@@ -73,7 +82,11 @@
  *    DESTA rodada (o token OAuth renovado do cofre, nunca o
  *    SUPABASE_ACCESS_TOKEN do ambiente) e repassam o veredito deles sem que
  *    INCERTO vire SIM; o B2 só publica com o HEAD no topo do ramo da release
- *    e a recusa dele é repassada como veio. Mensagem de script B que manda
+ *    e a recusa dele é repassada como veio; ele compara o CÓDIGO no ar com o
+ *    do commit (o critério e o download do portão da release; lote 566) e
+ *    republica o que difere. O download real (CLI do Supabase) só entra pela
+ *    linha de comando (principal); sem ele, nada no ar é dado como igual.
+ *    Mensagem de script B que manda
  *    "rodar sem --aplicar" para ler o estado é reescrita para o conferir
  *    (pelo nova-loja, sem --aplicar não se lê nada);
  *  - definir-dono (regra do sócio, 26/11): sem dono e com EXATAMENTE uma
@@ -143,11 +156,15 @@ import {
   lerPrivilegiosPadrao,
   planejarInstalacao,
 } from "./instalador-banco.mjs";
-import { configurarLoginNovo } from "./login-da-loja-nova.mjs";
+import {
+  configurarLoginNovo,
+  lerEmailDaLojaNova,
+} from "./login-da-loja-nova.mjs";
 import {
   executar as executarPrimeiraAdmin,
   literalDoEmail,
 } from "./primeira-admin.mjs";
+import { baixadorDeFuncaoPeloCli } from "./publicar-release.mjs";
 import {
   SQL_SAUDE,
   faltandoNo,
@@ -614,6 +631,10 @@ const temOrgDeclarada = (p) =>
   typeof p?.organization_slug === "string" ||
   typeof p?.organization_id === "string";
 const nomeDoProjeto = (slug) => `ikcous-${slug}`;
+/** O nome DERIVADO do slug (modelo antigo: um segredo por loja). A ficha não
+ * o gera mais (gera o da org central); ele só serve à régua do slug abaixo,
+ * que segue a do cadastro-da-loja.mjs enquanto ele ainda deriva o nome por
+ * loja (A9 do plano da org central, pendente). */
 const segredoDoToken = (slug) =>
   `SUPABASE_ACCESS_TOKEN_${slug.toUpperCase().replace(/-/g, "_")}`;
 /** Até onde o slug cabe no cadastro (lojas.cjs, RE_SEGREDO: sufixo de até 24;
@@ -1055,7 +1076,7 @@ async function criarProjeto(pedido, d, marca) {
         else if (erro?.status === 402)
           r = resultado(
             NAO,
-            "PARAR: o Supabase recusou com HTTP 402 (fatura atrasada na organização da lojista, ou o plano não comporta o projeto). A lojista confere Billing no painel dela. Nenhum projeto foi criado.",
+            "PARAR: o Supabase recusou com HTTP 402 (fatura atrasada na organização central da IKCOUS, ou o plano não comporta o projeto). O dono confere Billing no painel da organização central (a lojista não tem conta no Supabase). Nenhum projeto foi criado.",
           );
         else if (
           erro?.codigo === ESTADO_DESCONHECIDO ||
@@ -1155,6 +1176,33 @@ async function projetoPronto(d, slug, exigido) {
   return { estado: e, ref: cp.ref, org: cp.org };
 }
 
+/** A loja já está no cadastro da frota (lojas.json)? Ilegível = INCERTO:
+ * sem saber, o instalador não decide entre ele e o portão da release. */
+function lojaNaFrota(d, slug) {
+  let lojas;
+  try {
+    lojas = d.lojasBrutas()?.lojas;
+  } catch {
+    lojas = null;
+  }
+  if (lojas === null || typeof lojas !== "object" || Array.isArray(lojas)) {
+    throw new ErroDoComando(
+      "não consegui ler scripts/frota/lojas.json para saber se a loja já está no cadastro da frota; nada foi enviado ao banco.",
+      { codigo: ESTADO_DESCONHECIDO },
+    );
+  }
+  return Object.hasOwn(lojas, slug);
+}
+
+/** O banco lido mostra a instalação deste instalador de pé: marca concluída,
+ * public com tabelas e ledger com versões. Recusa com isso não é dano. */
+const instalacaoDePe = (e) =>
+  e?.marca === "concluida" &&
+  Number.isInteger(e?.tabelasEmPublic) &&
+  e.tabelasEmPublic > 0 &&
+  Array.isArray(e?.versoesNoLedger) &&
+  e.versoesNoLedger.length > 0;
+
 async function passoBanco(pedido, d) {
   const { slug } = pedido;
   const pre = await projetoPronto(d, slug, "banco");
@@ -1192,8 +1240,26 @@ async function passoBanco(pedido, d) {
     });
     return r;
   }
-  const plano = planejarInstalacao(antes, arquivos);
+  // A loja do cadastro da frota recebe migration nova pelo portão da release
+  // (aplicar-migrations.yml); só a que ainda está sendo instalada por aqui
+  // recebe as novas do fim pelo instalador (lote 566).
+  const opcoes = { atualizarConcluida: !lojaNaFrota(d, slug) };
+  const plano = planejarInstalacao(antes, arquivos, opcoes);
   const r = await instalar(cliente, plano, { aplicar: true, ritmo });
+  if (
+    r.estado === "RECUSADO" &&
+    pre.estado?.passos?.banco?.veredito === SIM &&
+    instalacaoDePe(antes)
+  ) {
+    // recusa que não indica dano (checkout velho, loja do cadastro atrasada,
+    // banco que mudou no meio): nada foi gravado e a instalação continua de
+    // pé, então o SIM gravado fica — rebaixá-lo travaria todos os passos
+    // seguintes para sempre (lote 566)
+    return resultado(
+      NAO,
+      `${r.mensagem} O SIM do banco desta loja foi mantido: a instalação continua de pé (marca concluída, ${antes.versoesNoLedger.length} versões no ledger) e nada foi gravado nesta rodada.`,
+    );
+  }
   const aplicadas = Array.isArray(r.aplicados) ? r.aplicados.length : 0;
   let veredito;
   let mensagem = r.mensagem;
@@ -1210,7 +1276,7 @@ async function passoBanco(pedido, d) {
       mensagem = `${r.mensagem} Mas a releitura do banco falhou (${String(e?.message ?? e).slice(0, 200)}): sem ela não digo SIM. Rode banco de novo.`;
     }
     if (depois) {
-      const conf = planejarInstalacao(depois, arquivos);
+      const conf = planejarInstalacao(depois, arquivos, opcoes);
       total = conf.total;
       if (conf.acao === "ja_instalada") {
         veredito = SIM;
@@ -1250,7 +1316,11 @@ function cadastroGerado({ slug, ref, apelido, publicavel, lojasBrutas }) {
   const dominio = `${slug}.vercel.app`;
   const naoCabe = slugQueNaoCabe(slug);
   if (naoCabe) throw new ErroDoComando(naoCabe);
-  const segredo = segredoDoToken(slug);
+  // modelo da org central (01/12/2026): toda loja nova da org usa o MESMO
+  // segredo do GitHub, o da org (org-central.json, segredoDoGitHub; o único
+  // que o lojas.cjs aceita repetido). O SUPABASE_ACCESS_TOKEN_<SLUG> era do
+  // modelo antigo (um token por conta de lojista).
+  const segredo = carregarOrgCentral().segredoDoGitHub;
   const entrada = {
     ref,
     classe: "assinante",
@@ -1681,12 +1751,17 @@ async function passoFunctions(pedido, d) {
   if (pre.falta) return resultado(NAO, pre.falta);
   const { gestao } = contexto(pedido, d);
   const repetir =
-    "Rode functions de novo: as que já estão no ar com o verify_jwt certo são puladas.";
+    "Rode functions de novo: as que já estão no ar com o verify_jwt certo e o código do commit são puladas.";
   let r;
   try {
     r = await executarFunctions(
       ["--projeto", pre.ref, "--canal", slug, "--aplicar"],
-      { git: d.git, cliente: gestao, esperar: d.dormir },
+      {
+        git: d.git,
+        cliente: gestao,
+        esperar: d.dormir,
+        baixarFuncao: d.baixarFuncao,
+      },
     );
   } catch (erro) {
     return await fecharPasso(
@@ -2906,9 +2981,16 @@ const ITENS_DO_PROJETO = Object.freeze([
   "reconciliação",
   "functions",
   "login",
+  "e-mail de confirmação",
+  "mercado pago",
   "admin",
   "definir-dono",
 ]);
+/** O item do conferir que depende da LOJISTA (não de um passo do dono) e
+ * ainda não está feito, ou que este comando não consegue ler: nunca é SIM,
+ * então a loja não está "pronta para vender" com ele, mas também não é
+ * defeito da instalação. Só existe nos itens do conferir (nunca no estado). */
+export const ATENCAO = "ATENÇÃO";
 const IDADE_MAXIMA_DA_RODADA_S = 900;
 
 /**
@@ -2994,8 +3076,47 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
   // que o instalador exige para dizer JA_INSTALADA)
   try {
     const cliente = clienteDoInstalador(leitura, ref);
-    const plano = planejarInstalacao(await lerEstado(cliente), d.arquivos());
-    if (plano.acao !== "ja_instalada") {
+    const estadoDoBanco = await lerEstado(cliente);
+    const naFrota = lojaNaFrota(d, pedido.slug);
+    const plano = planejarInstalacao(estadoDoBanco, d.arquivos(), {
+      atualizarConcluida: !naFrota,
+    });
+    // o mesmo banco, como se a loja pudesse atualizar: diz se o que falta
+    // são só as migrations novas do fim (a loja do cadastro as recebe pelo
+    // portão da release, não pelo banco)
+    const comoAtualizar = planejarInstalacao(estadoDoBanco, d.arquivos(), {
+      atualizarConcluida: true,
+    });
+    const novas =
+      comoAtualizar.acao === "atualizar"
+        ? `${comoAtualizar.fila.length} migration(s) nova(s) desta release (a partir de ${comoAtualizar.fila[0].arquivo})`
+        : "";
+    if (plano.acao === "atualizar") {
+      item(
+        "banco",
+        NAO,
+        `a instalação está concluída, mas faltam ${novas}: rode node scripts/frota/nova-loja.mjs banco --loja ${pedido.slug} --aplicar (aplica só as que faltam).`,
+      );
+    } else if (comoAtualizar.acao === "atualizar") {
+      item(
+        "banco",
+        NAO,
+        `a instalação está concluída, mas faltam ${novas}; a loja já está no cadastro da frota, então elas vão pelo aplicar-migrations.yml (portão da release), não pelo banco.`,
+      );
+    } else if (
+      plano.acao === "recusar" &&
+      estadoDoBanco.marca === "concluida"
+    ) {
+      item(
+        "banco",
+        NAO,
+        `a instalação está concluída, mas o ledger não fecha com a pasta de migrations deste checkout: ${String(
+          plano.motivo,
+        )
+          .replace(/^RECUSADO: /, "")
+          .slice(0, 300)}`,
+      );
+    } else if (plano.acao !== "ja_instalada") {
       item(
         "banco",
         NAO,
@@ -3150,6 +3271,7 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
         git: d.git,
         cliente: leitura,
         esperar: d.dormir,
+        baixarFuncao: d.baixarFuncao,
       }),
     );
     item(
@@ -3179,12 +3301,58 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
       "login",
       v,
       v === SIM
-        ? `endereços de https://${dominioDaLoja(pedido.slug)} e gancho de e-mail (desligado até o Gmail) conferidos.`
+        ? `endereços de https://${dominioDaLoja(pedido.slug)} e gancho de e-mail preparado conferidos.`
         : resumoDoB4(linhas).slice(0, 600),
     );
   } catch (erro) {
     item("login", INCERTO, `não consegui conferir o login: ${porque(erro)}`);
   }
+
+  // e-mail de confirmação (lote 566): o login acima só confere que o gancho
+  // está PREPARADO (desligado é o certo até o Gmail). Para vender, a loja
+  // precisa do e-mail saindo: o gancho ligado E o Gmail da lojista
+  try {
+    const e = await lerEmailDaLojaNova({ cliente: leitura, ref });
+    if (e.ligado && e.gmail) {
+      item(
+        "e-mail de confirmação",
+        SIM,
+        "o gancho de e-mail está ligado, com o Gmail da loja cadastrado no painel.",
+      );
+    } else if (e.ligado) {
+      item(
+        "e-mail de confirmação",
+        NAO,
+        "o gancho de e-mail está LIGADO sem o Gmail da loja: todo e-mail do login falha (inclusive a confirmação de conta). Conferir antes de entregar a loja.",
+      );
+    } else if (e.gmail) {
+      item(
+        "e-mail de confirmação",
+        NAO,
+        "o Gmail da loja já está cadastrado, mas o gancho de e-mail continua desligado: ligar o gancho (passo 16 do roteiro ligar-loja-nova).",
+      );
+    } else {
+      item(
+        "e-mail de confirmação",
+        ATENCAO,
+        "a lojista ainda não cadastrou o Gmail no painel; até lá o gancho fica desligado e o e-mail de confirmação não sai pela loja (Parte B do roteiro; depois, o passo 16).",
+      );
+    }
+  } catch (erro) {
+    item(
+      "e-mail de confirmação",
+      INCERTO,
+      `não consegui conferir o e-mail de confirmação: ${porque(erro)}`,
+    );
+  }
+
+  // Mercado Pago (lote 566): nenhum código deste repositório lê, de fora, se
+  // a lojista ligou o MP no painel; o item nunca é SIM e impede o "pronta"
+  item(
+    "mercado pago",
+    ATENCAO,
+    "a conferir pela lojista no painel: este comando não lê se o Mercado Pago está ligado; sem ele a loja não recebe pagamento (Parte B do roteiro).",
+  );
 
   // o dono (critério da 88c), lido UMA vez para os itens admin e definir-dono
   let dono;
@@ -3316,23 +3484,45 @@ async function passoConferir(pedido, d) {
       `pendente: passo ${p} ainda não ligado (${Reflect.get(AGUARDANDO, p)})`,
     );
   }
-  const veredito = vereditoGeral(itens);
   d.saida.out(
     [
       `Conferência da loja ${slug} (só leitura; nada foi gravado):`,
       ...itens.map((i) => `  [${i.veredito}] ${i.item}: ${i.detalhe}`),
     ].join("\n"),
   );
-  const fora = itens.filter((i) => i.veredito !== SIM).map((i) => i.item);
-  return {
-    ...resultado(
+  return { ...resumoDoConferir(itens), itens };
+}
+
+/**
+ * O veredito e a frase do conferir (lote 566). "pronta para vender" SÓ com
+ * TODOS os itens SIM. ATENÇÃO (o que é da lojista, ou o que este comando não
+ * lê) conta como NÃO no veredito — a loja não está pronta —, e a frase diz
+ * isso sem chamar de defeito: com só ATENÇÃO fora do SIM, "ainda não está
+ * pronta para vender: falta o que é da lojista". Lista vazia é NÃO.
+ */
+export function resumoDoConferir(itens) {
+  const lista = Array.isArray(itens) ? itens : [];
+  const veredito = vereditoGeral(
+    lista.map((i) => (i?.veredito === ATENCAO ? { ...i, veredito: NAO } : i)),
+  );
+  if (veredito === SIM) {
+    return resultado(
+      SIM,
+      `a loja está pronta para vender: os ${lista.length} itens deram SIM.`,
+    );
+  }
+  const fora = lista.filter((i) => i?.veredito !== SIM);
+  const daLojista = fora.filter((i) => i.veredito === ATENCAO);
+  if (fora.length > 0 && daLojista.length === fora.length) {
+    return resultado(
       veredito,
-      veredito === SIM
-        ? `a loja está pronta: os ${itens.length} itens deram SIM.`
-        : `${itens.length - fora.length} de ${itens.length} itens SIM; não SIM: ${fora.join(", ")}.`,
-    ),
-    itens,
-  };
+      `a loja ainda não está pronta para vender: os ${lista.length - fora.length} itens da instalação deram SIM, e falta o que é da lojista (ATENÇÃO): ${daLojista.map((i) => i.item).join(", ")}.`,
+    );
+  }
+  return resultado(
+    veredito,
+    `a loja ainda não está pronta para vender: ${lista.length - fora.length} de ${lista.length} itens SIM; não SIM: ${fora.map((i) => `${i.item}${i.veredito === ATENCAO ? " (ATENÇÃO)" : ""}`).join(", ")}.`,
+  );
 }
 
 // ─── ensaio ─────────────────────────────────────────────────────────────────
@@ -3418,7 +3608,7 @@ async function ensaio(pedido, d) {
       return resultado(NAO, `${ENSAIO} ${plano.motivo}`);
     return resultado(
       INCERTO,
-      `${ENSAIO} a fila deste checkout tem ${plano.total} migrations; num banco vazio iriam uma por chamada, cada uma com o registro no ledger na mesma transação; o que já estiver no ledger não é repetido.`,
+      `${ENSAIO} a fila deste checkout tem ${plano.total} migrations; num banco vazio iriam uma por chamada, cada uma com o registro no ledger na mesma transação; o que já estiver no ledger não é repetido. Numa loja que este comando já instalou e que uma release deixou para trás (e que ainda não está no cadastro da frota), só as migrations novas do fim iriam; recusa sem dano mantém o SIM do banco.`,
     );
   }
   if (passo === "ficha") {
@@ -3539,6 +3729,11 @@ function completar(deps) {
   });
   d.estado ??= criarEstadoEmArquivo();
   d.git ??= gitReal();
+  // d.baixarFuncao fica SEM padrão aqui: sem ele, o functions-da-loja nunca
+  // dá uma function no ar como igual ao commit (republica com --aplicar;
+  // INCERTO no conferir). O real (o download do portão, pelo CLI) só entra
+  // pela linha de comando, em principal(): um teste que esquece o dublê
+  // nunca chega ao CLI de verdade.
   return d;
 }
 
@@ -3754,7 +3949,9 @@ async function principal() {
     );
     return 1;
   }
-  const r = await executarPasso(pedido);
+  const r = await executarPasso(pedido, {
+    baixarFuncao: baixadorDeFuncaoPeloCli(),
+  });
   return CODIGO_DE_SAIDA[r.veredito] ?? 1;
 }
 
