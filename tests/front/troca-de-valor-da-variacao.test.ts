@@ -8,6 +8,7 @@ import {
   fraseDaTrocaGuardada,
   normalizarValorDaOpcao,
   trocasDeValorComoOpcaoNova,
+  trocasJaGravadasNoBanco,
 } from "@/utils/troca-de-valor-da-variacao";
 
 const variacao = (
@@ -168,5 +169,59 @@ describe("fraseDaTrocaGuardada", () => {
     ).toBe(
       'O "M" já foi vendido, então guardamos ele desligado para os pedidos antigos e criamos o "GG" como opção nova. Confira o estoque das duas linhas.',
     );
+  });
+});
+
+describe("trocasJaGravadasNoBanco", () => {
+  const abertura = [variacao("v2", "M")];
+  const tela = [variacao("v2", "GG")];
+  const guardada = variacao("v2", "M", { active: false });
+  const nova = variacao("v9", "GG");
+
+  it("a antiga desligada com o valor de abertura + a opção nova que a tela nunca viu = troca já gravada", () => {
+    expect(trocasJaGravadasNoBanco(tela, abertura, [guardada, nova])).toEqual([
+      { idAntigo: "v2", valorAntigo: "M", valorNovo: "GG" },
+    ]);
+  });
+
+  it("sem troca pendente na tela (só grafia, ou nada mudou), nada é reconhecido", () => {
+    expect(
+      trocasJaGravadasNoBanco([variacao("v2", "m")], abertura, [
+        guardada,
+        nova,
+      ]),
+    ).toEqual([]);
+    expect(
+      trocasJaGravadasNoBanco(abertura, abertura, [guardada, nova]),
+    ).toEqual([]);
+  });
+
+  it("a opção nova que a tela JÁ conhecia (estava na abertura) não conta", () => {
+    expect(
+      trocasJaGravadasNoBanco(tela, [...abertura, nova], [guardada, nova]),
+    ).toEqual([]);
+  });
+
+  it("antiga apagada no banco (sem venda) não é reconhecida aqui: a junção a tira pelo caminho de sempre", () => {
+    expect(trocasJaGravadasNoBanco(tela, abertura, [nova])).toEqual([]);
+  });
+
+  it("linha nova da tela (temp-) nunca é troca gravada", () => {
+    expect(
+      trocasJaGravadasNoBanco(
+        [variacao("temp-1", "GG")],
+        [variacao("temp-1", "M")],
+        [variacao("temp-1", "M", { active: false }), nova],
+      ),
+    ).toEqual([]);
+  });
+
+  it("tipo diferente na opção nova não casa (a troca leva o tipo da tela)", () => {
+    expect(
+      trocasJaGravadasNoBanco(tela, abertura, [
+        guardada,
+        { ...nova, name: "Cor" },
+      ]),
+    ).toEqual([]);
   });
 });

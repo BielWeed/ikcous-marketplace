@@ -13475,8 +13475,14 @@ Deno.test("o download das functions do ar vem pela API: o padrão devolve bundle
   // reformatado). O portão marcava "difere" em TODA function, até nas que a
   // release não tocou, e travava o promote. Pela API sai o fonte publicado.
   const texto = await Deno.readTextFile("scripts/frota/publicar-release.mjs");
-  const inicio = texto.indexOf("baixarFuncao: async (ref, nome)");
-  assert(inicio > -1, "baixarFuncao não encontrada");
+  // o portão usa o baixador exportado (o functions-da-loja.mjs usa o MESMO,
+  // lote 566): a régua vale para ele
+  assertStringIncludes(
+    texto,
+    "baixarFuncao: baixadorDeFuncaoPeloCli(executarSupabase)",
+  );
+  const inicio = texto.indexOf("export function baixadorDeFuncaoPeloCli(");
+  assert(inicio > -1, "baixadorDeFuncaoPeloCli não encontrada");
   const trecho = texto.slice(inicio, inicio + 1400);
   assertStringIncludes(trecho, '"download"');
   assertStringIncludes(trecho, '"--use-api"');
