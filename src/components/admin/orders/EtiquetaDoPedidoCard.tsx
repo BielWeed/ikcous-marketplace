@@ -810,6 +810,24 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         // que está mostrando — defesa nas DUAS pontas.
         if (orderIdAtualRef.current !== orderIdDoClique) return;
         if (error) throw error;
+        if (data?.rastreio_preservado === true) {
+          const pedidoRelido = await fetchPedido({ silencioso: true });
+          if (orderIdAtualRef.current !== orderIdDoClique) return;
+          if (!pedidoRelido) {
+            toast.info(
+              "O rastreio foi alterado em outro aparelho. Não foi possível recarregar o pedido agora. Tente novamente.",
+            );
+            return;
+          }
+          onTrackingAtualizado?.(
+            orderIdDoClique,
+            pedidoRelido.tracking_code ?? "",
+          );
+          toast.info(
+            "O rastreio foi alterado em outro aparelho. Mostrando o que está salvo agora.",
+          );
+          return;
+        }
         // O código do provedor pode vir preenchido sem uma nova gravação.
         const codigoDoProvedor =
           typeof data?.tracking_code === "string"

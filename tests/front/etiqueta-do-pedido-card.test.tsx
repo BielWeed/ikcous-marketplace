@@ -819,6 +819,46 @@ describe("EtiquetaDoPedidoCard", () => {
     );
   });
 
+  it("relê o rastreio apagado em outro aparelho quando a consulta preserva a edição", async () => {
+    const etiqueta = {
+      shipping_label_id: "lbl-ja-existe",
+      shipping_label_url: "https://imprimir.teste/etiqueta",
+    };
+    pedidoState.data = pedido({ ...etiqueta, tracking_code: "MANUAL-ANTIGO" });
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(undefined, { onTrackingAtualizado });
+    expect(hospedeiro.textContent).toContain("MANUAL-ANTIGO");
+
+    pedidoState.data = pedido(etiqueta);
+    invokeMock.mockResolvedValue({
+      data: {
+        success: true,
+        label_id: "lbl-ja-existe",
+        tracking_code: null,
+        rastreio_atualizado: false,
+        rastreio_preservado: true,
+      },
+    });
+
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).not.toContain("MANUAL-ANTIGO");
+    expect(hospedeiro.textContent).toContain("Ainda sem código");
+    expect(onTrackingAtualizado).toHaveBeenCalledExactlyOnceWith(
+      "11111111-1111-1111-1111-111111111111",
+      "",
+    );
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining("O rastreio foi alterado em outro aparelho."),
+    );
+    expect(toast.info).not.toHaveBeenCalledWith(
+      expect.stringContaining("A transportadora ainda não publicou o código"),
+    );
+  });
+
   it("só o id reservado mantém o rótulo anterior sem nova compra nem aviso de etiqueta paga", async () => {
     pedidoState.data = pedido({
       status: "cancelled",
