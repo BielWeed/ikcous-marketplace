@@ -166,15 +166,18 @@ export function NovoLancamentoFolha({
   // O caixa pertence ao dia em que abriu (20261654000000): o servidor liga à sessão
   // aberta o que foi pago/recebido numa conta Caixa (na transferência, em qualquer das
   // duas pontas) entre o dia da ABERTURA e hoje; com data anterior o valor mexe no
-  // saldo, mas fica fora da conferência. Sem caixa aberto de um dia anterior (aberto
-  // hoje, fechado ou ainda não lido) a janela é só hoje, como sempre foi. Só avisa
-  // (lançar coisa antiga é legítimo); `ehDataIso` ignora o campo apagado.
+  // saldo, mas fica fora da conferência. Caixa aberto hoje (ou com o relógio do
+  // aparelho atrasado): a janela é só hoje, como sempre foi. SEM caixa aberto conhecido
+  // (fechado, leitura carregando ou com erro: a tela manda null) não há conferência
+  // nenhuma e não avisa: o aviso empurrava para hoje um pagamento antigo legítimo. Só
+  // avisa (lançar coisa antiga é legítimo); `ehDataIso` ignora o campo apagado.
+  const caixaConhecido =
+    diaDoCaixaAberto && ehDataIso(diaDoCaixaAberto) ? diaDoCaixaAberto : null;
   const caixaDeDiaAnterior =
-    diaDoCaixaAberto && ehDataIso(diaDoCaixaAberto) && diaDoCaixaAberto < hoje
-      ? diaDoCaixaAberto
-      : null;
+    caixaConhecido && caixaConhecido < hoje ? caixaConhecido : null;
   const inicioDaJanela = caixaDeDiaAnterior ?? hoje;
   const dataAntesDaJanela =
+    caixaConhecido !== null &&
     form.situacao === "realizado" &&
     ehDataIso(form.dataRealizacao) &&
     form.dataRealizacao < inicioDaJanela;

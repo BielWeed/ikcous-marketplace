@@ -38,6 +38,11 @@ const CAIXA_E_CONTA_SEM_NAN = Object.freeze({
 
 /** Desfaz a 20261399930000 na transacao aberta, se no ar; repetir e' no-op. Devolve true se desfez. */
 async function desfazerCaixaEContaSemNanNaTransacao(cliente) {
+  // A 20261660000000 (o caixa de ontem aberto nao some do saldo) sucede o corpo de fin_conta_salvar desta: sai ANTES (o pre-voo do
+  // rollback desta recusa o corpo dela). So se no ar; repetir e' no-op.
+  await require("./o-caixa-de-ontem-aberto-posterior.cjs").desfazerCaixaDeOntemAbertoNaTransacao(
+    cliente,
+  );
   const abrir = (await cliente.query(hashVivo(ABRIR))).rows[0]?.h;
   const conta = (await cliente.query(hashVivo(CONTA))).rows[0]?.h;
   if (abrir !== HASH_ABRIR_DESTA && conta !== HASH_CONTA_DESTA) return false;

@@ -604,6 +604,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
     // 20261657000000: o produto todo desligado nao volta a venda.
     "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
+    // 20261660000000: o caixa de ontem aberto nao some do saldo.
+    "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

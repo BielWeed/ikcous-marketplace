@@ -1556,6 +1556,21 @@ async function main() {
         "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
         "public.fin_lancamento_salvar(jsonb)",
       ],
+      // A 1660 (o caixa de ontem aberto nao some do saldo) troca so os corpos de fin_conta_salvar (sucede a 3999300), de
+      // fin_caixa_movimentar_com_chave (sucede a 1654) e de fin_lancamento_cancelar (sucede a 99); a 17a nao le nenhuma das tres. O
+      // rollback dela devolve as tres de uma vez (a primeira entrada desfaz; as outras ja encontram o corpo anterior).
+      [
+        "20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql",
+        "public.fin_caixa_movimentar_com_chave(uuid,uuid,text,numeric,text,uuid)",
+      ],
+      [
+        "20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql",
+        "public.fin_conta_salvar(jsonb)",
+      ],
+      [
+        "20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql",
+        "public.fin_lancamento_cancelar(uuid,text)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

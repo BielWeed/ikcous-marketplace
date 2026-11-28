@@ -99,6 +99,41 @@ const MARCADORES_RETIRADA_PRONTA = [
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261660000000: o caixa de ontem aberto nao some do saldo. TRES funcoes; so a recusa do saldo inicial depois do dia do caixa aberto
+  // (fin_conta_salvar), a recusa da sangria/suprimento para conta que so conta o saldo depois desse dia e a contrapartida lida FOR SHARE
+  // (fin_caixa_movimentar_com_chave) e a trava da sessao antes de conferir se fechou (fin_lancamento_cancelar) mudam. As travas de admin
+  // seguem uma vez cada. O corpo exato (md5), os atributos e a ACL sao da consulta 216a; o comportamento, da prova viva.
+  "20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql": [
+    {
+      funcao: "fin_conta_salvar",
+      esperado: [
+        { texto: "AND public.fin__dia(s.aberto_em) < v_novo_em", vezes: 1 },
+        { texto: "AND (s.conta_id = v_id OR EXISTS (", vezes: 1 },
+        { texto: "AND (l.conta_id = v_id OR l.conta_destino_id = v_id)", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_caixa_movimentar_com_chave",
+      esperado: [
+        { texto: "WHERE id = v_contra_id FOR SHARE;", vezes: 1 },
+        { texto: "AND c.saldo_inicial_em > public.fin__dia(v_s.aberto_em)", vezes: 1 },
+        { texto: "v_dia := public.fin__dia(v_s.aberto_em);", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_lancamento_cancelar",
+      esperado: [
+        { texto: "PERFORM 1 FROM public.fin_caixa_sessoes s WHERE s.id = v_l.caixa_sessao_id FOR UPDATE;", vezes: 1 },
+        { texto: "WHERE s.id = v_l.caixa_sessao_id AND s.status = 'fechado'", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   // 20261654000000: o caixa pertence ao dia em que abriu. QUATRO funcoes; so a escolha da sessao (salvar e baixar: o pago entre o dia
   // da abertura e hoje) e a data que a sessao grava (fechar e movimentar: o dia da abertura) mudam. As travas de admin seguem uma vez
   // cada. O corpo exato (md5), os atributos e a ACL sao da consulta 210a; o comportamento, da prova viva.

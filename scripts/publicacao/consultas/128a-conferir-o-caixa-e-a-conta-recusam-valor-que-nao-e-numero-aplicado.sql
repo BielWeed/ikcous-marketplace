@@ -31,8 +31,10 @@ WITH alvo(nome, assinatura, argumentos) AS (
   SELECT 'fin_caixa_abrir: EXECUTE authenticated, sem PUBLIC ou anon', 'sim',
     CASE WHEN COALESCE((SELECT acl FROM fn WHERE nome = 'fin_caixa_abrir'), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
+  -- A sucessora 20261660000000 (o caixa de ontem aberto nao some do saldo) tambem conta: ela mantem a recusa de NaN inteira e so
+  -- acrescenta a recusa do saldo inicial depois do dia do caixa aberto (a 216a confere qual).
   SELECT 'fin_conta_salvar: corpo exato (md5)', '1dc6cfdb075e3a1a0882398e1220d0f1',
-    COALESCE((SELECT h FROM fn WHERE nome = 'fin_conta_salvar'), 'AUSENTE')
+    COALESCE((SELECT CASE WHEN h = 'd29894a41940ec4f5bc55ca2b103b69a' THEN '1dc6cfdb075e3a1a0882398e1220d0f1' ELSE h END FROM fn WHERE nome = 'fin_conta_salvar'), 'AUSENTE')
   UNION ALL
   SELECT 'fin_conta_salvar: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn WHERE nome = 'fin_conta_salvar'), false) THEN 'sim' ELSE 'nao' END
