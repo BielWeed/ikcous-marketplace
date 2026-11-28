@@ -275,6 +275,20 @@ export function hojeEmSaoPaulo(agora: Date = new Date()): DataIso {
   return `${ano}-${mes}-${dia}`;
 }
 
+/**
+ * Dia (Brasília) em que a sessão de caixa abriu — o mesmo `fin__dia(aberto_em)`
+ * do servidor: o caixa pertence a esse dia (20261654000000). Instante vazio ou
+ * inválido devolve `null` (sem dia, a folha mantém o aviso de antes).
+ */
+export function diaDaAberturaDoCaixa(
+  abertoEm: string | null | undefined,
+): DataIso | null {
+  if (!abertoEm) return null;
+  const instante = new Date(abertoEm);
+  if (Number.isNaN(instante.getTime())) return null;
+  return hojeEmSaoPaulo(instante);
+}
+
 function paraDataUtc(iso: DataIso): Date {
   const casamento = DATA_ISO.exec(iso);
   if (!casamento) return new Date(Number.NaN);

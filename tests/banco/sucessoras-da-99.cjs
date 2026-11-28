@@ -202,6 +202,11 @@ const NOMES = [
   // 310 -> 1643 -> 1652: o `hashVigente` da 1652 e o `hashDesta` da 1643). O rollback da 1643 recusa com o corpo novo no ar: ela cai
   // antes (e o rollback dela tira tambem as duas colunas de confirmacao de store_config).
   "20261652000000_a_loja_nova_confirma_entrega_e_pagamento.sql",
+  // O caixa pertence ao dia em que abriu (28/11/2026): UMA migration, QUATRO funcoes. fin_lancamento_salvar sucede o corpo da 246 (a CADEIA
+  // 99 -> 246 -> 1654: o `hashVigente` da 1654 e o `hashDesta` da 246) e fin_lancamento_baixar o da 99 (99 -> 1654); fin_caixa_fechar_sessao e
+  // fin_caixa_movimentar_com_chave (da 252) nao sao das 42, mas entram porque o rollback-manual dela desfaz as quatro de uma vez e a
+  // conferencia "devolveu o corpo anterior" vale para cada uma. O rollback da 246 e o da 252 recusam com o corpo novo no ar: ela cai antes.
+  "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -214,6 +219,7 @@ const PARES_POR_MIGRATION = new Map([
   ["20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql", 2],
   ["20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql", 3],
   ["20261643000000_as_listas_dos_ajustes_nao_somem_entre_aparelhos.sql", 2],
+  ["20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql", 4],
   [
     "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
     2,
