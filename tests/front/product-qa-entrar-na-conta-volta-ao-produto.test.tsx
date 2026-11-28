@@ -83,4 +83,53 @@ describe("ProductQA — 'Entrar na Conta' volta ao produto", () => {
     });
     expect(destinoPosLogin(globalThis.history.state)).toBe("product-detail");
   });
+
+  // Caça "voltar do navegador" (27/11/2026): o login aberto daqui nascia sem
+  // `from` nem `haEntradaAntes` — os dois campos que o App grava em todo
+  // login que ELE abre (handleNavigate). Sem eles, depois de entrar, a troca
+  // da entrada de login não sabia que a tela atrás era o produto: o destino
+  // ficava sem `from` e o Voltar ia ao Início em vez de voltar de onde a
+  // pessoa chegou ao produto.
+  async function clicarEmEntrar() {
+    await act(async () => {
+      raiz.render(<ProductQA productId="prod-9" />);
+    });
+    const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Entrar na Conta"),
+    );
+    expect(botao).toBeDefined();
+    await act(async () => {
+      botao!.click();
+    });
+  }
+
+  it("produto aberto de uma tela do app: o login grava from e haEntradaAntes=true", async () => {
+    globalThis.history.replaceState(
+      { view: "product-detail", id: "prod-9", from: "home" },
+      "",
+      "/product-detail?id=prod-9",
+    );
+    await clicarEmEntrar();
+
+    expect(globalThis.history.state).toMatchObject({
+      view: "auth",
+      from: "product-detail",
+      haEntradaAntes: true,
+    });
+  });
+
+  it("produto aberto por link direto (sem from): haEntradaAntes=false", async () => {
+    globalThis.history.replaceState(
+      { view: "product-detail", id: "prod-9" },
+      "",
+      "/product-detail?id=prod-9",
+    );
+    await clicarEmEntrar();
+
+    expect(globalThis.history.state).toMatchObject({
+      view: "auth",
+      from: "product-detail",
+      haEntradaAntes: false,
+    });
+  });
 });

@@ -18,6 +18,12 @@
 export const AVISO_ENVIO_DO_CHECKOUT_EM_CURSO =
   "Aguarde, estamos enviando seu pedido.";
 
+/**
+ * O Voltar com o CARTÃO sendo cobrado (caça "voltar do navegador",
+ * 27/11/2026): o pedido já nasceu; o que está no ar é a resposta do banco.
+ */
+export const AVISO_CARTAO_DO_CHECKOUT_NO_AR = "Aguarde a resposta do cartão.";
+
 let envioEmCurso = false;
 
 export function marcarEnvioDoCheckout(emCurso: boolean): void {
