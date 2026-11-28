@@ -1,9 +1,11 @@
 // O File que o recorte do `ImageAdjuster` vira no upload (achado
-// AdminProductFormView-499, replicado no banner — follow-up 17/09): o
-// ImageAdjuster SEMPRE exporta `image/webp` (ImageAdjuster.tsx,
-// `canvas.toBlob(cb, "image/webp", ...)`), mas cada tela embrulhava o blob
+// AdminProductFormView-499, replicado no banner — follow-up 17/09): na época
+// o ImageAdjuster exportava `image/webp`, mas cada tela embrulhava o blob
 // por conta própria — e a de banners mentia com nome/tipo FIXOS
-// `.jpg`/`image/jpeg` sobre um conteúdo webp.
+// `.jpg`/`image/jpeg` sobre um conteúdo webp. Desde o #2075 ele pede
+// `image/jpeg` (iPhone com iOS 13 ou mais velho não abre WebP), e o
+// `canvasParaBlobNoFormato` fica com o tipo que o navegador devolver se não
+// for JPEG (PNG, por exemplo): o tipo do blob continua variando.
 //
 // A mentira não é estética: o upload deriva a extensão do bucket a partir
 // do NOME (`pronto.name.split(".").pop()` no useProducts) e o Storage serve
@@ -18,8 +20,9 @@
 // (extensão casando com o tipo real do blob) é daqui.
 
 /** Extensão honesta para o Content-Type: webp/png/jpg. Sem tipo
- * reconhecido (ex.: `Blob.type` vazio em algum ambiente), cai no formato
- * que o ImageAdjuster de fato produz hoje — nunca no jpeg mentiroso. */
+ * reconhecido (ex.: `Blob.type` vazio em algum ambiente), cai em webp, o
+ * formato que o ImageAdjuster exportava quando isto foi escrito; hoje ele
+ * produz JPEG (ou PNG), então esse caso não acompanha o que ele exporta. */
 function extensaoDoContentType(tipo: string): string {
   switch (tipo) {
     case "image/webp":
