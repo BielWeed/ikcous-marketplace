@@ -3931,6 +3931,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "7d1204cdf214a290cfdb378482795f1b",
           versao: "20261654000000",
         },
+        // 28/11/2026 (lote 219): a despesa nao entra no caixa fechado (a baixa trava a sessao na leitura; a cadeia 99 -> 1654 -> 1663).
+        {
+          fn: "fin_lancamento_baixar",
+          h: "0abf8da5b460d8b8236ffb5ffc111524",
+          versao: "20261663000000",
+        },
         // 28/11/2026 (lote 216): o caixa de ontem aberto nao some do saldo (o cancelamento trava a sessao; a cadeia 99 -> 1660).
         {
           fn: "fin_lancamento_cancelar",
@@ -3947,6 +3953,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "fin_lancamento_salvar",
           h: "3e31817ce1d13bb091ce2d0871cbd718",
           versao: "20261654000000",
+        },
+        // 28/11/2026 (lote 219): a despesa nao entra no caixa fechado (o salvar trava a sessao na leitura; a cadeia 99 -> 246 -> 1654 -> 1663).
+        {
+          fn: "fin_lancamento_salvar",
+          h: "729fc6e3e4a643459df835d214fa082e",
+          versao: "20261663000000",
         },
         // 04/11/2026 (lote 119): o estorno em andamento nao e conta vencida (so o `vencido` de a_pagar muda; 99 -> 3993).
         {
@@ -18072,6 +18084,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
     // 20261660000000: o caixa de ontem aberto nao some do saldo.
     "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
+    // 20261663000000: a despesa nao entra no caixa fechado.
+    "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

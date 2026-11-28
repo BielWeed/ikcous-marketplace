@@ -1184,3 +1184,157 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     },
   );
 });
+
+// Preço próprio de um tamanho mudado nas duas abas (28/11/2026). A aba B pôs M
+// a R$ 99,90; a aba A tinha deixado M no automático (ou digitado outro valor).
+// A junção da recusa mantém o valor da aba A — campo que ela editou fica —, mas
+// a confirmação não listava os tamanhos e o segundo salvar gravava por cima dos
+// R$ 99,90 sem ninguém ver. Pior: mexendo SÓ na grade nem havia confirmação.
+describe("preço próprio do tamanho mudado em outra aba", () => {
+  beforeEach(() => {
+    banco.produto.preco_venda = 89.9;
+    banco.variacoes = [
+      {
+        id: "v-m",
+        product_id: "p-1",
+        name: "Tamanho",
+        value: "M",
+        stock_increment: 10,
+        price_override: 89.9,
+        active: true,
+      },
+    ];
+  });
+
+  const textoDoAviso = () =>
+    (host.querySelector('[role="alert"]')?.textContent ?? "").replace(
+      /\s+/g,
+      " ",
+    );
+  const botaoDeSalvar = () =>
+    [...host.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Salvar alterações",
+    );
+  function outraAbaPoeOPrecoDeM(valor: number) {
+    banco.variacoes[0].price_override = valor;
+    avancarVersao();
+  }
+  async function digitarPrecoDeM(valor: string) {
+    await act(async () => {
+      const linha = host.querySelector('[data-testid="variante-cadastrada"]');
+      (
+        linha
+          ?.closest("div.group")
+          ?.querySelector("button") as HTMLButtonElement
+      ).click();
+    });
+    await digitar("variant-price", valor);
+    await act(async () => {
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent?.trim() === "Salvar variação")!
+        .click();
+    });
+  }
+
+  it("com o preço de venda: a confirmação lista M com os dois valores e o salvar confirmado manda o que ela viu", async () => {
+    await montar();
+    await digitar("product-sale-price", "69,90");
+    await act(async () => {
+      (
+        host.querySelector(
+          '[data-testid="seguir-o-preco-do-produto"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    outraAbaPoeOPrecoDeM(99.9);
+    await salvar();
+
+    expect(banco.gravacoes).toBe(0);
+    expect(banco.variacoes[0].price_override).toBe(99.9);
+    expect(textoDoAviso()).toContain(
+      "M · Atual: R$ 99,90 · Digitado: automático",
+    );
+    const versaoMostrada = banco.produto.ultima_atualizacao;
+
+    await confirmarPrecoDigitado();
+    await salvar();
+
+    expect(banco.gravacoes).toBe(1);
+    expect(banco.chamadasRpc[1].p_base_atualizado_em).toBe(versaoMostrada);
+    expect(banco.chamadasRpc[1].p_variantes).toEqual([
+      expect.objectContaining({ id: "v-m", price_override: null }),
+    ]);
+    expect(banco.variacoes[0].price_override).toBeNull();
+    expect(banco.produto.preco_venda).toBe(69.9);
+  });
+
+  it("mexendo SÓ no preço do tamanho: a confirmação aparece, trava o salvar e o confirmado manda o que ela viu", async () => {
+    await montar();
+    await digitarPrecoDeM("79,90");
+    outraAbaPoeOPrecoDeM(99.9);
+    await salvar();
+
+    expect(banco.gravacoes).toBe(0);
+    expect(textoDoAviso()).toContain(
+      "Este produto mudou depois que você abriu a tela. Nada foi salvo.",
+    );
+    expect(textoDoAviso()).toContain(
+      "M · Atual: R$ 99,90 · Digitado: R$ 79,90",
+    );
+    // Sem preço do produto mexido, a confirmação não inventa linha dele.
+    expect(textoDoAviso()).not.toContain("Preço de venda");
+    expect(botaoDeSalvar()?.disabled).toBe(true);
+    await act(async () => {
+      host
+        .querySelector("form")!
+        .dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+    });
+    expect(banco.chamadasRpc).toHaveLength(1);
+
+    await confirmarPrecoDigitado();
+    await salvar();
+
+    expect(banco.gravacoes).toBe(1);
+    expect(banco.chamadasRpc[1].p_variantes).toEqual([
+      expect.objectContaining({ id: "v-m", price_override: 79.9 }),
+    ]);
+    expect(banco.variacoes[0].price_override).toBe(79.9);
+    expect(banco.produto.preco_venda).toBe(89.9);
+  });
+
+  it("se o preço de M mudar de novo depois do aviso, confirmar não dá permissão para sobrescrevê-lo", async () => {
+    await montar();
+    await digitarPrecoDeM("79,90");
+    outraAbaPoeOPrecoDeM(99.9);
+    await salvar();
+    outraAbaPoeOPrecoDeM(109.9);
+    await confirmarPrecoDigitado();
+    await salvar();
+
+    expect(banco.gravacoes).toBe(0);
+    expect(banco.variacoes[0].price_override).toBe(109.9);
+    expect(textoDoAviso()).toContain(
+      "M · Atual: R$ 109,90 · Digitado: R$ 79,90",
+    );
+  });
+
+  it("controle: a outra aba só vendeu uma peça de M — sem confirmação, o preço dela vale", async () => {
+    await montar();
+    await digitarPrecoDeM("79,90");
+    banco.variacoes[0].stock_increment = 9;
+    avancarVersao();
+    await salvar();
+
+    expect(banco.gravacoes).toBe(0);
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    await salvar();
+
+    expect(banco.gravacoes).toBe(1);
+    expect(banco.variacoes[0]).toMatchObject({
+      price_override: 79.9,
+      stock_increment: 9,
+    });
+  });
+});

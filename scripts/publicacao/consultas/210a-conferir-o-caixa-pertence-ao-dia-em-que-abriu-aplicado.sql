@@ -24,8 +24,10 @@ WITH alvo(nome, assinatura, argumentos) AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
+  -- A sucessora 20261663000000 (a despesa nao entra no caixa fechado) tambem conta, nas duas: ela mantem a regra do dia da abertura
+  -- inteira e so trava a leitura da sessao aberta (a 219a confere qual).
   SELECT 'fin_lancamento_salvar: corpo exato (md5)', '3e31817ce1d13bb091ce2d0871cbd718',
-    COALESCE((SELECT h FROM fn WHERE nome = 'fin_lancamento_salvar'), 'AUSENTE')
+    COALESCE((SELECT CASE WHEN h = '729fc6e3e4a643459df835d214fa082e' THEN '3e31817ce1d13bb091ce2d0871cbd718' ELSE h END FROM fn WHERE nome = 'fin_lancamento_salvar'), 'AUSENTE')
   UNION ALL
   SELECT 'fin_lancamento_salvar: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn WHERE nome = 'fin_lancamento_salvar'), false) THEN 'sim' ELSE 'nao' END
@@ -34,7 +36,7 @@ WITH alvo(nome, assinatura, argumentos) AS (
     CASE WHEN COALESCE((SELECT acl FROM fn WHERE nome = 'fin_lancamento_salvar'), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'fin_lancamento_baixar: corpo exato (md5)', '7d1204cdf214a290cfdb378482795f1b',
-    COALESCE((SELECT h FROM fn WHERE nome = 'fin_lancamento_baixar'), 'AUSENTE')
+    COALESCE((SELECT CASE WHEN h = '0abf8da5b460d8b8236ffb5ffc111524' THEN '7d1204cdf214a290cfdb378482795f1b' ELSE h END FROM fn WHERE nome = 'fin_lancamento_baixar'), 'AUSENTE')
   UNION ALL
   SELECT 'fin_lancamento_baixar: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn WHERE nome = 'fin_lancamento_baixar'), false) THEN 'sim' ELSE 'nao' END

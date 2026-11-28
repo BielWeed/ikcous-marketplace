@@ -257,6 +257,50 @@ describe("AdminProductFormView — baixar o Preço de Venda avisa dos tamanhos p
     expect(lote.some((v) => v.value === "GG")).toBe(false);
   });
 
+  // Teclado e leitor de tela: o botão tocado vira o "Pronto". Com `disabled`
+  // o navegador tira o foco dele e a lojista perde o lugar na página; com
+  // `aria-disabled` o foco fica, e o texto novo é lido pelo `role="status"`.
+  it('depois do toque o foco continua no botão, que vira "Pronto" sem ficar desligado e não faz nada de novo', async () => {
+    await montar(presos());
+    await digitarCampo("product-sale-price", "69,90");
+
+    const botao = botaoDoAviso();
+    expect(botao).not.toBeNull();
+    await act(async () => {
+      botao?.focus();
+      botao?.click();
+    });
+    expect(botaoDoAviso()).toBe(botao);
+    expect(botao?.textContent?.trim()).toBe("Pronto, salve para valer");
+    expect(botao?.disabled).toBe(false);
+    expect(botao?.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(botao);
+
+    await act(async () => {
+      botao?.click();
+    });
+    expect(botao?.textContent?.trim()).toBe("Pronto, salve para valer");
+  });
+
+  // Nome de variação comprido e sem espaço (ex.: código colado) não pode ser
+  // cortado: o formulário tem `overflow-x-clip`. O jsdom não mede corte; a
+  // prova aqui é a classe que deixa a palavra quebrar.
+  it("nome longo de variação quebra a linha nos dois avisos", async () => {
+    await montar([
+      tamanho("v-p", "TAMANHOEXTRAGRANDEESPECIALDEINVERNO", 89.9),
+      tamanho("v-gg", "OUTROTAMANHOCOMNOMECOMPRIDODEMAIS", 109.9),
+    ]);
+    await digitarCampo("product-sale-price", "69,90");
+
+    const linhas = document.querySelectorAll(
+      '[data-testid="aviso-variacoes-nao-seguem-o-preco"] p',
+    );
+    expect(linhas).toHaveLength(2);
+    for (const linha of linhas) {
+      expect(linha.classList.contains("break-words")).toBe(true);
+    }
+  });
+
   it("só tamanhos de preço diferente: aparece só a linha informativa, sem botão", async () => {
     await montar([tamanho("v-gg", "GG", 109.9), tamanho("v-p", "P")]);
     await digitarCampo("product-sale-price", "69,90");

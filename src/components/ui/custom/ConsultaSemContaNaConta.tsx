@@ -101,7 +101,7 @@ export function ConsultaSemContaNaConta({
     <section
       ref={regiao}
       tabIndex={-1}
-      aria-label="Consultar pedido feito em outra conta"
+      aria-label="Consultar pedido"
       className="mb-4 focus:outline-none"
     >
       {saiuDaTela && !achados && (
