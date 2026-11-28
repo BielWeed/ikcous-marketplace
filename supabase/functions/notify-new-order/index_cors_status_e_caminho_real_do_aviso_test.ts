@@ -160,7 +160,7 @@ Deno.test("caminho REAL do aviso (sem dublê de push): o banco, a chave pedido_n
   const banco = bancoSemAdmin({ pedido: pedidoCriadoHa(2) });
   let resposta!: Response;
   const logs = await comLogs(async () => {
-    resposta = await handler(pedirAviso({ orderId: ID }), { supabase: banco.cliente, agora: () => AGORA });
+    resposta = await handler(pedirAviso({ orderId: ID }), { supabase: banco.cliente, agora: () => AGORA, esperar: async () => {} });
   });
   assertEquals(resposta.status, 200);
   assertEquals(await resposta.json(), { ok: true });
@@ -168,18 +168,19 @@ Deno.test("caminho REAL do aviso (sem dublê de push): o banco, a chave pedido_n
   assert(banco.tabelas.includes("profiles"), `o push real não consultou os admins: ${banco.tabelas}`);
   assert(logs.some((l) => l.startsWith("notify-new-order: nenhum admin cadastrado")), logs.join("\n"));
   assertEquals(logs.some((l) => l.includes("falha ao disparar push")), false, logs.join("\n"));
-  // Ninguém recebeu: a reserva é LIBERADA (a próxima chamada tenta de novo), sempre com a chave do pedido.
-  assertEquals(banco.rpcs, [
-    { nome: "reservar_aviso_ao_lojista", args: { p_chave: `pedido_novo:${ID}` } },
-    { nome: "liberar_aviso_ao_lojista", args: { p_chave: `pedido_novo:${ID}` } },
-  ]);
+  // Ninguém recebeu: a reserva é LIBERADA, e a segunda tentativa (lote-582) pede a
+  // MESMA chave do pedido e, sem entrega de novo, libera outra vez.
+  const reservar = { nome: "reservar_aviso_ao_lojista", args: { p_chave: `pedido_novo:${ID}` } };
+  const liberar = { nome: "liberar_aviso_ao_lojista", args: { p_chave: `pedido_novo:${ID}` } };
+  assertEquals(banco.rpcs, [reservar, liberar, reservar, liberar]);
+  assert(logs.some((l) => l.startsWith("notify-new-order: #4F5A6B sem entrega também na segunda tentativa")), logs.join("\n"));
 });
 
 Deno.test("reserva fora do ar: o aviso sai mesmo assim (falha aberta) e o log leva o nome da função", async () => {
   const banco = bancoSemAdmin({ pedido: pedidoCriadoHa(2), erroDaReserva: true });
   let resposta!: Response;
   const logs = await comLogs(async () => {
-    resposta = await handler(pedirAviso({ orderId: ID }), { supabase: banco.cliente, agora: () => AGORA });
+    resposta = await handler(pedirAviso({ orderId: ID }), { supabase: banco.cliente, agora: () => AGORA, esperar: async () => {} });
   });
   assertEquals(resposta.status, 200);
   assertEquals(await resposta.json(), { ok: true });
@@ -188,8 +189,9 @@ Deno.test("reserva fora do ar: o aviso sai mesmo assim (falha aberta) e o log le
     `o log precisa começar com o rótulo da função: ${logs.join("\n")}`,
   );
   assert(banco.tabelas.includes("profiles"), "mesmo sem a reserva o push é tentado");
-  // Sem reserva ('reservado' nunca veio), não há o que confirmar nem liberar.
-  assertEquals(banco.rpcs.map((r) => r.nome), ["reservar_aviso_ao_lojista"]);
+  // Sem reserva ('reservado' nunca veio), não há o que confirmar nem liberar. Nada
+  // chegou (banco sem admin), então a segunda tentativa (lote-582) pede a reserva de novo.
+  assertEquals(banco.rpcs.map((r) => r.nome), ["reservar_aviso_ao_lojista", "reservar_aviso_ao_lojista"]);
 });
 
 // ── Dublê que APLICA o filtro: o pedido certo, e só ele ─────────────────────
