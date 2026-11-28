@@ -109,6 +109,38 @@ pagar. "Dia 0" é o vencimento da mensalidade ou o fim do teste.
   ou num navegador sem Service Worker, segue vendendo até alguém recarregar; com pagamento ou
   envio de pedido em curso, a recarga fica para o próximo momento seguro (`recarregarSeSeguro`).
 
+## Loja que saiu: o contrato terminou sem continuar (28/11/2026)
+
+Decisão do sócio: a **saída registrada** pelo dono no app de gestão é o que para a vitrine. O app
+de gestão lista o contrato que terminou sem continuar a partir do 11º dia depois do fim (a mesma
+conta da pausa); o dono toca uma vez e a gestão grava a assinatura como `cancelada` no banco da
+loja.
+
+- **O que a loja faz** (migration `20261661000000`, que só redefine
+  `motivo_da_loja_nao_aceitar_pedido()`): com a assinatura `cancelada`, a **pausa ligada** nesta
+  loja (`pausa_de_vendas.vale_pela_assinatura = true`) e a chave da gestão definida, a vitrine
+  recusa o pedido **novo** na hora, com a mesma frase e o mesmo mecanismo da pausa da `suspensa`
+  ("Esta loja não está aceitando pedidos agora."). Não há data a esperar: quem conta os dias é a
+  gestão, antes de gravar a saída.
+- **O que continua igual:** pedidos que já existem (pagamento, entrega, cancelamento, estorno,
+  devolução), o balcão e o painel inteiro. O cartão "Sua assinatura" do Início diz "Assinatura
+  encerrada": a assinatura terminou, a loja parou de receber pedidos novos e o painel continua
+  aberto para entregar os pedidos que faltam. Nada de "Regularize" nem de valor em aberto.
+- **Com a pausa desligada, nada muda:** a loja `cancelada` segue vendendo, como antes da
+  `20261661000000`. **Hoje a pausa está desligada em todas as lojas** (nasce desligada e nenhuma
+  ferramenta liga). Ligar a pausa no banco de cada loja cliente é mudança de dado em produção:
+  **decisão do dono**, com a lista das lojas.
+- **Manutenção vence**: com `store_config.manutencao` ligada, a frase é a da manutenção.
+- **Voltar a vender:** a gestão grava outro status (ex.: `ativa`) e a loja aceita o próximo pedido;
+  ou o dono desliga a pausa da loja.
+- **Depois:** o painel fica aberto 30 dias; tirar do ar (`--adormecer`) só com as quatro consultas
+  de pedido da seção abaixo zeradas.
+- **Conferência no banco da loja:** `217b-antes-a-loja-que-saiu-pausa-o-pedido-novo-base-vigente`
+  antes do apply e `217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado` depois (só
+  catálogo). Desfazer: `rollback-manual-20261661000000_a_loja_que_saiu_pausa_o_pedido_novo.sql`
+  (devolve o motivo da `20261600000000`; a loja cancelada volta a vender), sempre ANTES de
+  qualquer rollback da `20261600000000`.
+
 ## Quando adormecer uma loja de teste que não pagou
 
 - **Quem avisa e quando.** O app de gestão de assinantes mostra a loja no grupo "Testes vencidos

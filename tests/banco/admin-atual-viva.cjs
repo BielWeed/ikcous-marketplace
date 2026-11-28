@@ -545,6 +545,10 @@ async function desfazerPosterioresNaTransacao(cliente) {
   await require("./a-loja-ja-suspensa-tambem-pausa-posterior.cjs").desfazerASuspensaAntigaNaTransacao(
     cliente,
   );
+  // A 20261661000000 sucede o motivo da 20261600000000: sai junto, ANTES do laco (o rollback da 1600 recusa o motivo com o corpo dela).
+  await require("./a-loja-que-saiu-pausa-posterior.cjs").desfazerASaidaNaTransacao(
+    cliente,
+  );
   for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,
@@ -1724,6 +1728,10 @@ PROVAS.push({
       // A 20261630000000 sucede a marca da 20261600000000 (PAUSA_DE_VENDAS, nesta pilha): sai antes (só se no ar), senão o rollback
       // da 1600 recusa a marca com o corpo dela.
       await require("./a-loja-ja-suspensa-tambem-pausa-posterior.cjs").desfazerASuspensaAntigaNaTransacao(
+        cliente,
+      );
+      // A 20261661000000 sucede o motivo da 20261600000000 (PAUSA_DE_VENDAS, nesta pilha): sai antes tambem (so se no ar).
+      await require("./a-loja-que-saiu-pausa-posterior.cjs").desfazerASaidaNaTransacao(
         cliente,
       );
       // Índice 2 = a 99: as sucessoras dela (tests/banco/sucessoras-da-99.cjs)

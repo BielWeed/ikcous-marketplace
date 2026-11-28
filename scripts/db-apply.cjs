@@ -699,6 +699,24 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261661000000: a loja que saiu pausa o pedido novo. motivo_da_loja_nao_aceitar_pedido (o da 20261600000000) ganha UM ramo: status
+  // 'cancelada' com a pausa ligada e a chave da gestao definida devolve 'vendas_pausadas' na hora. Os marcadores sao o ramo novo (uma vez:
+  // tirado, a loja que saiu volta a vender; duplicado, alguem mexeu) e a guarda da pausa ligada que vem ANTES dele (tirada, a saida pararia
+  // a loja com a pausa desligada). Os marcadores da 1600 seguem casando 1x neste corpo (o ramo nao repete a regra das datas). O corpo
+  // exato (md5) e' da consulta 217a e do pos-voo; o comportamento, da prova viva a-loja-que-saiu-pausa-o-pedido-novo-viva.cjs.
+  "20261661000000_a_loja_que_saiu_pausa_o_pedido_novo.sql": [
+    {
+      funcao: "motivo_da_loja_nao_aceitar_pedido",
+      esperado: [
+        {
+          texto:
+            "IF v_status = 'cancelada' THEN\n    RETURN 'vendas_pausadas';\n  END IF;",
+          vezes: 1,
+        },
+        { texto: "IF v_vale IS NOT TRUE THEN\n    RETURN NULL;", vezes: 1 },
+      ],
+    },
+  ],
   // 20261658000000: o frete de ida so volta com reembolso. DUAS funcoes: solicitar_devolucao (a soma do frete de ida conta so esta
   // devolucao e as concluidas com reembolso; a lista negativa fica so na conta da quantidade) e devolucao_elegibilidade (o campo
   // ja_reembolsada ao lado de ja_devolvida). O corpo exato (md5), os atributos e a ACL sao da consulta 214a; o comportamento, da prova viva.

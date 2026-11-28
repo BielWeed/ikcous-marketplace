@@ -779,6 +779,13 @@ prova(
 (async () => {
   await P.conectar();
   try {
+    // A 20261661000000 sucede o MOTIVO da 1600 (nao a marca): sai do clone ANTES, senao o rollback da 1600 que esta prova roda recusa.
+    if (
+      await require("./a-loja-que-saiu-pausa-posterior.cjs").desfazerASaida(
+        P.conexao(),
+      )
+    )
+      console.log("  (a sucessora 20261661000000 foi desfeita no clone)");
     await P.executar("a-loja-ja-suspensa-tambem-pausa");
   } finally {
     await P.conexao()

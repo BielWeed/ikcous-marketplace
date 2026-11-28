@@ -460,6 +460,8 @@ on:
           - 213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente
           - 214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado
           - 214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente
+          - 217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado
+          - 217b-antes-a-loja-que-saiu-pausa-o-pedido-novo-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

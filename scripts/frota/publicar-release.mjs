@@ -1136,6 +1136,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente",
   "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
   "214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente",
+  "217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado",
+  "217b-antes-a-loja-que-saiu-pausa-o-pedido-novo-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

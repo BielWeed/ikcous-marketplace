@@ -134,6 +134,11 @@ const SUCESSORAS = [
     versao: "20261658000000",
     consulta: "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
   },
+  // 20261661000000: a loja que saiu pausa o pedido novo (sucessora do motivo da 20261600000000).
+  {
+    versao: "20261661000000",
+    consulta: "217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

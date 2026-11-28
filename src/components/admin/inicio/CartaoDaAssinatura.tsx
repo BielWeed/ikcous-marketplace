@@ -153,19 +153,24 @@ export function CartaoDaAssinatura({
     avisoDasVendasPausadas(assinatura, new Date(agora)),
   );
   const pausadas = suspensa?.tipo === "pausadas" ? suspensa : null;
+  // A loja que SAIU (cancelada, 20261661000000) com o banco recusando pedido
+  // novo: assinatura encerrada, nunca dívida. Some o valor, o prazo e o
+  // "Regularize"; fica "Cliente desde" e o que o painel ainda faz.
+  const encerrada = suspensa?.tipo === "encerrada";
   const emAberto = suspensa?.tipo === "em-aberto" ? suspensa.vencimento : null;
   // Teste que acabou sem pagamento NÃO é dívida: com o sinal completo da
   // gestão o cartão diz "Teste encerrado" e o prazo; sinal torto → cartão de
   // hoje (`avisoDoTesteEncerrado` devolve null). Com a pausa valendo, nenhum
   // prazo: "pague até" já passou.
-  const aviso = pausadas
-    ? null
-    : avisoDoTesteEncerrado(assinatura, new Date(agora));
+  const aviso =
+    pausadas || encerrada
+      ? null
+      : avisoDoTesteEncerrado(assinatura, new Date(agora));
   // A pagante atrasada com o dia da pausa da gestão: "Mensalidade em aberto" e
   // o prazo. O aviso do teste tem prioridade; sem `pausa_em` (Savy, IKCOUS) o
   // cartão continua o de hoje.
   const avisoPagante =
-    pausadas || aviso
+    pausadas || encerrada || aviso
       ? null
       : avisoDaMensalidadeEmAberto(assinatura, new Date(agora));
   const prazo =
@@ -173,19 +178,21 @@ export function CartaoDaAssinatura({
     avisoPagante ??
     (emAberto ? { ...emAberto, pagueAte: null, pausaEm: null } : null);
   const prazoDoTeste = aviso !== null || emAberto?.doTeste === true;
-  const estado: { tom: TomDeEstado; texto: string } = pausadas
-    ? {
-        tom: "negativo",
-        texto: pausadas.pausadasDesde
-          ? `Vendas pela loja pausadas desde ${formatarDiaEMes(pausadas.pausadasDesde)}`
-          : "Vendas pela loja pausadas",
-      }
-    : prazo
+  const estado: { tom: TomDeEstado; texto: string } = encerrada
+    ? { tom: "negativo", texto: "Assinatura encerrada" }
+    : pausadas
       ? {
-          tom: "atencao",
-          texto: prazoDoTeste ? "Teste encerrado" : "Mensalidade em aberto",
+          tom: "negativo",
+          texto: pausadas.pausadasDesde
+            ? `Vendas pela loja pausadas desde ${formatarDiaEMes(pausadas.pausadasDesde)}`
+            : "Vendas pela loja pausadas",
         }
-      : estadoDoPlano(assinatura.status);
+      : prazo
+        ? {
+            tom: "atencao",
+            texto: prazoDoTeste ? "Teste encerrado" : "Mensalidade em aberto",
+          }
+        : estadoDoPlano(assinatura.status);
   const suporte = linkWhatsappDoCliente(assinatura.suporteWhatsapp);
   const recursosVisiveis = assinatura.recursos.slice(0, MAXIMO_DE_RECURSOS);
   const recursosEscondidos =
@@ -205,7 +212,7 @@ export function CartaoDaAssinatura({
   // "Em aberto desde", "Próxima cobrança" e "Teste até": fica só "Cliente
   // desde", montada direto de `inicioEm`.
   const todasAsDatas =
-    prazo || pausadas
+    prazo || pausadas || encerrada
       ? assinatura.inicioEm
         ? [{ rotulo: "Cliente desde", data: assinatura.inicioEm }]
         : []
@@ -326,6 +333,12 @@ export function CartaoDaAssinatura({
             mensalidade, as vendas voltam sozinhas.
           </p>
         </>
+      ) : null}
+      {encerrada ? (
+        <p className={cn("text-sm leading-relaxed", classeDoTexto("negativo"))}>
+          Sua assinatura terminou e a loja parou de receber pedidos novos. O
+          painel continua aberto para você entregar os pedidos que ainda faltam.
+        </p>
       ) : null}
       {precisaRegularizar ? (
         <p
