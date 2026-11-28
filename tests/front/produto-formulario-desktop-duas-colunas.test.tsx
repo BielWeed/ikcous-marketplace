@@ -289,6 +289,8 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "hidden",
   "produto-fotos-galeria flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center rounded-full border border-solid border-admin-border-strong px-3 text-[13px] font-bold",
   "opacity-40 pointer-events-none",
+  // Lote 572: dica de várias fotos (elemento novo; o resto segue congelado).
+  "col-span-2 mt-1 text-[11px] leading-relaxed text-zinc-400",
   "produto-fotos-cheio",
   "produto-foto-foco",
   "produto-foto-foco-coluna",
@@ -329,6 +331,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "size-5",
   "hidden",
   "mt-3 text-[11px] text-zinc-400",
+  "mt-1 text-[11px] text-zinc-400", // Lote 572: a mesma dica, com fotos.
   "space-y-4 rounded-2xl border border-admin-border bg-zinc-950/40 p-5",
   "text-[11px] font-medium leading-relaxed text-zinc-400",
   "list-disc space-y-2 pl-4 text-[11px] font-medium text-zinc-500",
@@ -441,11 +444,11 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "text-[11px] font-medium leading-relaxed text-amber-200/80",
   "space-y-3 rounded-2xl border border-admin-border bg-zinc-950/40 p-4",
   "text-[11px] font-medium leading-relaxed text-zinc-400",
+  // Lote 572: o guia de variações aponta para "+ Grade" e "+ Adicionar outro
+  // atributo" (dois destaques) e tem três itens em vez de quatro.
+  "text-zinc-350",
   "text-zinc-350",
   "list-none space-y-2 pl-0 text-[11px] font-medium text-zinc-500",
-  "flex items-start gap-2.5",
-  "mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500",
-  "text-zinc-350",
   "flex items-start gap-2.5",
   "mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500",
   "text-zinc-350",
@@ -568,7 +571,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-4 text-sm font-bold",
 ];
 const SHA256_CLASSES_CELULAR_BASE =
-  "5e7cb73c312d69b6b98958cb50da1251a82bf89e80a6750d707a4a94c21ea4b8";
+  "da11a2d85ed73db366793a93fda1f24e3de6a6f7db44ec45b44c5dfd39c605c8";
 const TOKENS_LG_DA_BASE = [
   "lg:grid-cols-12",
   "lg:col-span-8",

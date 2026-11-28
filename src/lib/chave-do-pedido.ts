@@ -24,6 +24,16 @@
 //
 // A impressão digital é CANÔNICA (itens ordenados, decimais fixados): a
 // ordem em que o cliente pôs os itens no carrinho não é mudança de compra.
+//
+// O PREÇO COTADO DO FRETE também não é (lote 569, 28/11/2026): a opção de
+// frete mora em memória e é cotada de novo quando a página volta (app fechado
+// no meio do Finalizar, aba recarregada). A MESMA opção para o MESMO destino
+// pode voltar com outro preço; frete e total mudavam juntos, a chave girava e
+// o novo Finalizar criava um SEGUNDO pedido pendente. A impressão vê o valor
+// dos ITENS (total menos frete, em centavos), a opção e o destino — trocar de
+// opção, de destino, de cupom ou de itens continua girando a chave. Se o
+// pedido já nasceu, o banco devolve o ORIGINAL (com o frete de então) e a tela
+// mostra o total dele, não o da tela.
 
 import { PRAZO_DA_RETENTATIVA_MS } from "./pedido-sem-resposta";
 import { gerarUuidV4 as gerarUuidDaCompra } from "./uuid-v4";
@@ -73,7 +83,12 @@ function texto(valor: string | number | null | undefined): string {
 // NADA de comportamento — é só um marcador para o PRÓXIMO campo: se a
 // composição mudar nesta função sem mudar aqui, quem procurar por "v1~"/"v2~"
 // no chamador acha o descompasso antes que ele chegue à produção de novo.
-const VERSAO_DA_IMPRESSAO = "v2";
+// "v3~" (lote 569): total e frete deram lugar ao valor dos itens.
+const VERSAO_DA_IMPRESSAO = "v3";
+
+function centavos(valor: number): number {
+  return Math.round(valor * 100);
+}
 
 export function impressaoDaCompra(compra: CompraParaImpressao): string {
   const itens = [...compra.items]
@@ -87,8 +102,7 @@ export function impressaoDaCompra(compra: CompraParaImpressao): string {
   return [
     VERSAO_DA_IMPRESSAO,
     itens,
-    compra.totalAmount.toFixed(2),
-    compra.shippingCost.toFixed(2),
+    String(centavos(compra.totalAmount) - centavos(compra.shippingCost)),
     texto(compra.destinationCep ?? ""),
     texto(compra.shippingOptionId ?? ""),
     texto(compra.couponCode ?? ""),

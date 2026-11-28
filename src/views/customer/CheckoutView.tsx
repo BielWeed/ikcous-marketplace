@@ -30,6 +30,7 @@ import {
   type DadosDoFormularioDeEndereco,
 } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
+import { AvisoDePedidoAguardandoPagamentoDaConta } from "@/components/ui/custom/AvisoDePedidoAguardandoPagamentoDaConta";
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { CarrinhoSalvoNaoLido } from "@/components/ui/custom/CarrinhoSalvoNaoLido";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
@@ -521,6 +522,67 @@ const MENSAGEM_SESSAO_EXPIRADA =
 /** A sessão não pôde ser conferida por falta de internet: o pedido não sai, mas a conta não caiu. */
 const MENSAGEM_SEM_CONEXAO_AO_FINALIZAR =
   "Sem conexão agora. Seu carrinho está guardado; tente de novo em instantes.";
+
+/**
+ * A VISITANTE que finaliza e acha uma sessão no aparelho (caça 28/11/2026):
+ * outra aba entrou numa conta, ou o login vencido do próprio aparelho renovou
+ * quando a internet voltou (a biblioteca não apaga a sessão quando a renovação
+ * falha por rede, e a tela tratava a pessoa como visitante). Ela não tinha
+ * sessão para "expirar", e "Entrar" a levaria ao login já logada. Nada sai numa
+ * conta que ela não viu: a renovação avisa o AuthContext, a tela passa a
+ * mostrar a conta (com o rascunho preenchido) e ela finaliza de novo vendo-a.
+ */
+const MENSAGEM_LOGIN_MUDOU_NA_VISITANTE =
+  "O login deste aparelho mudou enquanto você finalizava. Nada foi enviado: confira na tela se está comprando com ou sem conta e finalize de novo.";
+
+/**
+ * A conferência da sessão ANTES de enviar um pedido — a mesma no "Finalizar" e
+ * no "Tentar de novo" da compra congelada (caça 28/11/2026: o reenvio só olhava
+ * a conta da TELA, e o token que vai na RPC é o da sessão do aparelho naquele
+ * instante). `contaEsperada` é o dono da compra (`null` = visitante: só vale a
+ * sessão VAZIA). `null` = pode enviar; senão, a recusa a mostrar.
+ *
+ * Segue o contrato de `sessaoAindaEhDoDono`: falha ao ler a sessão (ou demora
+ * além do prazo) = NÃO envia. O que falhou só muda a frase: renovar o token
+ * sem internet, ou o prazo estourar, é falta de rede (`semRede`); sessão
+ * ausente ou de outra pessoa é "entre de novo" para a conta e "o login mudou"
+ * para a visitante. Exportada para os testes, como `decidirSaidaDoCheckout`.
+ */
+export async function conferirSessaoAntesDoEnvio(
+  contaEsperada: string | null,
+): Promise<{ recusa: RecusaDoPedido; semRede: boolean } | null> {
+  let semRede = false;
+  const sessaoVale = await aguardarComPrazo(
+    sessaoAindaEhDoDono(contaEsperada, () => {
+      semRede = true;
+    }),
+    PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+    () => new Error("A conferência da sessão demorou demais."),
+  ).catch(() => {
+    semRede = true;
+    return false;
+  });
+  if (sessaoVale) return null;
+  if (semRede) {
+    return {
+      semRede,
+      recusa: {
+        acao: "tentar_de_novo",
+        mensagem: MENSAGEM_SEM_CONEXAO_AO_FINALIZAR,
+      },
+    };
+  }
+  return {
+    semRede,
+    recusa:
+      contaEsperada === null
+        ? {
+            acao: "tentar_de_novo",
+            mensagem: MENSAGEM_LOGIN_MUDOU_NA_VISITANTE,
+          }
+        : { acao: "entrar_na_conta", mensagem: MENSAGEM_SESSAO_EXPIRADA },
+  };
+}
 
 const RECUSA_ENDERECO_NAO_CONFIRMADO: RecusaDoPedido = {
   acao: "tentar_de_novo",
@@ -5501,30 +5563,12 @@ export function CheckoutViewDaConta({
     // instante do envio. Se outra aba do aparelho entrou numa conta durante as
     // esperas acima (o frete espera a rede por até 12 s), o pedido dela saía
     // na conta da outra pessoa, com o nome, o WhatsApp e o endereço dela. Para
-    // a visitante o dono é "ninguém" (`null`): só envia com a sessão VAZIA, e
-    // sai pela mesma porta da conta.
-    // O que falhou NÃO muda o destino (nada é enviado), só a frase: renovar
-    // o token sem internet, ou a conferência estourar o prazo, é falta de
-    // rede ("tente de novo", a conta segue logada); sessão ausente ou de
-    // outra pessoa é "entre de novo".
-    let semRede = false;
-    const sessaoVale = await aguardarComPrazo(
-      sessaoAindaEhDoDono(contaEsperada, () => {
-        semRede = true;
-      }),
-      PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
-      () => new Error("A conferência da sessão demorou demais."),
-    ).catch(() => {
-      semRede = true;
-      return false;
-    });
-    if (!sessaoVale) {
-      const recusa: RecusaDoPedido = semRede
-        ? {
-            acao: "tentar_de_novo",
-            mensagem: MENSAGEM_SEM_CONEXAO_AO_FINALIZAR,
-          }
-        : { acao: "entrar_na_conta", mensagem: MENSAGEM_SESSAO_EXPIRADA };
+    // a visitante o dono é "ninguém" (`null`): só envia com a sessão VAZIA.
+    // O que falhou NÃO muda o destino (nada é enviado), só a frase — ver
+    // `conferirSessaoAntesDoEnvio`, que o "Tentar de novo" também usa.
+    const conferencia = await conferirSessaoAntesDoEnvio(contaEsperada);
+    if (conferencia) {
+      const { recusa } = conferencia;
       toast.error(recusa.mensagem);
       setRecusaDoUltimoClique(recusa);
       levarFocoAoProblema("recusa");
@@ -5655,7 +5699,8 @@ export function CheckoutViewDaConta({
     // A chave desta compra: mesma impressão digital (mesma retentativa,
     // mesmo F5) devolve a MESMA chave — é o que faz o servidor devolver o
     // pedido original em vez de criar um gêmeo. Impressão nova (mudou
-    // carrinho, frete, cupom ou endereço) gira chave nova.
+    // carrinho, opção de frete, cupom ou endereço) gira chave nova; o preço
+    // recotado da MESMA opção não (lote 569, ver chave-do-pedido.ts).
     orderData.idempotencyKey = gerenteDaChaveDe(contaEsperada).chavePara(
       impressaoDaCompra({
         // A impressão enxerga a CHAVE da linha (as duas escolhas), não só o
@@ -5775,7 +5820,15 @@ export function CheckoutViewDaConta({
     };
     try {
       const order = await aguardarComPrazo(
-        createOrder(orderData, { comPagamentoOnline: ehOnline }),
+        createOrder(
+          orderData,
+          // A compra da VISITANTE vai sempre SEM sessão (caça 28/11/2026): a
+          // conferência acima fecha a janela de segundos; isto fecha a de
+          // milissegundos entre ela e a RPC (outra aba entrando numa conta).
+          pedido.contaEsperada === null
+            ? { comPagamentoOnline: ehOnline, semSessao: true }
+            : { comPagamentoOnline: ehOnline },
+        ),
         30_000,
         () =>
           Object.assign(new Error("O pedido ficou sem resposta do servidor."), {
@@ -6082,7 +6135,7 @@ export function CheckoutViewDaConta({
     // chave ao MESMO dono (convidada = sem dono). Reenviar o payload de
     // convidada sob uma sessão criaria um pedido NOVO — então não reenvia; o
     // painel sai e o "Finalizar" volta, já como cliente com conta.
-    if (user) {
+    if ((user?.id ?? null) !== pedido.contaEsperada) {
       pedidoCongeladoRef.current = null;
       limparPedidoSemResposta();
       setRecusaDoUltimoClique(null);
@@ -6097,6 +6150,36 @@ export function CheckoutViewDaConta({
     if (!travaDeEnvioRef.current.tentarEntrar()) return;
     setRecusaDoUltimoClique(null);
     setIsSubmitting(true);
+    // A TELA não basta (caça 28/11/2026): o token que vai na RPC é o da sessão
+    // do aparelho AGORA. Outra aba que entrou numa conta enquanto a leitura
+    // desta espera a trava dela (segundos, com rede lenta) faria o reenvio
+    // sair na conta da outra pessoa — e, com outro dono, a mesma chave não
+    // devolve o pedido já gravado: nasceria um SEGUNDO (estoque e cupom
+    // gastos duas vezes). Mesma conferência e mesma saída do Finalizar.
+    const conferencia = await conferirSessaoAntesDoEnvio(pedido.contaEsperada);
+    if (conferencia) {
+      if (montadoRef.current) {
+        toast.error(conferencia.recusa.mensagem);
+        if (conferencia.semRede) {
+          // Sem internet a conta não mudou: a compra congelada segue, e o
+          // reenvio exato continua sendo a saída (como no `isOffline` acima).
+          setRecusaDoUltimoClique({
+            acao: "reenviar_mesma_compra",
+            mensagem: MENSAGEM_DE_REENVIO_SEM_CONTA,
+          });
+        } else {
+          // O login mudou: a compra congelada (nome, WhatsApp e endereço da
+          // visitante) sai do aparelho, como no ramo de conta acima.
+          pedidoCongeladoRef.current = null;
+          limparPedidoSemResposta();
+          setRecusaDoUltimoClique(conferencia.recusa);
+        }
+        levarFocoAoProblema("recusa");
+        setIsSubmitting(false);
+      }
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
     await enviarPedido(pedido, true);
   };
 
@@ -7186,6 +7269,13 @@ export function CheckoutViewDaConta({
           />
         ) : (
           <>
+            {/* O carrinho foi esvaziado na criação do pedido: quem volta ao
+                checkout com o Pix ainda esperando vê o pedido aqui também,
+                como no Início e no carrinho vazio. */}
+            <AvisoDePedidoAguardandoPagamentoDaConta
+              userId={user?.id}
+              onNavigate={onNavigate}
+            />
             <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
               Seu carrinho está vazio
             </h1>

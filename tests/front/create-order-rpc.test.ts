@@ -68,6 +68,7 @@ beforeEach(() => {
 });
 
 vi.mock("@/lib/supabase", () => ({
+  CHAVE_PUBLICA_DO_SUPABASE: "chave-publica-de-teste",
   supabase: {
     from: vi.fn(() => ({ select: selecionarPedido })),
     rpc: vi.fn().mockResolvedValue({ data: "ped-1", error: null }),
@@ -125,6 +126,62 @@ describe("createOrder escolhe a RPC — falha fechada para o lado 'na entrega'",
       "create_marketplace_order_v24",
       expect.anything(),
     );
+  });
+});
+
+// PEDIDO DA VISITANTE SEMPRE SEM SESSÃO (caça 28/11/2026): o supabase-js põe
+// no cabeçalho o token da sessão do aparelho no INSTANTE do envio. Com
+// `semSessao`, a chamada fixa a chave pública — o mesmo que o cliente manda
+// sem sessão —, e uma conta que entrou em outra aba não vira dona do pedido.
+describe("createOrder da visitante: a RPC sai sem sessão", () => {
+  beforeEach(() => {
+    vi.mocked(supabase.rpc).mockClear();
+  });
+
+  it("semSessao: fixa Authorization com a chave pública na MESMA RPC", async () => {
+    const setHeader = vi.fn().mockResolvedValue({ data: "ped-1", error: null });
+    vi.mocked(supabase.rpc).mockReturnValueOnce({ setHeader } as never);
+    const { createOrder } = useOrders(false, false);
+
+    const pedido = await createOrder(DADOS_MINIMOS, {
+      comPagamentoOnline: false,
+      semSessao: true,
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      "create_marketplace_order_v23",
+      expect.anything(),
+    );
+    expect(setHeader).toHaveBeenCalledTimes(1);
+    expect(setHeader).toHaveBeenCalledWith(
+      "Authorization",
+      "Bearer chave-publica-de-teste",
+    );
+    expect(pedido.id).toBe("ped-1");
+  });
+
+  it("semSessao com erro do banco: o erro sobe igual (a tela traduz)", async () => {
+    const erro = { code: "P0001", message: "Estoque insuficiente" };
+    const setHeader = vi.fn().mockResolvedValue({ data: null, error: erro });
+    vi.mocked(supabase.rpc).mockReturnValueOnce({ setHeader } as never);
+    const { createOrder } = useOrders(false, false);
+
+    await expect(
+      createOrder(DADOS_MINIMOS, {
+        comPagamentoOnline: false,
+        semSessao: true,
+      }),
+    ).rejects.toBe(erro);
+  });
+
+  it("sem semSessao (conta): a RPC segue com a sessão do cliente, sem cabeçalho fixo", async () => {
+    const { createOrder } = useOrders(false, false);
+    const pedido = await createOrder(DADOS_MINIMOS, {
+      comPagamentoOnline: false,
+    });
+    // O dublê devolve a promessa crua: se o código chamasse setHeader aqui,
+    // a chamada lançaria e o pedido não voltaria.
+    expect(pedido.id).toBe("ped-1");
   });
 });
 

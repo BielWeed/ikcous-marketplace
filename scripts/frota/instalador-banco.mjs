@@ -54,7 +54,13 @@
  * vende.) A ÚNICA exceção é a loja que ESTE instalador
  * terminou e que está completa (marca concluída + ledger == fila inteira):
  * rodar de novo dá JA_INSTALADA, saída de sucesso, só leituras (26/11/2026;
- * antes devolvia o mesmo RECUSADO das recusas perigosas).
+ * antes devolvia o mesmo RECUSADO das recusas perigosas). E, só com a opção
+ * `atualizarConcluida` (lote 566, 28/11/2026: uma release nova deixava a loja
+ * em instalação travada para sempre), a loja que este instalador concluiu e
+ * cujo ledger é um começo contínuo da fila recebe as migrations NOVAS do fim
+ * ("atualizar"), com o mesmo envelope e as mesmas conferências; a marca
+ * continua concluída. Sem a opção (a loja que já está no cadastro da frota),
+ * a recusa fica como era.
  *
  * OS PRIVILÉGIOS PADRÃO DE PUBLIC (26/11/2026): desde 30/05/2026 projeto
  * Supabase NOVO nasce sem o `ALTER DEFAULT PRIVILEGES` que dava acesso a
@@ -82,6 +88,8 @@
  * aplicar-migrations.yml prova a cada run; o T1 (P3) mede na loja real.
  */
 
+import { Buffer } from "node:buffer";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -179,10 +187,17 @@ const recusa = (motivo, estado) => ({
  * @param estadoObservado {tabelasEmPublic, ledgerExiste, versoesNoLedger} (de lerEstado)
  * @param arquivosDoRepo  [{arquivo, corpo}] — `arquivo` é o nome (ou caminho
  *        relativo; quem tem pasta no caminho não é da fila)
- * @returns {acao: "recusar"|"instalar"|"nada"|"ja_instalada", motivo, estado,
- *          fila: [{arquivo, versao, nome, envelope}], jaNoLedger, total}
+ * @param opcoes          { atualizarConcluida?: true } — só com ela (literal)
+ *        a loja de marca CONCLUÍDA cujo ledger é um começo contínuo da fila
+ *        vira "atualizar" (as migrations novas do fim); sem ela, "loja já
+ *        instalada" e recusa, como sempre. Quem liga é o nova-loja.mjs, só
+ *        para loja que ainda não está no cadastro da frota (a do cadastro
+ *        recebe migration nova pelo aplicar-migrations.yml).
+ * @returns {acao: "recusar"|"instalar"|"nada"|"ja_instalada"|"atualizar",
+ *          motivo, estado, fila: [{arquivo, versao, nome, envelope}],
+ *          jaNoLedger, total}
  */
-export function planejarInstalacao(estadoObservado, arquivosDoRepo) {
+export function planejarInstalacao(estadoObservado, arquivosDoRepo, opcoes) {
   const estado = estadoObservado;
   if (!estadoLegivel(estado)) {
     return recusa(
@@ -248,7 +263,16 @@ export function planejarInstalacao(estadoObservado, arquivosDoRepo) {
       total: fila.length,
     };
   }
-  if (noLedger.size > 0 && estado.marca !== "em_curso") {
+  // A loja que ESTE instalador concluiu e que uma release deixou para trás
+  // (lote 566): só com a opção, só com a marca concluída e só se o ledger é
+  // um começo CONTÍNUO da fila (as guardas de baixo: versão estranha, public
+  // vazio e lacuna continuam recusando). O que falta são as migrations NOVAS
+  // do fim, aplicadas com o mesmo envelope (corpo + ledger numa transação).
+  const atualizar =
+    opcoes?.atualizarConcluida === true &&
+    estado.marca === "concluida" &&
+    noLedger.size > 0;
+  if (noLedger.size > 0 && estado.marca !== "em_curso" && !atualizar) {
     return recusa(
       `RECUSADO: ${LOJA_JA_INSTALADA} (o ledger registra ${noLedger.size} versão(ões) e a marca de instalação está ${estado.marca === "concluida" ? "concluída" : "ausente — não foi este instalador que começou este banco"}). Nada se aplica por aqui.`,
       estado,
@@ -314,6 +338,25 @@ export function planejarInstalacao(estadoObservado, arquivosDoRepo) {
     itens.push({ arquivo: a.arquivo, versao: m[1], nome: m[2], envelope });
   }
 
+  if (atualizar) {
+    // ledger == fila já saiu como ja_instalada lá em cima; sem nada a aplicar
+    // aqui não há o que atualizar (defesa: nunca vira "nada", que marcaria)
+    if (itens.length === 0) {
+      return recusa(
+        "RECUSADO: estado incoerente — a marca está concluída e nada falta, mas a loja não fechou como já instalada. Diagnóstico antes.",
+        estado,
+      );
+    }
+    return {
+      acao: "atualizar",
+      motivo: `atualização: a instalação está concluída com ${noLedger.size} de ${fila.length}; faltam ${itens.length} migration(s) nova(s) desta pasta, todas depois da última do ledger (a partir de ${itens[0].arquivo})`,
+      estado,
+      fila: itens,
+      jaNoLedger: noLedger.size,
+      total: fila.length,
+    };
+  }
+
   return {
     acao: itens.length === 0 ? "nada" : "instalar",
     motivo:
@@ -335,6 +378,86 @@ export function arquivosDoRepo(pasta = PASTA_MIGRATIONS) {
     arquivo: path.basename(caminho),
     corpo: fs.readFileSync(caminho, "utf8"),
   }));
+}
+
+const RAIZ_DO_REPO = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
+const PASTA_NO_COMMIT = "supabase/migrations";
+const RE_SHA_DO_COMMIT = /^[0-9a-f]{40}$/;
+const RE_OBJETO = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+/** O git deste repositório (bytes; `entrada` vira o stdin). */
+function gitDoRepo(args, entrada) {
+  return execFileSync("git", ["-C", RAIZ_DO_REPO, ...args], {
+    input: entrada,
+    maxBuffer: 256 * 1024 * 1024,
+    stdio: [entrada === undefined ? "ignore" : "pipe", "pipe", "ignore"],
+    windowsHide: true,
+  });
+}
+
+/**
+ * Os arquivos da fila como estão no COMMIT `sha` (lote 573), pela MESMA régua
+ * de listarMigrations (só a raiz de supabase/migrations, 13 ou 14 dígitos,
+ * .sql, ordem de texto) — nunca da árvore de trabalho: um arquivo solto ou
+ * editado na pasta não entra num banco de loja. Um `ls-tree` e um
+ * `cat-file --batch` (uma chamada para as ~290). Qualquer coisa fora do
+ * formato é erro: nunca uma fila pela metade.
+ *
+ * git(args, entrada?) → bytes (o teste passa um dublê).
+ */
+export function arquivosDoCommit(sha, { git = gitDoRepo } = {}) {
+  if (typeof sha !== "string" || !RE_SHA_DO_COMMIT.test(sha))
+    throw new Error("arquivosDoCommit: SHA fora do formato (40 hex).");
+  const lista = Buffer.from(
+    git(["ls-tree", "-z", sha, "--", `${PASTA_NO_COMMIT}/`]),
+  ).toString("utf8");
+  const daFila = [];
+  for (const registro of lista.split("\0")) {
+    if (registro === "") continue;
+    const tab = registro.indexOf("\t");
+    const [, tipo, objeto] = registro.slice(0, Math.max(tab, 0)).split(" ");
+    const caminho = registro.slice(tab + 1);
+    if (tab < 0 || !caminho.startsWith(`${PASTA_NO_COMMIT}/`))
+      throw new Error("arquivosDoCommit: ls-tree fora do formato.");
+    const nome = caminho.slice(PASTA_NO_COMMIT.length + 1);
+    if (
+      tipo !== "blob" ||
+      nome.includes("/") ||
+      !/^\d{13,14}_/.test(nome) ||
+      !nome.endsWith(".sql")
+    )
+      continue;
+    if (!RE_OBJETO.test(objeto ?? ""))
+      throw new Error("arquivosDoCommit: ls-tree fora do formato.");
+    daFila.push({ nome, objeto });
+  }
+  daFila.sort((a, b) => (a.nome < b.nome ? -1 : a.nome > b.nome ? 1 : 0));
+  if (daFila.length === 0) return [];
+  const saida = Buffer.from(
+    git(["cat-file", "--batch"], `${daFila.map((a) => a.objeto).join("\n")}\n`),
+  );
+  let pos = 0;
+  return daFila.map(({ nome, objeto }) => {
+    const fim = saida.indexOf(0x0a, pos);
+    const [obj, tipo, tamanho] =
+      fim < 0 ? [] : saida.toString("utf8", pos, fim).split(" ");
+    const inicio = fim + 1;
+    const n = /^\d{1,10}$/.test(tamanho ?? "") ? Number(tamanho) : -1;
+    if (
+      obj !== objeto ||
+      tipo !== "blob" ||
+      n < 0 ||
+      saida[inicio + n] !== 0x0a
+    )
+      throw new Error(
+        `arquivosDoCommit: ${nome} não foi lido do commit ${sha}.`,
+      );
+    pos = inicio + n + 1;
+    return { arquivo: nome, corpo: saida.toString("utf8", inicio, inicio + n) };
+  });
 }
 
 // ─── T7: o envelope ─────────────────────────────────────────────────────────
@@ -628,6 +751,80 @@ function recusaDaRetomadaSemPrivilegios({ papelDono, faltando }) {
 }
 
 /**
+ * "atualizar" com `aplicar` (lote 566): a loja que ESTE instalador concluiu
+ * recebe as migrations novas do fim. O estado já foi relido e conferido por
+ * quem chama (mesmoEstado). Os privilégios padrão têm de bater ANTES (o que
+ * nasce agora conta com eles; faltando = FALHOU fechado, nada gravado). Sem
+ * DDL do ledger e sem SQL_CONCLUIR: o ledger e a marca já existem e a marca
+ * continua concluída — só os envelopes (corpo + ledger numa transação, sem ON
+ * CONFLICT: outro comando que registrou a mesma versão dá 23505 e volta
+ * tudo). Para na primeira falha; o OK só sai com a releitura mostrando TODAS
+ * as versões enviadas no ledger e a marca ainda concluída.
+ */
+async function atualizarConcluida(cliente, plano) {
+  let priv;
+  try {
+    priv = await lerPrivilegiosPadrao(cliente);
+  } catch (e) {
+    return falhaNaLeituraDosPrivilegios(e, [], "antes de atualizar");
+  }
+  if (priv.faltando !== "") {
+    return {
+      estado: "FALHOU",
+      fase: FASE_DOS_PRIVILEGIOS,
+      aplicados: [],
+      mensagem: `FALHOU: a loja está instalada, mas os privilégios padrão de public do papel ${priv.papelDono} não batem (falta: ${priv.faltando}); ${SEM_ELES}. Nenhuma migration nova foi enviada: diagnóstico antes (a consulta 185-privilegios-padrao-em-public mede a regra).`,
+    };
+  }
+  const aplicados = [];
+  for (const item of plano.fila) {
+    try {
+      await cliente.consultar(item.envelope);
+    } catch (e) {
+      return falhaDeEscrita(e, item.arquivo, item.versao, aplicados);
+    }
+    aplicados.push(item.arquivo);
+  }
+  let depois;
+  try {
+    depois = await lerEstado(cliente);
+  } catch (e) {
+    return {
+      estado: "FALHOU",
+      fase: "conferência",
+      releituraFalhou: true,
+      aplicados,
+      mensagem: `FALHOU ao conferir o ledger depois de atualizar (${String(e?.message ?? e).slice(0, 300)}): os ${aplicados.length} envios voltaram sem erro, mas sem a conferência não digo OK.`,
+    };
+  }
+  const registradas = new Set(depois.versoesNoLedger);
+  const faltam = plano.fila
+    .filter((i) => !registradas.has(i.versao))
+    .map((i) => i.versao);
+  if (faltam.length > 0) {
+    return {
+      estado: "FALHOU",
+      fase: "conferência",
+      aplicados,
+      mensagem: `FALHOU na conferência: o ledger não registra ${faltam.join(", ")} depois de envio sem erro. Diagnóstico antes de rodar de novo.`,
+    };
+  }
+  if (depois.marca !== "concluida") {
+    return {
+      estado: "FALHOU",
+      fase: "conferência",
+      aplicados,
+      mensagem: `FALHOU na conferência: a marca de instalação está ${depois.marca}, esperava concluída (esta rodada não mexe nela). Diagnóstico antes.`,
+    };
+  }
+  return {
+    estado: "OK",
+    aplicados,
+    mensagem: `OK: ${aplicados.length} migration(s) nova(s) aplicada(s) e registrada(s); o ledger tem ${registradas.size}; a instalação continua concluída.`,
+  };
+}
+
+/**
  * Executa o plano. Sem `aplicar: true` (literal) é ENSAIO: só leituras.
  * Sempre relê o estado antes (o banco pode ter mudado desde o plano: outro
  * instalador, alguém no SQL Editor) e, se mudou, RECUSA sem gravar. Para na
@@ -655,7 +852,8 @@ export async function instalar(clienteSemRitmo, plano, opcoes = {}) {
   if (
     plano.acao !== "instalar" &&
     plano.acao !== "nada" &&
-    plano.acao !== "ja_instalada"
+    plano.acao !== "ja_instalada" &&
+    plano.acao !== "atualizar"
   ) {
     return {
       estado: "RECUSADO",
@@ -725,6 +923,10 @@ export async function instalar(clienteSemRitmo, plano, opcoes = {}) {
       aplicaria: plano.fila.map((i) => i.arquivo),
       mensagem: `ENSAIO (nada gravado): ${plano.motivo}. Antes da 1ª, os privilégios padrão de public. Rode com --aplicar para gravar.`,
     };
+  }
+
+  if (plano.acao === "atualizar") {
+    return await atualizarConcluida(cliente, plano);
   }
 
   // Retomada ("instalar" com ledger, ou "nada"): o que já nasceu nasceu com os

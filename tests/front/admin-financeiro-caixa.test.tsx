@@ -60,6 +60,10 @@ import {
   valorDaLista,
 } from "./helpers/lista-de-escolha";
 
+// O aviso de "confira antes de tentar de novo" fica 15 s na tela: o padrão
+// (4 s) sumia antes de a lojista terminar de ler (caça 28/11, M5).
+const DURACAO_DO_AVISO = { duration: 15_000 };
+
 const CONTAS = [
   {
     id: CONTA_CAIXA_DA_LOJA,
@@ -939,6 +943,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(movimentos()[1].p_chave).toBe(primeira.p_chave);
     expect(toast.info).toHaveBeenCalledWith(
       expect.stringContaining("Confira o histórico antes de tentar de novo"),
+      DURACAO_DO_AVISO,
     );
     expect(folha()).toBeNull();
     expect(guardado.size).toBe(0);
@@ -1358,7 +1363,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
         ([nome]) => nome === "fin_caixa_atual",
       ).length;
       await clicar(botaoEm(folha() as HTMLElement, registrar));
-      expect(toast.info).toHaveBeenCalledWith(aviso);
+      expect(toast.info).toHaveBeenCalledWith(aviso, DURACAO_DO_AVISO);
       expect(toast.success).not.toHaveBeenCalled();
       expect(document.body.textContent).not.toContain(sucesso);
       expect(document.body.textContent).not.toContain("Saiu de");
@@ -1669,6 +1674,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(folha()).toBeNull();
     expect(toast.info).toHaveBeenCalledWith(
       expect.stringContaining("Confira o histórico antes de tentar de novo"),
+      DURACAO_DO_AVISO,
     );
     expect(normalizar(hospedeiro.textContent)).toContain("Caixa fechado");
     expect(
@@ -1726,6 +1732,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
       expect(movimentos()).toHaveLength(1);
       expect(toast.info).toHaveBeenCalledWith(
         "Operação localizada no histórico. Confira a situação do lançamento antes de tentar de novo.",
+        DURACAO_DO_AVISO,
       );
       expect(toast.success).not.toHaveBeenCalledWith("Sangria registrada.");
       expect(document.body.textContent).not.toContain("Saiu de");
@@ -1762,7 +1769,10 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     await clicar(botaoEm(folha() as HTMLElement, "Abrir caixa"));
 
     expect(folha()).toBeNull();
-    expect(toast.info).toHaveBeenCalledWith("Este caixa já está aberto.");
+    expect(toast.info).toHaveBeenCalledWith(
+      "Este caixa já está aberto.",
+      DURACAO_DO_AVISO,
+    );
     const depois = normalizar(hospedeiro.textContent);
     expect(depois).toContain("Esperado na gaveta agora");
     expect(depois).not.toContain("Caixa fechado");

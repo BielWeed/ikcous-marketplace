@@ -17,6 +17,7 @@ import {
   TAMANHO_MAXIMO_DA_DESCRICAO,
   comMesQueAcompanhaODinheiro,
   ehDataIso,
+  ehFalhaDeRedeSemCodigo,
   formatarBRL,
   formatarData,
   formularioInicialDoLancamento,
@@ -101,6 +102,7 @@ export function NovoLancamentoFolha({
   categorias,
   inicial,
   aviso,
+  diaDoCaixaAberto,
   aoFechar,
   aoSalvar,
   aoMudarSujo,
@@ -114,6 +116,11 @@ export function NovoLancamentoFolha({
   readonly inicial?: Partial<FormularioDoLancamento>;
   /** Contas/categorias não carregaram: a folha diz por que as listas estão vazias. */
   readonly aviso?: string | null;
+  /**
+   * Dia (Brasília) em que o caixa ainda aberto abriu; `null`/ausente = sem caixa
+   * aberto conhecido. Decide a janela do aviso da conferência do caixa.
+   */
+  readonly diaDoCaixaAberto?: DataIso | null;
   readonly aoFechar: () => void;
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
@@ -156,23 +163,33 @@ export function NovoLancamentoFolha({
   const transferencia = form.tipo === "transferencia";
   const previsto = !transferencia && form.situacao === "previsto";
   const receita = form.tipo === "entrada";
-  // O servidor só liga ao caixa aberto o que foi pago/recebido HOJE numa conta Caixa
-  // (na transferência, em qualquer das duas pontas); com data anterior o valor mexe
-  // no saldo, mas fica fora da conferência. Só avisa (lançar coisa antiga é legítimo);
-  // `ehDataIso` ignora o campo apagado.
-  const dataAnteriorAHoje =
+  // O caixa pertence ao dia em que abriu (20261654000000): o servidor liga à sessão
+  // aberta o que foi pago/recebido numa conta Caixa (na transferência, em qualquer das
+  // duas pontas) entre o dia da ABERTURA e hoje; com data anterior o valor mexe no
+  // saldo, mas fica fora da conferência. Sem caixa aberto de um dia anterior (aberto
+  // hoje, fechado ou ainda não lido) a janela é só hoje, como sempre foi. Só avisa
+  // (lançar coisa antiga é legítimo); `ehDataIso` ignora o campo apagado.
+  const caixaDeDiaAnterior =
+    diaDoCaixaAberto && ehDataIso(diaDoCaixaAberto) && diaDoCaixaAberto < hoje
+      ? diaDoCaixaAberto
+      : null;
+  const inicioDaJanela = caixaDeDiaAnterior ?? hoje;
+  const dataAntesDaJanela =
     form.situacao === "realizado" &&
     ehDataIso(form.dataRealizacao) &&
-    form.dataRealizacao < hoje;
-  const avisoDaConferenciaDoCaixa = !dataAnteriorAHoje
+    form.dataRealizacao < inicioDaJanela;
+  const oQueFazer = caixaDeDiaAnterior
+    ? ` em ${formatarData(caixaDeDiaAnterior)}. Se o dinheiro saiu ou entrou na gaveta depois que esse caixa abriu, use a data de ${formatarData(caixaDeDiaAnterior)} ou uma mais recente.`
+    : ". Se o dinheiro saiu ou entrou na gaveta hoje, use a data de hoje.";
+  const avisoDaConferenciaDoCaixa = !dataAntesDaJanela
     ? null
     : transferencia
       ? form.contaId === CONTA_CAIXA_DA_LOJA ||
         form.contaDestinoId === CONTA_CAIXA_DA_LOJA
-        ? "Esta transferência com a conta Caixa não entra na conferência do caixa aberto. Se o dinheiro saiu ou entrou na gaveta hoje, use a data de hoje."
+        ? `Esta transferência com a conta Caixa não entra na conferência do caixa aberto${oQueFazer}`
         : null
       : form.contaId === CONTA_CAIXA_DA_LOJA
-        ? "Este valor não entra na conferência do caixa aberto. Se o dinheiro saiu ou entrou na gaveta hoje, use a data de hoje."
+        ? `Este valor não entra na conferência do caixa aberto${oQueFazer}`
         : null;
   // O banco só soma ao saldo o que tem data a partir do saldo inicial da conta
   // (regra intencional): antes disso o lançamento aparece no extrato, mas o saldo
@@ -342,10 +359,15 @@ export function NovoLancamentoFolha({
           : "Lançamento salvo.",
       );
     } catch (erro) {
+      // A conexão que cai sem resposta é tão incerta quanto o prazo: o
+      // servidor pode ter gravado. A chave da tentativa fica guardada (só o
+      // sucesso a esquece), então salvar de novo igual não duplica.
       setErroDoServidor(
         erro === erroDePrazo
           ? erroDePrazo.message
-          : mensagemDeErroFinanceiro(erro),
+          : ehFalhaDeRedeSemCodigo(erro)
+            ? "A conexão caiu antes da resposta. O lançamento pode ter sido salvo; se salvar de novo sem mudar os campos, não duplica."
+            : mensagemDeErroFinanceiro(erro),
       );
     } finally {
       enviandoRef.current = false;

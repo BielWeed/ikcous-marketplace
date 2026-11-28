@@ -241,3 +241,42 @@ describe("aviso de rede sem resposta", () => {
     expect(avisos[0][1]).toEqual({ duration: 12_000 });
   });
 });
+
+// Caça 28/11 (M2): a conexão que CAI no meio (iPhone trocando de app) chega
+// como `{ error }` na forma real do supabase-js — `FunctionsFetchError` na
+// edge, `{ code: "", message: "TypeError: …" }` no postgrest-js. O servidor
+// pode ter gravado: nada de "tente de novo"; o mesmo aviso do prazo.
+describe("a conexão cai antes da resposta", () => {
+  it("'Tentar de novo' (edge): avisa que não dá para saber, sem 'tente de novo'", async () => {
+    const { FunctionsFetchError } = await import("@supabase/functions-js");
+    await montar();
+    invoke.mockImplementationOnce(() =>
+      Promise.resolve({
+        data: null,
+        error: new FunctionsFetchError(new TypeError("Load failed")),
+      }),
+    );
+    await clicar("Tentar de novo");
+    expect(toast.error).not.toHaveBeenCalled();
+    const avisos = toast.warning.mock.calls.filter(([m]) =>
+      String(m).includes("Não dá para saber se o pedido foi feito"),
+    );
+    expect(avisos).toHaveLength(1);
+    expect(aoMudar).toHaveBeenCalled();
+  });
+
+  it("'Já devolvi por fora' (RPC): avisa que não dá para saber, sem 'tente de novo'", async () => {
+    await montar();
+    respostaDaAcao = {
+      data: null,
+      error: { message: "TypeError: Failed to fetch", code: "" },
+    };
+    await clicar("Já devolvi por fora");
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    const avisos = toast.warning.mock.calls.filter(([m]) =>
+      String(m).includes("Não dá para saber se o pedido foi feito"),
+    );
+    expect(avisos).toHaveLength(1);
+  });
+});

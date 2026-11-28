@@ -43,8 +43,13 @@
  * functions; publica UMA por vez e confere cada uma pelo GET /functions (slug
  * presente, ACTIVE, verify_jwt certo) antes da próxima. Uma falha PARA tudo.
  *
- * O QUE JÁ EXISTE: function já no ar, ACTIVE e com o mesmo verify_jwt, é
- * PULADA (rodar duas vezes não republica). Já no ar com verify_jwt diferente
+ * O QUE JÁ EXISTE: function já no ar, ACTIVE, com o mesmo verify_jwt E o
+ * mesmo código do commit é PULADA (rodar duas vezes não republica). O código
+ * no ar se compara pelo critério do portão da release (classificarFuncao, o
+ * download por `deps.baixarFuncao`); código diferente é REPUBLICADO sem
+ * precisar de --substituir (ATUALIZAR, provado pela versão que sobe), e código
+ * que não deu para ler nunca é dado como igual: com --aplicar republica, no
+ * ensaio é INCERTO (lote 566). Já no ar com verify_jwt diferente
  * ou fora de ACTIVE = conflito, recusa sem escrever nada. `--substituir`
  * (só com `--aplicar`) republica as que já existem, e a republicação só conta
  * quando a `version` no ar passou da de antes (prova de que o código novo
@@ -57,9 +62,10 @@
  * é ensaio: imprime o plano (nome e verify_jwt de cada uma), só LÊ a API, e o
  * veredito descreve o estado atual da loja.
  *
- * TOKEN: o access token OAuth da conta da lojista, renovado pelo
- * acesso-oauth.mjs a partir do cofre DPAPI (a chave do cofre é o nome da loja
- * = `--canal`), a mesma fonte do resto do nova-loja, UMA renovação por
+ * TOKEN: o access token OAuth da ORG central (modelo de 01/12/2026: a
+ * lojista não tem conta no Supabase), renovado pelo acesso-oauth.mjs a partir
+ * do cofre DPAPI (a chave do cofre é a `chaveDoCofre` de org-central.json,
+ * nunca o nome da loja), a mesma fonte do resto do nova-loja, UMA renovação por
  * execução (tokenComCache: guardado até expiraEm menos a margem). Ele só vive dentro do
  * cliente da gestão e nunca é impresso: as mensagens de erro do cliente não o
  * carregam, e erro de outro tipo sai só pelo nome.
@@ -68,7 +74,12 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { arquivosEsperados, verifyJwtDoConfig } from "./publicar-release.mjs";
+import {
+  arquivosEsperados,
+  baixadorDeFuncaoPeloCli,
+  classificarFuncao,
+  verifyJwtDoConfig,
+} from "./publicar-release.mjs";
 import {
   ESTADO_DESCONHECIDO,
   ErroDaGestao,
@@ -104,7 +115,7 @@ export const VEREDITOS = Object.freeze({
 const CODIGO_DO_VEREDITO = { SIM: 0, NAO: 1, INCERTO: 3 };
 
 class UsoErrado extends Error {}
-class Recusa extends Error {}
+export class Recusa extends Error {}
 
 // ------------------------------------------------------------------ argumentos
 
@@ -430,7 +441,7 @@ const RE_RAMO = /^[A-Za-z0-9._/-]{1,200}$/;
  *
  * git: { head(): Promise<sha>, topoDoRamo(ramo): Promise<sha>, ler(sha, caminho) }
  */
-async function commitAprovado(git) {
+export async function commitAprovado(git) {
   let head;
   try {
     head = String(await git.head()).trim();
@@ -545,27 +556,44 @@ export async function executar(argv, deps) {
 
   const acoes = [];
   const conflitos = [];
+  const naoConferidas = [];
   for (const it of plano) {
     const viva = noAr.get(it.nome);
     let acao;
+    let porque = "";
     if (viva === undefined) acao = "PUBLICAR";
     else if (substituir) acao = "SUBSTITUIR";
-    else if (estaCerta(viva, it)) acao = "PULAR";
-    else {
+    else if (estaCerta(viva, it)) {
+      // no ar e com o verify_jwt certo: o CÓDIGO decide (lote 566; antes
+      // pulava sem olhar, e a release nova nunca chegava à loja)
+      const c = await codigoNoAr(deps.baixarFuncao, ref, it);
+      if (c.estado === "EM_DIA") acao = "PULAR";
+      else if (c.estado === "DIFERE") {
+        acao = "ATUALIZAR";
+        porque = ` (código no ar difere do commit: ${c.motivo})`;
+      } else {
+        // sem ler o código não há prova de que é o do commit: com --aplicar
+        // republica (a versão que sobe prova a troca); no ensaio, INCERTO
+        acao = aplicar ? "ATUALIZAR" : "NAO_CONFERIDA";
+        porque = ` (código no ar não conferido: ${c.motivo})`;
+        if (!aplicar) naoConferidas.push(`${it.nome}: ${c.motivo}`);
+      }
+    } else {
       acao = "CONFLITO";
       conflitos.push(
         `${it.nome}: já no ar (status ${viva.status}, verify_jwt=${viva.verify_jwt}), o certo é ACTIVE com verify_jwt=${it.verifyJwt}; para republicar use --substituir`,
       );
     }
-    // SUBSTITUIR: a versão de antes é a régua de que o código novo entrou;
-    // sem versão legível no ar, nada prova a troca (Infinity = nunca prova).
+    // SUBSTITUIR e ATUALIZAR: a versão de antes é a régua de que o código
+    // novo entrou; sem versão legível no ar, nada prova a troca (Infinity =
+    // nunca prova).
     const versaoAntes =
-      acao === "SUBSTITUIR"
+      acao === "SUBSTITUIR" || acao === "ATUALIZAR"
         ? (viva.version ?? Number.POSITIVE_INFINITY)
         : undefined;
     acoes.push({ item: it, acao, versaoAntes });
     saida.push(
-      `  - ${it.nome} verify_jwt=${it.verifyJwt} arquivos=${it.arquivos.length} → ${acao}`,
+      `  - ${it.nome} verify_jwt=${it.verifyJwt} arquivos=${it.arquivos.length} → ${acao}${porque}`,
     );
   }
   const sobram = [...noAr.keys()].filter(
@@ -578,7 +606,10 @@ export async function executar(argv, deps) {
   for (const c of conflitos) erros.push(`CONFLITO: ${c}`);
 
   const aFazer = acoes.filter(
-    (a) => a.acao === "PUBLICAR" || a.acao === "SUBSTITUIR",
+    (a) =>
+      a.acao === "PUBLICAR" ||
+      a.acao === "SUBSTITUIR" ||
+      a.acao === "ATUALIZAR",
   );
 
   if (!aplicar) {
@@ -591,11 +622,18 @@ export async function executar(argv, deps) {
     if (aFazer.length)
       return fim(
         VEREDITOS.NAO,
-        `ENSAIO: faltam ${aFazer.length} de ${plano.length}; rode com --aplicar para publicar`,
+        `ENSAIO: faltam ${aFazer.length} de ${plano.length} (ausentes ou com o código no ar diferente do commit); rode com --aplicar para publicar`,
       );
+    if (naoConferidas.length) {
+      for (const n of naoConferidas) erros.push(`NÃO CONFERIDA: ${n}`);
+      return fim(
+        VEREDITOS.INCERTO,
+        `ENSAIO: ${naoConferidas.length} de ${plano.length} no ar sem o código conferido (o download falhou): não digo que são as do commit`,
+      );
+    }
     return fim(
       VEREDITOS.SIM,
-      "ENSAIO: todas já estão no ar, ACTIVE, com o verify_jwt certo",
+      "ENSAIO: todas já estão no ar, ACTIVE, com o verify_jwt certo e o código do commit",
     );
   }
 
@@ -679,8 +717,51 @@ export async function executar(argv, deps) {
   }
   return fim(
     VEREDITOS.SIM,
-    `as ${plano.length} functions do canal estão no ar, ACTIVE, com o verify_jwt do config.toml`,
+    `as ${plano.length} functions do canal estão no ar, ACTIVE, com o verify_jwt do config.toml e o código do commit`,
   );
+}
+
+/**
+ * O código no ar de UMA function contra o do commit, pelo MESMO critério do
+ * portão da release (publicar-release.mjs, classificarFuncao: os caminhos e
+ * o conteúdo, com CRLF igual a LF; sem base, toda diferença conta).
+ * `baixarFuncao(ref, nome)` → [{ caminho, conteudo }] (em produção, o
+ * download do portão, baixadorDeFuncaoPeloCli). Devolve EM_DIA, DIFERE ou
+ * NAO_CONFERIDA (sem baixador, ou download que falhou): só EM_DIA deixa pular.
+ */
+async function codigoNoAr(baixarFuncao, ref, item) {
+  if (typeof baixarFuncao !== "function")
+    return {
+      estado: "NAO_CONFERIDA",
+      motivo: "sem como baixar o código no ar",
+    };
+  let baixados;
+  try {
+    const lista = await baixarFuncao(ref, item.nome);
+    if (!Array.isArray(lista)) throw new Error("download fora do formato");
+    baixados = new Map();
+    for (const a of lista) {
+      if (typeof a?.caminho !== "string" || typeof a?.conteudo !== "string")
+        throw new Error("download fora do formato");
+      baixados.set(a.caminho, a.conteudo);
+    }
+  } catch (e) {
+    return {
+      estado: "NAO_CONFERIDA",
+      motivo: `o download falhou (${mensagemSegura(e)})`,
+    };
+  }
+  const esperados = new Map(item.arquivos.map((a) => [a.caminho, a.conteudo]));
+  const c = classificarFuncao(baixados, esperados, null);
+  if (c.estado === "EM_DIA") return { estado: "EM_DIA", motivo: "" };
+  const lista = c.divergentes.slice(0, 3).join(", ");
+  return {
+    estado: "DIFERE",
+    motivo:
+      c.divergentes.length > 3
+        ? `${lista} e mais ${c.divergentes.length - 3}`
+        : lista,
+  };
 }
 
 // ------------------------------------------------------------------ produção
@@ -805,17 +886,22 @@ export function criarClienteDaLoja({ canal, acesso, fetch, agora }) {
   });
 }
 
-/** As dependências reais: git do commit aprovado, cofre DPAPI e OAuth da lojista. */
+/** As dependências reais: git do commit aprovado, cofre DPAPI com a
+ * autorização da ORG central (modelo de 01/12/2026: uma só, sob a
+ * `chaveDoCofre` de org-central.json, nunca uma por loja) e o download do
+ * código no ar pelo mesmo caminho do portão da release. */
 export async function dependenciasDoComando() {
   const { criarCofreDpapi } = await import("./cofre-local.mjs");
   const { criarAcessoOAuth } = await import("./acesso-oauth.mjs");
+  const { carregarOrgCentral } = require("./org-central.cjs");
   return {
     git: gitReal(),
-    criarCliente: (canal) =>
+    criarCliente: () =>
       criarClienteDaLoja({
-        canal,
+        canal: carregarOrgCentral().chaveDoCofre,
         acesso: criarAcessoOAuth({ cofre: criarCofreDpapi() }),
       }),
+    baixarFuncao: baixadorDeFuncaoPeloCli(),
   };
 }
 

@@ -755,6 +755,14 @@
       "porque": "Aviso da peca que voltou sem tamanho, na tela do produto e no selo da lista do painel do lojista (20261642000000): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL (is_admin() e is_admin_atual(); senao 42501); o visitante e o service_role nao a executam."
     },
     {
+      "funcao": "public.pecas_sem_tamanho_da_devolucao(p_order_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Ficha da devolucao no painel do lojista: quais itens deixaram peca esperando o tamanho (20261653000000), para nao dizer 'voltou ao estoque' neles: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL (is_admin() e is_admin_atual(); senao 42501) e so le; o visitante e o service_role nao a executam."
+    },
+    {
       "funcao": "public.pedido_reembolsos_e_saldo(p_order_id uuid)",
       "executa": ["authenticated"],
       "tipo": "leitura",

@@ -1247,8 +1247,9 @@ export const AdminBannersView = memo(function AdminBannersView({
     geracaoDoRecortePendente.current = geracaoDoRecorte;
     setIsUploadingAdjusted(true);
     // Mesmo achado do produto (AdminProductFormView-499): o ImageAdjuster
-    // exporta webp — nome/tipo fixos ".jpg"/"image/jpeg" mentiam sobre o
-    // conteúdo e quebravam a transformação de imagem do Storage. O helper
+    // exportava webp, e nome/tipo fixos ".jpg"/"image/jpeg" mentiam sobre o
+    // conteúdo e quebravam a transformação de imagem do Storage. Hoje ele
+    // pede JPEG, mas o navegador pode devolver outro tipo (PNG). O helper
     // derivado do tipo REAL do blob é compartilhado com a tela de produtos.
     const file = arquivoDaImagemRecortada(croppedBlob, "banner-image-");
     const loadingToast = toast.loading("Enviando imagem recortada...");

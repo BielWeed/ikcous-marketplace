@@ -166,7 +166,8 @@ export function precosDaVendaRecusada(erro: unknown): {
  *    (migration :250/:410) — não é o caso de "duplo toque" (que devolve
  *    `ja_existia:true` sem erro nenhum), é uma corrida perdida de verdade.
  *    Recuperar daqui é "começar uma venda nova" (gira a chave), não
- *    "tentar de novo" com a mesma chave.
+ *    "tentar de novo" com a mesma chave. A frase diz que a venda não entrou
+ *    só sem dúvida de uma resposta perdida antes.
  *  · "22023" — as 12 recusas de validação da migration (:264 a :460), todas
  *    com frase própria em português. `podeTentarDeNovo` só é `true` quando a
  *    frase é de ESTOQUE ("Estoque insuficiente…", migration :348 e :441/:460)
@@ -216,9 +217,15 @@ export function mensagemDaFalhaDaVenda(
   }
 
   if (codigo === "23505") {
-    // migration :250 e :410 — chave de idempotência já usada por OUTRO pedido.
+    // migration :250 e :410 — chave de idempotência já usada por OUTRO pedido
+    // (outro canal ou outro balconista). A venda deste balconista com esta
+    // chave não existe: se existisse, a RPC devolveria `ja_existia`. Com uma
+    // resposta perdida antes, a tela não afirma isso (a dúvida é pegajosa e o
+    // título já diz "Não sabemos"): manda conferir antes da venda nova.
     return {
-      mensagem: "Esta chave de venda já foi usada por outro pedido.",
+      mensagem: haDuvidaDaTentativaAnterior
+        ? "Esta tentativa não foi aceita. Antes de começar uma venda nova, confira em Pedidos se ela já entrou."
+        : "Esta venda não foi registrada. Toque em Começar uma venda nova e registre de novo.",
       podeTentarDeNovo: false,
       precisaEntrarDeNovo: false,
     };

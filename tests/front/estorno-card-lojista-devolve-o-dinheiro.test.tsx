@@ -441,6 +441,31 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     expect(botaoComTexto("Tentar de novo")).toBeUndefined();
   });
 
+  it.each([
+    ["falhou", null, "A devolução de R$ 30,00 não foi concluída."],
+    ["falhou", "   ", "A devolução de R$ 30,00 não foi concluída."],
+    ["recusado", null, "A devolução de R$ 30,00 foi recusada."],
+    ["recusado", "", "A devolução de R$ 30,00 foi recusada."],
+  ] as const)(
+    "B3: %s sem motivo (%j) fecha a frase com ponto, sem ': ' pendurado",
+    async (status, ultimoErro, frase) => {
+      useEstornosDoPedidoMock.mockReturnValue(
+        hookPadrao({
+          linhas: [
+            linhaDeExemplo({
+              id: `refund-${status}`,
+              status,
+              ultimo_erro: ultimoErro,
+            }),
+          ],
+        }),
+      );
+      await montar();
+      expect(texto()).toContain(frase);
+      expect(texto()).not.toMatch(/(concluída|recusada):\s*($|[A-Z])/);
+    },
+  );
+
   it("U7: nenhum texto do DOM expõe id do Mercado Pago, em nenhum dos estados", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
       hookPadrao({
@@ -564,6 +589,11 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     useEstornosDoPedidoMock.mockReturnValue(hookPadrao());
 
     await montar({ ...pedidoBase, status: "processing" });
+
+    // Recolhido numa linha (28/11/2026): o aviso aparece ao tocar nela.
+    const linha = botaoComTexto("Devolução de dinheiro");
+    expect(linha?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => linha!.click());
 
     expect(texto()).toContain("Cancele o pedido antes de devolver o dinheiro.");
     expect(botaoComTexto("Devolver R$ 100,00")?.disabled).toBe(true);

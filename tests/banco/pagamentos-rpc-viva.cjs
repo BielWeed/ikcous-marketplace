@@ -1951,6 +1951,11 @@ async function desfazerPosterioresNaTransacao(c) {
   await require("./a-loja-nova-so-vende-posterior.cjs").desfazerSoVendeOConfirmadoNaTransacao(
     c,
   );
+  // A 20261654000000 (o caixa pertence ao dia em que abriu) sucede os corpos da 252 (a PRIMEIRA da lista abaixo), o da 246 e o da 99:
+  // sai ANTES do laco (o rollback da 252 recusa com o corpo novo no ar; so se no ar). O rollback dela devolve as quatro de uma vez.
+  await require("./o-caixa-pertence-ao-dia-posterior.cjs").desfazerCaixaDoDiaDaAberturaNaTransacao(
+    c,
+  );
   for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,

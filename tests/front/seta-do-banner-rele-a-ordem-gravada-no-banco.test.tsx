@@ -4,8 +4,10 @@
 //
 // O DEFEITO: quando `move_banner_atomic` troca com outro vizinho (outro
 // aparelho mudou a lista), ou a troca falha e a tela a desfaz, o painel relê a
-// lista. Mas se uma leitura de fundo (temporizador, volta para a aba) já estava
-// em voo numa rede lenta, a releitura pegava carona nela. Essa consulta começou
+// lista. Mas se uma leitura de fundo do painel (a de montar a tela, a da volta
+// da conexão ou a do "Tentar de novo") já estava em voo numa rede lenta, a
+// releitura pegava carona nela. O temporizador e a volta para a aba só existem
+// na vitrine, não no painel. Essa consulta começou
 // ANTES da troca: ao terminar, via a geração das mutações mudada e devolvia o
 // cache local — justamente a troca otimista (ou o retrato desfeito). A tela
 // ficava com uma ordem diferente da gravada até a próxima atualização.
@@ -232,7 +234,8 @@ describe("seta do banner relê a ordem gravada no banco", () => {
   });
 
   // Salvar no editor (`updateBanner`) também desfaz a mudança otimista e relê
-  // em dois caminhos: a mesma carona devolvia o retrato desfeito.
+  // em três caminhos (banner sumiu, sem resposta, ordem não confirmada): a
+  // mesma carona devolvia o retrato desfeito.
   it("salvar banner excluído em outro aparelho: a lista relida sai do banco, sem ele", async () => {
     const { ler, hospedeiro } = await montarPainel();
     await leituraDeFundoPendurada(ler);
@@ -257,6 +260,36 @@ describe("seta do banner relê a ordem gravada no banco", () => {
 
     await act(async () => h.soltar?.());
     expect(hospedeiro.textContent).toBe("a,c");
+  });
+
+  it("salvar sem resposta: a releitura mostra o que o banco guardou", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { ler, hospedeiro } = await montarPainel();
+
+    // O UPDATE não responde; o banco, porém, gravou o "c" no topo (c, a, b).
+    h.gravar.mockImplementationOnce(() => new Promise(() => {}));
+    let salvar: Promise<void> | undefined;
+    await act(async () => {
+      salvar = ler()
+        .updateBanner("c", { order: 1 })
+        .catch(() => {});
+    });
+    h.linhas = [banner("c", 1), banner("a", 2), banner("b", 3)];
+    // No meio da espera, a leitura de fundo sai e fica pendurada.
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    await leituraDeFundoPendurada(ler);
+
+    // Estoura o prazo do UPDATE: a tela desfaz e relê.
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    await act(async () => salvar);
+
+    expect(h.toastWarning).toHaveBeenCalledTimes(1);
+    expect(h.toastError).not.toHaveBeenCalled();
+    // Sem soltar a leitura antiga: a releitura não depende dela.
+    expect(hospedeiro.textContent).toBe("c,a,b");
+
+    await act(async () => h.soltar?.());
+    expect(hospedeiro.textContent).toBe("c,a,b");
   });
 
   it("salvar com a ordem não confirmada: a lista relida é a do banco", async () => {

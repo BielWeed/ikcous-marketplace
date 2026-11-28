@@ -54,7 +54,8 @@
 --   * `admin_devolucoes_listar` → 20261395000000 (a busca de devolução acha o número do pedido; ramo novo no filtro)
 --                                e, DEPOIS dela, 20261399910000 (a busca de devolução ignora o acento);
 --   * `admin_devolucao_concluir` → ..., 20261343000000 e, DEPOIS dela, 20261395200000 (a conclusão da devolução tranca o estoque na mesma ordem da compra)
---                                e, DEPOIS dela, 20261642000000 (a peça que volta sem tamanho espera a lojista);
+--                                e, DEPOIS dela, 20261642000000 (a peça que volta sem tamanho espera a lojista)
+--                                e, DEPOIS dela, 20261653000000 (a peça da variação desligada espera a lojista);
 --   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento)
 --                                e, DEPOIS dela, 20261392100000 (a busca do CRM acha o número com o +55);
 --   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita)
@@ -64,6 +65,9 @@
 --                                não somem entre aparelhos: confere a lista vista) e 20261652000000 (a loja nova confirma
 --                                a entrega e o pagamento);
 --   * `salvar_politica_de_devolucao` → 20261643000000 (as listas dos ajustes não somem entre aparelhos: confere a lista vista);
+--   * `fin_lancamento_salvar`  → 20261246000000 (o lançamento repetido não duplica)
+--                                e, DEPOIS dela, 20261654000000 (o caixa pertence ao dia em que abriu);
+--   * `fin_lancamento_baixar`  → 20261654000000 (o caixa pertence ao dia em que abriu: a baixa do dia da abertura entra na gaveta);
 --   * `pedido__saldo_a_estornar`, `solicitar_estorno`, `admin_devolucao_concluir` e
 --     `autorizar_post_do_estorno` → 20261241000000 (o reembolso em dúvida prende o saldo). Estes quatro
 --     NÃO são corpos da 99 (são da 98, da 97 e da 96): o `final` de cada um é o da última de 92..202
@@ -209,6 +213,7 @@ WITH corpos AS (
     ('admin_devolucao_concluir', 'ea651d52157521c0fe7ffccc948b4b1a', '20261343000000'),
     ('admin_devolucao_concluir', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '20261395200000'),
     ('admin_devolucao_concluir', '1a548896acb8248f1b1771d765c92fcb', '20261642000000'),
+    ('admin_devolucao_concluir', 'd146dc7aefb07a0bf580ed7265d9453e', '20261653000000'),
     ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000'),
     ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
     ('get_admin_analytics_v2', 'ab25e738a3101cccbb0c09450b660ee0', '20261245000000'),
@@ -226,6 +231,8 @@ WITH corpos AS (
     ('registrar_pagamento_recebido', '88270bb1e228c90be73acca03a3cee4e', '20261243000000'),
     ('upsert_store_config', '391e8e1064400df5aea579f3472b203c', '20261244000000'),
     ('fin_lancamento_salvar', '1356dbfc037a9202ef163ba598854891', '20261246000000'),
+    ('fin_lancamento_salvar', '3e31817ce1d13bb091ce2d0871cbd718', '20261654000000'),
+    ('fin_lancamento_baixar', '7d1204cdf214a290cfdb378482795f1b', '20261654000000'),
     ('devolucao_elegibilidade', 'bedd211bba45261dfbf962241ca3c9dd', '20261399992000'),
     ('devolucao_detalhe', 'a439e320641d553e3a21883c6606c6f2', '20261399992000'),
     ('devolucao_detalhe', 'b4eb7a928f8a6ff04c34e93f4f56188c', '20261404000000')), colunas(tabela, coluna) AS (VALUES

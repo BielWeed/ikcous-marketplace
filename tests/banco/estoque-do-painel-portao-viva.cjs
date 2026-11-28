@@ -1537,6 +1537,25 @@ async function main() {
         "20261652000000_a_loja_nova_confirma_entrega_e_pagamento.sql",
         "public.upsert_store_config(jsonb)",
       ],
+      // A 1654 (o caixa pertence ao dia em que abriu) troca so os corpos de fin_lancamento_salvar (sucede a 246), fin_lancamento_baixar
+      // (sucede a 99) e das duas RPCs do caixa da 252; a 17a nao le nenhuma das quatro. O rollback dela devolve as quatro de uma vez (a
+      // primeira entrada desfaz; as outras ja encontram o corpo anterior, e a conferencia do molde mede as quatro).
+      [
+        "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
+        "public.fin_caixa_fechar_sessao(uuid,numeric,text)",
+      ],
+      [
+        "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
+        "public.fin_caixa_movimentar_com_chave(uuid,uuid,text,numeric,text,uuid)",
+      ],
+      [
+        "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
+        "public.fin_lancamento_baixar(uuid,date,uuid)",
+      ],
+      [
+        "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
+        "public.fin_lancamento_salvar(jsonb)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

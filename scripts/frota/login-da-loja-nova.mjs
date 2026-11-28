@@ -620,6 +620,24 @@ async function lerGmail(cliente, ref) {
   return l.gmail_cadastrado;
 }
 
+/**
+ * O e-mail de confirmação da loja nova, SÓ lido (o item do `conferir` do
+ * nova-loja.mjs, lote 566): `ligado` = hook_send_email_enabled === true no
+ * Auth; `gmail` = o Gmail da loja cadastrado no painel (CONSULTA_GMAIL, a
+ * mesma do ativarGanchoNovo). Nada é gravado; nenhum valor sai (só os dois
+ * booleanos). Leitura fora do formato PARA (Parada) ou lança o erro da gestão.
+ *
+ * @param {{ cliente: ReturnType<typeof criarClienteGestao>, ref: string }} p
+ * @returns {Promise<{ ligado: boolean, gmail: boolean }>}
+ */
+export async function lerEmailDaLojaNova({ cliente, ref }) {
+  if (typeof ref !== "string" || !RE_REF.test(ref))
+    throw new UsoErrado("ref inválido (20 letras minúsculas)");
+  const config = await lerConfig(cliente, ref);
+  const gmail = await lerGmail(cliente, ref);
+  return { ligado: config.hook_send_email_enabled === true, gmail };
+}
+
 /** As três pré-condições, só lidas. Nenhum detalhe leva valor remoto além
  * do status (já conferido contra STATUS_DE_FUNCAO). */
 function preCondicoes({ config, nomes, funcao, gmail, ref }) {

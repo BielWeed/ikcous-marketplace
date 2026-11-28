@@ -378,6 +378,10 @@ on:
       - "scripts/publicacao/consultas/207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente.sql"
       - "scripts/publicacao/consultas/208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado.sql"
       - "scripts/publicacao/consultas/208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente.sql"
+      - "scripts/publicacao/consultas/209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado.sql"
+      - "scripts/publicacao/consultas/209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente.sql"
+      - "scripts/publicacao/consultas/210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado.sql"
+      - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
       - "scripts/publicacao/consultas/211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado.sql"
       - "scripts/publicacao/consultas/211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -732,6 +736,10 @@ on:
       - "scripts/publicacao/consultas/207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente.sql"
       - "scripts/publicacao/consultas/208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado.sql"
       - "scripts/publicacao/consultas/208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente.sql"
+      - "scripts/publicacao/consultas/209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado.sql"
+      - "scripts/publicacao/consultas/209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente.sql"
+      - "scripts/publicacao/consultas/210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado.sql"
+      - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
       - "scripts/publicacao/consultas/211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado.sql"
       - "scripts/publicacao/consultas/211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1587,6 +1595,22 @@ jobs:
       - name: Prova viva da loja nova que confirma a entrega e o pagamento (20261652000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nova-confirma-entrega-e-pagamento-viva.cjs
+      # Migration 20261653000000 (a peca que volta para uma variacao desligada espera a lojista): devolver_estoque e admin_devolucao_concluir nao creditam mais
+      # a variacao DESLIGADA (ou que nao existe mais); o item segue o caminho da peca sem tamanho da 20261642000000 (cantinho se ha variacao ligada, pai se nao ha).
+      # Controle com os corpos da 642 (a peca vai para o M desligado), cancelar, Pix vencido e devolucao com o M desligado, CONTROLE com o M ligado, nenhum credito
+      # em dobro (repetir, achado C), produto sem variacao ligada, a leitura da ficha da devolucao (so o item do M desligado, nunca o do P ligado; religar nao muda;
+      # permissao), mutantes, reaplicar 2x e CRLF, pre-voo, rollback byte a byte (a leitura sai) e consultas 209a/209b. CLONE proprio.
+      - name: Prova viva da peca da variacao desligada que espera a lojista (20261653000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-da-variacao-desligada-viva.cjs
+      # Migration 20261654000000 (o caixa pertence ao dia em que abriu): fin_caixa_fechar_sessao e fin_caixa_movimentar_com_chave gravam a
+      # sobra/quebra e a sangria/suprimento com a data do dia da ABERTURA da sessao; fin_lancamento_salvar e fin_lancamento_baixar ligam a sessao
+      # aberta o que foi pago entre o dia da abertura e hoje. Cenario da virada (caixa de ontem mexido depois da meia-noite) e o caixa de um dia so
+      # igual ao de antes, controle com os corpos anteriores (so a virada cai), 6 mutantes na assercao certa, dado antigo intacto, reaplicar 2x e
+      # CRLF, pre-voo, rollback byte a byte, 252/246 recusam o rollback com ela no ar e 210a/210b. CLONE proprio.
+      - name: Prova viva do caixa que pertence ao dia em que abriu (20261654000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs
       # Migration 20261655000000 (a loja nova so vende o que confirmou): forma_de_pagamento_aceita recusa pagar na entrega sem
       # pagamento_confirmado_em, o gatilho tr_a_loja_so_entrega_o_confirmado recusa a entrega na cidade sem entrega_confirmada_em
       # (online e balcao livres, gemeo passa), a vitrine ganha dois booleanos, a TRAVA recusa o apply na loja que ja vendeu sem

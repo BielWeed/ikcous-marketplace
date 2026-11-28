@@ -4136,6 +4136,8 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
     "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado",
     "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
+    "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+    "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
     "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
@@ -13476,8 +13478,14 @@ Deno.test("o download das functions do ar vem pela API: o padrão devolve bundle
   // reformatado). O portão marcava "difere" em TODA function, até nas que a
   // release não tocou, e travava o promote. Pela API sai o fonte publicado.
   const texto = await Deno.readTextFile("scripts/frota/publicar-release.mjs");
-  const inicio = texto.indexOf("baixarFuncao: async (ref, nome)");
-  assert(inicio > -1, "baixarFuncao não encontrada");
+  // o portão usa o baixador exportado (o functions-da-loja.mjs usa o MESMO,
+  // lote 566): a régua vale para ele
+  assertStringIncludes(
+    texto,
+    "baixarFuncao: baixadorDeFuncaoPeloCli(executarSupabase)",
+  );
+  const inicio = texto.indexOf("export function baixadorDeFuncaoPeloCli(");
+  assert(inicio > -1, "baixadorDeFuncaoPeloCli não encontrada");
   const trecho = texto.slice(inicio, inicio + 1400);
   assertStringIncludes(trecho, '"download"');
   assertStringIncludes(trecho, '"--use-api"');
