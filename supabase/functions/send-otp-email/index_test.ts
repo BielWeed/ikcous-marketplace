@@ -70,7 +70,7 @@ Deno.test("htmlDoCodigo: nao crava cidade nem nome de loja nenhuma", () => {
 
 Deno.test("htmlDoCodigo: portugues com acento e o nome da loja (escapado)", () => {
   const html = htmlDoCodigo("123456", "Loja <Bela> & Cia");
-  for (const frase of ["Você pediu", "o código abaixo", "Este código expira em 15 minutos", "Se não foi você"]) {
+  for (const frase of ["Você pediu", "o código abaixo", "vale por até 15 minutos", "Se não foi você"]) {
     assertStringIncludes(html, frase);
   }
   assertStringIncludes(html, "Loja &lt;Bela&gt; &amp; Cia");
