@@ -170,6 +170,7 @@ import {
   type TrocaDeValor,
   fraseDaTrocaGuardada,
   trocasDeValorComoOpcaoNova,
+  trocasJaGravadasNoBanco,
 } from "@/utils/troca-de-valor-da-variacao";
 import { ESTOQUE_MAXIMO_DA_VARIACAO } from "@/utils/truth_gate";
 import {
@@ -3212,15 +3213,48 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       trava.renomeiaGrupoInteiro && chaveDoGrupo(v.name) === chaveDoGrupoAntigo
         ? { name: nomeComposto, value: v.value }
         : v;
-    if (
-      combinacaoMudou &&
-      formData.variants.some(
-        (v) =>
-          v.id !== editingVariant?.id &&
-          chaveDaIdentidade(comoFicaria(v)) ===
-            chaveDaIdentidade(identidadeNova),
-      )
-    ) {
+    const iguais = combinacaoMudou
+      ? formData.variants.filter(
+          (v) =>
+            v.id !== editingVariant?.id &&
+            chaveDaIdentidade(comoFicaria(v)) ===
+              chaveDaIdentidade(identidadeNova),
+        )
+      : [];
+    // A igual está DESLIGADA (ex.: o "M" vendido que uma troca de valor
+    // guardou para os pedidos antigos, e ela quer voltar o "GG" para "M"). Uma
+    // segunda opção igual continua sem entrar: religada depois, seriam duas à
+    // venda. O caminho é religar a que existe — a mesma linha, com os pedidos
+    // dela. O "ligada" vai explícito (o toque pode vir depois de outra mudança).
+    const [guardada] = iguais;
+    if (iguais.length === 1 && !guardada.active) {
+      toast.error(
+        `O "${guardada.value}" está guardado desligado nesta lista.`,
+        {
+          description:
+            editingVariant && !editingVariant.id.startsWith("temp-")
+              ? `Toque em Religar para vender o "${guardada.value}" de novo. Se não quiser mais o "${editingVariant.value}", exclua ele depois.`
+              : `Toque em Religar para vender o "${guardada.value}" de novo.`,
+          duration: 10000,
+          action: {
+            label: "Religar",
+            onClick: () => {
+              setFormData((prev) =>
+                formComVariacoes(
+                  prev,
+                  prev.variants.map((x) =>
+                    x.id === guardada.id ? { ...x, active: true } : x,
+                  ),
+                ),
+              );
+              cancelarVariacao();
+            },
+          },
+        },
+      );
+      return;
+    }
+    if (iguais.length > 0) {
       toast.error("Essa combinação já existe.", {
         description: "Mude o valor, ou edite a variação que já está na lista.",
       });
@@ -4374,6 +4408,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           variants,
           estoqueQueAPrimeiraVariacaoHerda({ stock, variants }),
         );
+        // O salvar anterior gravou a troca de valor e a resposta se perdeu:
+        // a junção acima já mostra a antiga como o banco a guardou e a nova
+        // como a do banco (sem refazer a troca). Ela só não tinha lido o aviso.
+        const trocasJaFeitas = trocasJaGravadasNoBanco(
+          formData.variants,
+          initialData.variants,
+          variants,
+        );
         const gradeRecarregada = juntarVariacoesDeOutroAparelho(
           // As novas do banco entram pelo juntador para manter a conferência
           // de combinação repetida e respeitar as exclusões feitas aqui.
@@ -4392,6 +4434,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         const avisoDasVoltadas =
           avisoDeVariacoesAlteradasEmOutroAparelho(voltaramDaExclusao);
         if (avisoDasVoltadas) toast.warning(avisoDasVoltadas);
+        for (const feita of trocasJaFeitas) {
+          toast.warning(fraseDaTrocaGuardada(feita), { duration: 15000 });
+        }
       }
       setIsSubmitting(false);
       console.error("Erro ao salvar produto:", error);
@@ -5047,6 +5092,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               name="variant-stock"
                               aria-describedby="variant-stock-help"
                               type="number"
+                              inputMode="numeric"
                               value={variantFormData.stockIncrement}
                               // O onFlush também roda só por sair do campo.
                               onInput={() =>
@@ -6291,6 +6337,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     }
                     name="stock"
                     type="number"
+                    inputMode="numeric"
                     min="0"
                     value={formData.stock}
                     onFlush={(val) =>
@@ -6997,6 +7044,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             id="product-weight"
                             name="weightKg"
                             type="number"
+                            inputMode="decimal"
                             step="0.001"
                             min="0"
                             placeholder="Ex.: 0,350"
@@ -7044,6 +7092,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             id="product-width"
                             name="widthCm"
                             type="number"
+                            inputMode="decimal"
                             min="0"
                             placeholder="Ex.: 15"
                             value={formData.widthCm}
@@ -7076,6 +7125,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             id="product-height"
                             name="heightCm"
                             type="number"
+                            inputMode="decimal"
                             min="0"
                             placeholder="Ex.: 15"
                             value={formData.heightCm}
@@ -7111,6 +7161,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             id="product-length"
                             name="lengthCm"
                             type="number"
+                            inputMode="decimal"
                             min="0"
                             placeholder="Ex.: 15"
                             value={formData.lengthCm}

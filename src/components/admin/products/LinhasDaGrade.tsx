@@ -95,6 +95,7 @@ export function LinhasDaGrade({
             id="grade-aplicar-estoque"
             name="grade-aplicar-estoque"
             type="number"
+            inputMode="numeric"
             aria-label="Estoque para todas as linhas"
             value={aplicarEstoque}
             onFlush={onAplicarEstoque}
@@ -227,6 +228,7 @@ export function LinhasDaGrade({
             id={`grade-linha-estoque-${i}`}
             name={`grade-linha-estoque-${i}`}
             type="number"
+            inputMode="numeric"
             aria-label={`Estoque de ${linha.value}`}
             value={linha.estoque}
             onFlush={(val) => onMudarLinha(i, "estoque", val)}
