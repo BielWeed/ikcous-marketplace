@@ -793,13 +793,32 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     exigirVerificacaoSemSaidaQueCobra();
   });
 
-  // Rodada 3 (achado 2): a rodada 2 tinha um "controle" aqui com um erro
-  // recuperável sem sinal — mas esse é EXATAMENTE o Caso B (502 ambíguo)
-  // acima de propósito, não um controle. O controle de verdade agora é um
-  // terminal DEFINITIVO do cartão (recusado sem nova tentativa, expirado,
-  // estornado — vem de `classificarRespostaCartao`, uma resposta que a edge
-  // realmente enviou): sem ambiguidade nenhuma, "Cancelar pedido" continua
-  // certo, porque o pedido está mesmo morto.
+  it("pausa do pagamento explica o motivo sem oferecer retry ou cancelamento", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+    const mensagem =
+      "A loja pausou o pagamento pelo app. Fale com a loja para combinar o pagamento.";
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "terminal",
+          sinal: "pagamentoPausado",
+        ) => void
+      )(mensagem, "terminal", "pagamentoPausado");
+    });
+
+    expect(hospedeiro.textContent).toContain(mensagem);
+    expect(botaoPorTexto(hospedeiro, "Ver meus pedidos")).toBeDefined();
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeUndefined();
+    expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+  });
+
+  // Controle: a recusa definitiva mata a cobrança; a pausa não.
   it("controle: um terminal DEFINITIVO do cartão (sem sinal, mas categoria terminal) continua oferecendo 'Cancelar pedido' — não é ambíguo", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);

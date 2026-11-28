@@ -89,6 +89,18 @@ function banco(o: {
       throw new Error(`rpc inesperada: ${nome}`);
     },
     from(tabela: string) {
+      if (tabela === "store_config") {
+        return {
+          select: (colunas: string) => ({
+            limit: () => ({
+              maybeSingle: async () => ({
+                data: colunas === "pagamento_online" ? { pagamento_online: true } : null,
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
       if (tabela === "config_pagamento_cartao") {
         return { select: () => cadeiaDe({ data: o.config ?? null, error: null }) };
       }
@@ -318,7 +330,10 @@ const corpoDeCartao = (extra: Record<string, unknown> = {}) => ({
   parcelas: 2,
   ...extra,
 });
-const PARCELAMENTO_RECUSADO = { error: "Esse parcelamento não está disponível nesta loja." };
+const PARCELAMENTO_RECUSADO = {
+  error: "Esse parcelamento não está disponível nesta loja.",
+  codigo: "parcelas_acima_do_limite",
+};
 
 for (const maximo of [13, 2.5, 0, -1, "abc", null, 100]) {
   Deno.test(`parcelas_max inválido (${JSON.stringify(maximo)}) vale 1: crédito em 2x -> 400 'parcelamento não disponível', nada gravado`, async () => {

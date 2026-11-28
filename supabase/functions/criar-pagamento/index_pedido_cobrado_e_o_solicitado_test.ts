@@ -30,6 +30,18 @@ function pedido(id: string, total: number): Record<string, unknown> {
 function bancoComDoisPedidos(linhas: Array<Record<string, unknown>>) {
   return {
     from(tabela: string) {
+      if (tabela === "store_config") {
+        return {
+          select: (colunas: string) => ({
+            limit: () => ({
+              maybeSingle: async () => ({
+                data: colunas === "pagamento_online" ? { pagamento_online: true } : null,
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
       assertEquals(
         tabela,
         "marketplace_orders",

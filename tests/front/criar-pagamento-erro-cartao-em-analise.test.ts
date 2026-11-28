@@ -62,6 +62,24 @@ function erroDeInvokeComCorpo(corpo: Record<string, unknown>) {
 
 const ARGS_PIX = { orderId: "ped-1", metodo: "pix" as const };
 
+it.each(["pagamento_pausado", "parcelas_acima_do_limite"])(
+  "transporta o código %s da recusa da edge",
+  async (codigo) => {
+    const mensagem = "Recusa da loja";
+    vi.mocked(supabase.functions.invoke).mockResolvedValueOnce({
+      data: null,
+      error: erroDeInvokeComCorpo({ error: mensagem, codigo }),
+    } as any);
+
+    await expect(
+      useOrders(false, true).criarPagamento(ARGS_PIX),
+    ).rejects.toMatchObject({
+      message: mensagem,
+      codigo,
+    });
+  },
+);
+
 describe("useOrders/criarPagamento propaga o campo cartaoEmAnalise do 409 (B3)", () => {
   beforeEach(() => {
     vi.mocked(supabase.functions.invoke).mockClear();

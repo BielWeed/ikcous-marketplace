@@ -39,6 +39,18 @@ function bancoComUmPedido() {
     linha,
     supabase: {
       from(tabela: string) {
+        if (tabela === "store_config") {
+          return {
+            select: (colunas: string) => ({
+              limit: () => ({
+                maybeSingle: async () => ({
+                  data: colunas === "pagamento_online" ? { pagamento_online: true } : null,
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
         assertEquals(tabela, "marketplace_orders");
         const filtros: Array<(l: Record<string, unknown>) => boolean> = [];
         let colunas = "";

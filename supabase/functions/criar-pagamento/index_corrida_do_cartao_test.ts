@@ -166,6 +166,9 @@ function bancoComEstado(
         if (tabela === "config_pagamento_cartao") {
           return { data: { credito: true, debito: true, parcelas_max: 12 }, error: null };
         }
+        if (tabela === "store_config" && colunas === "pagamento_online") {
+          return { data: { pagamento_online: true }, error: null };
+        }
         if (tabela !== "marketplace_orders") return { data: null, error: null };
         if (valores) {
           const gravou = bate();

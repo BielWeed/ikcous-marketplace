@@ -2235,6 +2235,7 @@ export function CheckoutViewDaConta({
     categoria: CategoriaErroPagamento;
     cartaoEmAnalise: boolean;
     semCobranca: boolean;
+    pagamentoPausado?: boolean;
     // Lacuna L1 (02/10/2026): o erro que NASCE de uma leitura do banco (sem
     // toque nenhum do cliente) troca a tela sozinho — ele vai num
     // `role="alert"` para o leitor de tela anunciar a troca. Caça de leitor
@@ -6956,7 +6957,15 @@ export function CheckoutViewDaConta({
                 seguro com a migration 80 no ar (condição para ligar o
                 cartão): a tela de pedidos não oferece nada que cobra, e
                 cancelar por lá esbarra na MESMA guarda P0001. */}
-            {pedidoTemCobrancaIncerta ? (
+            {erroPagamento.pagamentoPausado ? (
+              <Button
+                onClick={() => onNavigate("orders")}
+                variant="outline"
+                className="w-full rounded-xl"
+              >
+                Ver meus pedidos
+              </Button>
+            ) : pedidoTemCobrancaIncerta ? (
               erroPagamento.categoria !== "terminal" ? (
                 // Fase 3 (04/10/2026, R2 da revisão): erro RECUPERÁVEL com a
                 // cobrança incerta — só havia "Tentar de novo"; se o erro se
@@ -7200,6 +7209,7 @@ export function CheckoutViewDaConta({
                       categoria,
                       cartaoEmAnalise: cartaoTalvezEmCurso,
                       semCobranca: sinal === "semCobranca",
+                      pagamentoPausado: sinal === "pagamentoPausado",
                       anunciar: true,
                     },
               );

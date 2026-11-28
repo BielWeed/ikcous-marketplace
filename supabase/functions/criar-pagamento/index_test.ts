@@ -155,6 +155,7 @@ function clienteFalso(opts: {
   // Fase 3.5 (cartão): a linha `id = 1` de `config_pagamento_cartao`.
   // Default AUSENTE — a loja que nunca ligou o cartão, que é como a linha
   // nasce. `erroConfigCartao` simula falha de leitura dessa tabela.
+  pagamentoOnline?: boolean;
   configCartao?: Record<string, unknown> | null;
   erroConfigCartao?: Record<string, unknown> | null;
   leiturasConfigCartao?: Array<{ colunas: string; filtro: [string, unknown] }>;
@@ -270,6 +271,13 @@ function clienteFalso(opts: {
       if (tabela === "store_config") {
         return {
           select(colunas: string) {
+            if (colunas === "pagamento_online") {
+              return {
+                limit: () => ({
+                  maybeSingle: async () => ({ data: { pagamento_online: opts.pagamentoOnline ?? true }, error: null }),
+                }),
+              };
+            }
             opts.leiturasDoNome?.push({ tabela, colunas });
             return {
               limit: () => ({
@@ -2683,6 +2691,14 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
     ["Corpo inválido.", "reenviar com JSON válido resolve; nada do pedido mudou"],
     ["Pedido inválido.", "reenviar com um orderId em formato de UUID resolve"],
     [
+      "A loja pausou o pagamento pelo app. Fale com a loja para combinar o pagamento.",
+      "a loja pode retomar o recebimento; o código esconde o retry sem afirmar que a cobrança anterior morreu",
+    ],
+    [
+      "Não foi possível conferir o pagamento pelo app agora.",
+      "falha na leitura da ficha da loja; nenhuma cobrança foi criada",
+    ],
+    [
       "Pagamento indisponível.",
       // Laudo 0109 (D1): a entrada cobre hoje SÓ o 503 de service role
       // ausente — o de MP_ACCESS_TOKEN ausente virou terminal: true
@@ -3149,7 +3165,9 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // 67, não mais 66: pagar a si mesma (26/11/2026) — o 502 NÃO terminal
   // `MENSAGEM_PAGAR_A_SI_MESMA` (na lista de recuperáveis, acima), de UM ponto
   // só (`respostaPagarASiMesma`), chamado pelo PIX e pelo cartão. 66 + 1 = 67.
-  assertEquals(achados, 67);
+  // 69: o portão de criação responde 409 se a loja pausou, ou 503 se
+  // a leitura da ficha falhou. A consulta da cobrança não passa por ele.
+  assertEquals(achados, 69);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -4111,6 +4129,7 @@ function cenarioCartao(opts: {
   falhaNaLeituraDoAntifraude?: "erro" | "lanca";
   // Nome na fatura (03/10/2026) — ver `clienteFalso`.
   nomeDaLoja?: unknown;
+  pagamentoOnline?: boolean;
   falhaNaLeituraDoNome?: "erro" | "lanca";
   // Teto do cartão por cliente (auditoria L3) — ver `clienteFalso`.
   tentativasDoCliente?: number[] | "erro";
@@ -4135,6 +4154,7 @@ function cenarioCartao(opts: {
     tentativasDoCliente: opts.tentativasDoCliente,
     consultasDoCliente,
     nomeDaLoja: opts.nomeDaLoja,
+    pagamentoOnline: opts.pagamentoOnline,
     falhaNaLeituraDoNome: opts.falhaNaLeituraDoNome,
     leiturasDoNome,
     itensDoPedido: opts.itensDoPedido,
@@ -4382,6 +4402,7 @@ Deno.test("handler cartão: parcelas acima do teto da loja -> 400 recuperável; 
   const corpoAcima = await respostaAcima.json();
   assertEquals(respostaAcima.status, 400);
   assertEquals(corpoAcima.error, "Esse parcelamento não está disponível nesta loja.");
+  assertEquals(corpoAcima.codigo, "parcelas_acima_do_limite");
   assertEquals(corpoAcima.terminal, undefined);
   assertEquals(mpAcima.chamadas.length, 0);
 
@@ -4486,7 +4507,7 @@ Deno.test("contrato forma desligada: pedido com cartão ANTERIOR em análise (pr
   assertEquals(pix.chamadasRpc.length, 0);
 });
 
-Deno.test("contrato forma desligada, CONTROLE: o 400 de parcelamento acima do teto NÃO leva o código", async () => {
+Deno.test("contrato forma desligada, CONTROLE: o 400 de parcelamento tem código próprio", async () => {
   const { supabase, registro } = cenarioCartao({ configCartao: { credito: true, debito: true, parcelas_max: 3 } });
   const mp = fetchMP({});
 
@@ -4498,7 +4519,7 @@ Deno.test("contrato forma desligada, CONTROLE: o 400 de parcelamento acima do te
 
   assertEquals(resposta.status, 400);
   assertEquals(corpo.error, "Esse parcelamento não está disponível nesta loja.");
-  assertEquals(corpo.codigo, undefined);
+  assertEquals(corpo.codigo === CODIGO_FORMA_DESLIGADA, false);
   assertEquals(mp.chamadas.length, 0);
   assertEquals(registro.chamadasUpdate, 0);
 });
@@ -5776,6 +5797,64 @@ Deno.test("vaga (b): cartão recusado na vaga + pedido de PIX -> libera, relê e
   assertEquals(registro.valoresUpdate?.metodo_online, "pix");
 });
 
+for (const metodo of ["pix", "cartao"] as const) {
+  Deno.test(`pausa do pagamento pelo app: ${metodo} novo não chega ao MP`, async () => {
+    const { supabase, registro } = cenarioCartao({ pagamentoOnline: false });
+    const mp = fetchMP({
+      criar: {
+        status: 201,
+        corpo: metodo === "pix"
+          ? orderDePix("action_required", "waiting_transfer")
+          : orderDeCartao("processing", "in_process"),
+      },
+    });
+    const corpo = metodo === "pix" ? { orderId: UUID, metodo } : corpoCartao();
+
+    const resposta = await handler(requisicao(corpo, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+
+    assertEquals(resposta.status, 409);
+    assertEquals((await resposta.json()).codigo, "pagamento_pausado");
+    assertEquals(mp.chamadas, []);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+}
+
+Deno.test("pausa do pagamento pelo app: não cancela PIX existente para trocar por cartão; o QR continua consultável", async () => {
+  const pedido = pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA, metodo_online: "pix" });
+  const { supabase, chamadasRpc, registro } = cenarioCartao({
+    pagamentoOnline: false,
+    pedido,
+    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") },
+    cancelar: { status: 200, corpo: orderDePix("canceled", "canceled") },
+    criar: { status: 201, corpo: orderDeCartao("processing", "in_process") },
+  });
+
+  const troca = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  assertEquals(troca.status, 409);
+  assertEquals((await troca.json()).codigo, "pagamento_pausado");
+
+  // Outra requisição lê a mesma vaga; o dublê conta releituras por chamada.
+  const consulta = cenarioCartao({ pagamentoOnline: false, pedido });
+  const pix = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase: consulta.supabase,
+    fetchImpl: mp.fn,
+  });
+  assertEquals(pix.status, 200);
+  assertEquals((await pix.json()).qrCode, "QRCODE-DA-VAGA");
+  assertEquals(mp.chamadas.map((c) => c.method), ["GET", "GET"]);
+  assertEquals(liberacoes(chamadasRpc), []);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
 Deno.test("vaga (c): PIX ABERTO na vaga + pedido de cartão -> CANCELA o PIX no MP, libera a vaga DELE e cobra o cartão", async () => {
   const { supabase, registro, chamadasRpc } = cenarioCartao({
     pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
@@ -6341,6 +6420,18 @@ function bancoComEstado(
                   error: null,
                 };
               },
+            }),
+          }),
+        };
+      }
+      if (tabela === "store_config") {
+        return {
+          select: (colunas: string) => ({
+            limit: () => ({
+              maybeSingle: async () => ({
+                data: colunas === "pagamento_online" ? { pagamento_online: true } : null,
+                error: null,
+              }),
             }),
           }),
         };
