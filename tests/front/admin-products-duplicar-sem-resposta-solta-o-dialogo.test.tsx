@@ -214,8 +214,7 @@ describe("AdminProductsView: duplicar sem resposta da rede solta o diálogo e n�
     await duplicar();
     expect(h.addProduct).toHaveBeenCalledTimes(1);
     expect(h.toastSuccess).toHaveBeenCalledWith(
-      "Produto Duplicado",
-      expect.anything(),
+      "Cópia criada, desativada e sem estoque.",
     );
   });
 

@@ -30,9 +30,10 @@ WITH fn AS (
 ), itens(item, esperado, vivo) AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL
-  -- A sucessora 20261643000000 (as listas dos ajustes nao somem entre aparelhos) tambem conta: o `vivo` mostra o esperado.
+  -- As sucessoras 20261643000000 (as listas dos ajustes nao somem entre aparelhos) e 20261652000000 (a loja nova confirma a
+  -- entrega e o pagamento) tambem contam: o `vivo` mostra o esperado.
   SELECT 'upsert_store_config: corpo exato (md5)', 'aa4ed730ac6ad3d3c2644b4285ff39a9',
-    COALESCE((SELECT CASE WHEN m = '2f772ffd1370359ba6c64540b71c35b2' THEN 'aa4ed730ac6ad3d3c2644b4285ff39a9' ELSE m END FROM fn), 'AUSENTE')
+    COALESCE((SELECT CASE WHEN m IN ('2f772ffd1370359ba6c64540b71c35b2', '3c62896ca905200f1a931ac6ccfed297') THEN 'aa4ed730ac6ad3d3c2644b4285ff39a9' ELSE m END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'upsert_store_config: assinatura, atributos e ACL preservados', 'sim',
     CASE WHEN COALESCE((SELECT atributos_ok AND acl_ok FROM fn), false) THEN 'sim' ELSE 'nao' END

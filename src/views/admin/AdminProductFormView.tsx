@@ -166,6 +166,11 @@ import {
   acimaDoTetoDePreco,
   mensagemDePrecoAcimaDoTeto,
 } from "@/utils/teto-de-preco";
+import {
+  type TrocaDeValor,
+  fraseDaTrocaGuardada,
+  trocasDeValorComoOpcaoNova,
+} from "@/utils/troca-de-valor-da-variacao";
 import { ESTOQUE_MAXIMO_DA_VARIACAO } from "@/utils/truth_gate";
 import {
   chaveDoGrupo,
@@ -370,7 +375,14 @@ export const compressProductImage = async (
     // Pequena demais para reduzir, mas NÃO pode passar sem abrir: um arquivo
     // estragado (ou outro formato com extensão .jpg) subiria com "sucesso" e a
     // capa apareceria quebrada. A grande já é conferida logo abaixo, no <img>.
-    if (file.size < 100 * 1024) {
+    // WebP e AVIF não pulam o canvas, de nenhum peso: iPhone com iOS 13 ou
+    // mais velho não abre WebP (AVIF, até o 15), e a ORIGINAL é o plano B das
+    // miniaturas — ela tem de sair JPEG.
+    if (
+      file.size < 100 * 1024 &&
+      file.type !== "image/webp" &&
+      file.type !== "image/avif"
+    ) {
       void imagemAbre(file).then((abre) =>
         abre ? resolve(file) : reject(new FotoIlegivel()),
       );
@@ -3951,6 +3963,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         const salvarEmTransacao =
           navigator.onLine &&
           (formData.variants.length > 0 || deletedVariantIds.length > 0);
+        // Trocar o VALOR de uma opção gravada ("M" -> "GG") cria opção nova;
+        // só a grafia segue na mesma linha (ver `troca-de-valor-da-variacao.ts`).
+        // Só no salvar em transação: é a RPC que apaga ANTES de gravar a grade e
+        // devolve a antiga vendida em `recusadas` sem derrubar o resto.
+        const troca = salvarEmTransacao
+          ? trocasDeValorComoOpcaoNova(
+              variantsWithSanitizedSku,
+              formData.variants,
+              initialData.variants,
+            )
+          : {
+              variantes: variantsWithSanitizedSku,
+              apagar: [] as string[],
+              trocas: [] as TrocaDeValor[],
+            };
         const updates = {
           ...camposDoProduto,
           variants: productData.variants,
@@ -3996,8 +4023,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         if (salvarEmTransacao) {
           const retorno = await salvarProdutoComGrade(productId, updates, {
             ...conferencia,
-            variantes: variantsWithSanitizedSku,
-            apagar: deletedVariantIds,
+            variantes: troca.variantes,
+            apagar: [...deletedVariantIds, ...troca.apagar],
           });
           if (!retorno) {
             setIsSubmitting(false);
@@ -4046,8 +4073,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           // lista (para a lojista poder DESLIGAR a variação) e também saem dela.
           setDeletedVariantIds([]);
         }
+        // A antiga de uma troca de valor que o banco recusou apagar (já tem
+        // venda) NÃO é exclusão que falhou: ficou guardada desligada, como
+        // pedido. Ela tem a frase própria, e a linha dela já está na tela.
+        const trocasGuardadas = troca.trocas.filter((t) =>
+          naoApagadas.includes(t.idAntigo),
+        );
+        const idsDasTrocas = new Set(troca.trocas.map((t) => t.idAntigo));
+        const exclusoesRecusadas = naoApagadas.filter(
+          (id) => !idsDasTrocas.has(id),
+        );
         const devolvidas = initialData.variants.filter((v) =>
-          naoApagadas.includes(v.id),
+          exclusoesRecusadas.includes(v.id),
         );
         if (devolvidas.length > 0) {
           formAposRecusas = formComVariacoes(formData, [
@@ -4087,7 +4124,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             setCurrentProduct(doBanco);
             versaoDosPrecosRef.current = doBanco.updatedAt;
             setIsPromoActive(!!doBanco.originalPrice);
-          } else if (formData.variants.some((v) => v.id.startsWith("temp-"))) {
+          } else if (
+            formData.variants.some((v) => v.id.startsWith("temp-")) ||
+            // A opção nova da troca também foi inserida, com id que a tela não
+            // tem: salvar de novo regravaria a linha antiga com o valor novo.
+            troca.trocas.length > 0
+          ) {
             setPrecisaRecarregar(true);
             toast.error(
               "As variações novas já foram gravadas, mas não consegui reler o produto. Recarregue a tela antes de salvar de novo: salvar agora repetiria essas variações.",
@@ -4104,13 +4146,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           if (chaveDoRascunho) {
             apagarRascunhoDoProdutoPelaChave(chaveDoRascunho);
           }
-          const quais =
-            devolvidas.length > 0
-              ? devolvidas.map((v) => `${v.name}: ${v.value}`).join(", ")
-              : "uma variação";
-          toast.error(textoVariacoesNaoExcluidas(quais, devolvidas.length), {
-            duration: 15000,
-          });
+          for (const guardada of trocasGuardadas) {
+            toast.warning(fraseDaTrocaGuardada(guardada), { duration: 15000 });
+          }
+          if (exclusoesRecusadas.length > 0) {
+            const quais =
+              devolvidas.length > 0
+                ? devolvidas.map((v) => `${v.name}: ${v.value}`).join(", ")
+                : "uma variação";
+            toast.error(textoVariacoesNaoExcluidas(quais, devolvidas.length), {
+              duration: 15000,
+            });
+          }
           setIsSubmitting(false);
           return;
         }

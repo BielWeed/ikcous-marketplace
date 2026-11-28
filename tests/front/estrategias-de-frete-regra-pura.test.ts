@@ -750,3 +750,33 @@ describe("erroDoFormularioNacional — espelha os CHECKs da migration 2026117100
     ).toBeNull();
   });
 });
+
+describe("erroDoFormularioNacional — a frase do desconto zero fala a unidade do tipo", () => {
+  const desconto = (
+    tipoDesconto: "percentual" | "fixo",
+    valorDesconto: number,
+  ): FormularioEstrategiaNacional => ({
+    estrategia: "desconto_na_mais_barata",
+    minimo: 0,
+    tipoDesconto,
+    valorDesconto,
+  });
+
+  it.each([0, -5, Number.NaN])(
+    "porcentagem %s: pede porcentagem maior que zero, sem falar em reais",
+    (valor) => {
+      const erro = erroDoFormularioNacional(desconto("percentual", valor));
+      expect(erro).toBe("Informe uma porcentagem de desconto maior que 0%.");
+      expect(erro).not.toContain("R$");
+    },
+  );
+
+  it.each([0, -5, Number.NaN])(
+    "em reais %s: a frase de antes, em R$",
+    (valor) => {
+      expect(erroDoFormularioNacional(desconto("fixo", valor))).toBe(
+        "Informe um valor de desconto maior que R$ 0.",
+      );
+    },
+  );
+});

@@ -5,7 +5,9 @@
 //  1. O canvas do Safari não tem `ctx.filter`: a prévia (filtro CSS) mostrava
 //     P&B/Vívido, mas a foto salva saía com as cores originais. Agora, sem
 //     `ctx.filter`, o filtro é refeito pixel a pixel antes de gerar o arquivo.
-//  2. O Safari não gera WebP e entrega PNG pesado: o recorte refaz em JPEG.
+//  2. O Safari não gera WebP e entregava PNG pesado. Hoje o recorte pede JPEG
+//     direto (28/11/2026): a ORIGINAL do produto tem de abrir no iPhone antigo,
+//     que não abre WebP (iOS 13 ou mais velho).
 //  3. Dois toques rápidos em "Salvar Ajuste" disparavam dois recortes e dois
 //     envios (o botão só desliga depois que o recorte termina).
 // Não há canvas de verdade no jsdom: o canvas é um dublê que anota o que o
@@ -210,34 +212,26 @@ describe("ImageAdjuster — Salvar Ajuste com ctx.filter (Chrome, Firefox)", () 
   });
 });
 
-describe("ImageAdjuster — o Safari devolve PNG no lugar de WebP", () => {
-  it("o arquivo entregue é o JPEG, não o PNG pesado", async () => {
+describe("ImageAdjuster — o recorte sai em JPEG (o iPhone antigo não abre WebP)", () => {
+  it("pede JPEG ao canvas e entrega o JPEG: um pedido só, nada de WebP", async () => {
     instalarCanvas(true);
-    aoPedirBlob = (tipo) =>
-      tipo === "image/webp"
-        ? new Blob([new Uint8Array(3000)], { type: "image/png" })
-        : new Blob([new Uint8Array(300)], { type: tipo });
     const recebidos: Blob[] = [];
     await abrir(async (b) => {
       recebidos.push(b);
     });
     await salvar();
 
-    expect(pedidosDeBlob).toEqual(["image/webp", "image/jpeg"]);
+    expect(pedidosDeBlob).toEqual(["image/jpeg"]);
     expect(recebidos).toHaveLength(1);
     expect(recebidos[0].type).toBe("image/jpeg");
   });
 
-  it("navegador que gera WebP: um pedido só, entrega o WebP", async () => {
+  it("o fundo do recorte é branco: onde havia transparência, o JPEG não fica preto", async () => {
     instalarCanvas(true);
-    const recebidos: Blob[] = [];
-    await abrir(async (b) => {
-      recebidos.push(b);
-    });
+    await abrir(async () => {});
     await salvar();
 
-    expect(pedidosDeBlob).toEqual(["image/webp"]);
-    expect(recebidos[0].type).toBe("image/webp");
+    expect(doExport()[0].fillStyle).toBe("#FFFFFF");
   });
 });
 

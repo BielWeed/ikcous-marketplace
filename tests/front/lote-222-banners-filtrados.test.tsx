@@ -248,6 +248,22 @@ describe("lote 222 — banners filtrados", () => {
     ).toContain("Banner Alfa dois agora é o 1º de 2");
   });
 
+  // #2065: a seta de descer também manda a direção, e é "baixo". Com "cima"
+  // o banco acharia o vizinho de cima (nenhum, para o primeiro) e a ordem
+  // não mudaria.
+  it("descer o primeiro banner pede ao banco a troca para baixo", async () => {
+    await montar();
+    const seta = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Descer banner Alfa"]',
+    )!;
+    expect(seta).not.toBeNull();
+    await act(async () => {
+      seta.click();
+    });
+    expect(reorderBanners).toHaveBeenCalledOnce();
+    expect(reorderBanners).toHaveBeenCalledWith("b1", "b2", "baixo");
+  });
+
   it("o filtro de situação também trava reordenação e limpar devolve a seta", async () => {
     await montar();
     await act(async () => {

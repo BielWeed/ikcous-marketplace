@@ -24,6 +24,7 @@ import {
   FORMAS_DE_PAGAMENTO_NA_ENTREGA_EM_ORDEM,
   type FormaDePagamentoNaEntrega,
 } from "@/lib/formas-de-pagamento-na-entrega";
+import { confirmacaoAoSalvarOPagamento } from "@/lib/loja-pronta";
 import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
 import { haptic } from "@/utils/haptic";
 
@@ -81,6 +82,12 @@ interface FormasDePagamentoSectionProps {
    * dela por cima da real. Trava os interruptores até a leitura funcionar.
    */
   readonly somenteLeitura?: boolean;
+  /**
+   * Loja pronta (20261652000000): `false` = a loja nova ainda não confirmou
+   * as formas que vieram de fábrica; o próximo toque confirma junto. Ausente
+   * (banco sem a coluna) ou `true`: o toque grava só a lista.
+   */
+  readonly pagamentoConfirmado?: boolean;
   /** Abre a seção Mercado Pago (a outra SecaoColapsavel, no hub) — ligar o
    * pagamento pelo app exige credencial, que mora só lá. */
   readonly onAbrirMercadoPago: () => void;
@@ -107,6 +114,7 @@ export function FormasDePagamentoSection({
   updateConfig,
   onDirtyMudou,
   somenteLeitura = false,
+  pagamentoConfirmado,
   onAbrirMercadoPago,
 }: FormasDePagamentoSectionProps) {
   const formasNaEntregaId = useId();
@@ -158,7 +166,10 @@ export function FormasDePagamentoSection({
       // aviso e a releitura saem de dentro do `updateConfig`), em vez de
       // apagar em silêncio a forma que o outro acabou de ligar ou desligar.
       const salvou = await updateConfig(
-        { formasPagamentoEntrega: proxima },
+        {
+          formasPagamentoEntrega: proxima,
+          ...confirmacaoAoSalvarOPagamento({ pagamentoConfirmado }),
+        },
         {
           silentSuccess: true,
           vistos: { formasPagamentoEntrega: [...formasNaEntrega] },

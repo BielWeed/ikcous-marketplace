@@ -51,6 +51,7 @@ import {
 import {
   alcanceAoMudarOCepDaLoja,
   cepCompleto,
+  confirmacaoAoSalvarAEntrega,
   resumoDoAlcance,
 } from "@/lib/loja-pronta";
 import { usePagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
@@ -1177,9 +1178,18 @@ export const AdminShippingView = memo(function AdminShippingView({
         };
         setEdicaoMototaxi({ base: salvo, contato: salvo });
       }
+      // Loja pronta (20261652000000): salvar o Frete também é o "Está certo"
+      // da entrega — vai no MESMO pedido, só quando a loja nova ainda não
+      // confirmou. Fora do `regrasParaGravar`: não é regra de frete.
       const salvou = !gravaRegras
         ? true
-        : await updateConfig(regrasParaGravar, { silentSuccess: true });
+        : await updateConfig(
+            {
+              ...regrasParaGravar,
+              ...confirmacaoAoSalvarAEntrega(config),
+            },
+            { silentSuccess: true },
+          );
       if (!salvou) {
         haptic.error();
         setFalhaAoSalvar(true);

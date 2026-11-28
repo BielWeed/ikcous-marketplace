@@ -801,6 +801,10 @@ describe("StoreContext.updateConfig — não declara sucesso sem conferir o reto
       // 20261174000000: formas de pagamento por loja (pix/card/cash na
       // entrega) — a coluna existe e o updateConfig tem o `if` dela.
       formasPagamentoEntrega: ["pix", "card"],
+      // 20261652000000: o "Está certo" da Loja pronta — só `true` vai ao
+      // banco (que carimba a data), por isso a fixture manda `true`.
+      entregaConfirmada: true,
+      pagamentoConfirmado: true,
     };
 
     await act(async () => {

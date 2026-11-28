@@ -622,6 +622,90 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
     expect(createOrder).toHaveBeenCalledTimes(1);
   });
 
+  // TROCA DE CONTA NA MESMA ABA (caça 27/11/2026): o pedido sem resposta é da
+  // VISITANTE. A conta que entra depois na mesma aba nunca vê o painel dele nem
+  // o "Falar com a loja" que leva o nome dela — e o registro sai do aparelho.
+  describe("a conta que entra depois na mesma aba não herda o pedido sem resposta da visitante", () => {
+    const REGISTRO = "ikcous-pedido-sem-resposta-v1";
+    const FRASE_DO_REENVIO = "O pedido não foi confirmado";
+    const ENDERECO_DE_B = {
+      id: "addr-b",
+      user_id: "user-b",
+      name: "Casa",
+      recipient_name: "Outra Pessoa",
+      cep: "01310-100",
+      street: "Rua Outra",
+      number: "200",
+      neighborhood: "Centro",
+      city: "Cidade Teste",
+      state: "SP",
+      is_default: true,
+    };
+    /** Deixa o checkout assentar (validação e restauração do painel). */
+    async function assentar() {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+    }
+    function entrarNaContaB() {
+      estado.user = { id: "user-b" };
+      estado.enderecos = [ENDERECO_DE_B];
+    }
+
+    it("reabrindo o checkout já com a conta B: sem painel, sem 'Falar com a loja', e o registro é apagado", async () => {
+      estado.config = { ...estado.config, whatsappNumber: "34999998888" };
+      createOrder.mockRejectedValueOnce({ code: "PEDIDO_SEM_RESPOSTA" });
+      await montar();
+      await preencherEClicarFinalizar();
+      expect(sessionStorage.getItem(REGISTRO)).not.toBeNull();
+
+      await act(async () => raiz.unmount());
+      entrarNaContaB();
+      raiz = createRoot(hospedeiro);
+      await montar();
+      await assentar();
+
+      expect(document.body.textContent).not.toContain(FRASE_DO_REENVIO);
+      expect(botaoTentarDeNovo()).toBeNull();
+      expect(botaoPorTexto("Falar com a loja")).toBeUndefined();
+      expect(sessionStorage.getItem(REGISTRO)).toBeNull();
+      expect(botaoFinalizar()!.disabled).toBe(false);
+    });
+
+    it("com a tela aberta, a conta B entra: o painel sai, o nome da visitante não vai para o WhatsApp, e o registro é apagado", async () => {
+      estado.config = { ...estado.config, whatsappNumber: "34999998888" };
+      createOrder.mockRejectedValueOnce({ code: "PEDIDO_SEM_RESPOSTA" });
+      await montar();
+      await preencherEClicarFinalizar();
+      expect(botaoPorTexto("Falar com a loja")).toBeDefined();
+
+      entrarNaContaB();
+      await renderizarDeNovo();
+      await assentar();
+
+      expect(document.body.textContent).not.toContain(FRASE_DO_REENVIO);
+      expect(botaoTentarDeNovo()).toBeNull();
+      expect(botaoPorTexto("Falar com a loja")).toBeUndefined();
+      expect(sessionStorage.getItem(REGISTRO)).toBeNull();
+      expect(createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it("controle: a visitante que continua sem conta reencontra o painel ao reabrir", async () => {
+      createOrder.mockRejectedValueOnce({ code: "PEDIDO_SEM_RESPOSTA" });
+      await montar();
+      await preencherEClicarFinalizar();
+
+      await act(async () => raiz.unmount());
+      raiz = createRoot(hospedeiro);
+      await montar();
+      await assentar();
+
+      expect(document.body.textContent).toContain(FRASE_DO_REENVIO);
+      expect(botaoTentarDeNovo()).not.toBeNull();
+      expect(sessionStorage.getItem(REGISTRO)).not.toBeNull();
+    });
+  });
+
   it("com WhatsApp da loja cadastrado, oferece 'Falar com a loja'; sem WhatsApp, não mostra", async () => {
     estado.config = { ...estado.config, whatsappNumber: "34999998888" };
     createOrder.mockRejectedValueOnce({});

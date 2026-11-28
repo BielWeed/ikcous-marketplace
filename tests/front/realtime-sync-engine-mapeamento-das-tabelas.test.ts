@@ -402,4 +402,24 @@ describe("mapRecord de store_config", () => {
   it("a linha sempre vira o registro único 'singleton'", () => {
     expect(mapear("store_config", { id: 7 }).id).toBe("singleton");
   });
+
+  // Loja pronta (20261652000000): o eco do Realtime não pode "confirmar" a
+  // loja nova (coluna vazia) nem desconfirmar a que já confirmou.
+  it("confirmação da Loja pronta: vazia = falta confirmar; data = confirmado; ausente = campo nem aparece", () => {
+    const vazia = mapear("store_config", {
+      entrega_confirmada_em: null,
+      pagamento_confirmado_em: null,
+    });
+    expect(vazia.entregaConfirmada).toBe(false);
+    expect(vazia.pagamentoConfirmado).toBe(false);
+    const comData = mapear("store_config", {
+      entrega_confirmada_em: "2026-11-27T12:00:00+00:00",
+      pagamento_confirmado_em: "2026-11-27T12:00:00+00:00",
+    });
+    expect(comData.entregaConfirmada).toBe(true);
+    expect(comData.pagamentoConfirmado).toBe(true);
+    const semColuna = mapear("store_config", {});
+    expect("entregaConfirmada" in semColuna).toBe(false);
+    expect("pagamentoConfirmado" in semColuna).toBe(false);
+  });
 });

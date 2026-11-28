@@ -1347,6 +1347,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                           updateConfig={updateConfig}
                           onDirtyMudou={setFormasPagamentoPendente}
                           somenteLeitura={configFalhou}
+                          pagamentoConfirmado={config.pagamentoConfirmado}
                           onAbrirMercadoPago={() => {
                             setAbrirMercadoPagoGatilho((n) => n + 1);
                             // "Configurar credenciais" cai direto nos campos das

@@ -287,15 +287,15 @@ describe("AdminProductsView — duplicação com grade não salva", () => {
     },
   );
 
-  it("mantém o anúncio de Produto Duplicado quando toda a grade é salva", async () => {
+  it("mantém o anúncio de sucesso da cópia quando toda a grade é salva", async () => {
     await montar();
     fetchExecutiveSummary.mockClear();
     await duplicar();
 
     expect(addProduct).toHaveBeenCalledTimes(1);
-    expect(toastSuccess).toHaveBeenCalledExactlyOnceWith("Produto Duplicado", {
-      description: "O produto foi duplicado com sucesso.",
-    });
+    expect(toastSuccess).toHaveBeenCalledExactlyOnceWith(
+      "Cópia criada, desativada e sem estoque.",
+    );
     expect(toastError).not.toHaveBeenCalled();
     expect(
       localizarBotaoPorTexto(

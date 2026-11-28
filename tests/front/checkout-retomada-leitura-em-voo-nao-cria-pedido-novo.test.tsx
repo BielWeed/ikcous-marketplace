@@ -34,6 +34,14 @@ const { lerPedido, conta } = vi.hoisted(() => ({
   conta: { user: null as { id: string } | null },
 }));
 
+// A conferência da sessão antes de enviar — também a da visitante, que só
+// envia com a sessão vazia (caça 27/11/2026) — tem suíte própria
+// (checkout-pedido-chave-voltar-e-sessao.test.tsx); aqui a sessão é a de quem
+// está na tela.
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: async () => true,
+}));
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({

@@ -57,3 +57,32 @@ describe("sessaoAindaEhDoDono — leitura da sessão que falha nunca libera o en
     expect(await sessaoAindaEhDoDono("user-1", aoFalharPorRede)).toBe(true);
   });
 });
+
+describe("sessaoAindaEhDoDono(null) — a visitante: leitura que falha também nunca libera", () => {
+  beforeEach(() => {
+    h.getSession.mockReset();
+  });
+
+  it("getSession rejeita: false (não sei se a aba continua sem conta)", async () => {
+    h.getSession.mockRejectedValue(new Error("falha qualquer"));
+    expect(await sessaoAindaEhDoDono(null)).toBe(false);
+  });
+
+  it("getSession devolve sessão nula COM erro (não de rede): false", async () => {
+    h.getSession.mockResolvedValue({
+      data: { session: null },
+      error: new Error("falha ao ler"),
+    });
+    expect(await sessaoAindaEhDoDono(null)).toBe(false);
+  });
+
+  it("resposta sem `data` (dublê ou cliente quebrado): false", async () => {
+    h.getSession.mockResolvedValue(undefined);
+    expect(await sessaoAindaEhDoDono(null)).toBe(false);
+  });
+
+  it("controle: sessão nula e sem erro devolve true", async () => {
+    h.getSession.mockResolvedValue({ data: { session: null }, error: null });
+    expect(await sessaoAindaEhDoDono(null)).toBe(true);
+  });
+});

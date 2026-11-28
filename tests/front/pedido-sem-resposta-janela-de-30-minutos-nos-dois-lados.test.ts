@@ -52,38 +52,38 @@ describe("lerPedidoSemResposta — a janela vale nos dois lados", () => {
 
   it("vencendo daqui a 30 min exatos, ainda vale; 1 ms a mais não", () => {
     gravar(AGORA + 30 * 60_000);
-    expect(lerPedidoSemResposta()?.orderData.idempotencyKey).toBe(
+    expect(lerPedidoSemResposta(null)?.orderData.idempotencyKey).toBe(
       "chave-original",
     );
 
     gravar(AGORA + 30 * 60_000 + 1);
-    expect(lerPedidoSemResposta()).toBeNull();
+    expect(lerPedidoSemResposta(null)).toBeNull();
     expect(sessionStorage.getItem(CHAVE)).toBeNull();
   });
 
   it("validade de um dia (adulterada) é descartada e apagada", () => {
     gravar(AGORA + 24 * 3_600_000);
-    expect(lerPedidoSemResposta()).toBeNull();
+    expect(lerPedidoSemResposta(null)).toBeNull();
     expect(sessionStorage.getItem(CHAVE)).toBeNull();
   });
 
   it("controle: vencendo daqui a 1 ms ainda vale; vencendo agora, não", () => {
     gravar(AGORA + 1);
-    expect(lerPedidoSemResposta()).not.toBeNull();
+    expect(lerPedidoSemResposta(null)).not.toBeNull();
 
     gravar(AGORA);
-    expect(lerPedidoSemResposta()).toBeNull();
+    expect(lerPedidoSemResposta(null)).toBeNull();
   });
 
   it("validade em texto numérico não vale como número", () => {
     gravar(String(AGORA + 60_000));
-    expect(lerPedidoSemResposta()).toBeNull();
+    expect(lerPedidoSemResposta(null)).toBeNull();
     expect(sessionStorage.getItem(CHAVE)).toBeNull();
   });
 
   it("registro de outra versão é descartado, mesmo com a janela certa", () => {
     gravar(AGORA + 60_000, 2);
-    expect(lerPedidoSemResposta()).toBeNull();
+    expect(lerPedidoSemResposta(null)).toBeNull();
     expect(sessionStorage.getItem(CHAVE)).toBeNull();
   });
 });

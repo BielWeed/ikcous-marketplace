@@ -472,6 +472,15 @@ export interface StoreConfig {
    * ordem).
    */
   formasPagamentoEntrega: ("pix" | "card" | "cash")[];
+  /**
+   * Loja pronta (20261652000000): a lojista confirmou a entrega na cidade e as
+   * formas na entrega que a loja nova trouxe de fábrica? `false` = coluna
+   * presente e vazia (falta o "Está certo"). Ausente = banco sem a coluna ou
+   * config ainda não lida: vale confirmado. Fora do `defaultStoreConfig` de
+   * propósito — o padrão inventaria um estado que o banco não disse.
+   */
+  entregaConfirmada?: boolean;
+  pagamentoConfirmado?: boolean;
 }
 
 /** As 5 estratégias de `store_config.national_shipping_strategy` — mesmos nomes do CHECK da migration 20261171000000. */

@@ -172,7 +172,7 @@ describe("rascunho do checkout — limpo no logout", () => {
       contaEsperada: null,
       semConta: true,
     });
-    expect(lerPedidoSemResposta()?.orderData.customer).toEqual({
+    expect(lerPedidoSemResposta(null)?.orderData.customer).toEqual({
       name: "Cliente Teste",
     });
     globalThis.localStorage.setItem(CHAVE_DO_TEMA, "dark");
