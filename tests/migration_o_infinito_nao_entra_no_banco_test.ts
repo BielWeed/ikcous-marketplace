@@ -123,6 +123,12 @@ const SUCESSORAS = [
     versao: "20261656000000",
     consulta: "212a-conferir-a-visitante-deixa-o-email-aplicado",
   },
+  // 20261657000000: o produto todo desligado nao volta a venda (devolver_estoque e admin_devolucao_concluir).
+  {
+    versao: "20261657000000",
+    consulta:
+      "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

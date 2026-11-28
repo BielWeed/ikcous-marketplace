@@ -604,6 +604,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
     // 20261656000000: a visitante deixa o e-mail depois da compra.
     "212a-conferir-a-visitante-deixa-o-email-aplicado",
+    // 20261657000000: o produto todo desligado nao volta a venda.
+    "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

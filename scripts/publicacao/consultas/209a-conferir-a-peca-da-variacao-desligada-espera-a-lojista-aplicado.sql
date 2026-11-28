@@ -6,6 +6,8 @@
 -- pecas_sem_tamanho_da_devolucao (md5 a5514b503791af689ba68dfda6b76b6e), existe uma so, STABLE e com EXECUTE so do authenticated. NAO le
 -- nenhuma linha de pedido, devolucao, produto nem peca e NAO chama funcao nenhuma. Tudo true = aplicado; qualquer false = PARE e leia a
 -- linha. Depois do rollback-manual as linhas dos corpos e da leitura reprovam (voltam os da 20261642000000; a leitura sai).
+-- SUCESSORA: a 20261657000000 (o produto todo desligado nao volta a venda) so acrescenta um sub-bloco dentro do bloco desta; os corpos
+-- dela contam como os desta nas linhas do md5 (a 213a confere qual).
 WITH fn AS (
   SELECT p.proname::text AS nome, md5(replace(p.prosrc, chr(13), '')) AS h, p.oid,
          p.prosecdef AND p.proconfig = ARRAY['search_path=public']::text[]
@@ -56,12 +58,12 @@ WITH fn AS (
   LEFT JOIN pg_catalog.pg_language l ON l.oid = p.prolang
 ), itens(item, esperado, vivo, ok) AS (
   SELECT 'devolver_estoque: corpo esperado (md5)', '2913f3178498938d0a79e3b47a1084d1',
-         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1) = '2913f3178498938d0a79e3b47a1084d1', false)
+         COALESCE((SELECT CASE WHEN h = 'c98a1d49d63e0174f4bdd95dcffc54f4' THEN '2913f3178498938d0a79e3b47a1084d1' ELSE h END FROM fn WHERE nome = 'devolver_estoque' LIMIT 1), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1) IN ('2913f3178498938d0a79e3b47a1084d1', 'c98a1d49d63e0174f4bdd95dcffc54f4'), false)
   UNION ALL
   SELECT 'admin_devolucao_concluir: corpo esperado (md5)', 'd146dc7aefb07a0bf580ed7265d9453e',
-         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1) = 'd146dc7aefb07a0bf580ed7265d9453e', false)
+         COALESCE((SELECT CASE WHEN h = 'b55bf2488a1d5165afddaa4d103d3e18' THEN 'd146dc7aefb07a0bf580ed7265d9453e' ELSE h END FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1) IN ('d146dc7aefb07a0bf580ed7265d9453e', 'b55bf2488a1d5165afddaa4d103d3e18'), false)
   UNION ALL
   SELECT 'devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role',
          'sim',
