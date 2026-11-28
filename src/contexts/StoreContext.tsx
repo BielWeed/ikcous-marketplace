@@ -20,6 +20,7 @@ import {
   avisoDaListaQueMudou,
   ehListaQueMudou,
 } from "@/lib/listas-mudaram-em-outro-aparelho";
+import { liberacoesDaLinha } from "@/lib/loja-se-preparando";
 import { mapProductFromDB } from "@/lib/mappers";
 import {
   mesclarProdutoNaLista,
@@ -1113,6 +1114,10 @@ export function StoreProvider({
         data.pagamento_confirmado_em,
         data.pagamentoConfirmado,
       ),
+      // 20261655000000: o que a loja oferece agora (entrega na cidade e pagar na
+      // entrega). Vitrine: os booleanos da leitura publica; painel: as datas.
+      // Ausente (banco atrasado) nem entra, e ausencia le como liberado.
+      ...liberacoesDaLinha(data),
     };
   }, []);
 

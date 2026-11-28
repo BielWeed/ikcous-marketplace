@@ -668,6 +668,37 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261655000000: a loja nova so vende o que confirmou. DUAS funcoes: forma_de_pagamento_aceita (o corpo da 1174 com a recusa
+  // das formas NA ENTREGA enquanto pagamento_confirmado_em e NULL; o CASE de sempre segue uma vez) e a do gatilho novo de
+  // marketplace_orders (entrega na cidade sem entrega_confirmada_em recusa com P0001 e DETAIL proprio). O corpo exato (md5), os
+  // atributos, a ACL, o gatilho e a vitrine sao da consulta 211a; o comportamento, da prova viva.
+  "20261655000000_a_loja_nova_so_vende_o_que_confirmou.sql": [
+    {
+      funcao: "forma_de_pagamento_aceita",
+      esperado: [
+        {
+          texto:
+            "IF p_metodo IN ('pix', 'card', 'cash') AND v_config.pagamento_confirmado_em IS NULL THEN",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "a_loja_so_entrega_na_cidade_o_que_confirmou",
+      esperado: [
+        {
+          texto:
+            "IF EXISTS (SELECT 1 FROM public.store_config s WHERE s.id = 1 AND s.entrega_confirmada_em IS NULL) THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "USING ERRCODE = 'P0001', DETAIL = 'entrega_local_nao_confirmada';",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   "20261650000000_a_categoria_so_com_produto_excluido_pode_sair.sql": [
     {
       funcao: "apagar_categoria_vazia",

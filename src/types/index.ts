@@ -481,6 +481,10 @@ export interface StoreConfig {
    */
   entregaConfirmada?: boolean;
   pagamentoConfirmado?: boolean;
+  // 20261655000000: o que a loja OFERECE agora (a vitrine le os booleanos da
+  // leitura publica; o painel deriva das datas acima). Ausente = liberado.
+  entregaLocalLiberada?: boolean;
+  pagamentoNaEntregaLiberado?: boolean;
 }
 
 /** As 5 estratégias de `store_config.national_shipping_strategy` — mesmos nomes do CHECK da migration 20261171000000. */

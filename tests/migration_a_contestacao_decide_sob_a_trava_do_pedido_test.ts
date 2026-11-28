@@ -767,6 +767,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-peca-da-variacao-desligada-viva.cjs",
     // 20261654000000: o caixa pertence ao dia em que abriu (a data que a sessao grava e o pago entre o dia da abertura e hoje na gaveta).
     "tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs",
+    // 20261655000000: a loja nova so vende o que confirmou (forma_de_pagamento_aceita, gatilho da entrega na cidade, booleanos na vitrine e a trava do apply).
+    "tests/banco/a-loja-nova-so-vende-o-que-confirmou-viva.cjs",
     // 20261657000000: o produto todo desligado nao volta a venda (sem nenhuma variacao ligada a peca fica na propria variacao, o pai nao recebe).
     "tests/banco/o-produto-todo-desligado-nao-volta-a-venda-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).

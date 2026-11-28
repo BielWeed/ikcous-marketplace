@@ -31,6 +31,7 @@ import {
   invalidarGravacoesEmVoo,
 } from "@/lib/geracao-do-cofre";
 import { MAXIMO_DE_PAGINAS, TAMANHO_DA_PAGINA } from "@/lib/ler-em-paginas";
+import { liberacoesDaLinha } from "@/lib/loja-se-preparando";
 import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
 import {
   PRAZO_DA_CONSULTA_DA_SINCRONIZACAO_MS,
@@ -236,6 +237,8 @@ export const TABLE_CONFIGS: TableConfig[] = [
       ...(raw.pagamento_confirmado_em !== undefined && {
         pagamentoConfirmado: raw.pagamento_confirmado_em !== null,
       }),
+      // 20261655000000: o que a loja oferece agora, das mesmas datas.
+      ...liberacoesDaLinha(raw),
     }),
   },
   // CUPONS NÃO ENTRAM AQUI (caça 4, A1): a gaveta `coupons` do cofre nunca foi

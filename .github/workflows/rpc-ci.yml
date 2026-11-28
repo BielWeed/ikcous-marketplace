@@ -382,6 +382,8 @@ on:
       - "scripts/publicacao/consultas/209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente.sql"
       - "scripts/publicacao/consultas/210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado.sql"
       - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
+      - "scripts/publicacao/consultas/211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado.sql"
+      - "scripts/publicacao/consultas/211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente.sql"
       - "scripts/publicacao/consultas/213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado.sql"
       - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -740,6 +742,8 @@ on:
       - "scripts/publicacao/consultas/209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente.sql"
       - "scripts/publicacao/consultas/210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado.sql"
       - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
+      - "scripts/publicacao/consultas/211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado.sql"
+      - "scripts/publicacao/consultas/211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente.sql"
       - "scripts/publicacao/consultas/213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado.sql"
       - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1611,6 +1615,13 @@ jobs:
       - name: Prova viva do caixa que pertence ao dia em que abriu (20261654000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs
+      # Migration 20261655000000 (a loja nova so vende o que confirmou): forma_de_pagamento_aceita recusa pagar na entrega sem
+      # pagamento_confirmado_em, o gatilho tr_a_loja_so_entrega_o_confirmado recusa a entrega na cidade sem entrega_confirmada_em
+      # (online e balcao livres, gemeo passa), a vitrine ganha dois booleanos, a TRAVA recusa o apply na loja que ja vendeu sem
+      # confirmacao. Reaplicar 2x e CRLF, rollback com ACL, pre-voo, mutantes e 211a/211b. CLONE proprio.
+      - name: Prova viva da loja nova que so vende o que confirmou (20261655000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nova-so-vende-o-que-confirmou-viva.cjs
       # Migration 20261657000000 (o produto com TODOS os tamanhos desligados nao volta a venda sozinho): devolver_estoque e admin_devolucao_concluir so
       # tiram a variacao desligada do item quando o produto ainda tem variacao LIGADA (cantinho da 1653); com todas desligadas a peca fica na propria
       # variacao (como antes da 1653) e o pai, que a compra vende sem variacao ligada, nao recebe. Controle com os corpos da 1653 (o pai recebe), religar,

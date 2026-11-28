@@ -1576,6 +1576,11 @@ async function main() {
   // O molde (clone do rodar-isolado) traz a arvore INTEIRA: as posteriores ao lote 17 saem dele, na
   // ordem inversa, cada uma pelo rollback-manual (com preflight proprio). O clone e' descartavel.
   await usar(MOLDE, async (c) => {
+    // A 20261655000000 (a loja nova so vende o que confirmou) nao toca nas funcoes do lote 17, mas a vitrine dela le as duas
+    // colunas da 1652 e o rollback da 1652 as apaga: sai ANTES de todas (so se no ar), pelo rollback-manual dela.
+    await require("./a-loja-nova-so-vende-posterior.cjs").desfazerSoVendeOConfirmadoNaTransacao(
+      c,
+    );
     // A 20261399980000 (as listas do painel desempatam por id) e' a mais nova e redefine get_admin_products_paged: sai PRIMEIRO (so se no ar).
     await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
       c,
