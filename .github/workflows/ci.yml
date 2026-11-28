@@ -98,9 +98,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # 28/11/2026: este job caiu 3 vezes no mesmo dia (PRs #2076, #2069,
+      # #2083) com "Integrity check failed for remote specifier" logo depois de
+      # baixar https://jsr.io/@std/assert/0.224.0/assertion_error.ts. Os hashes
+      # do deno.lock estão certos: é o CDN entregando bytes diferentes num
+      # download. `cache: true` guarda o DENO_DIR entre rodadas (chave = hash
+      # do deno.lock), então quase nada é baixado. O cache NÃO afrouxa o lock:
+      # o Deno confere cada arquivo lido do cache contra o deno.lock e, se não
+      # bater, baixa de novo e confere outra vez.
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+          cache: true
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -113,6 +122,20 @@ jobs:
       # run `deno install`?"). O `npm ci` voltou por isso; para removê-lo de
       # novo, corte primeiro a importação de src/ nos testes de tests/.
       - run: npm ci
+      # Sem cache (lock novo, cache expirado) o download ainda acontece: aqui
+      # ele ganha até 3 tentativas. `--no-run` só baixa e confere contra o
+      # deno.lock, sem rodar teste. Nunca falha o job: se as 3 falharem, o
+      # passo de teste abaixo tenta de novo e mostra o erro de verdade.
+      - name: Baixa as dependências do Deno (até 3 tentativas)
+        run: |
+          for tentativa in 1 2 3; do
+            if npm run test:edge -- --no-run && npm run test:unit -- --no-run; then
+              exit 0
+            fi
+            echo "::warning::download das dependências do Deno falhou (tentativa $tentativa de 3)"
+            sleep $((tentativa * 5))
+          done
+          exit 0
       #
       # `npm test` (na máquina do dev) continua sendo a mesma linha com os
       # três conjuntos; aqui eles dividem jobs: test-deno (este) e test-front
