@@ -51,6 +51,7 @@ vi.mock("@/lib/supabase", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const RASTREIO = "guest_tracked_orders";
+const PEDIDO_SEM_RESPOSTA = "ikcous-pedido-sem-resposta-v1";
 
 interface Snapshot {
   logout: () => Promise<void>;
@@ -282,6 +283,35 @@ describe("rastreio de convidado e rascunhos — por usuário", () => {
     await entrar("user-a");
 
     expect(sessionStorage.getItem(RASTREIO)).toBeNull();
+  });
+
+  // Caça 27/11/2026: o "pedido sem resposta" (nome, WhatsApp e endereço da
+  // visitante, para o "Tentar de novo") é da mesma família — dado de quem
+  // comprou sem conta, na aba. Entrar numa conta o esquece, como o rastreio.
+  it("visitante que ENTRA numa conta esquece o pedido sem resposta da aba", async () => {
+    const { entrar } = await montarLogado();
+    const { guardarPedidoSemResposta } = await import(
+      "@/lib/pedido-sem-resposta"
+    );
+    guardarPedidoSemResposta({
+      orderData: {
+        idempotencyKey: "compra-da-visitante",
+        items: [],
+        customer: { name: "Cliente Teste" },
+      },
+      ehOnline: false,
+      metodoOnline: "pix",
+      itens: [],
+      valor: 100,
+      cpfParaRpc: undefined,
+      contaEsperada: null,
+      semConta: true,
+    });
+    expect(sessionStorage.getItem(PEDIDO_SEM_RESPOSTA)).not.toBeNull();
+
+    await entrar("user-a");
+
+    expect(sessionStorage.getItem(PEDIDO_SEM_RESPOSTA)).toBeNull();
   });
 
   it("SIGNED_IN reemitido para o MESMO usuário (volta à aba) NÃO apaga o rastreio", async () => {
