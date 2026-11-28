@@ -49,6 +49,11 @@ export interface PrecoDeVitrine {
 
 const comparar = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
+/** O primeiro grupo na mesma ordem usada para escolher o preço da compra. */
+export function nomeDoGrupoPrincipal(nomes: Iterable<string>): string {
+  return Array.from(nomes).sort(comparar)[0];
+}
+
 /**
  * Os preços possíveis de UMA compra, pela mesma regra que o servidor cobra:
  * o preço é o da variação PRINCIPAL da escolha -- a do grupo de nome menor
@@ -79,7 +84,7 @@ export function precosPossiveis(
     return [];
   }
 
-  const nomePrincipal = Array.from(grupos.keys()).sort(comparar)[0];
+  const nomePrincipal = nomeDoGrupoPrincipal(grupos.keys());
   const principais = grupos.get(nomePrincipal) ?? [];
   return principais
     .filter((variante) => !apenasComEstoque || temEstoque(variante))
