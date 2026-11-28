@@ -227,9 +227,11 @@ describe("OrderList — card do pedido redesenhado", () => {
       "Seu pagamento foi recebido. Fale com a loja para resolver.",
     ],
     ["recusado", "O pagamento não foi aprovado e o pedido foi cancelado."],
+    // A lista não lê o livro de devoluções: não distingue a devolução da loja
+    // de uma contestação no cartão, então não afirma que o dinheiro voltou.
     [
       "estornado",
-      "O dinheiro deste pedido foi devolvido. Toque para ver os detalhes.",
+      "Pagamento estornado ou contestado no cartão. Toque para ver os detalhes.",
     ],
     [undefined, "Toque para ver os detalhes do pedido."],
   ])(
@@ -277,6 +279,28 @@ describe("OrderList — card do pedido redesenhado", () => {
       if (metodoOnline !== "pix") {
         expect(painel?.textContent).not.toContain("é só comprar de novo");
       }
+    },
+  );
+
+  // Devolução da loja e contestação no cartão chegam à lista com o MESMO par
+  // (`cancelled` + `estornado`) e sem o livro de devoluções: nos dois casos o
+  // cartão não pode afirmar que o dinheiro voltou (quem decide é a ficha).
+  it.each(["pix", "credito"] as const)(
+    "estornado com %s (devolução da loja ou contestação): não afirma que o dinheiro voltou",
+    async (metodoOnline) => {
+      await renderizar({
+        ...pedidoBase,
+        status: "cancelled",
+        paymentStatus: "estornado",
+        metodoOnline,
+      });
+      const painel = hospedeiro.querySelector(
+        '[data-testid="order-status-panel"]',
+      );
+      expect(painel?.textContent).toContain(
+        "Pagamento estornado ou contestado no cartão.",
+      );
+      expect(painel?.textContent).not.toContain("foi devolvido");
     },
   );
 

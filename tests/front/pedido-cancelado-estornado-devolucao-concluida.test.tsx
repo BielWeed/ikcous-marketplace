@@ -14,6 +14,11 @@
 // valor só aparece quando existe linha CONCLUÍDA em `order_refunds`; sem linha
 // a ficha diz só o que o estado diz (foi estornado), nunca "a loja faz depois".
 //
+// 28/11/2026: "o dinheiro foi devolvido" também deixou de ser verdade sem
+// prova — a contestação que a LOJA vence também vira `estornado`, e o dinheiro
+// fica com ela. A ficha só afirma a devolução com a prova do selo do painel
+// (`devolucaoConcluidaPorInteiro`); a lista, que não lê o livro, nunca afirma.
+//
 // Fora de pedido cancelado, `estornado` segue como era (controle).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -150,7 +155,7 @@ describe("Meus pedidos — cancelado e estornado", () => {
     hospedeiro.remove();
   });
 
-  it("a frase da lista diz que o dinheiro foi devolvido e não manda procurar a loja", async () => {
+  it("a frase da lista não afirma que o dinheiro voltou nem manda procurar a loja", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
     await act(async () => {
       raiz.render(
@@ -161,10 +166,14 @@ describe("Meus pedidos — cancelado e estornado", () => {
       '[data-testid="order-status-panel"]',
     );
     const texto = painel?.textContent ?? "";
-    expect(texto).toContain("O dinheiro deste pedido foi devolvido.");
+    expect(texto).toContain("Pagamento estornado ou contestado no cartão.");
+    expect(texto).not.toContain("foi devolvido");
     expect(texto).not.toContain("Fale com a loja");
-    // Não afirma o meio: o app não sabe se foi PIX ou cartão.
-    expect(texto).not.toMatch(/pix|cartão|fatura/i);
+    // Não afirma o meio: o app não sabe se foi PIX ou cartão (o único
+    // "cartão" é o da contestação, que só existe no cartão).
+    expect(texto.replace("contestado no cartão", "")).not.toMatch(
+      /pix|cartão|fatura/i,
+    );
   });
 
   it("estornado em pedido NÃO cancelado: a frase da lista não muda (só existe para cancelado)", async () => {
@@ -178,7 +187,7 @@ describe("Meus pedidos — cancelado e estornado", () => {
       );
     });
     expect(hospedeiro.textContent ?? "").not.toContain(
-      "O dinheiro deste pedido foi devolvido.",
+      "Pagamento estornado ou contestado no cartão.",
     );
   });
 });
@@ -245,7 +254,9 @@ describe("OrderDetailsView — cancelado e estornado", () => {
     const tela = await renderizar(pedidoBase);
     expect(tela).not.toContain("Devolução concluída");
     expect(tela).not.toMatch(/R\$\s?30,00/);
-    expect(tela).toContain("o dinheiro foi devolvido");
+    // O livro só prova R$ 30 de devolução: o resto pode ser contestação.
+    expect(tela).not.toContain("o dinheiro foi devolvido");
+    expect(tela).toContain("estornado ou contestado no cartão");
   });
 
   it("estornado SEM linha no livro (chargeback, 'Já estornei' da loja): não inventa valor nem promete 'a loja faz depois'", async () => {
@@ -257,8 +268,12 @@ describe("OrderDetailsView — cancelado e estornado", () => {
     });
     expect(tela).not.toContain("Devolução concluída");
     expect(tela).not.toContain("a loja faz depois");
-    expect(tela).not.toContain("Fale com a loja");
-    expect(tela).toContain("o dinheiro foi devolvido");
+    // Sem linha, a contestação que a loja venceu (dinheiro com ela) e o "Já
+    // estornei" são iguais aqui: não afirma que o dinheiro voltou.
+    expect(tela).not.toContain("o dinheiro foi devolvido");
+    expect(tela).toContain(
+      "Se você contestou a compra, acompanhe o resultado com o banco do seu cartão.",
+    );
   });
 
   it("estornado com linha SÓ de falha: não mostra o texto de erro nem 'cuidando disso'", async () => {
