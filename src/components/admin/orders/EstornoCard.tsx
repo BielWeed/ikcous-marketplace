@@ -275,7 +275,10 @@ export function EstornoCard({
   // numa linha (abre ao tocar). Com devolução no ar (linha ou valor
   // reservado) ele nasce aberto: aí há o que ler.
   const [aberto, setAberto] = useState(false);
+  // Com erro de leitura o cartão nunca recolhe: o aviso vermelho e o
+  // "Tentar de novo" ficam à vista (e `linhas` nem é confiável aí).
   const recolhivel =
+    !erro &&
     order.status !== "cancelled" &&
     order.status !== "delivered" &&
     linhas.length === 0 &&

@@ -3002,7 +3002,8 @@ export const OrderDetail = memo(function OrderDetail({
           aria-label="Envio e anotações"
           className={cn(
             blocoDaFicha,
-            "scroll-mt-40 divide-y divide-admin-border focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60",
+            "divide-y divide-admin-border",
+            "scroll-mt-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60",
           )}
         >
           {/* Emissão da etiqueta de envio dentro da ficha do pedido — migrou de
