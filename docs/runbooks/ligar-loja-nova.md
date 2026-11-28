@@ -331,7 +331,18 @@ node scripts/frota/nova-loja.mjs banco --loja <slug> --aplicar
   - `rode criar-projeto --aplicar até dar SIM antes de banco`: falta o passo 2.
   - `FALHOU em <arquivo> (código ...)`: o banco recusou aquela migration, e nada dela ficou
     gravado. Leve o arquivo e o código ao programador antes de rodar de novo.
-  - `RECUSADO: ... loja já instalada`: esse instalador não mexe em loja que já existe. Pare.
+  - `RECUSADO: ... loja já instalada` numa loja que **não** foi este comando que instalou (sem a
+    marca de instalação): esse instalador não mexe em loja que já existe. Pare.
+  - A mesma recusa numa loja que **já está no cadastro da frota** (`lojas.json`): as migrations
+    novas dela vão pelo `aplicar-migrations.yml` (portão da release), nunca por aqui. Se o `banco`
+    já tinha dado SIM, a mensagem termina com `O SIM do banco desta loja foi mantido`: os passos
+    seguintes continuam liberados e nada foi gravado.
+  - `o ledger registra ..., que não existe no repositório deste checkout`: o checkout está velho.
+    Atualize o checkout e rode de novo. Se o `banco` já tinha dado SIM, ele continua SIM.
+- **Rodou de novo depois de uma release nova?** Se esta loja foi instalada por este comando e
+  ainda não está no cadastro da frota, o `banco --aplicar` aplica **só as migrations novas do
+  fim** (cada uma com o registro no ledger, na mesma transação) e termina SIM. Não precisa fazer
+  nada diferente.
 - **INCERTO:** `ESTADO DESCONHECIDO ... a resposta não veio`: **rode o mesmo comando de novo**. Ele
   relê o ledger e continua do ponto certo. Erro 429: ver
   [as armadilhas](#a-instalação-do-banco-bate-no-limite-de-pedidos-por-minuto).
@@ -340,7 +351,9 @@ node scripts/frota/nova-loja.mjs banco --loja <slug> --aplicar
 
 **O que faz:** só leitura. Confere que a ficha da loja (`public.store_config`, linha `id = 1`)
 existe e foi criada pela migration certa, e **gera, sem executar,** o texto do cadastro: a linha da
-caderneta da frota (`frota_lojas`) e a entrada de `scripts/frota/lojas.json`.
+caderneta da frota (`frota_lojas`) e a entrada de `scripts/frota/lojas.json`. A entrada já sai com
+o segredo **da organização** (`SUPABASE_ACCESS_TOKEN_LOJAS`, o de `org-central.json`), nunca um
+segredo por loja.
 
 ```powershell
 node scripts/frota/nova-loja.mjs ficha --loja <slug> --aplicar
@@ -395,8 +408,12 @@ organização.
 ### Passo 8 — `functions`
 
 **O que faz:** publica uma por uma as functions do canal da loja, cada uma com o `verify_jwt` do
-`supabase/config.toml`, e confere cada uma antes da próxima. Pula a que já está no ar igual. Só
-publica com o checkout **exatamente** no topo da branch da release.
+`supabase/config.toml`, e confere cada uma antes da próxima. Só pula a que já está no ar com o
+`verify_jwt` certo **e o mesmo código** do commit (comparado do mesmo jeito que o portão da
+release compara: baixa o código no ar pelo CLI do Supabase). A que tem código diferente (uma
+release nova mudou) é publicada de novo, e só conta quando a versão no ar sobe. Se o download do
+código falhar, ela é publicada de novo do mesmo jeito. Só publica com o checkout **exatamente**
+no topo da branch da release.
 
 ```powershell
 node scripts/frota/nova-loja.mjs functions --loja <slug> --aplicar
@@ -472,6 +489,21 @@ Só leitura: a lista do que torna a loja pronta para vender, item por item.
 ```powershell
 node scripts/frota/nova-loja.mjs conferir --loja <slug> --aplicar
 ```
+
+- Cada linha começa com `[SIM]`, `[NÃO]`, `[INCERTO]` ou `[ATENÇÃO]`. **`[ATENÇÃO]`** é o que
+  depende da lojista (ou o que o comando não consegue ler sozinho): não é defeito da instalação,
+  mas a loja **não** está pronta para vender enquanto ele existir.
+- **`e-mail de confirmação`:** SIM só com o gancho de e-mail ligado **e** o Gmail da loja
+  cadastrado. ATENÇÃO enquanto a lojista não cadastra o Gmail (Parte B). NÃO se o gancho está
+  ligado sem o Gmail (todo e-mail falha) ou se o Gmail existe e o gancho continua desligado
+  (passo 16).
+- **`mercado pago`:** sempre ATENÇÃO, "a conferir pela lojista no painel": o comando não lê se o
+  Mercado Pago está ligado. Confira com a lojista antes de dizer que a loja vende.
+- **`banco`** com a instalação concluída e migrations novas faltando diz qual é o caminho: `banco
+  --aplicar` (loja ainda fora do cadastro) ou o `aplicar-migrations.yml` (loja do cadastro).
+- **`functions`** só dá SIM com o código no ar igual ao do commit; INCERTO se o download do código
+  falhou.
+- A frase `a loja está pronta para vender` só aparece com **todos** os itens SIM.
 
 ### Trocar a dona — `trocar-dono` (raro; só com o pedido escrito)
 
@@ -585,7 +617,7 @@ Colou o código e deu INCERTO? Não cole o mesmo código de novo. Rode a rodada 
 | `ficha` | Não tem o que desfazer: só lê e imprime. |
 | `dominio` | **Sem comando de desfazer.** Ele só grava num domínio vazio. Domínio errado: leve ao programador. |
 | `segredos` | Sem comando de desfazer. O script nunca substitui; segredo de mais se apaga no painel do projeto (Edge Functions > Secrets), que agora é da IKCOUS. |
-| `functions` | Sem comando de desfazer. Numa loja sem venda, uma function errada se corrige publicando de novo. |
+| `functions` | Sem comando de desfazer. Numa loja sem venda, uma function errada se corrige publicando de novo: rodar `functions --aplicar` republica toda function cujo código no ar difere do commit. |
 | `login` | Sem comando de desfazer. O gancho nasce desligado, então nada deixa de funcionar. |
 | `primeira-admin` | **Não tem desfazer pelo script.** Se a pessoa errada virou administradora, pare e leve ao dono. |
 | `definir-dono` | Dona errada numa loja nova: o conserto é o `trocar-dono`, seguindo o procedimento de [Trocar a dona](#trocar-a-dona--trocar-dono-raro-só-com-o-pedido-escrito). |

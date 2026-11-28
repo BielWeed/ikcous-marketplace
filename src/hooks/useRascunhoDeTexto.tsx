@@ -25,6 +25,8 @@ import { CLASSES_DO_BOTAO_CANCELAR_DO_AVISO } from "@/components/ui/classes-do-a
 //   saída apaga em App.tsx (`descartarRascunhoDeTexto`) — menos o rascunho
 //   que ainda espera a decisão dela: esta tela o marca no aparelho
 //   (`marcarRascunhoDeTextoEsperandoDecisao`) e o descarte o deixa guardado.
+//   Também espera o rascunho da tela que ainda não leu o salvo (rede lenta,
+//   leitura que falhou): ele nem pôde ser oferecido.
 import {
   type NomeDoRascunhoDeTexto,
   apagarRascunhoDeTexto,
@@ -77,8 +79,15 @@ export function useRascunhoDeTexto({
   const resolvidoRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!chave || !pronto) return;
+    if (!chave) return;
     if (resolvidoRef.current === chave) return;
+    if (!pronto) {
+      // A leitura ainda não chegou (ou falhou): o rascunho do aparelho nem
+      // pôde ser oferecido, e o "Descartar e Sair" não é sobre ele. Antes da
+      // leitura nada grava (`guardar`), então não há edição desta tela a apagar.
+      marcarRascunhoDeTextoEsperandoDecisao(chave, true);
+      return;
+    }
     ofertaPendenteRef.current = false;
     marcarRascunhoDeTextoEsperandoDecisao(chave, false);
     const lido = lerRascunhoDeTexto(chave);
