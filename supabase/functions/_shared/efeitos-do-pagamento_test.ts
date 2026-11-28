@@ -20,7 +20,7 @@ import {
   confirmarPagamentoProvado,
   dispararAvisoDePagamentoAtrasadoReal,
   htmlDoAvisoDePagamentoAtrasado,
-  reavisarPagamentoForaDoFluxo,
+  reavisarLojistaNaReentrega,
   reenviarEmailPendenteDoPagamento,
 } from "./efeitos-do-pagamento.ts";
 import { ORCAMENTO_DO_ENVIO_MS } from "./comprovante.ts";
@@ -1141,7 +1141,7 @@ function transicaoAposExpirar(banco: unknown, push: { enviarPushContado: unknown
 
 function reentregaJaPago(banco: unknown, push: { enviarPushContado: unknown }, extras: Record<string, unknown> = {}) {
   return emSilencio(() =>
-    reavisarPagamentoForaDoFluxo({
+    reavisarLojistaNaReentrega({
       supabase: banco as never,
       orderId: PEDIDO,
       enviarPushContado: push.enviarPushContado,
@@ -1220,8 +1220,8 @@ Deno.test("r210-h - transição entregue + reentrega 'ja_pago': a reentrega NÃO
   assertEquals(reentrega.avisos, []);
 });
 
-Deno.test("r210-h - reentrega 'ja_pago' só vale para pedido 'pago_apos_expirar': nos outros estados não reserva nem avisa", async () => {
-  for (const payment_status of ["pago", "aguardando", "recusado", "estornado", "expirado", "pago_parcial", null, undefined]) {
+Deno.test("r210-h - reentrega 'ja_pago' só vale para 'pago_apos_expirar' e 'pago' (lote-582): nos outros estados não reserva nem avisa", async () => {
+  for (const payment_status of ["aguardando", "recusado", "estornado", "expirado", "pago_parcial", null, undefined]) {
     const banco = bancoDoAvisoFora({ linha: { id: PEDIDO, total: 100, payment_status } });
     const push = pushContado(1);
     await reentregaJaPago(banco, push);
@@ -1290,12 +1290,164 @@ Deno.test("r210-h - o seam antigo `enviarPush` (sem contagem) segue valendo para
   assertEquals(c.atrasados, [PEDIDO]);
 });
 
-Deno.test("r210-h - 'pago' NÃO ganhou reserva: continua sendo o push simples (sem RPC de aviso), que só sai na transição", async () => {
-  const banco = bancoDoAvisoFora();
+Deno.test("lote-582 - o seam antigo `enviarPush` (sem contagem) segue valendo para 'pago': o aviso sai UMA vez e a chave fecha", async () => {
+  const banco = bancoDoAvisoFora({ linha: pagoHaDezMinutos() });
   const c = coletores();
-  await aplicarEfeitosDoPagamentoConfirmado({ supabase: banco as never, orderId: PEDIDO, resultado: "pago", ...c.deps });
-  assertEquals(c.pushes.length, 1);
-  assertEquals(banco.rpcs, []);
+  await emSilencio(() =>
+    aplicarEfeitosDoPagamentoConfirmado({ supabase: banco as never, orderId: PEDIDO, resultado: "pago", ...c.deps })
+  );
+  assertEquals(c.pushes, [AVISO_PEDIDO_PAGO]);
+  assertEquals(c.comprovantes, [PEDIDO]);
+  assertEquals(banco.avisos.get(CHAVE_PEDIDO_PAGO), { enviado: true });
+});
+
+// ── lote-582: o aviso "Pedido pago" era de tiro ÚNICO — não é mais ──────────
+// Antes: 'pago' usava o envio simples. Push service fora (5xx, mais de 10 s), VAPID
+// falhando ou a inscrição trocada entregavam a 0, e a reentrega do MP chegava como
+// 'ja_pago' e não avisava de novo: venda paga sem alerta na Black Friday. Agora o
+// 'pago' usa a MESMA reserva do 'pago_apos_expirar', com a chave
+// `pedido_pago:<pedido>`: entrega 0 libera, a reentrega tenta de novo; entregue,
+// nunca repete.
+
+const CHAVE_PEDIDO_PAGO = `pedido_pago:${PEDIDO}`;
+const AVISO_PEDIDO_PAGO = { title: "Pedido pago", body: "#4F5A6B · R$ 100,00", url: `/admin-orders?id=${PEDIDO}` };
+const AGORA_582 = Date.parse("2026-11-28T12:00:00.000Z");
+function pagoHaDezMinutos(extras: Record<string, unknown> = {}) {
+  return {
+    id: PEDIDO,
+    customer_name: "Fulana",
+    total: 100,
+    payment_status: "pago",
+    paid_at: new Date(AGORA_582 - 10 * 60 * 1000).toISOString(),
+    ...extras,
+  };
+}
+
+function transicaoPago(banco: unknown, push: { enviarPushContado: unknown }, extras: Record<string, unknown> = {}) {
+  return emSilencio(() =>
+    aplicarEfeitosDoPagamentoConfirmado({
+      supabase: banco as never,
+      orderId: PEDIDO,
+      resultado: "pago",
+      enviarPushContado: push.enviarPushContado,
+      enviarComprovante: async () => {},
+      ...extras,
+    })
+  );
+}
+
+function reentregaDoPago(banco: unknown, push: { enviarPushContado: unknown }, extras: Record<string, unknown> = {}) {
+  return reentregaJaPago(banco, push, { agoraMs: AGORA_582, ...extras });
+}
+
+Deno.test("lote-582 - 'pago' entregue a 1+ inscrição: reserva e CONFIRMA a chave pedido_pago:<pedido>, com o texto de sempre", async () => {
+  const banco = bancoDoAvisoFora({ linha: pagoHaDezMinutos() });
+  const push = pushContado(2);
+  await transicaoPago(banco, push);
+  assertEquals(push.avisos, [AVISO_PEDIDO_PAGO]);
+  assertEquals(banco.rpcs, [
+    { nome: "reservar_aviso_ao_lojista", chave: CHAVE_PEDIDO_PAGO },
+    { nome: "confirmar_aviso_ao_lojista", chave: CHAVE_PEDIDO_PAGO },
+  ]);
+});
+
+Deno.test("lote-582 - a CADEIA do 'pago': entrega 0 na transição LIBERA -> a 1ª reentrega 'ja_pago' REENVIA -> a 2ª e a 3ª NÃO repetem", async () => {
+  const banco = bancoDoAvisoFora({ linha: pagoHaDezMinutos() });
+  const semEntrega = pushContado(0);
+  await transicaoPago(banco, semEntrega);
+  assertEquals(semEntrega.avisos.length, 1);
+  assertEquals(banco.avisos.size, 0, "reserva presa: a reentrega não conseguiria tentar de novo");
+
+  const depois = pushContado(1);
+  await reentregaDoPago(banco, depois);
+  assertEquals(depois.avisos, [AVISO_PEDIDO_PAGO], "a reentrega 'ja_pago' do 'pago' não tentou de novo");
+  assertEquals(banco.avisos.get(CHAVE_PEDIDO_PAGO), { enviado: true });
+
+  const spam = pushContado(1);
+  await reentregaDoPago(banco, spam);
+  await reentregaDoPago(banco, spam);
+  assertEquals(spam.avisos, [], "avisou DE NOVO depois de entregue");
+});
+
+Deno.test("lote-582 - 'pago' entregue na transição + reentrega 'ja_pago': NÃO reenvia o que já chegou", async () => {
+  const banco = bancoDoAvisoFora({ linha: pagoHaDezMinutos() });
+  await transicaoPago(banco, pushContado(1));
+  const reentrega = pushContado(1);
+  await reentregaDoPago(banco, reentrega);
+  assertEquals(reentrega.avisos, []);
+  assertEquals(banco.rpcs.map((r) => r.nome), [
+    "reservar_aviso_ao_lojista",
+    "confirmar_aviso_ao_lojista",
+    "reservar_aviso_ao_lojista",
+  ]);
+});
+
+Deno.test("lote-582 - transição 'pago' e duas reentregas AO MESMO TEMPO: UM push só", async () => {
+  const banco = bancoDoAvisoFora({ linha: pagoHaDezMinutos() });
+  const push = pushContado(1);
+  await Promise.all([transicaoPago(banco, push), reentregaDoPago(banco, push), reentregaDoPago(banco, push)]);
+  assertEquals(push.avisos.length, 1);
+  assertEquals(banco.avisos.get(CHAVE_PEDIDO_PAGO), { enviado: true });
+});
+
+Deno.test("lote-582 - outra entrega está enviando o 'Pedido pago' ('em_envio'): a reentrega NÃO avisa", async () => {
+  const avisos = new Map([[CHAVE_PEDIDO_PAGO, { enviado: false }]]);
+  const banco = bancoDoAvisoFora({ linha: pagoHaDezMinutos(), avisos });
+  const push = pushContado(1);
+  await reentregaDoPago(banco, push);
+  assertEquals(push.avisos, []);
+});
+
+Deno.test("lote-582 - o push do 'pago' que LANÇA conta como entrega zero: libera a reserva; o comprovante sai assim mesmo", async () => {
+  const banco = bancoDoAvisoFora({ linha: pagoHaDezMinutos() });
+  const comprovantes: unknown[] = [];
+  await transicaoPago(banco, { enviarPushContado: () => Promise.reject(new Error("push service 503")) }, {
+    enviarComprovante: async (a: { orderId: string }) => void comprovantes.push(a.orderId),
+  });
+  assertEquals(banco.rpcs.map((r) => r.nome), ["reservar_aviso_ao_lojista", "liberar_aviso_ao_lojista"]);
+  assertEquals(comprovantes, [PEDIDO]);
+});
+
+Deno.test("lote-582 - as duas chaves não se cruzam: 'Pedido pago' entregue não cala 'Pagamento fora do fluxo' do mesmo pedido", async () => {
+  const avisos = new Map([[CHAVE_PEDIDO_PAGO, { enviado: true }]]);
+  const banco = bancoDoAvisoFora({ avisos });
+  const push = pushContado(1);
+  await transicaoAposExpirar(banco, push);
+  assertEquals(push.avisos, [AVISO_FORA_DO_FLUXO]);
+});
+
+Deno.test("lote-582 - reentrega do 'pago' só dentro de 24 h do paid_at (falha FECHADA): antigo, sem data, data ilegível ou do futuro não reservam nem avisam", async () => {
+  const casos: Array<[string, Record<string, unknown>]> = [
+    ["pago há 24 h e 1 ms", { paid_at: new Date(AGORA_582 - 24 * 3600 * 1000 - 1).toISOString() }],
+    ["pago há 3 dias", { paid_at: new Date(AGORA_582 - 3 * 24 * 3600 * 1000).toISOString() }],
+    ["sem paid_at na leitura", { paid_at: undefined }],
+    ["paid_at nulo", { paid_at: null }],
+    ["paid_at ilegível", { paid_at: "ontem" }],
+    ["paid_at 1 h no futuro", { paid_at: new Date(AGORA_582 + 3600 * 1000).toISOString() }],
+  ];
+  for (const [rotulo, extras] of casos) {
+    const banco = bancoDoAvisoFora({ linha: pagoHaDezMinutos(extras) });
+    const push = pushContado(1);
+    await reentregaDoPago(banco, push);
+    assertEquals(push.avisos, [], rotulo);
+    assertEquals(banco.rpcs, [], rotulo);
+  }
+});
+
+Deno.test("lote-582 - fronteira da janela: pago há EXATAMENTE 24 h ainda reavisa", async () => {
+  const banco = bancoDoAvisoFora({ linha: pagoHaDezMinutos({ paid_at: new Date(AGORA_582 - 24 * 3600 * 1000).toISOString() }) });
+  const push = pushContado(1);
+  await reentregaDoPago(banco, push);
+  assertEquals(push.avisos, [AVISO_PEDIDO_PAGO]);
+});
+
+Deno.test("lote-582 - pedido 'pago' de ANTES desta versão (sem linha de reserva), dentro da janela: a 1ª reentrega avisa UMA vez a mais e fecha a chave", async () => {
+  const banco = bancoDoAvisoFora({ linha: pagoHaDezMinutos() });
+  const push = pushContado(1);
+  await reentregaDoPago(banco, push);
+  await reentregaDoPago(banco, push);
+  assertEquals(push.avisos, [AVISO_PEDIDO_PAGO]);
+  assertEquals(banco.avisos.get(CHAVE_PEDIDO_PAGO), { enviado: true });
 });
 
 Deno.test("r210-h - o teto do push (cron) vale também para o aviso com reserva: um push lento não prende o laço", async () => {

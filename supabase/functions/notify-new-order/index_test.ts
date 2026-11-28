@@ -16,6 +16,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  ESPERA_DA_SEGUNDA_TENTATIVA_MS,
   JANELA_MINUTOS,
   dentroDaJanela,
   formatarBRL,
@@ -239,14 +240,28 @@ function bancoDoAviso(opts: {
   return { cliente, avisos, rpcs, leiturasDePedido };
 }
 
-function pushContado(entregues = 1, demoraMs = 5) {
+/** `entregues`: um número fixo, ou uma lista consumida tentativa a tentativa (a
+ * última se repete). */
+function pushContado(entregues: number | number[] = 1, demoraMs = 5) {
   const avisos: any[] = [];
+  const roteiro = Array.isArray(entregues) ? [...entregues] : [entregues];
   const fn = async (a: { aviso: any }) => {
     avisos.push(a.aviso);
     await new Promise((r) => setTimeout(r, demoraMs));
-    return entregues;
+    return roteiro.length > 1 ? roteiro.shift()! : roteiro[0];
   };
   return { fn, avisos };
+}
+
+/** A espera da segunda tentativa, sem relógio de verdade: anota quanto foi pedido
+ * e roda `durante` (se houver) no meio da espera. */
+function esperaFalsa(durante?: () => Promise<unknown>) {
+  const pedidas: number[] = [];
+  const fn = async (ms: number) => {
+    pedidas.push(ms);
+    if (durante) await durante();
+  };
+  return { fn, pedidas };
 }
 
 function pedirAviso(orderId: unknown) {
@@ -261,11 +276,13 @@ async function avisar(
   orderId: unknown,
   banco: ReturnType<typeof bancoDoAviso>,
   push: ReturnType<typeof pushContado>,
+  espera: ReturnType<typeof esperaFalsa> = esperaFalsa(),
 ) {
   const resposta = await handler(pedirAviso(orderId), {
     supabase: banco.cliente,
     enviarPushContado: push.fn,
     agora: () => AGORA,
+    esperar: espera.fn,
   });
   return { resposta, corpo: await resposta.json() };
 }
@@ -290,17 +307,157 @@ Deno.test("aviso: duas chamadas AO MESMO TEMPO do mesmo pedido mandam UM push", 
   assertEquals(banco.avisos.get(`pedido_novo:${UUID_VALIDO}`), { enviado: true });
 });
 
-Deno.test("aviso: push que não chegou a ninguém libera a reserva e a chamada seguinte tenta de novo", async () => {
+Deno.test("aviso: push que não chegou a ninguém (nem na 2ª tentativa) libera a reserva e a chamada seguinte tenta de novo", async () => {
   const banco = bancoDoAviso();
   const push = pushContado(0);
   await avisar(UUID_VALIDO, banco, push);
   assertEquals(
     banco.rpcs.map((r) => r.nome),
-    ["reservar_aviso_ao_lojista", "liberar_aviso_ao_lojista"],
+    ["reservar_aviso_ao_lojista", "liberar_aviso_ao_lojista", "reservar_aviso_ao_lojista", "liberar_aviso_ao_lojista"],
   );
   assertEquals(banco.avisos.has(`pedido_novo:${UUID_VALIDO}`), false);
   await avisar(UUID_VALIDO, banco, push);
+  assertEquals(push.avisos.length, 4);
+});
+
+// ---------------------------------------------------------------------------
+// lote-582 (28/11/2026): a SEGUNDA tentativa. A única chamada desta função é a
+// do navegador da cliente, uma vez só (`useOrders.ts`, pedido de pagar na
+// entrega). Push que entregava a 0 (push service 5xx ou lento, VAPID, inscrição
+// trocada) liberava a reserva "para a próxima chamada" — que nunca vinha. Agora a
+// MESMA chamada espera `ESPERA_DA_SEGUNDA_TENTATIVA_MS` e tenta UMA vez mais, pela
+// MESMA reserva: entregue por outra chamada no meio tempo, não repete.
+// ---------------------------------------------------------------------------
+
+const CHAVE = `pedido_novo:${UUID_VALIDO}`;
+
+Deno.test("lote-582 - entrega 0: a MESMA chamada espera e tenta UMA vez mais; a 2ª chega e fecha a chave", async () => {
+  const banco = bancoDoAviso();
+  const push = pushContado([0, 1]);
+  const espera = esperaFalsa();
+  const r = await avisar(UUID_VALIDO, banco, push, espera);
+  assertEquals(r.resposta.status, 200);
+  assertEquals(r.corpo, { ok: true });
   assertEquals(push.avisos.length, 2);
+  assertEquals(push.avisos[1], push.avisos[0], "a 2ª tentativa leva o MESMO aviso");
+  assertEquals(espera.pedidas, [ESPERA_DA_SEGUNDA_TENTATIVA_MS]);
+  assertEquals(banco.avisos.get(CHAVE), { enviado: true });
+  assertEquals(
+    banco.rpcs.map((r) => r.nome),
+    ["reservar_aviso_ao_lojista", "liberar_aviso_ao_lojista", "reservar_aviso_ao_lojista", "confirmar_aviso_ao_lojista"],
+  );
+});
+
+Deno.test("lote-582 - entrega 0 nas duas: só UMA segunda tentativa (não vira laço) e a chave fica livre", async () => {
+  const banco = bancoDoAviso();
+  const push = pushContado(0);
+  const espera = esperaFalsa();
+  await avisar(UUID_VALIDO, banco, push, espera);
+  assertEquals(push.avisos.length, 2);
+  assertEquals(espera.pedidas.length, 1);
+  assertEquals(banco.avisos.has(CHAVE), false);
+});
+
+Deno.test("lote-582 - entregue na 1ª: nenhuma espera e nenhuma segunda tentativa", async () => {
+  const banco = bancoDoAviso();
+  const push = pushContado(1);
+  const espera = esperaFalsa();
+  await avisar(UUID_VALIDO, banco, push, espera);
+  assertEquals(push.avisos.length, 1);
+  assertEquals(espera.pedidas, []);
+});
+
+Deno.test("lote-582 - aviso já entregue ou outra chamada enviando: nenhuma segunda tentativa", async () => {
+  for (const enviado of [true, false]) {
+    const banco = bancoDoAviso({ avisos: new Map([[CHAVE, { enviado }]]) });
+    const push = pushContado(0);
+    const espera = esperaFalsa();
+    await avisar(UUID_VALIDO, banco, push, espera);
+    assertEquals(push.avisos.length, 0, String(enviado));
+    assertEquals(espera.pedidas, [], String(enviado));
+  }
+});
+
+Deno.test("lote-582 - outra chamada ENTREGA durante a espera: a 2ª tentativa encontra 'enviado' e NÃO repete", async () => {
+  const banco = bancoDoAviso();
+  const pushDaPrimeira = pushContado(0);
+  const pushDaOutra = pushContado(1);
+  const espera = esperaFalsa(() => avisar(UUID_VALIDO, banco, pushDaOutra));
+  await avisar(UUID_VALIDO, banco, pushDaPrimeira, espera);
+  assertEquals(pushDaPrimeira.avisos.length, 1, "a 2ª tentativa repetiu um aviso que já tinha chegado");
+  assertEquals(pushDaOutra.avisos.length, 1);
+  assertEquals(banco.avisos.get(CHAVE), { enviado: true });
+});
+
+Deno.test("lote-582 - duas chamadas AO MESMO TEMPO que entregam 0 e depois 1: UM aviso entregue, sem duplicar", async () => {
+  const banco = bancoDoAviso();
+  const push = pushContado([0, 1], 20);
+  await Promise.all([avisar(UUID_VALIDO, banco, push), avisar(UUID_VALIDO, banco, push)]);
+  assertEquals(push.avisos.length, 2, "uma tentativa que falhou + uma que chegou");
+  assertEquals(banco.avisos.get(CHAVE), { enviado: true });
+});
+
+Deno.test("lote-582 - push que LANÇA conta como entrega 0: tenta de novo UMA vez", async () => {
+  const banco = bancoDoAviso();
+  let tentativas = 0;
+  const espera = esperaFalsa();
+  const erro = console.error;
+  console.error = () => {};
+  try {
+    await handler(pedirAviso(UUID_VALIDO), {
+      supabase: banco.cliente,
+      enviarPushContado: async () => {
+        tentativas++;
+        if (tentativas === 1) throw new Error("push service 503");
+        return 1;
+      },
+      agora: () => AGORA,
+      esperar: espera.fn,
+    });
+  } finally {
+    console.error = erro;
+  }
+  assertEquals(tentativas, 2);
+  assertEquals(banco.avisos.get(CHAVE), { enviado: true });
+});
+
+Deno.test("lote-582 - reserva fora do ar e entrega 0: tenta de novo (nada chegou, não há o que duplicar)", async () => {
+  const banco = bancoDoAviso({ rpcComErro: true });
+  const push = pushContado(0);
+  const espera = esperaFalsa();
+  const erro = console.error;
+  console.error = () => {};
+  try {
+    await avisar(UUID_VALIDO, banco, push, espera);
+  } finally {
+    console.error = erro;
+  }
+  assertEquals(push.avisos.length, 2);
+  assertEquals(espera.pedidas.length, 1);
+});
+
+Deno.test("lote-582 - no Edge Runtime a resposta NÃO espera a 2ª tentativa: ela vai para o waitUntil e roda depois", async () => {
+  const banco = bancoDoAviso();
+  const push = pushContado([0, 1]);
+  let soltar!: () => void;
+  const portao = new Promise<void>((r) => (soltar = r));
+  const espera = esperaFalsa(() => portao);
+  const registradas: Promise<unknown>[] = [];
+  const antes = (globalThis as any).EdgeRuntime;
+  (globalThis as any).EdgeRuntime = { waitUntil: (p: Promise<unknown>) => void registradas.push(p) };
+  try {
+    const r = await avisar(UUID_VALIDO, banco, push, espera);
+    assertEquals(r.corpo, { ok: true });
+    assertEquals(push.avisos.length, 1, "a resposta esperou a 2ª tentativa");
+    assertEquals(registradas.length, 1, "a 2ª tentativa não foi entregue ao waitUntil");
+    soltar();
+    await Promise.all(registradas);
+    assertEquals(push.avisos.length, 2);
+    assertEquals(banco.avisos.get(CHAVE), { enviado: true });
+  } finally {
+    if (antes === undefined) delete (globalThis as any).EdgeRuntime;
+    else (globalThis as any).EdgeRuntime = antes;
+  }
 });
 
 Deno.test("aviso: a reserva falhou -> o push sai mesmo assim (falha aberta, a mesma de antes da reserva)", async () => {
