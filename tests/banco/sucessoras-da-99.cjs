@@ -207,6 +207,11 @@ const NOMES = [
   // fin_caixa_movimentar_com_chave (da 252) nao sao das 42, mas entram porque o rollback-manual dela desfaz as quatro de uma vez e a
   // conferencia "devolveu o corpo anterior" vale para cada uma. O rollback da 246 e o da 252 recusam com o corpo novo no ar: ela cai antes.
   "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
+  // O frete de ida so volta com reembolso (28/11/2026): UMA migration, DUAS funcoes. devolucao_elegibilidade sucede o corpo da 3992 (a
+  // CADEIA 99 -> 3992 -> 1658: o `hashVigente` da 1658 e o `hashDesta` da 3992) e solicitar_devolucao o da 5400 (175 -> 3992 -> 5400 ->
+  // 1658; nao e uma das 42, mas o rollback-manual dela desfaz as duas de uma vez). O rollback da 3992 e o da 5400 recusam com o corpo
+  // novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql",
   // O caixa de ontem aberto nao some do saldo (28/11/2026): UMA migration, TRES funcoes. fin_conta_salvar sucede o corpo da 3999300 (a
   // CADEIA 99 -> 3999300 -> 1660: o `hashVigente` da 1660 e o `hashDesta` da 3999300) e fin_lancamento_cancelar o da 99 (99 -> 1660);
   // fin_caixa_movimentar_com_chave (da 252, sucedida pela 1654) nao e das 42, mas entra porque o rollback-manual dela desfaz as tres de
@@ -225,6 +230,7 @@ const PARES_POR_MIGRATION = new Map([
   ["20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql", 3],
   ["20261643000000_as_listas_dos_ajustes_nao_somem_entre_aparelhos.sql", 2],
   ["20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql", 4],
+  ["20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql", 2],
   ["20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql", 3],
   [
     "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",

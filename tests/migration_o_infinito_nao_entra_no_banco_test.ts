@@ -118,16 +118,27 @@ const SUCESSORAS = [
     versao: "20261655000000",
     consulta: "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
   },
+  // 20261656000000: a visitante deixa o e-mail depois da compra.
+  {
+    versao: "20261656000000",
+    consulta: "212a-conferir-a-visitante-deixa-o-email-aplicado",
+  },
   // 20261657000000: o produto todo desligado nao volta a venda (devolver_estoque e admin_devolucao_concluir).
   {
     versao: "20261657000000",
     consulta:
       "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
   },
+  // 20261658000000: o frete de ida so volta com reembolso.
+  {
+    versao: "20261658000000",
+    consulta: "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
+  },
   // 20261660000000: o caixa de ontem aberto nao some do saldo (fin_conta_salvar, fin_caixa_movimentar_com_chave e fin_lancamento_cancelar).
   {
     versao: "20261660000000",
-    consulta: "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
+    consulta:
+      "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
   },
 ];
 const lerBruto = (n) =>

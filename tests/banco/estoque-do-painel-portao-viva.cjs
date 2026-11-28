@@ -1556,6 +1556,17 @@ async function main() {
         "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
         "public.fin_lancamento_salvar(jsonb)",
       ],
+      // A 1658 (o frete de ida so volta com reembolso) troca so os corpos de devolucao_elegibilidade (sucede a 3992) e solicitar_devolucao
+      // (sucede a 5400); a 17a nao le nenhuma das duas. O rollback dela devolve as duas de uma vez (a primeira entrada desfaz; a outra ja
+      // encontra o corpo anterior, e a 5400 e a 3992 so caem depois dela, pela cadeia de posteriores).
+      [
+        "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql",
+        "public.devolucao_elegibilidade(uuid)",
+      ],
+      [
+        "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql",
+        "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])",
+      ],
       // A 1660 (o caixa de ontem aberto nao some do saldo) troca so os corpos de fin_conta_salvar (sucede a 3999300), de
       // fin_caixa_movimentar_com_chave (sucede a 1654) e de fin_lancamento_cancelar (sucede a 99); a 17a nao le nenhuma das tres. O
       // rollback dela devolve as tres de uma vez (a primeira entrada desfaz; as outras ja encontram o corpo anterior).

@@ -107,6 +107,14 @@ vi.mock("@/lib/supabase", () => ({
       subscribe: () => ({}),
     }),
     removeChannel: () => Promise.resolve(),
+    // A sessão é da conta logada: a lista VAZIA que o banco devolve é a
+    // verdade (sem a sessão da dona, o vazio não seria confirmado).
+    auth: {
+      getSession: async () => ({
+        data: { session: usuarioDaVez ? { user: usuarioDaVez } : null },
+        error: null,
+      }),
+    },
   },
 }));
 

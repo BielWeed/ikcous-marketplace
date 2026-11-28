@@ -161,8 +161,9 @@ const mensagemAmigavelErroAvaliacao = (error: unknown): string => {
   }
 
   // Sessão inválida ou expirada: só aqui é seguro instruir novo login, porque
-  // só aqui reautenticar tem chance real de resolver.
-  if (codigo === "PGRST301" || pista.includes("jwt")) {
+  // só aqui reautenticar tem chance real de resolver. PGRST301 = token
+  // inválido; PGRST303 = token vencido (PostgREST 13+).
+  if (codigo === "PGRST301" || codigo === "PGRST303" || pista.includes("jwt")) {
     return "Não foi possível registrar sua avaliação. Faça login novamente e tente de novo.";
   }
 

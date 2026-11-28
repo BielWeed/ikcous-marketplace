@@ -109,7 +109,10 @@ const VERIFICACOES = {
       esperado: [
         { texto: "AND public.fin__dia(s.aberto_em) < v_novo_em", vezes: 1 },
         { texto: "AND (s.conta_id = v_id OR EXISTS (", vezes: 1 },
-        { texto: "AND (l.conta_id = v_id OR l.conta_destino_id = v_id)", vezes: 1 },
+        {
+          texto: "AND (l.conta_id = v_id OR l.conta_destino_id = v_id)",
+          vezes: 1,
+        },
         { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
         { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
       ],
@@ -118,7 +121,10 @@ const VERIFICACOES = {
       funcao: "fin_caixa_movimentar_com_chave",
       esperado: [
         { texto: "WHERE id = v_contra_id FOR SHARE;", vezes: 1 },
-        { texto: "AND c.saldo_inicial_em > public.fin__dia(v_s.aberto_em)", vezes: 1 },
+        {
+          texto: "AND c.saldo_inicial_em > public.fin__dia(v_s.aberto_em)",
+          vezes: 1,
+        },
         { texto: "v_dia := public.fin__dia(v_s.aberto_em);", vezes: 1 },
         { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
         { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
@@ -127,8 +133,15 @@ const VERIFICACOES = {
     {
       funcao: "fin_lancamento_cancelar",
       esperado: [
-        { texto: "PERFORM 1 FROM public.fin_caixa_sessoes s WHERE s.id = v_l.caixa_sessao_id FOR UPDATE;", vezes: 1 },
-        { texto: "WHERE s.id = v_l.caixa_sessao_id AND s.status = 'fechado'", vezes: 1 },
+        {
+          texto:
+            "PERFORM 1 FROM public.fin_caixa_sessoes s WHERE s.id = v_l.caixa_sessao_id FOR UPDATE;",
+          vezes: 1,
+        },
+        {
+          texto: "WHERE s.id = v_l.caixa_sessao_id AND s.status = 'fechado'",
+          vezes: 1,
+        },
         { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
         { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
       ],
@@ -734,6 +747,41 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261658000000: o frete de ida so volta com reembolso. DUAS funcoes: solicitar_devolucao (a soma do frete de ida conta so esta
+  // devolucao e as concluidas com reembolso; a lista negativa fica so na conta da quantidade) e devolucao_elegibilidade (o campo
+  // ja_reembolsada ao lado de ja_devolvida). O corpo exato (md5), os atributos e a ACL sao da consulta 214a; o comportamento, da prova viva.
+  "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql": [
+    {
+      funcao: "solicitar_devolucao",
+      esperado: [
+        {
+          texto:
+            "AND (d.id = v_id OR (d.status = 'concluida' AND d.resolucao_final = 'reembolso'))",
+          vezes: 1,
+        },
+        {
+          texto: "d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "devolucao_elegibilidade",
+      esperado: [
+        { texto: "'ja_devolvida', x.ja,", vezes: 1 },
+        { texto: "'ja_reembolsada', x.reembolsada,", vezes: 1 },
+        {
+          texto:
+            "AND d.status = 'concluida' AND d.resolucao_final = 'reembolso'",
+          vezes: 1,
+        },
+        {
+          texto: "d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   "20261650000000_a_categoria_so_com_produto_excluido_pode_sair.sql": [
     {
       funcao: "apagar_categoria_vazia",
@@ -792,9 +840,10 @@ const VERIFICACOES = {
         },
         { texto: "v_item.variant_id := NULL;", vezes: 1 },
         { texto: "v_item.product_id := COALESCE(v_item.product_id,", vezes: 1 },
+        // O destino da 642, contiguo ao INSERT que ele guarda pelo mesmo motivo da entrada da 642: a 1657 repete o predicado.
         {
           texto:
-            "WHERE v.product_id = v_item.product_id AND v.active = true) THEN",
+            "WHERE v.product_id = v_item.product_id AND v.active = true) THEN\n            INSERT INTO public.pecas_sem_tamanho (produto_id, order_id, order_item_id, origem)",
           vezes: 1,
         },
       ],
@@ -824,6 +873,47 @@ const VERIFICACOES = {
         { texto: "WHERE p.resolvida_em IS NULL", vezes: 1 },
         { texto: "AND p.devolucao_item_id IS NOT NULL", vezes: 1 },
         { texto: "AND p.order_id = p_order_id", vezes: 1 },
+      ],
+    },
+  ],
+  // 20261656000000: a visitante deixa o e-mail depois da compra. DUAS funcoes novas. informar_email_da_visitante: as quatro condicoes
+  // (formato, visitante, sem e-mail, 15 minutos), a trava da linha e a gravacao que so acrescenta o e-mail. reivindicar_comprovante_da_
+  // visitante: os dois tetos SEM a passagem do pedido pago (nenhum CASE de pago) e a marca uma vez. O corpo exato (md5) e' da consulta
+  // 212a e do pos-voo; o comportamento, da prova viva a-visitante-deixa-o-email-viva.cjs.
+  "20261656000000_a_visitante_deixa_o_email_depois_da_compra.sql": [
+    {
+      funcao: "informar_email_da_visitante",
+      esperado: [
+        { texto: "OR v_pedido.user_id IS NOT NULL", vezes: 1 },
+        { texto: "OR v_pedido.canal IS DISTINCT FROM 'online'", vezes: 1 },
+        { texto: "IF v_pedido.email <> '' THEN", vezes: 1 },
+        { texto: "IF v_pedido.created_at <= now() - v_janela THEN", vezes: 1 },
+        { texto: "FOR UPDATE;", vezes: 1 },
+        {
+          texto:
+            "SET customer_data = customer_data || jsonb_build_object('email', v_email)",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "reivindicar_comprovante_da_visitante",
+      esperado: [
+        { texto: "v_teto_por_destinatario CONSTANT integer := 10;", vezes: 1 },
+        {
+          texto: "v_teto_do_comprovante_na_loja CONSTANT integer := 40;",
+          vezes: 1,
+        },
+        {
+          texto: "'destinatario:' || public.chave_do_destinatario(v_email),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "public.reservar_vaga_de_email('comprovante:loja', v_teto_do_comprovante_na_loja)",
+          vezes: 1,
+        },
+        { texto: "AND o.user_id IS NULL", vezes: 1 },
       ],
     },
   ],
@@ -1730,13 +1820,17 @@ const VERIFICACOES = {
   // de produto que tem variacao ligada (a peca vai para pecas_sem_tamanho e nao conta como creditada); resolver_peca_sem_tamanho credita a
   // variacao escolhida uma vez so. Os marcadores sao as decisoes que, tiradas, voltam o defeito ou o pioram. Os corpos exatos (md5) sao da
   // consulta 202a e do pos-voo; o comportamento e da prova viva a-peca-que-volta-sem-tamanho-viva.cjs.
+  // O predicado do ELSIF ("variacao LIGADA no produto") vai CONTIGUO ao INSERT em pecas_sem_tamanho que ele guarda: a
+  // 20261657000000 repete o mesmo predicado no sub-bloco dela, e solto ele casa 2x no corpo vivo depois dela (divergencia
+  // falsa na conferencia de um lote 642..657) e ainda deixa a copia do sub-bloco cobrir o ELSIF sem o filtro. Contiguo, casa
+  // exatamente 1x no corpo da 642, da 1653 e da 1657 -- o "1x" continua sendo o contrato: um segundo ELSIF igual e' A MAIS.
   "20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql": [
     {
       funcao: "devolver_estoque",
       esperado: [
         {
           texto:
-            "WHERE v.product_id = v_item.product_id AND v.active = true) THEN",
+            "WHERE v.product_id = v_item.product_id AND v.active = true) THEN\n            INSERT INTO public.pecas_sem_tamanho (produto_id, order_id, order_item_id, origem)",
           vezes: 1,
         },
         { texto: "FROM generate_series(1, v_credito);", vezes: 1 },
@@ -1752,7 +1846,7 @@ const VERIFICACOES = {
       esperado: [
         {
           texto:
-            "WHERE v.product_id = v_di.product_id AND v.active = true) THEN",
+            "WHERE v.product_id = v_di.product_id AND v.active = true) THEN\n        INSERT INTO public.pecas_sem_tamanho (produto_id, order_id, order_item_id, devolucao_item_id, origem)",
           vezes: 1,
         },
         { texto: "FROM generate_series(1, v_di.quantidade);", vezes: 1 },

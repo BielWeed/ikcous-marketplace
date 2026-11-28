@@ -79,6 +79,7 @@ import {
   vincularRecuperacao,
 } from "@/lib/recuperacao-de-senha-em-andamento";
 import { apagarRetratoDoConvidado } from "@/lib/retrato-do-convidado";
+import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import { limparCachesDeAdmin } from "@/utils/admin_cache";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
@@ -740,10 +741,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // própria, sem esperar nem descartar a de outro usuário.
       const myCheck = (async (): Promise<boolean> => {
         const queryPromise = (async (): Promise<boolean> => {
+          // Caça 28/11/2026 — um "não" só é veredito com a sessão DELA. Com a
+          // renovação do token falhando por rede, o auth-js guarda a falha por
+          // 60 s e `getSession()` devolve sessão vazia; o supabase-js manda a
+          // chave anônima e `is_admin` responde `false` para quem não sabe quem
+          // pergunta. Esse "não" falso rebaixava a lojista e apagava o atalho.
+          // A sessão é lida antes (começa junto com a pergunta, para não a
+          // atrasar) e depois da resposta: renovar no meio do caminho não
+          // legitima um "não" que saiu com a chave anônima. Sem as duas, é
+          // não-veredito (rejeita): nada promove, nada rebaixa, nada se grava,
+          // e o próximo TOKEN_REFRESHED/SIGNED_IN da mesma conta pergunta de
+          // novo. O "sim" não passa por aqui: a chave anônima nunca o produz.
+          const sessaoDelaAntes = sessaoAindaEhDoDono(userId);
+          const naoComASessaoDela = async (): Promise<false> => {
+            const [antes, depois] = await Promise.all([
+              sessaoDelaAntes,
+              sessaoAindaEhDoDono(userId),
+            ]);
+            if (!antes || !depois) {
+              throw new Error(
+                "Admin check inconclusive (session not the user's)",
+              );
+            }
+            return false;
+          };
+
           // First try direct RPC (fastest, most secure)
           const { data, error } = await supabase.rpc("is_admin");
           if (!error && typeof data === "boolean") {
-            return data;
+            return data || naoComASessaoDela();
           }
 
           // Fallback: check profiles table
@@ -761,7 +787,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (profileError) {
             throw new Error("Admin check inconclusive (profiles fallback)");
           }
-          return profile?.role === "admin";
+          return profile?.role === "admin" || naoComASessaoDela();
         })();
 
         // Add a resilient 3-second timeout limit to the network query

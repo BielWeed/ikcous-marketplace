@@ -26,11 +26,12 @@
  * 🔴 SÃO DUAS EXCEÇÕES à regra acima, não uma — e a segunda cobre mais casos
  * do que a primeira, mas nunca tinha sido escrita aqui:
  *
- * 1. OS TRÊS CÓDIGOS DO POSTGREST que PROVAM que a chamada nem chegou ao
+ * 1. OS QUATRO CÓDIGOS DO POSTGREST que PROVAM que a chamada nem chegou ao
  *    Postgres, porque falham na fase de autenticação/roteamento (doc
  *    oficial, citada em `useOrders.ts`): `PGRST202` (função fora do cache de
- *    schema), `PGRST301` (JWT inválido ou expirado) e `PGRST302` (papel
- *    anônimo desabilitado). Mandar "conferir se o pedido apareceu" mandaria
+ *    schema), `PGRST301` (JWT inválido), `PGRST302` (papel anônimo
+ *    desabilitado) e `PGRST303` (JWT vencido, separado do 301 no PostgREST
+ *    13+). Mandar "conferir se o pedido apareceu" mandaria
  *    a pessoa procurar um pedido que provadamente não existe — e, no caso do
  *    JWT expirado, para uma tela que nem vai carregar.
  *
@@ -126,13 +127,14 @@ export const FRASE_PEDIDO_PASSA_DO_MAXIMO =
   "O valor deste pedido passa do máximo aceito. Reduza a quantidade ou divida em mais de um pedido.";
 
 /**
- * Os três que provam que a chamada nem chegou ao Postgres. Tem de ser o MESMO
+ * Os quatro que provam que a chamada nem chegou ao Postgres. Tem de ser o MESMO
  * conjunto de `mensagemAmigavelErroPedido` — ver o cabeçalho deste arquivo.
  */
 const CODIGOS_POSTGREST_REVERTIDO_COMPROVADO = new Set([
   "PGRST202",
   "PGRST301",
   "PGRST302",
+  "PGRST303",
 ]);
 
 /**

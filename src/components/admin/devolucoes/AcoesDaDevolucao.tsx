@@ -896,7 +896,7 @@ export function AcoesDaDevolucao({
                     Itens {formatarReais(detalhe.valor_itens)}
                     {valorDigitado === null &&
                       freteIncluido > 0 &&
-                      ` + frete de ida ${formatarReais(freteIncluido / 100)} (o pedido voltou inteiro)`}
+                      ` + frete de ida ${formatarReais(freteIncluido / 100)} (o pedido inteiro foi reembolsado)`}
                     .{" "}
                     {pagoPeloApp(detalhe)
                       ? "O dinheiro volta ao cliente pelo Mercado Pago (PIX ou cartão) se o pagamento tiver até 180 dias; depois disso você devolve em mãos ou por PIX e o app registra a saída."

@@ -2070,7 +2070,9 @@ export function mensagemDeErroFinanceiro(erro: unknown): string {
   if (!codigo) {
     return "Não consegui falar com o servidor. Confira a conexão e tente de novo.";
   }
-  if (codigo === "42501" || codigo === "PGRST301") {
+  // Token vencido ("JWT expired"): PGRST301 até o PostgREST 12, PGRST303 (erro
+  // de claim do JWT) do 13 em diante -- os dois valem.
+  if (codigo === "42501" || codigo === "PGRST301" || codigo === "PGRST303") {
     return "Só o administrador da loja mexe no Financeiro. Entre de novo com a conta de administrador.";
   }
   if ((codigo === "P0001" || codigo === "22023") && mensagem) {

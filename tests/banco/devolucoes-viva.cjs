@@ -30,6 +30,8 @@
  */
 
 const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
 const { Client } = require("pg");
 const {
   falhar,
@@ -3746,12 +3748,15 @@ PROVAS.push({
   },
 });
 
-// Frete de ida (migration 20261399992000, corpo vivo de solicitar_devolucao): o frete só volta quando as devoluções do pedido
-// cobrem TODAS as unidades, e a conta ignora a devolução que não valeu (cancelada, recusada, reprovada) e o item "Não veio".
+// Frete de ida (migrations 20261399992000 e 20261658000000, corpo vivo de solicitar_devolucao): o frete só volta quando as devoluções
+// do pedido cobrem TODAS as unidades, e a conta só olha a devolução atual e as concluídas com reembolso (a que não valeu, a troca, o
+// vale-troca e o item "Não veio" ficam de fora).
 // MUTANTE_R100=<nome> troca UM trecho desse corpo dentro da transação desfeita (alvo único, instalação conferida).
 const FRETE_ASSINATURA =
   "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])";
-const FRETE_CONTA = "WHERE d.order_id = v_o.id AND d.status NOT IN (";
+// O filtro da 20261658000000 na soma do frete de ida (a conta da QUANTIDADE, v_ja, segue com a lista negativa).
+const FRETE_FILTRO =
+  "AND (d.id = v_id OR (d.status = 'concluida' AND d.resolucao_final = 'reembolso'))";
 async function mutarFrete(cliente, nome, trecho, troca) {
   if (process.env.MUTANTE_R100 !== nome) return;
   const ler = async () =>
@@ -3796,14 +3801,14 @@ PROVAS.push({
       await mutarFrete(
         cliente,
         "frete-ignora-o-estado-da-devolucao",
-        `${FRETE_CONTA}'recusada', 'cancelada', 'reprovada')`,
-        "WHERE d.order_id = v_o.id",
+        FRETE_FILTRO,
+        "AND true",
       );
       await mutarFrete(
         cliente,
         "frete-so-desconta-a-cancelada",
-        `${FRETE_CONTA}'recusada', 'cancelada', 'reprovada')`,
-        `${FRETE_CONTA}'cancelada')`,
+        FRETE_FILTRO,
+        "AND d.status NOT IN ('cancelada')",
       );
       await mutarFrete(
         cliente,
@@ -3814,8 +3819,8 @@ PROVAS.push({
       await mutarFrete(
         cliente,
         "frete-so-olha-a-devolucao-corrente",
-        `${FRETE_CONTA}'recusada', 'cancelada', 'reprovada')`,
-        "WHERE d.id = v_id AND d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+        FRETE_FILTRO,
+        "AND d.id = v_id",
       );
 
       // Pedido de 2 unidades (2 x 40) com frete de R$20, pago pelo app e entregue há 2 dias: arrependimento.
@@ -3965,6 +3970,299 @@ PROVAS.push({
         20,
         "frete-so-olha-a-devolucao-corrente: a 1a (concluída, Nova) + a 2a cobrem as 2 unidades, então o frete de ida volta",
       );
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
+// Frete de ida e troca/vale (migration 20261658000000): troca e vale-troca não devolvem dinheiro, então não fazem o pedido "voltar
+// inteiro". Pedido A R$ 100 + B R$ 100 + frete R$ 25: A concluída como troca (ou vale) e depois o reembolso de B NÃO leva o frete; A
+// concluída com reembolso e depois o reembolso de B leva. A elegibilidade manda 'ja_reembolsada' (a conta do frete da tela) e segue
+// contando a troca em 'ja_devolvida'/'disponivel' (a peça trocada não pode ser devolvida de novo). CONTROLE: com o rollback-manual da
+// 20261658000000 (o corpo da 20261405400000) o caso da troca grava o frete (o defeito). MUTANTE_R1658=<nome> troca UM trecho do corpo
+// vivo dentro da transação desfeita; a prova tem de cair.
+const FRETE_REEMBOLSO_ARQ =
+  "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql";
+const ELEGIBILIDADE_ASSINATURA = "public.devolucao_elegibilidade(uuid)";
+async function mutarFreteReembolso(cliente, nome, assinatura, trecho, troca) {
+  if (process.env.MUTANTE_R1658 !== nome) return;
+  const ler = async () =>
+    (
+      await cliente.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
+        assinatura,
+      ])
+    ).rows[0].d.replace(/\r/g, "");
+  const original = await ler();
+  assert.equal(
+    original.split(trecho).length - 1,
+    1,
+    `mutante ${nome}: alvo unico`,
+  );
+  const alterado = original.replace(trecho, () => troca);
+  assert.notEqual(alterado, original, "sabotagem nao aplicada");
+  await cliente.query(alterado);
+  assert.equal(
+    await ler(),
+    alterado,
+    "o banco nao instalou exatamente o mutante",
+  );
+  console.log(`MUTANTE aplicado: ${nome}`);
+}
+
+const O_FR_TROCA = "3eeeeeee-0000-0000-0000-000000000051";
+const O_FR_VALE = "3eeeeeee-0000-0000-0000-000000000052";
+const O_FR_REEMBOLSO = "3eeeeeee-0000-0000-0000-000000000053";
+const O_FR_CONTROLE = "3eeeeeee-0000-0000-0000-000000000054";
+const O_FR_TUDO_TROCA = "3eeeeeee-0000-0000-0000-000000000055";
+const itemA = (o) => `3fffffff-0000-0000-0000-0000000000${o.slice(-2)}`;
+const itemB = (o) => `3fffffff-0000-0000-0000-0000000001${o.slice(-2)}`;
+
+PROVAS.push({
+  nome: "(frete de ida) troca e vale-troca não contam para o pedido voltar inteiro; só o reembolso conta",
+  corpo: async (cliente) => {
+    await cliente.query("BEGIN");
+    try {
+      await mutarFreteReembolso(
+        cliente,
+        "frete-conta-troca-e-vale",
+        FRETE_ASSINATURA,
+        FRETE_FILTRO,
+        "AND (d.id = v_id OR d.status = 'concluida')",
+      );
+      await mutarFreteReembolso(
+        cliente,
+        "frete-regra-antiga",
+        FRETE_ASSINATURA,
+        FRETE_FILTRO,
+        "AND d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+      );
+      await mutarFreteReembolso(
+        cliente,
+        "elegibilidade-reembolsada-conta-a-troca",
+        ELEGIBILIDADE_ASSINATURA,
+        "AND d.status = 'concluida' AND d.resolucao_final = 'reembolso'",
+        "AND d.status = 'concluida'",
+      );
+      await mutarFreteReembolso(
+        cliente,
+        "elegibilidade-ja-devolvida-sem-a-troca",
+        ELEGIBILIDADE_ASSINATURA,
+        "AND d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+        "AND d.status NOT IN ('recusada', 'cancelada', 'reprovada') AND d.resolucao_final IS DISTINCT FROM 'troca'",
+      );
+
+      // Troca e vale ligados (a prova não depende do que outra prova deixou na política).
+      await cliente.query(
+        "UPDATE public.politica_devolucao SET aceita_troca = true, aceita_vale = true WHERE id = 1",
+      );
+
+      // A R$ 100 + B R$ 100 (uma unidade cada) + frete R$ 25, pago pelo app e entregue há 2 dias: arrependimento.
+      const novoPedido = async (pedidoId) => {
+        await pedidoCustom(cliente, pedidoId, {
+          userId: U_CLIENTE,
+          total: 225,
+          subtotal: 200,
+          shipping: 25,
+          paymentMethod: "online",
+          paymentStatus: "pago",
+          paidAt: new Date(),
+          gateway: `ORD-FR1658-${pedidoId.slice(-2)}`,
+          itemId: itemA(pedidoId),
+          productId: P_CAMISA,
+          nome: "Peça A",
+          qtd: 1,
+          preco: 100,
+          entregueHaDias: 2,
+        });
+        await cliente.query(
+          `INSERT INTO public.marketplace_order_items (id, order_id, product_id, product_name, quantity, price)
+           VALUES ($1, $2, $3, 'Peça B', 1, 100)`,
+          [itemB(pedidoId), pedidoId, P_CAMISA],
+        );
+      };
+      const pedir = async (pedidoId, itemId, resolucao) => {
+        await logar(cliente, U_CLIENTE);
+        const d = await solicitar(
+          cliente,
+          pedidoId,
+          [{ order_item_id: itemId, quantidade: 1 }],
+          "desisti",
+          resolucao,
+          "entrega_na_loja",
+        );
+        assert.equal(d.tipo, "arrependimento");
+        return d;
+      };
+      const freteDe = async (devolucaoId) =>
+        Number(
+          await valorUnico(
+            cliente,
+            "SELECT valor_frete_ida FROM public.devolucoes WHERE id = $1",
+            [devolucaoId],
+          ),
+        );
+      const concluirComo = async (devolucaoId, resolucao) => {
+        await ateRecebida(cliente, devolucaoId);
+        const itemDevolvido = await valorUnico(
+          cliente,
+          "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
+          [devolucaoId],
+        );
+        const r = await rpc(
+          cliente,
+          "SELECT public.admin_devolucao_concluir($1::uuid, $2, $3::jsonb) AS r",
+          [
+            devolucaoId,
+            resolucao,
+            JSON.stringify([
+              { item_id: itemDevolvido, condicao: "nova", reestocar: false },
+            ]),
+          ],
+        );
+        assert.equal(r.status, "concluida");
+        assert.equal(
+          await valorUnico(
+            cliente,
+            "SELECT resolucao_final FROM public.devolucoes WHERE id = $1",
+            [devolucaoId],
+          ),
+          resolucao,
+        );
+      };
+      const itensDaElegibilidade = async (pedidoId) => {
+        await logar(cliente, U_CLIENTE);
+        const e = await elegibilidade(cliente, pedidoId);
+        return Object.fromEntries(
+          e.itens.map((i) => [
+            i.product_name,
+            {
+              ja_devolvida: i.ja_devolvida,
+              ja_reembolsada: i.ja_reembolsada,
+              disponivel: i.disponivel,
+            },
+          ]),
+        );
+      };
+
+      // (a) A concluída como TROCA, depois o reembolso de B: o pedido não voltou inteiro em dinheiro, sem frete.
+      await novoPedido(O_FR_TROCA);
+      const aTroca = await pedir(O_FR_TROCA, itemA(O_FR_TROCA), "troca");
+      await concluirComo(aTroca.id, "troca");
+      assert.deepEqual(await itensDaElegibilidade(O_FR_TROCA), {
+        "Peça A": { ja_devolvida: 1, ja_reembolsada: 0, disponivel: 0 },
+        "Peça B": { ja_devolvida: 0, ja_reembolsada: 0, disponivel: 1 },
+      });
+      const bDepoisDaTroca = await pedir(
+        O_FR_TROCA,
+        itemB(O_FR_TROCA),
+        "reembolso",
+      );
+      assert.equal(
+        await freteDe(bDepoisDaTroca.id),
+        0,
+        "frete-conta-troca-e-vale: A trocada + B reembolsada não devolve o frete de ida",
+      );
+
+      // (b) O mesmo com VALE-TROCA.
+      await novoPedido(O_FR_VALE);
+      const aVale = await pedir(O_FR_VALE, itemA(O_FR_VALE), "vale");
+      await concluirComo(aVale.id, "vale");
+      assert.deepEqual(await itensDaElegibilidade(O_FR_VALE), {
+        "Peça A": { ja_devolvida: 1, ja_reembolsada: 0, disponivel: 0 },
+        "Peça B": { ja_devolvida: 0, ja_reembolsada: 0, disponivel: 1 },
+      });
+      const bDepoisDoVale = await pedir(
+        O_FR_VALE,
+        itemB(O_FR_VALE),
+        "reembolso",
+      );
+      assert.equal(
+        await freteDe(bDepoisDoVale.id),
+        0,
+        "frete-conta-troca-e-vale: A em vale-troca + B reembolsada não devolve o frete de ida",
+      );
+
+      // (c) Controle da mesma conta: A concluída com REEMBOLSO, depois o reembolso de B: o pedido voltou inteiro, o frete volta.
+      await novoPedido(O_FR_REEMBOLSO);
+      const aReembolso = await pedir(
+        O_FR_REEMBOLSO,
+        itemA(O_FR_REEMBOLSO),
+        "reembolso",
+      );
+      assert.equal(await freteDe(aReembolso.id), 0, "1 de 2 peças: sem frete");
+      await concluirComo(aReembolso.id, "reembolso");
+      assert.deepEqual(await itensDaElegibilidade(O_FR_REEMBOLSO), {
+        "Peça A": { ja_devolvida: 1, ja_reembolsada: 1, disponivel: 0 },
+        "Peça B": { ja_devolvida: 0, ja_reembolsada: 0, disponivel: 1 },
+      });
+      const bDepoisDoReembolso = await pedir(
+        O_FR_REEMBOLSO,
+        itemB(O_FR_REEMBOLSO),
+        "reembolso",
+      );
+      assert.equal(
+        await freteDe(bDepoisDoReembolso.id),
+        25,
+        "A reembolsada + B reembolsada: o pedido voltou inteiro em dinheiro, o frete de ida volta",
+      );
+
+      // (d) A devolução ATUAL conta sozinha (mesmo pedida como troca): o pedido inteiro numa devolução só leva o frete, como antes.
+      await novoPedido(O_FR_TUDO_TROCA);
+      await logar(cliente, U_CLIENTE);
+      const inteira = await solicitar(
+        cliente,
+        O_FR_TUDO_TROCA,
+        [
+          { order_item_id: itemA(O_FR_TUDO_TROCA), quantidade: 1 },
+          { order_item_id: itemB(O_FR_TUDO_TROCA), quantidade: 1 },
+        ],
+        "desisti",
+        "reembolso",
+        "entrega_na_loja",
+      );
+      assert.equal(await freteDe(inteira.id), 25);
+
+      // CONTROLE: com o corpo da 20261405400000 (o rollback-manual desta) o caso (a) grava o frete: a prova enxerga o defeito.
+      await cliente.query("SAVEPOINT controle_1658");
+      await cliente.query(
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho literal do rollback-manual do repositório
+        fs.readFileSync(
+          path.join(
+            __dirname,
+            "..",
+            "..",
+            "supabase",
+            "migrations",
+            `rollback-manual-${FRETE_REEMBOLSO_ARQ}`,
+          ),
+          "utf8",
+        ),
+      );
+      await novoPedido(O_FR_CONTROLE);
+      const aControle = await pedir(
+        O_FR_CONTROLE,
+        itemA(O_FR_CONTROLE),
+        "troca",
+      );
+      await concluirComo(aControle.id, "troca");
+      const bControle = await pedir(
+        O_FR_CONTROLE,
+        itemB(O_FR_CONTROLE),
+        "reembolso",
+      );
+      assert.equal(
+        await freteDe(bControle.id),
+        25,
+        "CONTROLE: com o corpo antigo a troca conta e o frete de ida volta (o defeito)",
+      );
+      await logar(cliente, U_CLIENTE);
+      const eControle = await elegibilidade(cliente, O_FR_CONTROLE);
+      assert.ok(
+        eControle.itens.every((i) => !("ja_reembolsada" in i)),
+        "CONTROLE: o corpo antigo da elegibilidade não manda ja_reembolsada",
+      );
+      await cliente.query("ROLLBACK TO SAVEPOINT controle_1658");
     } finally {
       await cliente.query("ROLLBACK");
     }

@@ -577,6 +577,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-banner-tem-imagem-propria-no-computador-portao-viva.cjs",
     "tests/banco/o-resultado-mostra-tarifa-juro-e-quebra-como-despesa-portao-viva.cjs",
     "tests/banco/a-devolucao-integral-nao-perde-o-centavo-do-cupom-portao-viva.cjs",
+    // 20261658000000: o portao das consultas 214a/214b (o frete de ida so volta com reembolso).
+    "tests/banco/o-frete-de-ida-so-volta-com-reembolso-portao-viva.cjs",
     "tests/banco/cancelar-retirada-pronta-portao-viva.cjs",
     "tests/banco/cancelar-pedido-do-painel-confere-a-etapa-portao-viva.cjs",
     "tests/banco/o-cupom-que-nao-da-desconto-portao-viva.cjs",
@@ -769,6 +771,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs",
     // 20261655000000: a loja nova so vende o que confirmou (forma_de_pagamento_aceita, gatilho da entrega na cidade, booleanos na vitrine e a trava do apply).
     "tests/banco/a-loja-nova-so-vende-o-que-confirmou-viva.cjs",
+    // 20261656000000: a visitante deixa o e-mail depois da compra (informar_email_da_visitante uma vez so, sob trava da linha; reivindicar_comprovante_da_visitante com o teto ate com pedido pago).
+    "tests/banco/a-visitante-deixa-o-email-viva.cjs",
     // 20261657000000: o produto todo desligado nao volta a venda (sem nenhuma variacao ligada a peca fica na propria variacao, o pai nao recebe).
     "tests/banco/o-produto-todo-desligado-nao-volta-a-venda-viva.cjs",
     // 20261660000000: o caixa de ontem aberto nao some do saldo (o saldo inicial e a sangria nao passam do dia do caixa aberto; o cancelamento trava a sessao).

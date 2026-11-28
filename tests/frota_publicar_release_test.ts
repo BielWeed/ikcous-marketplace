@@ -4139,7 +4139,9 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
     "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
     "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
+    "212a-conferir-a-visitante-deixa-o-email-aplicado",
     "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
+    "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
     "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
