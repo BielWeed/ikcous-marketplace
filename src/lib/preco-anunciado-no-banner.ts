@@ -31,8 +31,22 @@ const ANTES_DE_COMBO = /\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}$/i;
 // combo, e é conferido antes). Na dúvida, não avisar: aviso falso irrita mais
 // que aviso que falta. Só espaço na mesma linha: "R$ 70 cada" + quebra + "2
 // cores" segue sendo preço da peça.
-const DEPOIS_DE_PRECO_UNITARIO =
-  /^\s+(?:cada\b|(?:a|à|À|por)\s+unidade\b)/i;
+// No combo, "cada" só é preço da peça quando fecha a frase ("cada", "cada
+// uma", "cada peça"); "cada kit" segue sendo o preço do grupo.
+const DEPOIS_DE_POR_UNIDADE = /^\s+(?:a|à|À|por)\s+unidade\b/i;
+const DEPOIS_DE_CADA = /^\s+cada/i;
+const PECA_DEPOIS_DE_CADA = /^[^\S\r\n]+(?:um|uma|pe[cç]a|unidade|item)\b/i;
+const PALAVRA_NA_MESMA_LINHA = /^[^\S\r\n]*[a-zà-úç\d]/i;
+
+function precoUnitarioDepois(depois: string): boolean {
+  if (DEPOIS_DE_POR_UNIDADE.test(depois)) return true;
+  const cada = DEPOIS_DE_CADA.exec(depois);
+  if (!cada) return false;
+  let resto = depois.slice(cada[0].length);
+  const peca = PECA_DEPOIS_DE_CADA.exec(resto);
+  if (peca) resto = resto.slice(peca[0].length);
+  return !PALAVRA_NA_MESMA_LINHA.test(resto);
+}
 const DEPOIS_DE_PRECO_DE_GRUPO =
   /^\s+cada[^\S\r\n]+(?:\d|(?:dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|d[uú]zia|dezena|centena|meia[^\S\r\n]+d[uú]zia)\b)/i;
 const ANTES_DE_VALOR_DE_FORA =
@@ -78,7 +92,7 @@ export function valoresCitados(texto: string | null | undefined): {
       DEPOIS_DE_VALOR_DE_FORA.test(depois) ||
       DEPOIS_DE_PRECO_DE_GRUPO.test(depois) ||
       (ANTES_DE_COMBO.test(trechoAntes) &&
-        !DEPOIS_DE_PRECO_UNITARIO.test(depois))
+        !precoUnitarioDepois(depois))
     ) {
       continue;
     }
