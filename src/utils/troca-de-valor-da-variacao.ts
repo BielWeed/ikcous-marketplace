@@ -100,6 +100,63 @@ export function trocasDeValorComoOpcaoNova<V extends VariacaoDoEnvio>(
   return { variantes: [...antigas, ...resto], apagar, trocas };
 }
 
+type VariacaoDaConferencia = Pick<
+  ProductVariant,
+  "id" | "name" | "value" | "active"
+>;
+
+/**
+ * As trocas que um salvar anterior JÁ gravou sem a resposta voltar (o prazo
+ * estourou com a transação comitada) e que a tela ainda mostra pendentes.
+ * Refazê-las guardaria a antiga de novo e criaria mais um "GG", com o estoque
+ * copiado. O sinal no banco: a linha antiga segue com o valor de abertura e
+ * DESLIGADA, e existe uma opção que a tela nunca viu com o tipo e o valor
+ * novos. Cada opção nova responde por uma troca só.
+ *
+ * A antiga sem venda o banco apagou: ela some na junção pelo caminho de
+ * sempre (apagada em outro aparelho) e não precisa deste reconhecimento.
+ */
+export function trocasJaGravadasNoBanco(
+  tela: readonly VariacaoDaConferencia[],
+  abertura: readonly VariacaoDaConferencia[],
+  banco: readonly VariacaoDaConferencia[],
+): TrocaDeValor[] {
+  const aberturaPorId = new Map(abertura.map((v) => [v.id, v]));
+  const bancoPorId = new Map(banco.map((v) => [v.id, v]));
+  const conhecidas = new Set([...tela, ...abertura].map((v) => v.id));
+  const novasDoBanco = banco.filter((v) => !conhecidas.has(v.id));
+  const usadas = new Set<string>();
+  const mesmaOpcao = (a: VariacaoDaConferencia, b: VariacaoDaConferencia) =>
+    normalizarValorDaOpcao(a.name) === normalizarValorDaOpcao(b.name) &&
+    normalizarValorDaOpcao(a.value) === normalizarValorDaOpcao(b.value);
+
+  const trocas: TrocaDeValor[] = [];
+  for (const v of tela) {
+    if (v.id.startsWith("temp-")) continue;
+    const antes = aberturaPorId.get(v.id);
+    const hoje = bancoPorId.get(v.id);
+    if (!antes || !hoje || hoje.active) continue;
+    const valorDeAbertura = normalizarValorDaOpcao(antes.value);
+    if (
+      normalizarValorDaOpcao(v.value) === valorDeAbertura ||
+      normalizarValorDaOpcao(hoje.value) !== valorDeAbertura
+    ) {
+      continue;
+    }
+    const nova = novasDoBanco.find(
+      (n) => !usadas.has(n.id) && mesmaOpcao(n, v),
+    );
+    if (!nova) continue;
+    usadas.add(nova.id);
+    trocas.push({
+      idAntigo: v.id,
+      valorAntigo: hoje.value,
+      valorNovo: nova.value,
+    });
+  }
+  return trocas;
+}
+
 /** O aviso quando o banco guardou a antiga (ela já tinha venda). */
 export function fraseDaTrocaGuardada(troca: TrocaDeValor): string {
   return `O "${troca.valorAntigo}" já foi vendido, então guardamos ele desligado para os pedidos antigos e criamos o "${troca.valorNovo}" como opção nova. Confira o estoque das duas linhas.`;
