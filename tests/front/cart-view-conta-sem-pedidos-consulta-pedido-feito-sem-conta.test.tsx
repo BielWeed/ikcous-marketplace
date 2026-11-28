@@ -117,7 +117,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const RETRATO = "guest_tracked_orders";
 const CONSULTAR = "Consultar pedido";
 const FRASE_DO_PEDIDO_SEM_CONTA =
-  "Comprou sem entrar na conta? Esse pedido não aparece nesta lista. Se você deixou seu e-mail, consulte com ele e o WhatsApp da compra. Se não deixou, fale com a loja e informe o número do pedido.";
+  "Comprou sem entrar na conta? Esse pedido não aparece nesta lista. Se você deixou seu e-mail, consulte com ele, o WhatsApp da compra e o número do pedido; vamos mandar um código para esse e-mail. Se não deixou, fale com a loja e informe o número do pedido.";
 const FRASE_FALSA = "Comprou com outro e-mail? Entre com o usado na compra.";
 const achadoSemConta = {
   id: "00000000-0000-0000-0000-0000000abc12",

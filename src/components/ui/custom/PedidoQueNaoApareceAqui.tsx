@@ -37,8 +37,9 @@ export function PedidoQueNaoApareceAqui({
   return (
     <>
       Comprou sem entrar na conta? Esse pedido não aparece nesta lista. Se você
-      deixou seu e-mail, consulte com ele e o WhatsApp da compra. Se não deixou,
-      fale com a loja e informe o número do pedido.
+      deixou seu e-mail, consulte com ele, o WhatsApp da compra e o número do
+      pedido; vamos mandar um código para esse e-mail. Se não deixou, fale com a
+      loja e informe o número do pedido.
       {falarComALoja && (
         <span className="mt-3 block">
           <button

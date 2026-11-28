@@ -12,7 +12,7 @@ import { OrderList } from "@/components/ui/custom/OrderList";
 //
 // O pedido sem conta pode ser consultado se tiver um e-mail salvo.
 const FRASE =
-  "Comprou sem entrar na conta? Esse pedido não aparece nesta lista. Se você deixou seu e-mail, consulte com ele e o WhatsApp da compra. Se não deixou, fale com a loja e informe o número do pedido.";
+  "Comprou sem entrar na conta? Esse pedido não aparece nesta lista. Se você deixou seu e-mail, consulte com ele, o WhatsApp da compra e o número do pedido; vamos mandar um código para esse e-mail. Se não deixou, fale com a loja e informe o número do pedido.";
 const CONSULTAR = "Consultar pedido";
 const ROTULO_ANTIGO = "Consultar pedido feito em outra conta";
 const WHATSAPP = "Falar com a loja no WhatsApp";
