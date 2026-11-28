@@ -145,14 +145,14 @@ describe("GlobalErrorBoundary — Recarregar o app não apaga o pedido de visita
     sessionStorage.setItem("ikcous:checkout-pedido-pendente:u1", "p1");
     sessionStorage.setItem("splash_shown", "true");
     sessionStorage.setItem("sb-projeto-auth-token", "lixo");
-    expect(lerPedidoSemResposta()?.orderData.idempotencyKey).toBe(
+    expect(lerPedidoSemResposta(null)?.orderData.idempotencyKey).toBe(
       "chave-original",
     );
 
     await abrirTelaDeErroEClicarEmRecarregar();
 
     // O que importa para quem compra: o checkout reabre a MESMA compra.
-    expect(lerPedidoSemResposta()?.orderData).toEqual(pedido.orderData);
+    expect(lerPedidoSemResposta(null)?.orderData).toEqual(pedido.orderData);
     // A lista continua seletiva: o que já sobrevivia fica, o resto some.
     expect(sessionStorage.getItem("ikcous:checkout-pedido-pendente:u1")).toBe(
       "p1",
@@ -167,7 +167,7 @@ describe("GlobalErrorBoundary — Recarregar o app não apaga o pedido de visita
 
     await abrirTelaDeErroEClicarEmRecarregar();
 
-    expect(lerPedidoSemResposta()).toBeNull();
+    expect(lerPedidoSemResposta(null)).toBeNull();
     expect(sessionStorage.getItem("algum_estado_corrompido")).toBeNull();
     expect(reloadEspiao).toHaveBeenCalled();
   });
@@ -179,6 +179,6 @@ describe("GlobalErrorBoundary — Recarregar o app não apaga o pedido de visita
 
     vi.spyOn(Date, "now").mockReturnValue(agora + 31 * 60_000);
 
-    expect(lerPedidoSemResposta()).toBeNull();
+    expect(lerPedidoSemResposta(null)).toBeNull();
   });
 });

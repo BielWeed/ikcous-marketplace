@@ -1,4 +1,53 @@
 {
+  "1.5.246": {
+    "titulo": "Pedido esperando pagamento à vista, etiqueta sem cobrança dupla e peça sem tamanho",
+    "novidades": [
+      "Para a cliente com conta, o Início e o carrinho vazio mostram o pedido que ficou aguardando pagamento, com o botão \"Ver e pagar\" e o lembrete de não pagar de novo se ela já pagou.",
+      "Quando volta uma peça de um produto que ganhou tamanhos depois da venda (pedido cancelado, Pix vencido ou devolução com \"voltar ao estoque\"), ela espera você na tela do produto: escolha o tamanho que recebe a peça ou toque em \"Não tenho essa peça\". Na lista de produtos, o cartão mostra quantas peças estão sem tamanho.",
+      "Ao salvar na ficha do pedido um código de rastreio que já está em outro pedido, o painel pergunta antes se é para usar mesmo assim.",
+      "Na troca concluída, a cliente tem o botão \"A peça da troca veio com problema\", que abre o WhatsApp da loja com o número do pedido e o protocolo.",
+      "Ao compartilhar o link de um produto esgotado, a prévia diz \"Esgotado\" no lugar do preço."
+    ],
+    "correcoes": [
+      "A etiqueta do Melhor Envio, de envio ou de devolução, não é mais paga duas vezes quando o Melhor Envio demora ou falha na hora de pagar: o painel pede para conferir a compra na sua conta de lá antes de tentar de novo.",
+      "Quando a cliente cancela um pedido que tinha etiqueta paga e ainda não saiu, o aviso lembra de cancelar a etiqueta no Melhor Envio para recuperar o valor. Se você já cancelou lá e tocou em \"Atualizar rastreio\" no pedido, o aviso não pede de novo, e o código da etiqueta cancelada não volta por cima do que você digitou à mão.",
+      "Depois de usar \"Recarregar o app\", tocar de novo em \"Devolver\" no pedido ou salvar de novo um lançamento do Financeiro que ficou sem resposta não devolve o dinheiro nem lança duas vezes.",
+      "Se a internet cai no meio de salvar (por exemplo, ao trocar de app no iPhone), o endereço da cliente, a pergunta no produto, a etiqueta e a devolução no painel avisam para conferir antes de tentar de novo, e a pergunta não entra duas vezes.",
+      "Se a internet cai ao salvar um banner novo ou ao mandar um aviso para uma cliente, tentar de novo não cria um banner nem um aviso repetido.",
+      "Dois toques rápidos em salvar endereço não gravam o endereço duas vezes, e a troca da foto de perfil fica travada enquanto a foto é enviada.",
+      "No pagamento com cartão, tocar em Voltar enquanto o cartão está sendo cobrado mostra \"Aguarde a resposta do cartão.\" e a tela espera a resposta.",
+      "Se a loja muda o cupom enquanto a cliente finaliza a compra, a tela diz que o cupom mudou, mostra o desconto novo ou, se ele não vale mais, pede para tirar o cupom.",
+      "Mudança feita em um aparelho não é mais desfeita por outro que estava com a tela antiga aberta: transportadoras, formas de pagamento na entrega, vitrines da página inicial e as listas da política de trocas. A tela avisa e mostra a lista atualizada.",
+      "Trocar a ordem dos banners quando um deles foi excluído em outro aparelho avisa isso e atualiza a lista.",
+      "Mudar a ordem dos banners em dois aparelhos ao mesmo tempo não deixa mais banner na mesma posição nem buraco na lista, e subir ou descer troca com o vizinho certo mesmo que outro aparelho tenha mexido na lista.",
+      "Na lista de pedidos do painel, se um pedido novo chega bem na hora do toque em \"Avançar\" ou no WhatsApp, o toque não cai mais no pedido de baixo: aparece \"A lista mudou\" para você conferir e tocar de novo.",
+      "A lista de pedidos cancelados não mostra nem soma um pedido em dobro, e a planilha de pedidos não sai com um pedido trocado.",
+      "O início e o fim do banner programado e a hora da coleta da devolução valem no horário de Brasília, mesmo num computador com outro fuso.",
+      "O sino não esconde mais o cancelamento de um pedido pago quando o relógio do aparelho está adiantado; por isso o aviso pode ficar no sino por até um dia e meio.",
+      "Com o relógio do aparelho da loja adiantado ou atrasado, o aviso de mudança do pedido que chega à cliente não passa mais por cima de um aviso mais novo nem é descartado, também no cancelamento de pedido online.",
+      "Na loja com mais de 200 produtos, nenhum produto some da vitrine quando você pausa ou exclui outro enquanto a cliente abre a loja.",
+      "O carrinho da cliente com conta, usado em dois aparelhos, não volta a quantidade antiga nem perde item quando o relógio de um deles está errado.",
+      "Quando um serviço de entrega não responde na hora, a cliente vê \"Algumas transportadoras não responderam agora\" e pode tentar de novo, sem ficar presa a uma lista sem ele.",
+      "Na loja que ainda não preencheu o próprio CEP, o cálculo do frete diz que a loja ainda não calcula o frete pelo app e não oferece mais \"Tentar de novo\".",
+      "Em \"Meus pedidos\", o pedido aberto pela consulta não mostra \"Reenviar comprovante\" e, ao cancelar, não promete que o dinheiro volta sozinho.",
+      "O cartão \"Sua assinatura\" com valor em aberto não mostra mais uma próxima cobrança que não vale.",
+      "Quando a devolução termina em vale-troca, o aviso da cliente diz que a loja vai combinar o vale com ela, e o histórico da devolução no painel diz que o vale é criado pela loja, fora do app.",
+      "Na troca por tamanho ou gosto, a folha de devolução avisa quais categorias a loja não troca, e a página de trocas explica que essa regra vale fora do prazo de desistência.",
+      "Se o celular fecha a loja enquanto a cliente escolhe as fotos da devolução, ao voltar o pedido de devolução reabre preenchido e só as fotos precisam ser escolhidas de novo.",
+      "Na devolução de pedido com cupom, o valor de cada peça soma exatamente o total devolvido, e a tela de pedir a devolução avisa que o valor é estimado e pode variar alguns centavos.",
+      "Nas folhas do Financeiro, escolher uma opção numa lista não fecha mais a folha nem pede para descartar o que foi digitado; no tablet, tocar fora da lista fecha só a lista.",
+      "No Financeiro, o \"Mês de referência\" do lançamento acompanha a data do vencimento ou do pagamento até você escolher outro mês.",
+      "A categoria que só tem produtos excluídos agora pode ser apagada; a confirmação avisa que eles continuam no histórico de vendas com o nome dela.",
+      "O texto de Minha loja e o da política de trocas não se perdem mais se o celular fechar o painel enquanto você está em outro app: ao voltar, o painel oferece restaurar o que você digitou.",
+      "Com uma folha aberta, tocar num aviso que aparece por cima (como o de pedido novo) não fecha mais a folha, e o botão do aviso funciona.",
+      "No notebook com tela de toque e no tablet com mouse, os botões que só apareciam ao passar o mouse aparecem sempre, e um toque não deixa mais parada a faixa de números do painel.",
+      "Quem entra na conta para fazer uma pergunta no produto volta, com o Voltar, para onde estava antes, e não para o Início.",
+      "O link de um produto compartilhado no WhatsApp sai com prévia mesmo quando a loja demora a responder; nesse caso, a prévia é a da loja."
+    ],
+    "melhorias": [
+      "No cartão do pedido, o tempo em que ele segura o estoque diz \"menos de 1 hora\" em vez de \"0 horas\", e no carrinho o nome muito comprido de um produto quebra a linha em vez de passar da tela."
+    ]
+  },
   "1.5.245": {
     "titulo": "Preços inteiros no celular, avaliação sem repetição e caixa que diz a verdade",
     "novidades": [

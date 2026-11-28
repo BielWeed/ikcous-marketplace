@@ -1984,7 +1984,15 @@ export function CheckoutViewDaConta({
   // A recusa que o banco deu no último clique, quando deu. `null` é o estado
   // normal — o painel só existe depois de uma recusa e some assim que a pessoa
   // age ou fecha.
-  const [pedidoRestaurado] = useState(lerPedidoSemResposta);
+  // Só o pedido de quem está AGORA no checkout (a visitante que o enviou):
+  // outra pessoa que entra na mesma aba nunca vê o painel nem o nome dela no
+  // "Falar com a loja" (caça 27/11/2026). A troca de conta recria esta tela
+  // (`key` em `CheckoutView`), então esta leitura acontece de novo para quem
+  // entrou — inclusive a própria visitante, que a tela não distingue de outra
+  // pessoa (o reenvio de convidada sob uma conta já era recusado).
+  const [pedidoRestaurado] = useState(() =>
+    lerPedidoSemResposta(user?.id ?? null),
+  );
   const [recusaDoUltimoClique, setRecusaDoUltimoClique] =
     useState<RecusaDoPedido | null>(() =>
       pedidoRestaurado
@@ -5491,37 +5499,41 @@ export function CheckoutViewDaConta({
     // de "Meus pedidos". Confere a sessão que o cliente usa AGORA antes de
     // enviar. Segue o contrato de `sessaoAindaEhDoDono`: falha ao ler a sessão
     // (ou demora além do prazo) = NÃO envia — "não sei" nunca vira "pode
-    // enviar". Convidada não tem conta para conferir.
-    if (contaEsperada) {
-      // O que falhou NÃO muda o destino (nada é enviado), só a frase: renovar
-      // o token sem internet, ou a conferência estourar o prazo, é falta de
-      // rede ("tente de novo", a conta segue logada); sessão ausente ou de
-      // outra pessoa é "entre de novo".
-      let semRede = false;
-      const sessaoVale = await aguardarComPrazo(
-        sessaoAindaEhDoDono(contaEsperada, () => {
-          semRede = true;
-        }),
-        PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
-        () => new Error("A conferência da sessão demorou demais."),
-      ).catch(() => {
+    // enviar".
+    // A VISITANTE TAMBÉM (caça 27/11/2026): a gravação usa a sessão ativa no
+    // instante do envio. Se outra aba do aparelho entrou numa conta durante as
+    // esperas acima (o frete espera a rede por até 12 s), o pedido dela saía
+    // na conta da outra pessoa, com o nome, o WhatsApp e o endereço dela. Para
+    // a visitante o dono é "ninguém" (`null`): só envia com a sessão VAZIA, e
+    // sai pela mesma porta da conta.
+    // O que falhou NÃO muda o destino (nada é enviado), só a frase: renovar
+    // o token sem internet, ou a conferência estourar o prazo, é falta de
+    // rede ("tente de novo", a conta segue logada); sessão ausente ou de
+    // outra pessoa é "entre de novo".
+    let semRede = false;
+    const sessaoVale = await aguardarComPrazo(
+      sessaoAindaEhDoDono(contaEsperada, () => {
         semRede = true;
-        return false;
-      });
-      if (!sessaoVale) {
-        const recusa: RecusaDoPedido = semRede
-          ? {
-              acao: "tentar_de_novo",
-              mensagem: MENSAGEM_SEM_CONEXAO_AO_FINALIZAR,
-            }
-          : { acao: "entrar_na_conta", mensagem: MENSAGEM_SESSAO_EXPIRADA };
-        toast.error(recusa.mensagem);
-        setRecusaDoUltimoClique(recusa);
-        levarFocoAoProblema("recusa");
-        setIsSubmitting(false);
-        travaDeEnvioRef.current.liberar();
-        return;
-      }
+      }),
+      PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+      () => new Error("A conferência da sessão demorou demais."),
+    ).catch(() => {
+      semRede = true;
+      return false;
+    });
+    if (!sessaoVale) {
+      const recusa: RecusaDoPedido = semRede
+        ? {
+            acao: "tentar_de_novo",
+            mensagem: MENSAGEM_SEM_CONEXAO_AO_FINALIZAR,
+          }
+        : { acao: "entrar_na_conta", mensagem: MENSAGEM_SESSAO_EXPIRADA };
+      toast.error(recusa.mensagem);
+      setRecusaDoUltimoClique(recusa);
+      levarFocoAoProblema("recusa");
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
     }
 
     // Só uma compra NOVA com endereço de entrega salvo passa por aqui. O

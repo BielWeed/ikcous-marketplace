@@ -84,17 +84,20 @@ vi.mock("@/views/customer/HomeView", () => ({
     onNavigate,
     onProductClick,
     isActive,
+    userId,
   }: {
     readonly selectedCategory: string;
     readonly onCategoryChange: (category: string) => void;
     readonly onNavigate: (view: string) => void;
     readonly onProductClick: (id: string) => void;
     readonly isActive?: boolean;
+    readonly userId?: string;
   }) => (
     <div
       data-testid="home"
       data-categoria={selectedCategory}
       data-ativo={String(isActive)}
+      data-usuario={userId ?? ""}
     >
       {["Bebidas", "Todas", "Doces", "Café & chá"].map((categoria) => (
         <button
@@ -297,10 +300,17 @@ const estadoDoLink = vi.hoisted(() => ({
   vencido: false,
   confirmacaoVencida: false,
   admin: false,
+  // Cliente comum logada (não é lojista): é quem vê, no Início, o aviso do
+  // pedido aguardando pagamento.
+  cliente: false,
 }));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
-    user: estadoDoLink.admin ? { id: "lojista-ficticio" } : null,
+    user: estadoDoLink.admin
+      ? { id: "lojista-ficticio" }
+      : estadoDoLink.cliente
+        ? { id: "cliente-ficticia" }
+        : null,
     isAdmin: estadoDoLink.admin,
     adminStatus: estadoDoLink.admin ? "admin" : "not-admin",
     loading: false,
@@ -369,6 +379,23 @@ vi.mock("@/hooks/usePredictiveNavigation", () => ({
 vi.mock("@/hooks/useSwipeBack", () => ({ useSwipeBack: () => {} }));
 vi.mock("@/hooks/useWebVitals", () => ({ useWebVitals: () => {} }));
 vi.mock("@/hooks/useRealtimeUpdate", () => ({ useRealtimeUpdate: () => {} }));
+// O App monta o Início por dois caminhos: com View Transition (Chrome) e sem
+// ela (o jsdom, e navegador antigo). O hook real decide isso uma vez, ao
+// carregar o módulo; aqui só o `isSupported` passa a seguir a bandeira, para
+// o teste da conta logada alcançar os dois ramos. Desligada (o padrão), é o
+// mesmo valor do jsdom, e os outros testes não mudam.
+const transicao = vi.hoisted(() => ({ suportada: false }));
+vi.mock("@/hooks/useViewTransition", async (importOriginal) => {
+  const real =
+    await importOriginal<typeof import("@/hooks/useViewTransition")>();
+  return {
+    ...real,
+    useViewTransition: () => ({
+      ...real.useViewTransition(),
+      isSupported: transicao.suportada,
+    }),
+  };
+});
 
 vi.mock("@/lib/supabase", () => {
   const consulta: Record<string, unknown> = {};
@@ -441,6 +468,8 @@ describe("App — trocar de tela avisa em voz alta e leva o foco", () => {
     estadoDoLink.vencido = false;
     estadoDoLink.confirmacaoVencida = false;
     estadoDoLink.admin = false;
+    estadoDoLink.cliente = false;
+    transicao.suportada = false;
     vi.mocked(toast.success).mockClear();
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -545,6 +574,31 @@ describe("App — trocar de tela avisa em voz alta e leva o foco", () => {
     await tocar("aba-inicio");
     expect(inicio()?.getAttribute("data-ativo")).toBe("true");
   });
+
+  // #2058: o aviso do pedido aguardando pagamento só aparece se o Início
+  // souber quem está logada. O App passa a conta nos dois ramos de montagem
+  // do Início (com e sem View Transition); visitante não tem conta.
+  it.each([
+    ["sem View Transition", false],
+    ["com View Transition", true],
+  ])(
+    "Início %s recebe o id da conta logada, e nada para visitante",
+    async (_ramo, suportada) => {
+      transicao.suportada = suportada;
+      const inicio = () => container?.querySelector('[data-testid="home"]');
+
+      await abrir();
+      expect(inicio()?.getAttribute("data-usuario")).toBe("");
+
+      await act(async () => {
+        raiz?.unmount();
+      });
+      raiz = createRoot(container as HTMLDivElement);
+      estadoDoLink.cliente = true;
+      await abrir();
+      expect(inicio()?.getAttribute("data-usuario")).toBe("cliente-ficticia");
+    },
+  );
 
   it("antes de qualquer toque (abertura direta por endereço) o foco NÃO vai para o <main>, mas o aviso é dado", async () => {
     // Chrome: userActivation.hasBeenActive é false até a pessoa tocar/teclar.

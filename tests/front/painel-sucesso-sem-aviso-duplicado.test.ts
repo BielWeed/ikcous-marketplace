@@ -27,7 +27,10 @@ describe("painel confirma a gravação uma vez só", () => {
     {
       tela: "Frete",
       fonte: readFileSync("src/views/admin/AdminShippingView.tsx", "utf8"),
-      chamada: /updateConfig\(regrasParaGravar,\s*\{ silentSuccess: true \}\)/,
+      // 20261652000000: o pedido leva também a confirmação da Loja pronta
+      // (`...confirmacaoAoSalvarAEntrega(config)`), no mesmo objeto.
+      chamada:
+        /updateConfig\(\s*\{\s*\.\.\.regrasParaGravar,\s*\.\.\.confirmacaoAoSalvarAEntrega\(config\),?\s*\},\s*\{ silentSuccess: true \},?\s*\)/,
     },
   ])("$tela cala só o sucesso genérico", ({ fonte, chamada }) => {
     expect(chamada.test(fonte)).toBe(true);

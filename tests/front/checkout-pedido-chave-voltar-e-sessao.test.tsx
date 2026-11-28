@@ -727,18 +727,6 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
       ).not.toBeNull();
     });
 
-    it("convidada nunca consulta a sessão (não tem conta para conferir)", async () => {
-      estado.user = null;
-      estado.enderecos = [];
-      createOrder.mockResolvedValueOnce({ id: "pedido-1234abcd" });
-      await abrirOApp();
-      await preencherComoConvidada();
-      await clicarFinalizar();
-
-      expect(sessaoAindaEhDoDono).not.toHaveBeenCalled();
-      expect(createOrder).toHaveBeenCalledTimes(1);
-    });
-
     // Lote 257 (caça 13-C, achado 4): rede caída NÃO é sessão expirada.
     describe("internet fora ao conferir a sessão", () => {
       const semNenhumaSessao = () => ({ data: { session: null }, error: null });
@@ -840,6 +828,120 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
           "Sua sessão expirou",
         );
       });
+    });
+  });
+
+  // TROCA DE CONTA NA MESMA ABA (caça 27/11/2026). A visitante toca em
+  // Finalizar numa rede lenta; a conferência do frete espera a rede e, nesse
+  // meio-tempo, OUTRA aba do mesmo aparelho entra na conta B. A gravação usa a
+  // sessão ativa no instante do envio: o pedido saía na conta de B, com o nome,
+  // o WhatsApp e o endereço da visitante, e aparecia em "Meus pedidos" de B.
+  // Agora a visitante também confere, antes de enviar, que a sessão continua
+  // VAZIA — e sai pela MESMA saída do caminho de conta.
+  describe("D) a visitante confere que a sessão continua vazia antes de enviar", () => {
+    const sessaoDeOutraConta = () => ({
+      data: { session: { user: { id: "user-b" } } },
+      error: null,
+    });
+
+    it("a conferência é pedida para 'ninguém' e, com a sessão vazia, o pedido sai", async () => {
+      createOrder.mockResolvedValueOnce({ id: "pedido-1234abcd" });
+      await abrirOApp();
+      await preencherComoConvidada();
+      await clicarFinalizar();
+
+      expect(sessaoAindaEhDoDono).toHaveBeenCalledWith(
+        null,
+        expect.any(Function),
+      );
+      expect(createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it("outra aba entrou na conta B durante a espera: NÃO envia, mesma frase da conta, e o Finalizar fica livre", async () => {
+      estado.libReal = true;
+      getSession.mockResolvedValue(sessaoDeOutraConta());
+      await abrirOApp();
+      await preencherComoConvidada();
+      await clicarFinalizar();
+
+      expect(getSession).toHaveBeenCalled();
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(String(toastError.mock.calls.at(-1)?.[0])).toBe(
+        "Sua sessão expirou. Entre de novo para finalizar o pedido.",
+      );
+      expect(
+        document.querySelector('button[data-acao="entrar_na_conta"]'),
+      ).not.toBeNull();
+      // Nada saiu: nenhuma chave de pedido de convidada ficou "em curso".
+      expect(armazem.has(CHAVE_CONVIDADO)).toBe(false);
+      expect(botaoFinalizar()!.disabled).toBe(false);
+      expect(onSetBackOverride.mock.calls.at(-1)?.[0] ?? null).toBeNull();
+    });
+
+    it("a leitura da sessão demora e, quando responde, já é a da conta B: o pedido não sai", async () => {
+      // O que vale é a sessão do instante do envio (B), não a do clique
+      // (vazia): a tela só sabe quem está logado AGORA lendo de novo.
+      estado.libReal = true;
+      let liberarLeitura: (valor: unknown) => void = () => {};
+      getSession.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            liberarLeitura = resolve;
+          }),
+      );
+      await abrirOApp();
+      await preencherComoConvidada();
+      await clicarFinalizar();
+      expect(createOrder).not.toHaveBeenCalled();
+
+      await act(async () => {
+        liberarLeitura(sessaoDeOutraConta());
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(String(toastError.mock.calls.at(-1)?.[0])).toContain(
+        "Sua sessão expirou",
+      );
+    });
+
+    it("sessão vazia lida de verdade (sem dublê da conferência): o pedido sai como sempre", async () => {
+      estado.libReal = true;
+      getSession.mockResolvedValue({ data: { session: null }, error: null });
+      createOrder.mockResolvedValueOnce({ id: "pedido-1234abcd" });
+      await abrirOApp();
+      await preencherComoConvidada();
+      await clicarFinalizar();
+
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(createOrder.mock.calls[0][0].addressId ?? null).toBeNull();
+    });
+
+    it("há sessão de alguém mas a renovação não saiu por falta de internet: NÃO envia e diz 'Sem conexão'", async () => {
+      estado.libReal = true;
+      getSession.mockResolvedValue({
+        data: { session: null },
+        error: new AuthRetryableFetchError("Failed to fetch", 0),
+      });
+      await abrirOApp();
+      await preencherComoConvidada();
+      await clicarFinalizar();
+
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(String(toastError.mock.calls.at(-1)?.[0])).toBe(FRASE_SEM_CONEXAO);
+      expect(
+        document.querySelector('button[data-acao="tentar_de_novo"]'),
+      ).not.toBeNull();
+    });
+
+    it("a conferência que falha (lança) também NÃO envia (não sei nunca vira pode enviar)", async () => {
+      sessaoAindaEhDoDono.mockRejectedValue(new Error("sem rede"));
+      await abrirOApp();
+      await preencherComoConvidada();
+      await clicarFinalizar();
+
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(botaoFinalizar()!.disabled).toBe(false);
     });
   });
 });

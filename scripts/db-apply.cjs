@@ -601,6 +601,32 @@ const VERIFICACOES = {
   // 20261650000000: a categoria so com produto excluido pode sair. UMA funcao (apagar_categoria_vazia), so a recusa por produto muda
   // (produtos - excluidos); as duas travas de admin, a contagem pela categoria__usos e o DELETE seguem uma vez cada. O corpo exato
   // (md5), os atributos e a ACL sao da consulta 206a; o comportamento, da prova viva.
+  // 20261652000000: a loja nova confirma a entrega e o pagamento. UMA funcao (upsert_store_config), o corpo da 1643 com as duas chaves
+  // de confirmacao (so true, hora do banco, a primeira fica). As travas de admin e a das listas vistas seguem uma vez cada. O corpo
+  // exato (md5), os atributos, a ACL e as colunas sao da consulta 208a; o comportamento, da prova viva.
+  "20261652000000_a_loja_nova_confirma_entrega_e_pagamento.sql": [
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        {
+          texto:
+            "RAISE EXCEPTION 'Confirmação inválida.' USING ERRCODE = '22023';",
+          vezes: 1,
+        },
+        {
+          texto: "THEN COALESCE(store_config.entrega_confirmada_em, now())",
+          vezes: 1,
+        },
+        {
+          texto: "THEN COALESCE(store_config.pagamento_confirmado_em, now())",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "IF config_json ? 'vistos' THEN", vezes: 1 },
+      ],
+    },
+  ],
   "20261650000000_a_categoria_so_com_produto_excluido_pode_sair.sql": [
     {
       funcao: "apagar_categoria_vazia",

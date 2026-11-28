@@ -247,7 +247,9 @@ export function ImageAdjuster({
   );
   const [exportWidth, setExportWidth] = useState<number>(1200);
   const userSetWidth = false;
-  const exportFormat = "image/webp";
+  // JPEG, não WebP: o recorte vira a foto ORIGINAL, e iPhone com iOS 13 ou
+  // mais velho não abre WebP. O fundo branco do canvas cobre a transparência.
+  const exportFormat = "image/jpeg";
   const exportQuality = 85;
 
   const [gridType, setGridType] = useState<"thirds" | "golden" | "none">(
@@ -1137,8 +1139,8 @@ export function ImageAdjuster({
         ctx.drawImage(camada, 0, 0);
       }
 
-      // Convert canvas to Blob. O Safari não gera WebP e devolve PNG pesado:
-      // nesse caso `canvasParaBlobNoFormato` refaz em JPEG.
+      // Convert canvas to Blob. Se o navegador entregar outro formato,
+      // `canvasParaBlobNoFormato` refaz em JPEG.
       const blob = await canvasParaBlobNoFormato(
         canvas,
         exportFormat,

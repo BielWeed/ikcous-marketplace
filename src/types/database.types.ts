@@ -2533,6 +2533,7 @@ export type Database = {
           enable_coupons: boolean | null;
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
+          entrega_confirmada_em: string | null;
           free_shipping_card_style: string;
           free_shipping_min: number | null;
           home_sections: Json | null;
@@ -2551,6 +2552,7 @@ export type Database = {
           national_shipping_min: number;
           national_shipping_strategy: string;
           origin_cep: string | null;
+          pagamento_confirmado_em: string | null;
           pagamento_online: boolean;
           primary_color: string | null;
           secondary_color: string | null;
@@ -2582,6 +2584,7 @@ export type Database = {
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
+          entrega_confirmada_em?: string | null;
           free_shipping_card_style?: string;
           free_shipping_min?: number | null;
           home_sections?: Json | null;
@@ -2600,6 +2603,7 @@ export type Database = {
           national_shipping_min?: number;
           national_shipping_strategy?: string;
           origin_cep?: string | null;
+          pagamento_confirmado_em?: string | null;
           pagamento_online?: boolean;
           primary_color?: string | null;
           secondary_color?: string | null;
@@ -2631,6 +2635,7 @@ export type Database = {
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
+          entrega_confirmada_em?: string | null;
           free_shipping_card_style?: string;
           free_shipping_min?: number | null;
           home_sections?: Json | null;
@@ -2649,6 +2654,7 @@ export type Database = {
           national_shipping_min?: number;
           national_shipping_strategy?: string;
           origin_cep?: string | null;
+          pagamento_confirmado_em?: string | null;
           pagamento_online?: boolean;
           primary_color?: string | null;
           secondary_color?: string | null;

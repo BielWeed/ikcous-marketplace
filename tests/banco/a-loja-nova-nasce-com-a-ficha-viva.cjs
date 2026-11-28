@@ -104,10 +104,22 @@ async function ficha(c) {
   );
   return r.rows[0]?.j ?? null;
 }
-/** A ficha sem o que muda a cada INSERT (o carimbo da sequência e as datas). */
+/**
+ * A ficha sem o que muda a cada INSERT (o carimbo da sequência e as datas) e sem o carimbo da 20261652000000
+ * (entrega_confirmada_em e pagamento_confirmado_em): no banco sem a marca de instalação (supabase_migrations.ikcous_instalacao,
+ * o caso da fila do CI) elas recebem a hora do apply, e um INSERT só com id as deixa NULL. A loja nova COM a marca (as duas
+ * nascem NULL) é provada em a-loja-nova-confirma-entrega-e-pagamento-viva.cjs; aqui lojaNova() só confere que nascem juntas.
+ */
 const semCarimbo = (j) => {
   if (!j) return j;
-  const { identity_revision: _r, created_at: _c, updated_at: _u, ...resto } = j;
+  const {
+    identity_revision: _r,
+    created_at: _c,
+    updated_at: _u,
+    entrega_confirmada_em: _e,
+    pagamento_confirmado_em: _p,
+    ...resto
+  } = j;
   return resto;
 };
 /** Todas as linhas da tabela (como o dono), para "nada mudou". */
@@ -185,6 +197,15 @@ async function lojaNova(c) {
   assert(
     Number(j.identity_revision) > 0,
     "o gatilho branding_a5 carimbou a revisão",
+  );
+  // As confirmações da 20261652000000 nascem no MESMO apply: iguais e não nulas (banco sem a marca, now() do ADD COLUMN) ou as duas
+  // NULL (loja nova com a marca). Com a 1652 desfeita as colunas não existem e as duas vêm undefined, o que conta como NULL.
+  const entrega = j.entrega_confirmada_em;
+  const pagamento = j.pagamento_confirmado_em;
+  assert(
+    (entrega == null && pagamento == null) ||
+      (entrega != null && entrega === pagamento),
+    `as confirmações nascem juntas: iguais e não nulas, ou as duas NULL (entrega=${entrega}, pagamento=${pagamento})`,
   );
   await desfeita(c, async () => {
     assert.deepEqual(

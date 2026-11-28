@@ -71,8 +71,9 @@
 --     20261239 — a loja declara razão social, CNPJ/CPF e e-mail de atendimento — e de novo
 --     na 20261244 — a loja escolhe como entrega na cidade e em quantos dias: as chaves
 --     local_delivery_enabled e local_delivery_days —, na 20261310 — o estilo do card de frete — e na
---     20261643000000 — as listas dos ajustes nao somem entre aparelhos: confere a lista vista —, cujo corpo o
---     vivo prova agora; o da 20261244 ou o da 20261310 ainda no ar aparece como o dela, pela mesma tolerancia); a
+--     20261643000000 — as listas dos ajustes nao somem entre aparelhos: confere a lista vista — e na
+--     20261652000000 — a loja nova confirma a entrega e o pagamento —, cujo corpo o vivo prova agora; o da
+--     20261244, o da 20261310 ou o da 20261643 ainda no ar aparece como o dela, pela mesma tolerancia); a
 --     evidência de 62..64 é a ACL e o overload acima.
 --     tests/ci_conferir_banco_test.ts recalcula cada md5 a
 --     partir dos arquivos desta árvore: uma migration futura que redefina uma delas
@@ -135,7 +136,7 @@ WITH corpos AS (
     ('get_product_recommendations', '9b9fa184eb3984e8afd3ec0f80a086e7'),
     ('limpar_cotacoes_fora_da_janela', '4d398faddf7d697d539a77b8fd04d8ba'),
     ('registrar_venda_presencial', '79b779b98a5d6f6205a31309d5593eb9'),
-    ('upsert_store_config', '2f772ffd1370359ba6c64540b71c35b2')
+    ('upsert_store_config', '3c62896ca905200f1a931ac6ccfed297')
 ), acls(fn, esperado) AS (VALUES
     ('buscar_por_codigo_barras', 'anon=false authenticated=true service_role=true public=nao'),
     ('get_admin_orders_cancelados_recentes', 'anon=false authenticated=true service_role=true public=nao'),
@@ -296,8 +297,9 @@ WITH corpos AS (
   UNION ALL
   SELECT 'corpo final ' || f.fn, f.h,
          CASE WHEN f.fn = 'upsert_store_config'
-                   AND (c.h = '391e8e1064400df5aea579f3472b203c' OR c.h = 'aa4ed730ac6ad3d3c2644b4285ff39a9')
-              THEN '2f772ffd1370359ba6c64540b71c35b2'
+                   AND (c.h = '391e8e1064400df5aea579f3472b203c' OR c.h = 'aa4ed730ac6ad3d3c2644b4285ff39a9'
+                        OR c.h = '2f772ffd1370359ba6c64540b71c35b2')
+              THEN '3c62896ca905200f1a931ac6ccfed297'
               WHEN f.fn = 'get_admin_orders_cancelados_recentes'
                    AND (c.h = '99a9e4cb232aef020bf297ddcd1901f0' OR c.h = '9567454f17698f3f0624cca0b06458cd')
               THEN '80ec13f92e224b21d5308a063e88fb6e'

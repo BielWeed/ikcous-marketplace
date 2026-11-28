@@ -293,6 +293,18 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                       ? ""
                       : valorDesconto
                 }
+                // Mesma trava do `LocalBufferedInput`: com o foco no número,
+                // a roda subia/descia a porcentagem (15 virava 14) enquanto a
+                // lojista só rolava a página. Tirar o foco devolve a roda à
+                // página. Em R$ o campo é texto e a roda não o muda.
+                onWheel={(ev) => {
+                  if (
+                    ev.currentTarget.type === "number" &&
+                    document.activeElement === ev.currentTarget
+                  ) {
+                    ev.currentTarget.blur();
+                  }
+                }}
                 onChange={(ev) => {
                   const texto = ev.target.value;
                   if (descontoEmReais) {
