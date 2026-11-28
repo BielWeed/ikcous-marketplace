@@ -26,7 +26,11 @@ const PERCENTUAL_OFF = /(\d[\d,]*)\s*%\s*OFF\b/gi;
  * R$ 70" e "leve 1 vestido R$ 70" citam o preço do produto e são conferidos.
  */
 const ANTES_DE_COMBO = /\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}$/i;
-const DEPOIS_DE_PRECO_UNITARIO = /^\s+(?:cada|(?:a|por)\s+unidade)\b/i;
+// "R$ 70 cada" e "R$ 70 a/à/por unidade" é preço da peça; "R$ 70 cada 2
+// peças" é preço do grupo (fica fora, como o combo).
+const DEPOIS_DE_PRECO_UNITARIO =
+  /^\s+(?:cada\b(?!\s*\d)|(?:a|à|À|por)\s+unidade\b)/i;
+const DEPOIS_DE_PRECO_DE_GRUPO = /^\s+cada\s+\d/i;
 const ANTES_DE_VALOR_DE_FORA =
   /(?:\bacima\s+de\s*|\bdesconto\s+de\s*|\bcupom(?:\sde\sdesconto)?(?:\sde)?\s*[:\-–]?\s*|\bfrete(?:\sfixo)?(?:\sde)?\s*[:\-–]?\s*)$/i;
 const DEPOIS_DE_VALOR_DE_FORA = /^\s*(?:OFF\b|de\s+desconto\b)/i;
@@ -68,6 +72,7 @@ export function valoresCitados(texto: string | null | undefined): {
     if (
       ANTES_DE_VALOR_DE_FORA.test(trechoAntes) ||
       DEPOIS_DE_VALOR_DE_FORA.test(depois) ||
+      DEPOIS_DE_PRECO_DE_GRUPO.test(depois) ||
       (ANTES_DE_COMBO.test(trechoAntes) &&
         !DEPOIS_DE_PRECO_UNITARIO.test(depois))
     ) {

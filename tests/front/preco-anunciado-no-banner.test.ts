@@ -225,6 +225,31 @@ describe("precoAnunciadoVelho — o texto bate com o preço de agora?", () => {
     expect(precoAnunciadoVelho(["Leve 2 por R$ 150"], vestido(90))).toBeNull();
   });
 
+  it.each(["R$ 70 cada 2 peças", "Leve 2 por R$ 70 cada 2 peças"])(
+    "'%s' é preço do grupo, não da peça",
+    (texto) => {
+      expect(precoAnunciadoVelho([texto], vestido(90))).toBeNull();
+    },
+  );
+
+  it.each(["COMPRE 2 PEÇAS R$ 70 À UNIDADE", "Compre 2 peças R$ 70 à unidade"])(
+    "'%s' (com acento) é preço da peça e é conferido",
+    (texto) => {
+      expect(precoAnunciadoVelho([texto], vestido(90))).toEqual({
+        tipo: "preco",
+        citado: 70,
+        atual: 90,
+        aPartirDe: false,
+      });
+    },
+  );
+
+  it("'cadastre-se' não vira preço por unidade", () => {
+    expect(
+      precoAnunciadoVelho(["Leve 2 por R$ 150 cadastre-se"], vestido(90)),
+    ).toBeNull();
+  });
+
   it("o preço do produto no mesmo texto do combo continua sendo conferido", () => {
     expect(
       precoAnunciadoVelho(["Por R$ 70,00 · Leve 2 por R$ 150"], vestido(100)),
