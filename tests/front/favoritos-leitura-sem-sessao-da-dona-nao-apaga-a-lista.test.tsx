@@ -28,6 +28,7 @@ const mundo = vi.hoisted(() => ({
   leituras: 0,
   sessaoDe: "conta-a" as string | null,
   erroDaSessao: null as unknown,
+  sessaoPendente: false,
   ouvintes: new Set<(evento: string, sessao: unknown) => void>(),
 }));
 const produtos = [
@@ -67,12 +68,15 @@ vi.mock("@/lib/supabase", () => ({
       }),
     }),
     auth: {
-      getSession: async () => ({
-        data: {
-          session: mundo.sessaoDe ? { user: { id: mundo.sessaoDe } } : null,
-        },
-        error: mundo.erroDaSessao,
-      }),
+      getSession: async () => {
+        if (mundo.sessaoPendente) return new Promise<never>(() => {});
+        return {
+          data: {
+            session: mundo.sessaoDe ? { user: { id: mundo.sessaoDe } } : null,
+          },
+          error: mundo.erroDaSessao,
+        };
+      },
       onAuthStateChange: (ouvinte: Ouvinte) => {
         mundo.ouvintes.add(ouvinte);
         return {
@@ -147,6 +151,7 @@ beforeEach(() => {
   mundo.usuario = { id: "conta-a" };
   mundo.linhas = [];
   mundo.leituras = 0;
+  mundo.sessaoPendente = false;
   mundo.ouvintes.clear();
   renovacaoVoltou();
   const valores = new Map<string, string>();
@@ -195,6 +200,32 @@ describe("Favoritos — lista vazia sem a sessão da dona não apaga os coraçõ
 
     expect(ids()).toEqual(["caneca", "jarra"]);
     expect(atual().erro).not.toBeNull();
+  });
+
+  it("sessão sem resposta: encerra o carregamento com erro e mantém os favoritos", async () => {
+    mundo.linhas = ["caneca"];
+    await renderizar();
+    expect(ids()).toEqual(["caneca"]);
+
+    vi.useFakeTimers();
+    try {
+      mundo.linhas = [];
+      mundo.sessaoPendente = true;
+      await act(async () => {
+        atual().refresh();
+      });
+      expect(atual().loading).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_001);
+      });
+
+      expect(atual().loading).toBe(false);
+      expect(atual().erro).toBe("Não conseguimos carregar seus favoritos.");
+      expect(ids()).toEqual(["caneca"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renovação voltou (TOKEN_REFRESHED da mesma conta): relê uma vez e acerta a lista", async () => {

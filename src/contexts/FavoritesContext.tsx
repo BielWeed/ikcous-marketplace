@@ -452,7 +452,11 @@ export function FavoritesProvider({
           !error &&
           Array.isArray(data) &&
           data.length === 0 &&
-          !(await sessaoAindaEhDoDono(donoDaRodada));
+          !(await aguardarComPrazo(
+            sessaoAindaEhDoDono(donoDaRodada),
+            PRAZO_DA_LEITURA_MS,
+            erroDeConsultaSemResposta,
+          ).catch(() => false));
         if (ehVelha()) return;
         if (error) {
           console.error("Error fetching favorites", error);
@@ -914,8 +918,8 @@ export function FavoritesProvider({
   // resposta que atravessa uma gravação em voo (toque ainda não confirmado não é
   // pisado; a fila de pendentes em disco só sai quando o servidor confirma).
   // UMA releitura de reconexão por vez e por conta: enquanto a anterior não
-  // termina (no máximo `PRAZO_DA_LEITURA_MS`), outro gatilho não abre uma segunda
-  // -- `online` e a reconexão do canal costumam vir juntos.
+  // termina (consulta e eventual conferência da sessão, ambas com prazo),
+  // outro gatilho não abre uma segunda -- `online` e o canal costumam vir juntos.
   const releituraDeReconexaoEmVooRef = useRef<string | null>(null);
   const relerAoReconectar = useCallback(() => {
     if (!userId || releituraDeReconexaoEmVooRef.current === userId) return;

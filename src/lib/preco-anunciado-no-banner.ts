@@ -25,8 +25,45 @@ const PERCENTUAL_OFF = /(\d[\d,]*)\s*%\s*OFF\b/gi;
  * só tira o valor que é dos outros: "com desconto R$ 79,90", "frete grátis
  * R$ 70" e "leve 1 vestido R$ 70" citam o preço do produto e são conferidos.
  */
+const ANTES_DE_COMBO = /\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}$/i;
+// "R$ 70 cada" e "R$ 70 a/à/por unidade" é preço da peça; "R$ 70 cada 2
+// peças" / "cada duas" / "cada 1 dúzia" é preço do grupo (fica fora, como o
+// combo, e é conferido antes). Na dúvida, não avisar: aviso falso irrita mais
+// que aviso que falta. Só espaço na mesma linha: "R$ 70 cada" + quebra + "2
+// cores" segue sendo preço da peça.
+// No combo, "cada" só é preço da peça quando fecha a frase ("cada", "cada
+// uma", "cada peça"); "cada kit" segue sendo o preço do grupo.
+const DEPOIS_DE_POR_UNIDADE = /^\s+(?:a|à|À|por)\s+unidade\b/i;
+const DEPOIS_DE_CADA = /^\s+cada/i;
+const PECA_DEPOIS_DE_CADA = /^[^\S\r\n]+(?:um|uma|pe[cç]a|unidade|item)\b/i;
+// Lista do que É permitido: "cada"/"por unidade" só é o preço da peça quando
+// encerra o texto inteiro (só espaço e pontuação final depois). Qualquer outra
+// coisa depois ("cada kit", "(kit com 2)", "por unidade. Unidade = kit") tira a
+// certeza, e na dúvida o combo fica fora como na base.
+const FECHA_A_FRASE = /^[\s.!?…]*$/;
+
+/** "Leve 2 kits por R$ 150 cada": o "cada" é do kit, não da peça. */
+const COMBO_DE_KITS =
+  /\b(?:kits?|combos?|conjuntos?|pacotes?|caixas?|lotes?)\b[^\d$]{0,15}$/i;
+
+function precoUnitarioDepois(depois: string, antes: string): boolean {
+  if (COMBO_DE_KITS.test(antes)) return false;
+  // A mesma regra para "por unidade" e "cada".
+  const porUnidade = DEPOIS_DE_POR_UNIDADE.exec(depois);
+  if (porUnidade) {
+    return FECHA_A_FRASE.test(depois.slice(porUnidade[0].length));
+  }
+  const cada = DEPOIS_DE_CADA.exec(depois);
+  if (!cada) return false;
+  let resto = depois.slice(cada[0].length);
+  const peca = PECA_DEPOIS_DE_CADA.exec(resto);
+  if (peca) resto = resto.slice(peca[0].length);
+  return FECHA_A_FRASE.test(resto);
+}
+const DEPOIS_DE_PRECO_DE_GRUPO =
+  /^\s+cada[^\S\r\n]+(?:\d|(?:dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|d[uú]zia|dezena|centena|meia[^\S\r\n]+d[uú]zia)\b)/i;
 const ANTES_DE_VALOR_DE_FORA =
-  /(?:\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}|\bacima\s+de\s*|\bdesconto\s+de\s*|\bcupom(?:\sde\sdesconto)?(?:\sde)?\s*[:\-–]?\s*|\bfrete(?:\sfixo)?(?:\sde)?\s*[:\-–]?\s*)$/i;
+  /(?:\bacima\s+de\s*|\bdesconto\s+de\s*|\bcupom(?:\sde\sdesconto)?(?:\sde)?\s*[:\-–]?\s*|\bfrete(?:\sfixo)?(?:\sde)?\s*[:\-–]?\s*)$/i;
 const DEPOIS_DE_VALOR_DE_FORA = /^\s*(?:OFF\b|de\s+desconto\b)/i;
 
 /**
@@ -62,16 +99,25 @@ export function valoresCitados(texto: string | null | undefined): {
   const antes = (achado: RegExpExecArray) => texto.slice(0, achado.index);
   for (const achado of texto.matchAll(REAIS)) {
     const depois = texto.slice(achado.index + achado[0].length);
+    const trechoAntes = antes(achado);
     if (
-      ANTES_DE_VALOR_DE_FORA.test(antes(achado)) ||
-      DEPOIS_DE_VALOR_DE_FORA.test(depois)
+      ANTES_DE_VALOR_DE_FORA.test(trechoAntes) ||
+      DEPOIS_DE_VALOR_DE_FORA.test(depois) ||
+      DEPOIS_DE_PRECO_DE_GRUPO.test(depois) ||
+      (ANTES_DE_COMBO.test(trechoAntes) &&
+        !precoUnitarioDepois(depois, trechoAntes))
     ) {
       continue;
     }
     centavos.push(centavosDe(achado[1]));
   }
   for (const achado of texto.matchAll(PERCENTUAL_OFF)) {
-    if (ANTES_DE_VALOR_DE_FORA.test(antes(achado))) continue;
+    const trechoAntes = antes(achado);
+    if (
+      ANTES_DE_VALOR_DE_FORA.test(trechoAntes) ||
+      ANTES_DE_COMBO.test(trechoAntes)
+    )
+      continue;
     const percentual = Number(achado[1].replace(",", "."));
     if (Number.isFinite(percentual)) percentuais.push(percentual);
   }

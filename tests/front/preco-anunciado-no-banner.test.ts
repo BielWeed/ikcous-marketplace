@@ -207,6 +207,78 @@ describe("precoAnunciadoVelho — o texto bate com o preço de agora?", () => {
     ).toBeNull();
   });
 
+  it.each(["cada", "a unidade", "por unidade"])(
+    "compra múltipla com preço %s avisa só se o preço unitário divergir",
+    (unidade) => {
+      const texto = `Compre 2 blusas a R$ 70 ${unidade}`;
+      expect(precoAnunciadoVelho([texto], vestido(90))).toEqual({
+        tipo: "preco",
+        citado: 70,
+        atual: 90,
+        aPartirDe: false,
+      });
+      expect(precoAnunciadoVelho([texto], vestido(70))).toBeNull();
+    },
+  );
+
+  it("preço total de duas peças não é comparado ao preço unitário", () => {
+    expect(precoAnunciadoVelho(["Leve 2 por R$ 150"], vestido(90))).toBeNull();
+  });
+
+  it.each([
+    "Blusas por R$ 70 cada\n2 cores disponíveis",
+    "Compre 2 blusas a R$ 70\ncada",
+    "Meias avulsas: R$ 70 cada meia",
+    "Compre 2 blusas a R$ 70 cada uma!",
+    "Leve 3 por R$ 70 cada peça",
+  ])("'%s' é preço da peça e é conferido", (texto) => {
+    expect(precoAnunciadoVelho([texto], vestido(90))).toEqual({
+      tipo: "preco",
+      citado: 70,
+      atual: 90,
+      aPartirDe: false,
+    });
+  });
+
+  it.each([
+    "R$ 70 cada 2 peças",
+    "Leve 2 por R$ 70 cada 2 peças",
+    "Leve 2 blusas por R$ 70 cada duas peças",
+    "R$ 100 CADA TRÊS",
+    "R$ 70 cada sete peças",
+    "R$ 70 cada 10 peças",
+    "Meias no atacado: R$ 70 cada 1 dúzia",
+    "Meias no atacado: R$ 70 cada dúzia",
+    "R$ 40 cada meia dúzia",
+    "Leve 2 blusas por R$ 150 cada kit",
+    "Leve 2 blusas por R$ 150 cada\nkit de 2 peças",
+    "Leve 2 blusas por R$ 150 por unidade de venda (kit com 2 peças)",
+    "Leve 2 blusas por R$ 150 por unidade (kit com 2 peças)",
+    "Leve 2 blusas por R$ 150 cada, kit fechado",
+    "Leve 2 blusas por R$ 150 por unidade. Unidade de venda: kit com 2 peças.",
+    "Leve 2 kits por R$ 150 cada",
+  ])("'%s' é preço do grupo, não da peça", (texto) => {
+    expect(precoAnunciadoVelho([texto], vestido(90))).toBeNull();
+  });
+
+  it.each(["COMPRE 2 PEÇAS R$ 70 À UNIDADE", "Compre 2 peças R$ 70 à unidade"])(
+    "'%s' (com acento) é preço da peça e é conferido",
+    (texto) => {
+      expect(precoAnunciadoVelho([texto], vestido(90))).toEqual({
+        tipo: "preco",
+        citado: 70,
+        atual: 90,
+        aPartirDe: false,
+      });
+    },
+  );
+
+  it("'cadastre-se' não vira preço por unidade", () => {
+    expect(
+      precoAnunciadoVelho(["Leve 2 por R$ 150 cadastre-se"], vestido(90)),
+    ).toBeNull();
+  });
+
   it("o preço do produto no mesmo texto do combo continua sendo conferido", () => {
     expect(
       precoAnunciadoVelho(["Por R$ 70,00 · Leve 2 por R$ 150"], vestido(100)),
