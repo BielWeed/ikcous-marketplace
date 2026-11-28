@@ -136,6 +136,9 @@ describe("AdminLayout — esconder e voltar rápido não deixa a bolinha surda",
     await act(async () => {
       raiz.unmount();
     });
+    // O tempo real é um só para o arquivo: a saída do desmonte fica confirmada
+    // para o próximo teste não achar o canal antigo ainda "saindo".
+    h.tempoReal?.confirmarSaidas();
     hospedeiro.remove();
     Reflect.deleteProperty(document, "visibilityState");
     vi.restoreAllMocks();
@@ -157,6 +160,44 @@ describe("AdminLayout — esconder e voltar rápido não deixa a bolinha surda",
 
     await mudarVisibilidade("hidden");
     // Volta ANTES da confirmação da saída (rede lenta, troca rápida de aba).
+    await mudarVisibilidade("visible");
+    await act(async () => {
+      tempoReal.confirmarSaidas();
+    });
+    await esperarAte(
+      "os dois canais juntados de novo",
+      () =>
+        tempoReal.juntados("admin-layout-orders-badge").length === 1 &&
+        tempoReal.juntados("admin-layout-questions-badge").length === 1,
+    );
+
+    const antes = h.conferencias;
+    await act(async () => {
+      tempoReal.emitir("marketplace_orders");
+    });
+    await esperarAte("recontar com o pedido", () => h.conferencias > antes);
+  });
+
+  // Esconder de novo, ainda sem canal (a assinatura esperava a saída anterior),
+  // não pode trocar a espera pela de uma saída VAZIA: essa termina na hora, a
+  // segunda volta assinaria o canal ANTIGO (ainda saindo) e, confirmada a
+  // saída, a bolinha ficaria surda.
+  it("escondeu e voltou DUAS vezes antes de o servidor confirmar a saída: os canais se juntam de novo e um pedido reconta", async () => {
+    const { AdminLayout } = await import("@/components/layouts/AdminLayout");
+    await act(async () => {
+      raiz.render(
+        <AdminLayout currentView="admin-orders" onNavigate={vi.fn()}>
+          <div />
+        </AdminLayout>,
+      );
+    });
+    await esperarAte("primeira contagem", () => h.conferencias >= 1);
+    const tempoReal = h.tempoReal!;
+    expect(tempoReal.juntados("admin-layout-orders-badge")).toHaveLength(1);
+
+    await mudarVisibilidade("hidden");
+    await mudarVisibilidade("visible");
+    await mudarVisibilidade("hidden");
     await mudarVisibilidade("visible");
     await act(async () => {
       tempoReal.confirmarSaidas();

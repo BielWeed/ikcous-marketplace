@@ -203,6 +203,20 @@ describe("SolicitarDevolucaoSheet — o frete só volta no reembolso", () => {
     expect(texto).not.toContain("frete de ida");
   });
 
+  // Frete R$ 0 sem o pedido voltando inteiro com reembolso: nem a promessa nem
+  // a regra do "frete de ida" — não houve frete de ida para explicar.
+  it("defeito, uma de duas unidades, REEMBOLSO, frete R$ 0: não explica a regra do frete de ida", async () => {
+    const texto = await ateARevisaoComDefeito("reembolso", 1, 0);
+    expect(texto).not.toContain(FRASE_DO_FRETE);
+    expect(texto).not.toContain("frete de ida");
+  });
+
+  it("defeito, pedido inteiro, TROCA, frete R$ 0: não explica a regra do frete de ida", async () => {
+    const texto = await ateARevisaoComDefeito("troca", 2, 0);
+    expect(texto).not.toContain(FRASE_DO_FRETE);
+    expect(texto).not.toContain("frete de ida");
+  });
+
   it("defeito, pedido inteiro, REEMBOLSO, frete desconhecido: não promete frete de volta", async () => {
     const texto = await ateARevisaoComDefeito("reembolso", 2, "desconhecido");
     expect(texto).not.toContain(FRASE_DO_FRETE);
