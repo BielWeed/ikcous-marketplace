@@ -1063,6 +1063,9 @@ jobs:
       - name: Prova viva do histórico da opção na lista e no rastreio (20261410000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/rotulo-historico-na-lista-e-no-rastreio-viva.cjs
+      - name: Prova viva de reenvio do código de consulta de pedido (20261665000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/codigo-do-pedido-em-dois-celulares-viva.cjs
       - name: Prova viva do código de cupom único em qualquer grafia (20261411000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-cupom-nao-repete-o-codigo-em-outra-grafia-viva.cjs

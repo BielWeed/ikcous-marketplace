@@ -586,9 +586,9 @@ export function OrderSearch({
                     </span>
                   </div>
                   <p>
-                    Não chegou? Confira o spam ou lixo eletrônico. Para pedir
-                    outro código, toque em Voltar e depois em Enviar Código.
-                    Pode ser preciso esperar até 1 minuto.
+                    Não chegou? Confira o spam ou lixo eletrônico. Para
+                    reenviar, toque em Voltar e depois em Enviar Código. Pode
+                    ser preciso esperar até 1 minuto.
                   </p>
 
                   <div className="space-y-3">

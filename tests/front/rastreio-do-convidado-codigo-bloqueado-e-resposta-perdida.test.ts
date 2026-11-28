@@ -89,6 +89,26 @@ describe("fetchOrdersByOtp — código bloqueado e código antigo", () => {
     expect(msg).not.toMatch(/Rest[am]/);
   });
 
+  it("limite do código reenviado: avisa para aguardar a validade nas duas respostas", async () => {
+    const { fetchOrdersByOtp } = useOrders(false, false);
+    for (const tentativas of [{ restantes: 0 }, {}]) {
+      vi.mocked(supabase.rpc).mockResolvedValueOnce({
+        data: {
+          ok: false,
+          motivo: "bloqueado_ate_expirar",
+          error: "Código bloqueado por excesso de tentativas.",
+          ...tentativas,
+        },
+        error: null,
+      } as any);
+
+      expect(await fetchOrdersByOtp("a@b.c", "000000", TRIO)).toEqual([]);
+      expect(ultimoToast()).toBe(
+        "Código bloqueado por excesso de tentativas. Aguarde o código vencer antes de pedir outro.",
+      );
+    }
+  });
+
   it("ainda com tentativas (restantes 1, singular): lembra que só vale o código do e-mail mais recente", async () => {
     vi.mocked(supabase.rpc).mockResolvedValue({
       data: { ok: false, error: "Código inválido ou expirado.", restantes: 1 },

@@ -390,6 +390,8 @@ async function devolverAoEstadoAnteriorAoCustoDoDia(c) {
  */
 async function desfazerSucessorasDa99(c) {
   conferirLista();
+  // Reenvio não redefine uma das 42, mas é sucessor do rastreio da 1410.
+  await require("./rotulo-historico-posterior.cjs").desfazerReenvioNaTransacao(c);
   // A 20261655000000 (a loja nova só vende o que confirmou) não redefine nenhum dos 42, mas a vitrine
   // dela (v_store_config) lê as duas colunas da 1652, e o rollback da 1652 apaga essas colunas: ela cai
   // ANTES, pelo rollback-manual dela (a mesma ordem que valeria em produção). Não entra em `desfeitas`
@@ -433,6 +435,9 @@ async function reaplicarSucessorasDa99(c) {
       `${s.nome}: reaplicar não deixou o corpo dela`,
     );
   }
+  const { MIGRATION_REENVIO } = require("./rotulo-historico-posterior.cjs");
+  await c.query(ler(MIGRATION_REENVIO));
+
   // A dependente que desfazerSucessorasDa99 tirou antes da 1652 volta por último (estado da árvore).
   const soVende = require("./a-loja-nova-so-vende-posterior.cjs");
   await c.query(ler(soVende.NOME_DA_MIGRATION));

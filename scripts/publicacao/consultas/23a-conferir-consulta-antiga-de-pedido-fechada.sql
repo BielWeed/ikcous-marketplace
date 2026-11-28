@@ -62,7 +62,7 @@ WITH alvo(nome, assinatura) AS (
          COALESCE((SELECT CASE WHEN f.m IN ('53b5e632657b82206daa6aa992a50c0d',
                                             '34199947ecded0fd9400b5fd0276ea47',
                                             '02208ac9d2abe2e8b03790349d491ecb',
-                                            '96f080db2a488d8887a2dfd959bd9862')
+                                            '96f080db2a488d8887a2dfd959bd9862', '95d6957283869602683047a97d608074')
                                THEN '53b5e632657b82206daa6aa992a50c0d'
                                ELSE f.m END
                      FROM fn f WHERE f.nome = 'get_orders_by_otp_v2'), 'AUSENTE')

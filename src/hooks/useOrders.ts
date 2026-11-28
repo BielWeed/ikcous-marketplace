@@ -6199,12 +6199,14 @@ export function useOrders(
         if (data && typeof data === "object" && "ok" in data) {
           if (!data.ok) {
             const restantes = (data as any).restantes;
-            // `restantes === 0` é a 5ª tentativa errada: a RPC já bloqueou o
-            // código mas devolve o texto de "inválido" desta última rodada.
-            // Sem esta frase a pessoa seguiria digitando um código que já
-            // não vale. Com tentativas sobrando, lembra que a RPC só olha o
-            // código do e-mail MAIS RECENTE (um código antigo, digitado
-            // depois de pedir outro, conta como erro).
+            // No fluxo novo, reenviar não desbloqueia nem renova o código.
+            // Sem motivo, mantém a orientação da versão anterior da RPC.
+            if ((data as any).motivo === "bloqueado_ate_expirar") {
+              toast.error(
+                "Código bloqueado por excesso de tentativas. Aguarde o código vencer antes de pedir outro.",
+              );
+              return [];
+            }
             toast.error(
               restantes === 0
                 ? "Código bloqueado por excesso de tentativas. Peça um novo código."
