@@ -10,6 +10,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   aguardarComPrazo,
+  ehConexaoCaiuSemResposta,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
@@ -145,6 +146,11 @@ const textoRegistradoCron = (numero: string) =>
 // ANTES de a lista ser relida: ele não afirma que ela já foi atualizada.
 const textoSemResposta = (numero: string) =>
   `Devolução do pedido #${numero}: sem resposta da rede. Não dá para saber se a devolução foi registrada. Confira a lista de devoluções antes de tentar de novo.`;
+// A conexão CAIU antes da resposta (iPhone trocando de app): a RPC pode ter
+// criado a linha, e a lista é relida logo depois — por isso a frase manda
+// conferir a lista em vez de "tente de novo".
+const textoConexaoCaiu = (numero: string) =>
+  `Devolução do pedido #${numero}: a conexão caiu antes da resposta. A devolução pode ter sido registrada: confira a lista abaixo antes de tocar de novo.`;
 // A mesma intenção chegou de novo e o servidor já a tinha registrado (a
 // primeira tentativa chegou, a resposta é que se perdeu): nada novo foi pedido.
 // A intenção acabou aqui, então o aviso ensina a saída da devolução LEGÍTIMA de
@@ -418,6 +424,13 @@ export function useEstornosDoPedido(
         // A chave da intenção FICA: a recusa não gravou nada, e a falha de rede
         // pode ter gravado — o próximo toque de igual valor a repete.
         if (error) {
+          // Queda sem resposta: incerta como o prazo (a chave da intenção fica;
+          // o próximo toque igual a repete). Relê até valer, como no prazo.
+          if (ehConexaoCaiuSemResposta(error)) {
+            toast.warning(textoConexaoCaiu(numero), { duration: 15_000 });
+            await relerAteValer();
+            return;
+          }
           toast.error(
             `Devolução do pedido #${numero}: ${mensagemDoErro(error, ERRO_GENERICO)}`,
           );

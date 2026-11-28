@@ -327,3 +327,64 @@ describe("painel de devoluções — avisos da etiqueta reversa (achado A2)", ()
     );
   });
 });
+
+// Caça 28/11 (M1): o Melhor Envio recusou a compra (nada foi pago). A frase da
+// edge vinha com o status cru em inglês num toast de 4 s, e o botão voltava:
+// a lojista tocava de novo sem saber que o envio podia estar no carrinho do
+// Melhor Envio. Agora um aviso FIXO na ficha diz o que fazer antes de repetir,
+// e o detalhe do Melhor Envio fica em texto secundário.
+describe("painel de devoluções — compra da etiqueta reversa recusada (M1)", () => {
+  const FRASE_DA_EDGE =
+    'O Melhor Envio não fechou a compra do envio reverso (status "pending") — nada foi pago, o envio saiu do carrinho e o código de postagem não foi gerado. Confira o saldo da sua conta no Melhor Envio e tente de novo.';
+  const ORIENTACAO =
+    "O Melhor Envio não concluiu a compra: nada foi cobrado. Antes de tentar de novo, abra o carrinho do Melhor Envio e apague o envio desta devolução, se ele estiver lá. Depois confira o saldo e toque em Gerar código de postagem de novo.";
+
+  async function gerarComRecusa(corpo: Record<string, unknown>) {
+    invoke.mockResolvedValueOnce({ data: corpo, error: null });
+    await abrirFicha();
+    await clicar(botao("Gerar código de postagem"));
+    await clicar(botao("Confirmar e gerar"));
+  }
+
+  it("mostra a orientação fixa na ficha, com o detalhe da edge à parte, e o toast fica 15 s", async () => {
+    await gerarComRecusa({ error: FRASE_DA_EDGE });
+
+    const aviso = hospedeiro.querySelector<HTMLElement>(
+      '[data-testid="aviso-da-etiqueta-reversa"]',
+    );
+    expect(aviso?.getAttribute("role")).toBe("alert");
+    expect(aviso?.textContent).toContain(ORIENTACAO);
+    expect(aviso?.textContent).toContain(FRASE_DA_EDGE);
+    expect(toast.error).toHaveBeenCalledWith(ORIENTACAO, { duration: 15_000 });
+    // O aviso não some com o tempo: segue na ficha depois do toast.
+    expect(botao("Gerar código de postagem")).toBeTruthy();
+  });
+
+  it("controle: recusa que não é da compra (ex.: celular inválido) mostra a frase da edge, sem mandar ao carrinho", async () => {
+    const recusa =
+      "O pedido não tem um celular válido do cliente — o Melhor Envio exige o celular de quem devolve. Use envio pelo cliente.";
+    await gerarComRecusa({ error: recusa });
+
+    const aviso = hospedeiro.querySelector<HTMLElement>(
+      '[data-testid="aviso-da-etiqueta-reversa"]',
+    );
+    expect(aviso?.textContent).toContain(recusa);
+    expect(aviso?.textContent).not.toContain("carrinho");
+    expect(toast.error).toHaveBeenCalledWith(recusa, { duration: 15_000 });
+  });
+
+  it("tocar em Gerar de novo apaga o aviso antigo", async () => {
+    await gerarComRecusa({ error: FRASE_DA_EDGE });
+    expect(
+      hospedeiro.querySelector('[data-testid="aviso-da-etiqueta-reversa"]'),
+    ).not.toBeNull();
+
+    invoke.mockImplementationOnce(() => new Promise(() => {}));
+    await clicar(botao("Gerar código de postagem"));
+    await clicar(botao("Confirmar e gerar"));
+
+    expect(
+      hospedeiro.querySelector('[data-testid="aviso-da-etiqueta-reversa"]'),
+    ).toBeNull();
+  });
+});
