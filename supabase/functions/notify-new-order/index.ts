@@ -37,6 +37,10 @@
  *    em `avisos_ao_lojista`, a mesma do webhook (`avisarAdminUmaVez`). Chamar
  *    de novo dentro da janela não repete o push — inclusive a nova tentativa
  *    do checkout que devolve o mesmo pedido.
+ * 5. Push que não chegou a ninguém ganha UMA segunda tentativa na MESMA
+ *    chamada, depois de `ESPERA_DA_SEGUNDA_TENTATIVA_MS` (lote-582, 28/11/2026),
+ *    pela mesma reserva. Limite: se o worker for encerrado antes (prazo de vida
+ *    da edge), a segunda tentativa não acontece — a reserva já estava livre.
  *
  * O QUE ELA NÃO FAZ
  *
@@ -46,7 +50,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { avisarAdminUmaVez, dispararPushContadoReal } from "../_shared/aviso-ao-lojista.ts";
-import { corsHeaders, readKey } from "../_shared/webpush.ts";
+import { corsHeaders, dispararSemEsperarCliente, readKey } from "../_shared/webpush.ts";
 
 /**
  * Quanto tempo depois de criado um pedido ainda vale avisar.
@@ -55,6 +59,15 @@ import { corsHeaders, readKey } from "../_shared/webpush.ts";
  * bastante para que um id vazado não vire canal de spam para o lojista.
  */
 export const JANELA_MINUTOS = 15;
+
+/**
+ * Quanto esperar antes da SEGUNDA tentativa do aviso que não chegou a ninguém
+ * (lote-582). Curto de propósito: o caso que ela pega é o tropeço passageiro do
+ * push service (5xx, resposta lenta), e a espera roda dentro do prazo de vida do
+ * worker da edge (150 s no plano gratuito, 400 s no pago) — quanto mais longa,
+ * maior a chance de o worker ser encerrado antes dela.
+ */
+export const ESPERA_DA_SEGUNDA_TENTATIVA_MS = 15_000;
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -145,7 +158,11 @@ export type NotifyNewOrderDeps = {
   supabase?: any;
   enviarPushContado?: (a: { supabase: any; aviso: any }) => Promise<number>;
   agora?: () => number;
+  /** A espera antes da segunda tentativa (o teste não usa relógio de verdade). */
+  esperar?: (ms: number) => Promise<void>;
 };
+
+const esperarDeVerdade = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
  * O handler, exportado (12/10/2026) para o teste exercitar a resposta de ponta
@@ -192,19 +209,55 @@ export async function handler(req: Request, deps: NotifyNewOrderDeps = {}): Prom
     // (`avisos_ao_lojista`, migration 20261191000000). Quem encontra o aviso
     // 'enviado' ou 'em_envio' não manda de novo. Push que não chegou a
     // ninguém (nenhum admin inscrito, entrega falhou) libera a reserva, e a
-    // próxima chamada tenta de novo. Reserva fora do ar: o push sai mesmo
-    // assim — a falha aberta de antes da reserva existir.
+    // segunda tentativa abaixo (ou outra chamada) tenta de novo. Reserva fora
+    // do ar: o push sai mesmo assim — a falha aberta de antes da reserva existir.
     //
     // A resposta não leva mais a contagem de inscrições: o front só registra
     // o erro, e a contagem fica no log da função.
-    await avisarAdminUmaVez({
-      supabase,
-      enviarPushContado: deps.enviarPushContado ??
-        ((a) => dispararPushContadoReal({ ...a, rotulo: "notify-new-order" })),
-      chave: `pedido_novo:${pedido.id}`,
-      aviso: montarAviso(pedido),
-      rotulo: "notify-new-order",
-    });
+    const empurrar = deps.enviarPushContado ??
+      ((a) => dispararPushContadoReal({ ...a, rotulo: "notify-new-order" }));
+    const aviso = montarAviso(pedido);
+    // Devolve quantas inscrições ESTA tentativa alcançou, ou `null` quando ela nem
+    // tentou (a reserva disse 'enviado' ou 'em_envio': outra chamada cuida).
+    // Push que lança conta como 0, como em `avisarAdminUmaVez`.
+    const tentar = async (): Promise<number | null> => {
+      let entregues: number | null = null;
+      await avisarAdminUmaVez({
+        supabase,
+        enviarPushContado: async (a) => {
+          entregues = 0;
+          entregues = await empurrar(a);
+          return entregues;
+        },
+        chave: `pedido_novo:${pedido.id}`,
+        aviso,
+        rotulo: "notify-new-order",
+      });
+      return entregues;
+    };
+
+    // lote-582: a SEGUNDA tentativa. A única chamada desta função é a do
+    // navegador da cliente, uma vez só; até aqui a reserva liberada esperava
+    // uma "próxima chamada" que não vinha. Entrega 0 nesta tentativa → espera
+    // `ESPERA_DA_SEGUNDA_TENTATIVA_MS` e tenta UMA vez mais, pela MESMA reserva
+    // (outra chamada que entregou no meio tempo deixa a chave 'enviado', e esta
+    // não repete). A resposta não espera: no Edge Runtime a tentativa vai para o
+    // `waitUntil` (`dispararSemEsperarCliente`), e o worker segue vivo até ela
+    // terminar, dentro do limite de vida dele.
+    if ((await tentar()) === 0) {
+      const esperar = deps.esperar ?? esperarDeVerdade;
+      const segunda = (async () => {
+        try {
+          await esperar(ESPERA_DA_SEGUNDA_TENTATIVA_MS);
+          if ((await tentar()) === 0) {
+            console.warn(`notify-new-order: ${numeroDoPedido(pedido.id)} sem entrega também na segunda tentativa`);
+          }
+        } catch (_erro) {
+          console.error("notify-new-order: segunda tentativa do aviso falhou");
+        }
+      })();
+      await dispararSemEsperarCliente(segunda, ESPERA_DA_SEGUNDA_TENTATIVA_MS + 10_000);
+    }
 
     return json({ ok: true });
   } catch (error: any) {
