@@ -118,6 +118,16 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
     expect(hospedeiro.textContent).toContain("segurando estoque há 1 dia");
   });
 
+  it("pedido sem conta recém-criado: 'há menos de 1 hora', nunca 'há 0 horas'", () => {
+    desenhar(
+      pedido({ createdAt: new Date(Date.now() - 60_000).toISOString() }),
+    );
+    expect(hospedeiro.textContent).toContain(
+      "segurando estoque há menos de 1 hora",
+    );
+    expect(hospedeiro.textContent).not.toContain("0 horas");
+  });
+
   it("não confunde pedido pendente online com estoque preso na entrega", () => {
     desenhar(pedido({ paymentMethod: "online" }));
     expect(hospedeiro.textContent).not.toContain("segurando estoque");

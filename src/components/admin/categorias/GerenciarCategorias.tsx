@@ -6,8 +6,10 @@ import {
   type CategoriaComUso,
   ErroDeCategoria,
   LIMITE_DO_NOME_DA_CATEGORIA,
+  avisoDosExcluidosAoApagar,
   categoriaEmUso,
   descreverUso,
+  descreverUsoQueImpede,
   erroDoNomeReservado,
   fraseDoRenome,
   mensagemDaFalhaDeCategoria,
@@ -33,7 +35,9 @@ import { SeletorDeIcone } from "./SeletorDeIcone";
 // (`renomear_categoria`, `apagar_categoria_vazia`), que trocam os quatro lugares
 // numa transação e recusam o que deixaria órfão. A tela mostra o que o servidor
 // contou (`categorias_com_uso`) e só habilita "Apagar" quando a conta é zero; se
-// o banco recusar mesmo assim, o motivo dele aparece na própria linha.
+// o banco recusar mesmo assim, o motivo dele aparece na própria linha. Produto
+// EXCLUÍDO não entra na conta (migration 20261650000000): ele fica com o nome
+// da categoria no histórico de vendas, e a confirmação de apagar diz isso.
 
 // As telas que guardam o NOME da categoria (o filtro lembrado da lista de
 // produtos, o campo do formulário aberto) são avisadas por
@@ -274,7 +278,11 @@ function ConteudoDaGestao() {
             iconeForma: null,
           };
           const uso = descreverUso(c);
+          const usoQueImpede = descreverUsoQueImpede(c);
           const emUso = categoriaEmUso(c);
+          const avisoDosExcluidos = avisoDosExcluidosAoApagar(
+            c.produtosExcluidos,
+          );
           const nestaLinha = ocupado === c.id;
           const esteEdita = editando?.id === c.id;
           const esteApaga = apagando === c.id;
@@ -310,8 +318,8 @@ function ConteudoDaGestao() {
                 )}
               </div>
               <p className="text-xs text-zinc-500">
-                {uso
-                  ? `Em uso: ${uso}.`
+                {usoQueImpede
+                  ? `Em uso: ${usoQueImpede}.`
                   : "Sem nenhum produto, banner ou regra."}
               </p>
 
@@ -414,6 +422,9 @@ function ConteudoDaGestao() {
                   <p className="text-sm font-bold text-red-200">
                     Apagar “{c.nome}”? Não dá para desfazer.
                   </p>
+                  {avisoDosExcluidos ? (
+                    <p className="text-sm text-zinc-400">{avisoDosExcluidos}</p>
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -515,9 +526,6 @@ function ConteudoDaGestao() {
                   quer tirá-la da loja, use Esconder.
                   {c.banners > 0
                     ? ` ${c.banners === 1 ? "Esconder faz o banner dela abrir" : "Esconder faz os banners dela abrirem"} a vitrine completa em “Todas”: troque o link no painel de banners antes.`
-                    : ""}
-                  {c.produtosExcluidos > 0
-                    ? " Produto excluído não aparece na lista de produtos e só sai da categoria com a ajuda do suporte."
                     : ""}
                 </p>
               ) : null}

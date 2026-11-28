@@ -273,19 +273,75 @@ describe("Gerenciar categorias", () => {
     expect(texto).toMatch(/Escondida da vitrine/);
   });
 
-  it("produto EXCLUIDO conta, mas a tela explica que ele nao aparece na lista e o que fazer", async () => {
+  it("produto EXCLUIDO nao conta como uso que impede apagar, e ninguem e' mandado ao suporte (migration 20261650000000)", async () => {
     await abrir();
     const texto = document.body.textContent ?? "";
-    expect(texto).toMatch(
-      /Em uso: 2 produtos \(1 excluído, que não aparece na lista\)\./,
+    // Outono: 2 produtos, 1 excluido -> a lojista ve 1 e e' esse que segura
+    expect(texto).toMatch(/Em uso: 1 produto\./);
+    expect(texto).not.toMatch(/excluído, que não aparece na lista\)\./);
+    expect(texto).not.toMatch(/suporte/);
+    expect(botao("Apagar Outono").disabled).toBe(true);
+  });
+
+  it("categoria so com produto EXCLUIDO: 'Apagar' liberado e a confirmacao avisa que eles ficam no historico de vendas", async () => {
+    const so = (id: string, nome: string, excluidos: number) => ({
+      id,
+      nome,
+      slug: id,
+      ativo: true,
+      produtos: excluidos,
+      produtos_excluidos: excluidos,
+      banners: 0,
+      regra_devolucao: 0,
+    });
+    rpcMock.mockResolvedValueOnce({
+      data: [so("c-inverno", "Inverno", 2), so("c-verao", "Verão", 1)],
+      error: null,
+    });
+    // (o beforeEach devolve o padrao no proximo teste; "Once" vazaria se o botao nao fosse tocado)
+    deleteCategory.mockResolvedValue({ id: "c-inverno", nome: "Inverno" });
+    await abrir();
+    expect(document.body.textContent).not.toMatch(/Em uso/);
+    expect(botao("Apagar Inverno").disabled).toBe(false);
+    expect(botao("Apagar Verão").disabled).toBe(false);
+    await act(async () => {
+      botao("Apagar Inverno").click();
+    });
+    expect(deleteCategory).not.toHaveBeenCalled();
+    expect(document.body.textContent).toMatch(
+      /Apagar “Inverno”\? Não dá para desfazer\.2 produtos excluídos dela continuam no histórico de vendas com este nome\./,
     );
-    expect(texto).toMatch(
-      /Produto excluído não aparece na lista de produtos e só sai da categoria com a ajuda do suporte\./,
+    await act(async () => {
+      botao("Apagar de vez").click();
+      await espera();
+    });
+    expect(deleteCategory).toHaveBeenCalledWith("c-inverno");
+    expect(document.body.textContent).toMatch(/Categoria “Inverno” apagada\./);
+  });
+
+  it("a confirmacao de apagar fala no singular com 1 excluido, e nao fala nada sem excluido", async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          id: "c-verao",
+          nome: "Verão",
+          slug: "verao",
+          ativo: true,
+          produtos: 1,
+          produtos_excluidos: 1,
+          banners: 0,
+          regra_devolucao: 0,
+        },
+      ],
+      error: null,
+    });
+    await abrir();
+    await act(async () => {
+      botao("Apagar Verão").click();
+    });
+    expect(document.body.textContent).toMatch(
+      /1 produto excluído dela continua no histórico de vendas com este nome\./,
     );
-    // quem nao tem produto excluido nao ganha o aviso
-    expect(
-      texto.match(/só sai da categoria com a ajuda do suporte/g),
-    ).toHaveLength(1);
   });
 
   it("a lista aparece na ordem do idioma pt-BR, nao na do banco (sem acento no meio da lista)", async () => {
@@ -334,6 +390,8 @@ describe("Gerenciar categorias", () => {
     expect(document.body.textContent).toMatch(
       /Apagar “Promoção antiga”\? Não dá para desfazer\./,
     );
+    // sem produto excluido, a confirmacao nao fala de historico
+    expect(document.body.textContent).not.toMatch(/histórico de vendas/);
     await act(async () => {
       botao("Apagar de vez").click();
       await espera();

@@ -1,4 +1,5 @@
 import { ALTURA_DO_CABECALHO_DO_COMPUTADOR } from "@/components/desktop/medidas";
+import { CLASSES_DO_BOTAO_CANCELAR_DO_AVISO } from "@/components/ui/classes-do-aviso";
 import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import {
   CircleCheckIcon,
@@ -43,8 +44,7 @@ const Toaster = ({ position, ...props }: ToasterProps) => {
           description: "group-[.toast]:text-zinc-400 text-xs font-normal",
           actionButton:
             "group-[.toast]:bg-emerald-500 group-[.toast]:text-zinc-950 min-h-11 font-bold text-xs rounded-full px-3 py-1.5",
-          cancelButton:
-            "group-[.toast]:bg-zinc-800 group-[.toast]:text-zinc-300 font-medium text-xs rounded-full px-3 py-1.5",
+          cancelButton: CLASSES_DO_BOTAO_CANCELAR_DO_AVISO,
         },
       }}
       style={

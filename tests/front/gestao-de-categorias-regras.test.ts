@@ -4,11 +4,13 @@
 // inventa, não engole e não traduz errado.
 import {
   ErroDeCategoria,
+  avisoDosExcluidosAoApagar,
   categoriaEmUso,
   categoriaExisteNaLista,
   categoriaParecida,
   chaveDaCategoria,
   descreverUso,
+  descreverUsoQueImpede,
   erroDoNomeReservado,
   fraseDoRenome,
   lerCategoriasComUso,
@@ -171,6 +173,71 @@ describe("o que está em uso", () => {
     );
     expect(descreverUso({ ...zero, regraDeDevolucao: 1 })).toBe(
       "a regra de devolução",
+    );
+  });
+
+  it("produto EXCLUIDO nao segura a categoria (migration 20261650000000): so o da lista, a venda ou pausado", () => {
+    const zero = { produtos: 0, banners: 0, regraDeDevolucao: 0 };
+    // so excluidos: pode apagar
+    expect(categoriaEmUso({ ...zero, produtos: 2, produtosExcluidos: 2 })).toBe(
+      false,
+    );
+    // 1 da lista + excluidos: segura
+    expect(categoriaEmUso({ ...zero, produtos: 3, produtosExcluidos: 2 })).toBe(
+      true,
+    );
+    // so excluidos, mas com banner ou regra: segura pelo banner ou pela regra
+    expect(
+      categoriaEmUso({
+        ...zero,
+        produtos: 1,
+        produtosExcluidos: 1,
+        banners: 1,
+      }),
+    ).toBe(true);
+    expect(
+      categoriaEmUso({
+        ...zero,
+        produtos: 1,
+        produtosExcluidos: 1,
+        regraDeDevolucao: 1,
+      }),
+    ).toBe(true);
+  });
+
+  it("o uso que impede apagar conta so o que a lojista ve (o excluido nao entra)", () => {
+    const zero = { produtos: 0, banners: 0, regraDeDevolucao: 0 };
+    expect(
+      descreverUsoQueImpede({ ...zero, produtos: 2, produtosExcluidos: 2 }),
+    ).toBeNull();
+    expect(
+      descreverUsoQueImpede({ ...zero, produtos: 3, produtosExcluidos: 2 }),
+    ).toBe("1 produto");
+    expect(
+      descreverUsoQueImpede({
+        produtos: 4,
+        produtosExcluidos: 1,
+        banners: 1,
+        regraDeDevolucao: 1,
+      }),
+    ).toBe("3 produtos, 1 banner e a regra de devolução");
+    expect(
+      descreverUsoQueImpede({
+        ...zero,
+        produtos: 1,
+        produtosExcluidos: 1,
+        banners: 2,
+      }),
+    ).toBe("2 banners");
+  });
+
+  it("ao apagar, avisa que os excluidos continuam no historico de vendas com o nome (singular e plural)", () => {
+    expect(avisoDosExcluidosAoApagar(0)).toBeNull();
+    expect(avisoDosExcluidosAoApagar(1)).toBe(
+      "1 produto excluído dela continua no histórico de vendas com este nome.",
+    );
+    expect(avisoDosExcluidosAoApagar(3)).toBe(
+      "3 produtos excluídos dela continuam no histórico de vendas com este nome.",
     );
   });
 

@@ -44,8 +44,11 @@ describe("Favoritos e pedidos no computador", () => {
     expect(classes(arquivos.favoritos)).toBe(
       "01c4f2611dc3321eaab592ad1e8eb651f00621e95352f0393f1c3baa9bb7e38e",
     );
+    // 27/11/2026 (3): o carrinho vazio ganha o aviso do pedido aguardando
+    // pagamento ("mx-4 mt-4 min-[380px]:mx-5 md:mx-auto md:w-full
+    // md:max-w-md"); nenhuma classe existente mudou.
     expect(classes(arquivos.carrinho)).toBe(
-      "4b16aa4e4b8e823a2ba66242da7a173c8fb67d3b5edd56363a59d4b206cc020e",
+      "ad9e500d8b280cd116471c8dba8be7c1cbd3c33dc8edf54c581e3817c2039e24",
     );
     // 27/11/2026: conta sem pedidos ganha o botão "Consultar pedido feito sem
     // conta" ("mt-3 block" e o botão de texto sublinhado); nenhuma classe

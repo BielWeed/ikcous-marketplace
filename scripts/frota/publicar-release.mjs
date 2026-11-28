@@ -1118,6 +1118,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente",
   "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
   "205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente",
+  "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
+  "206b-antes-a-categoria-so-com-produto-excluido-pode-sair-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
