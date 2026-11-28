@@ -171,21 +171,87 @@ describe("Novidades do app na central do lojista", () => {
     guardar([NOVA, { ...ANTIGA, lida: false }]);
     const marcar = vi.spyOn(armazenamento, "marcarNovidadeComoLida");
     await montar();
-    const botao = botaoComTexto("Mais facilidade no dia a dia");
-
-    act(() => botao.click());
+    // Só a não lida mais nova nasce aberta: a mais antiga espera recolhida.
+    const botao = botaoComTexto("Pedidos mais claros");
     expect(botao.getAttribute("aria-expanded")).toBe("false");
-    expect(armazenamento.listarNovidades()[0]?.lida).toBe(false);
+
     act(() => botao.click());
 
-    expect(marcar).toHaveBeenCalledExactlyOnceWith("1.5.32");
+    expect(marcar).toHaveBeenCalledExactlyOnceWith("1.5.31");
     expect(armazenamento.listarNovidades().map((item) => item.lida)).toEqual([
-      true,
       false,
+      true,
     ]);
     expect(botao.getAttribute("aria-expanded")).toBe("true");
     expect(conteudoDoBotao(botao).hidden).toBe(false);
     expect(botao.textContent).not.toContain("Não lida");
+  });
+
+  it("quem pulou versões vê só a não lida mais nova aberta", async () => {
+    const MAIS_NOVA: Novidade = {
+      ...NOVA,
+      versao: "1.5.33",
+      titulo: "Avisos mais rápidos",
+      registradaEm: "2026-10-17T12:00:00.000Z",
+    };
+    guardar([MAIS_NOVA, NOVA, { ...ANTIGA, lida: false }]);
+    const marcar = vi.spyOn(armazenamento, "marcarNovidadeComoLida");
+    await montar();
+
+    const botoes = [
+      botaoComTexto("Avisos mais rápidos"),
+      botaoComTexto("Mais facilidade no dia a dia"),
+      botaoComTexto("Pedidos mais claros"),
+    ];
+    expect(botoes.map((b) => b.getAttribute("aria-expanded"))).toEqual([
+      "true",
+      "false",
+      "false",
+    ]);
+    expect(botoes.map((b) => conteudoDoBotao(b).hidden)).toEqual([
+      false,
+      true,
+      true,
+    ]);
+    // As recolhidas continuam avisando que ninguém as leu.
+    for (const botao of botoes) expect(botao.textContent).toContain("Não lida");
+    expect(marcar).not.toHaveBeenCalled();
+  });
+
+  it("a não lida mais nova é a primeira NÃO LIDA, mesmo abaixo de uma lida", async () => {
+    guardar([
+      { ...NOVA, lida: true },
+      { ...ANTIGA, lida: false },
+    ]);
+    await montar();
+
+    expect(
+      botaoComTexto("Mais facilidade no dia a dia").getAttribute(
+        "aria-expanded",
+      ),
+    ).toBe("false");
+    expect(
+      botaoComTexto("Pedidos mais claros").getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
+
+  it("recolher uma não lida também a marca como lida", async () => {
+    guardar([NOVA]);
+    const marcar = vi.spyOn(armazenamento, "marcarNovidadeComoLida");
+    await montar();
+    const botao = botaoComTexto("Mais facilidade no dia a dia");
+    expect(botao.getAttribute("aria-expanded")).toBe("true");
+
+    act(() => botao.click());
+
+    expect(marcar).toHaveBeenCalledExactlyOnceWith("1.5.32");
+    expect(armazenamento.listarNovidades()[0]?.lida).toBe(true);
+    expect(botao.getAttribute("aria-expanded")).toBe("false");
+    expect(conteudoDoBotao(botao).hidden).toBe(true);
+    expect(botao.textContent).not.toContain("Não lida");
+    // Abrir de novo uma já lida não chama a leitura outra vez.
+    act(() => botao.click());
+    expect(marcar).toHaveBeenCalledTimes(1);
   });
 
   it("permite marcar a entrada já aberta como lida sem recolher", async () => {
