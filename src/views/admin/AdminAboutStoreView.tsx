@@ -13,6 +13,7 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { useRascunhoDeTexto } from "@/hooks/useRascunhoDeTexto";
 import { mensagemDeErroDoPainel } from "@/lib/erro-do-painel";
 import { modoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
 import {
@@ -259,6 +260,20 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
       setDescricao(baselineDescricao);
     }
   }, [baselineDescricao, config.storeDescription, saving]);
+  // A descrição é texto longo: se o celular descarta a aba no meio (ela foi
+  // tirar uma foto), o rascunho guardado ao ocultar a aba volta como oferta.
+  const { apagarRascunho: apagarRascunhoDaDescricao } = useRascunhoDeTexto({
+    nome: "sobre-a-loja",
+    userId: usuario || undefined,
+    texto: descricao,
+    salvo: baselineDescricao,
+    pronto: isLoaded && !configFalhou,
+    ativo: active,
+    aoRestaurar: (texto) => {
+      usuarioEditou.current = texto !== baselineDescricao;
+      setDescricao(texto);
+    },
+  });
   useEffect(() => {
     onSetDirty?.(
       formDirty ||
@@ -405,8 +420,10 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         // diferença de normalização deixava o botão habilitado para sempre).
         // O endereço se re-sincroniza sozinho pelo config que chega.
         usuarioEditou.current = false;
-        if (descricaoEditada)
+        if (descricaoEditada) {
           setDescricao(textoDaLoja(descricaoDaLojaParaHtml(descricao)));
+          apagarRascunhoDaDescricao();
+        }
         if (enderecoParaGravar) setEnderecoSalvo(true);
         // Este resultado confirma só o pacote de endereço e descrição.
         toast.success(

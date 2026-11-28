@@ -34,15 +34,17 @@ const pedidoPendente = (createdAt: string, quantidades: number[] = [1]) =>
   }) satisfies Parameters<typeof tempoSegurandoEstoque>[0];
 
 describe("tempoSegurandoEstoque — a virada de horas para dias", () => {
-  it("pedido criado agora já segura estoque: '0 horas', não some", () => {
+  // O cartão monta "segurando estoque há {tempo}": "há 0 horas", ao lado de
+  // "agora mesmo", parecia defeito. Antes da primeira hora: "menos de 1 hora".
+  it("pedido criado agora já segura estoque: 'menos de 1 hora', não some", () => {
     expect(tempoSegurandoEstoque(pedidoPendente(haHoras(0)), agora)).toBe(
-      "0 horas",
+      "menos de 1 hora",
     );
   });
 
-  it("menos de 1 hora ainda é '0 horas'; 1 hora exata é singular", () => {
+  it("antes de 1 hora é 'menos de 1 hora'; 1 hora exata é singular", () => {
     expect(tempoSegurandoEstoque(pedidoPendente(haHoras(0.99)), agora)).toBe(
-      "0 horas",
+      "menos de 1 hora",
     );
     expect(tempoSegurandoEstoque(pedidoPendente(haHoras(1)), agora)).toBe(
       "1 hora",

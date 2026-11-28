@@ -84,7 +84,7 @@ let host: HTMLDivElement;
 let raiz: Root;
 let armazem: Map<string, string>;
 let ordersAtuais: Order[] = [];
-let atualizar: (id: string, status: "cancelled") => Promise<void> =
+let atualizar: (id: string, status: "cancelled") => Promise<unknown> =
   async () => {};
 
 async function montarSonda() {
