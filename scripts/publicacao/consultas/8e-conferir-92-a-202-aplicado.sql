@@ -66,6 +66,9 @@
 --                                não somem entre aparelhos: confere a lista vista) e 20261652000000 (a loja nova confirma
 --                                a entrega e o pagamento);
 --   * `salvar_politica_de_devolucao` → 20261643000000 (as listas dos ajustes não somem entre aparelhos: confere a lista vista);
+--   * `fin_lancamento_salvar`  → 20261246000000 (o lançamento repetido não duplica)
+--                                e, DEPOIS dela, 20261654000000 (o caixa pertence ao dia em que abriu);
+--   * `fin_lancamento_baixar`  → 20261654000000 (o caixa pertence ao dia em que abriu: a baixa do dia da abertura entra na gaveta);
 --   * `pedido__saldo_a_estornar`, `solicitar_estorno`, `admin_devolucao_concluir` e
 --     `autorizar_post_do_estorno` → 20261241000000 (o reembolso em dúvida prende o saldo). Estes quatro
 --     NÃO são corpos da 99 (são da 98, da 97 e da 96): o `final` de cada um é o da última de 92..202
@@ -230,6 +233,8 @@ WITH corpos AS (
     ('registrar_pagamento_recebido', '88270bb1e228c90be73acca03a3cee4e', '20261243000000'),
     ('upsert_store_config', '391e8e1064400df5aea579f3472b203c', '20261244000000'),
     ('fin_lancamento_salvar', '1356dbfc037a9202ef163ba598854891', '20261246000000'),
+    ('fin_lancamento_salvar', '3e31817ce1d13bb091ce2d0871cbd718', '20261654000000'),
+    ('fin_lancamento_baixar', '7d1204cdf214a290cfdb378482795f1b', '20261654000000'),
     ('devolucao_elegibilidade', 'bedd211bba45261dfbf962241ca3c9dd', '20261399992000'),
     ('devolucao_detalhe', 'a439e320641d553e3a21883c6606c6f2', '20261399992000'),
     ('devolucao_detalhe', 'b4eb7a928f8a6ff04c34e93f4f56188c', '20261404000000')), colunas(tabela, coluna) AS (VALUES

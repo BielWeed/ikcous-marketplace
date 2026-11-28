@@ -380,6 +380,8 @@ on:
       - "scripts/publicacao/consultas/208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente.sql"
       - "scripts/publicacao/consultas/209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado.sql"
       - "scripts/publicacao/consultas/209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente.sql"
+      - "scripts/publicacao/consultas/210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado.sql"
+      - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
       - "scripts/publicacao/consultas/213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado.sql"
       - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -736,6 +738,8 @@ on:
       - "scripts/publicacao/consultas/208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente.sql"
       - "scripts/publicacao/consultas/209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado.sql"
       - "scripts/publicacao/consultas/209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente.sql"
+      - "scripts/publicacao/consultas/210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado.sql"
+      - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
       - "scripts/publicacao/consultas/213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado.sql"
       - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1599,6 +1603,14 @@ jobs:
       - name: Prova viva da peca da variacao desligada que espera a lojista (20261653000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-da-variacao-desligada-viva.cjs
+      # Migration 20261654000000 (o caixa pertence ao dia em que abriu): fin_caixa_fechar_sessao e fin_caixa_movimentar_com_chave gravam a
+      # sobra/quebra e a sangria/suprimento com a data do dia da ABERTURA da sessao; fin_lancamento_salvar e fin_lancamento_baixar ligam a sessao
+      # aberta o que foi pago entre o dia da abertura e hoje. Cenario da virada (caixa de ontem mexido depois da meia-noite) e o caixa de um dia so
+      # igual ao de antes, controle com os corpos anteriores (so a virada cai), 6 mutantes na assercao certa, dado antigo intacto, reaplicar 2x e
+      # CRLF, pre-voo, rollback byte a byte, 252/246 recusam o rollback com ela no ar e 210a/210b. CLONE proprio.
+      - name: Prova viva do caixa que pertence ao dia em que abriu (20261654000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs
       # Migration 20261657000000 (o produto com TODOS os tamanhos desligados nao volta a venda sozinho): devolver_estoque e admin_devolucao_concluir so
       # tiram a variacao desligada do item quando o produto ainda tem variacao LIGADA (cantinho da 1653); com todas desligadas a peca fica na propria
       # variacao (como antes da 1653) e o pai, que a compra vende sem variacao ligada, nao recebe. Controle com os corpos da 1653 (o pai recebe), religar,

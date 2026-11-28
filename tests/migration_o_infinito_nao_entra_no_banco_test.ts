@@ -108,6 +108,11 @@ const SUCESSORAS = [
     consulta:
       "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
   },
+  // 20261654000000: o caixa pertence ao dia em que abriu.
+  {
+    versao: "20261654000000",
+    consulta: "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
+  },
   // 20261657000000: o produto todo desligado nao volta a venda (devolver_estoque e admin_devolucao_concluir).
   {
     versao: "20261657000000",

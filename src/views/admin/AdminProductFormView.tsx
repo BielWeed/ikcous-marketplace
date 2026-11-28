@@ -349,6 +349,37 @@ class EnvioCancelado extends Error {}
 
 const MAXIMO_DE_FOTOS_DO_PRODUTO = 10;
 
+/** Formatos que o iPhone antigo abre. A original fora daqui (WebP, AVIF) não
+ *  pode subir como veio: é o plano B das miniaturas e não teria onde cair. */
+const ABRE_NO_IPHONE_ANTIGO = new Set(["image/jpeg", "image/png"]);
+
+/** Nome com a extensão do conteúdo real: o upload tira a extensão do bucket
+ *  do NOME, e "foto.webp" com JPEG dentro mente para o Storage. */
+const nomeParaOConteudo = (nome: string, tipo: string): string => {
+  const png = tipo === "image/png";
+  if ((png ? /\.png$/i : /\.jpe?g$/i).test(nome)) return nome;
+  return `${nome.replace(/\.[^./\\]+$/, "")}.${png ? "png" : "jpg"}`;
+};
+
+/** Algum pixel não é opaco? Lê o que já foi desenhado no canvas. */
+const temTransparencia = (
+  ctx: CanvasRenderingContext2D,
+  largura: number,
+  altura: number,
+): boolean => {
+  try {
+    const { data } = ctx.getImageData(0, 0, largura, altura);
+    for (let i = 3; i < data.length; i += 4) {
+      if ((data.at(i) ?? 255) < 255) return true;
+    }
+    return false;
+  } catch {
+    // Sem como ler os pixels: segue como antes (JPEG com fundo branco), que
+    // nunca perde a foto.
+    return false;
+  }
+};
+
 export const compressProductImage = async (
   file: File,
   maxWidth = 1200,
@@ -379,9 +410,10 @@ export const compressProductImage = async (
     // capa apareceria quebrada. A grande já é conferida logo abaixo, no <img>.
     // WebP e AVIF não pulam o canvas, de nenhum peso: iPhone com iOS 13 ou
     // mais velho não abre WebP (AVIF, até o 15), e a ORIGINAL é o plano B das
-    // miniaturas — ela tem de sair JPEG.
+    // miniaturas — ela tem de sair JPEG (ou PNG, se tiver transparência).
+    const soParaConverter = file.size < 100 * 1024;
     if (
-      file.size < 100 * 1024 &&
+      soParaConverter &&
       file.type !== "image/webp" &&
       file.type !== "image/avif"
     ) {
@@ -428,24 +460,44 @@ export const compressProductImage = async (
       // Mesmo conserto de `src/utils/avatars.ts`/`src/utils/covers.ts`:
       // branco, ANTES do `drawImage`, mantendo `image/jpeg` (o upload e o
       // resto do app já esperam esse tipo).
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(img, 0, 0, width, height);
+      //
+      // Exceção: o WebP/AVIF PEQUENO, que só passa pelo canvas para abrir no
+      // iPhone antigo (não para pesar menos). Pequeno, ele subiria como veio
+      // se fosse PNG — com a transparência. Então mantém: com algum pixel
+      // transparente sai PNG; todo opaco, JPEG (o fundo nem aparece).
+      let formato = "image/jpeg";
+      if (soParaConverter) {
+        ctx.drawImage(img, 0, 0, width, height);
+        if (temTransparencia(ctx, width, height)) formato = "image/png";
+      } else {
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+      }
 
       canvas.toBlob(
         (blob) => {
           URL.revokeObjectURL(objectUrl);
-          if (blob) {
-            const compressedFile = new File([blob], file.name, {
-              type: "image/jpeg",
-              lastModified: Date.now(),
-            });
-            resolve(compressedFile);
-          } else {
+          // Fica com o menor, como `canvasParaBlobNoFormato`: convertida que
+          // não pesa menos que o original perde para ele. Com uma exceção —
+          // original que o iPhone antigo não abre (WebP, AVIF) nunca volta:
+          // ali a compatibilidade vence o peso.
+          if (
+            !blob ||
+            (blob.size >= file.size && ABRE_NO_IPHONE_ANTIGO.has(file.type))
+          ) {
             resolve(file);
+            return;
           }
+          const tipo = blob.type || formato;
+          resolve(
+            new File([blob], nomeParaOConteudo(file.name, tipo), {
+              type: tipo,
+              lastModified: Date.now(),
+            }),
+          );
         },
-        "image/jpeg",
+        formato,
         quality,
       );
     };
@@ -1421,6 +1473,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setShowVariantForm(false);
     setEditingVariant(null);
   }, []);
+  // Conta cada abrir/fechar da janela de variação. O "Religar" do aviso de
+  // opção guardada vive 10 s: só fecha a janela se ela ainda é a MESMA que o
+  // mostrou — nesse meio-tempo a lojista pode ter aberto outra variação, e
+  // fechá-la perderia o que ela está digitando.
+  const aberturaDaVariacaoRef = useRef(0);
+  useEffect(() => {
+    aberturaDaVariacaoRef.current += 1;
+  }, [showVariantForm]);
   const dialogoDaVariacaoRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!showVariantForm) return;
@@ -3267,6 +3327,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // dela. O "ligada" vai explícito (o toque pode vir depois de outra mudança).
     const [guardada] = iguais;
     if (iguais.length === 1 && !guardada.active) {
+      const abertura = aberturaDaVariacaoRef.current;
       toast.error(
         `O "${guardada.value}" está guardado desligado nesta lista.`,
         {
@@ -3286,7 +3347,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   ),
                 ),
               );
-              cancelarVariacao();
+              if (aberturaDaVariacaoRef.current === abertura) {
+                cancelarVariacao();
+              }
             },
           },
         },

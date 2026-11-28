@@ -590,6 +590,11 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
 
     await montar({ ...pedidoBase, status: "processing" });
 
+    // Recolhido numa linha (28/11/2026): o aviso aparece ao tocar nela.
+    const linha = botaoComTexto("Devolução de dinheiro");
+    expect(linha?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => linha!.click());
+
     expect(texto()).toContain("Cancele o pedido antes de devolver o dinheiro.");
     expect(botaoComTexto("Devolver R$ 100,00")?.disabled).toBe(true);
   });

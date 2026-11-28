@@ -99,6 +99,47 @@ const MARCADORES_RETIRADA_PRONTA = [
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261654000000: o caixa pertence ao dia em que abriu. QUATRO funcoes; so a escolha da sessao (salvar e baixar: o pago entre o dia
+  // da abertura e hoje) e a data que a sessao grava (fechar e movimentar: o dia da abertura) mudam. As travas de admin seguem uma vez
+  // cada. O corpo exato (md5), os atributos e a ACL sao da consulta 210a; o comportamento, da prova viva.
+  "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql": [
+    {
+      funcao: "fin_lancamento_salvar",
+      esperado: [
+        { texto: "AND v_real >= public.fin__dia(s.aberto_em)", vezes: 1 },
+        { texto: "IF v_status = 'realizado' THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "ON CONFLICT (chave) DO NOTHING;", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_lancamento_baixar",
+      esperado: [
+        { texto: "AND v_data >= public.fin__dia(s.aberto_em)", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_caixa_fechar_sessao",
+      esperado: [
+        { texto: "v_dia := public.fin__dia(v_s.aberto_em);", vezes: 1 },
+        { texto: "'dinheiro', v_dia, v_dia, v_dia, 'ajuste_caixa'", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_caixa_movimentar_com_chave",
+      esperado: [
+        { texto: "v_dia := public.fin__dia(v_s.aberto_em);", vezes: 1 },
+        { texto: "'dinheiro', v_dia, v_dia, v_dia, p_tipo", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   // 20261387: a busca de pedido pelo numero nao vira busca de telefone (get_admin_orders_paged). Os dois gates de admin, a regra "so e telefone
   // o que parece telefone" (a variavel e a condicao nos DOIS blocos: contagem e pagina) e o pedido do numero primeiro ficam no corpo; o resto
   // e o da 20261199. A consulta 92a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
