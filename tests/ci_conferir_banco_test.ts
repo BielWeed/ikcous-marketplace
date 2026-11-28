@@ -1195,9 +1195,10 @@ Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-vo
   const sqlB = sqlSemComentarios(
     await Deno.readTextFile(`${CONSULTAS_DIR}/${B209}.sql`),
   );
-  // A 209a aceita SO os corpos desta; a 209b, os da 642 OU os desta (reaplicacao idempotente).
-  assertStringIncludes(sqlA, `= '${devDesta}'`);
-  assertStringIncludes(sqlA, `= '${conclDesta}'`);
+  // A 209a aceita os corpos desta (e, como sucessora, os da 20261657000000, que a 213a confere), nunca os da 642; a 209b, os da 642 OU
+  // os desta (reaplicacao idempotente).
+  assertStringIncludes(sqlA, `IN ('${devDesta}'`);
+  assertStringIncludes(sqlA, `IN ('${conclDesta}'`);
   assert(
     !sqlA.includes(devVigente) && !sqlA.includes(conclVigente),
     "a 209a nao pode aceitar os corpos da 642",
@@ -1214,8 +1215,9 @@ Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-vo
       `${CONSULTAS_DIR}/202a-conferir-a-peca-que-volta-sem-tamanho-aplicado.sql`,
     ),
   );
-  assertStringIncludes(a202, `IN ('${devVigente}', '${devDesta}')`);
-  assertStringIncludes(a202, `IN ('${conclVigente}', '${conclDesta}')`);
+  // (sem o fecha-parenteses: a 20261657000000 entra depois na mesma lista, tambem como sucessora)
+  assertStringIncludes(a202, `IN ('${devVigente}', '${devDesta}'`);
+  assertStringIncludes(a202, `IN ('${conclVigente}', '${conclDesta}'`);
   assertStringIncludes(
     rpc,
     "run: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-da-variacao-desligada-viva.cjs",
@@ -1239,6 +1241,204 @@ Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-vo
     ordem.indexOf(a202lote) >= 0 &&
       ordem.indexOf(a202lote) < ordem.indexOf(A209),
     "o lote da 209a vem depois do da 202a",
+  );
+});
+
+// 213 (28/11/2026): o lote da 20261657000000 (o produto com todos os tamanhos desligados nao volta a venda sozinho). Rol fechado de 3
+// linhas, o mesmo na 213a e na 213b, so catalogo; a 213a espera os corpos desta e a 213b os da 20261653000000 ou os desta. Os md5 saem do
+// PRE-VOO da propria migration e sao RECALCULADOS dos arquivos (os desta e os da 1653, que o rollback devolve byte a byte); as consultas
+// das antecessoras (209a, 202a, 96a, 110a, 43a, 67a e 8e) aceitam os desta como sucessora.
+Deno.test("213a/213b — rol fechado, um statement so de catalogo, md5 do pre-voo da 20261657000000 recalculado dos arquivos, menu, rpc-ci, release, lote no canais e as antecessoras aceitam a sucessora", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { createHash } = require("node:crypto");
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A213 =
+    "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado";
+  const B213 =
+    "213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente";
+  const NOME = "20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql";
+  const migration = await Deno.readTextFile(`${MIGRATIONS_DIR}/${NOME}`);
+  const rollback = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/rollback-manual-${NOME}`,
+  );
+  const m1653 = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql`,
+  );
+  const parDev = /v_hash NOT IN \('([0-9a-f]{32})', '([0-9a-f]{32})'\)/.exec(
+    migration,
+  );
+  assert(parDev, "o pre-voo cita (vigente, desta) de devolver_estoque");
+  const [, devVigente, devDesta] = parDev;
+  const parConcl =
+    /'public\.admin_devolucao_concluir\(uuid,text,jsonb,numeric,text\)', '([0-9a-f]{32})', '([0-9a-f]{32})'/.exec(
+      migration,
+    );
+  assert(
+    parConcl,
+    "o pre-voo cita (anterior, desta) de admin_devolucao_concluir",
+  );
+  const [, conclVigente, conclDesta] = parConcl;
+  // O corpo entre o delimitador de dolar do UM CREATE OR REPLACE da funcao no arquivo.
+  const corpo = (sql: string, fn: string) => {
+    const marca = `CREATE OR REPLACE FUNCTION public.${fn}(`;
+    assertEquals(sql.split(marca).length - 1, 1, `${fn}: uma definicao so`);
+    const i = sql.indexOf(marca);
+    const m = /\bAS (\$\w*\$)/.exec(sql.slice(i));
+    assert(m, "sem delimitador");
+    const a = i + m.index + m[0].length;
+    return sql.slice(a, sql.indexOf(m[1], a)).replace(/\r/g, "");
+  };
+  const md5 = (s: string) =>
+    createHash("md5").update(s).digest("hex") as string;
+  assertEquals(md5(corpo(migration, "devolver_estoque")), devDesta);
+  assertEquals(md5(corpo(m1653, "devolver_estoque")), devVigente);
+  assertEquals(md5(corpo(migration, "admin_devolucao_concluir")), conclDesta);
+  assertEquals(md5(corpo(m1653, "admin_devolucao_concluir")), conclVigente);
+  for (const fn of ["devolver_estoque", "admin_devolucao_concluir"])
+    assertEquals(
+      corpo(rollback, fn),
+      corpo(m1653, fn),
+      `o rollback e' o corpo da 1653 byte a byte (${fn})`,
+    );
+  const itens = [
+    "devolver_estoque: corpo esperado (md5)",
+    "admin_devolucao_concluir: corpo esperado (md5)",
+    "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
+  ];
+  for (const consulta of [A213, B213]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(
+      !/FROM\s+public\.(marketplace_orders|marketplace_order_items|devolucoes|devolucao_itens|produtos|product_variants|pecas_sem_tamanho)\b/i.test(
+        limpo,
+      ),
+      `${consulta}: le so catalogo`,
+    );
+    assert(
+      !/\b(public\.)?(devolver_estoque|admin_devolucao_concluir)\s*\(/i.test(
+        limpo,
+      ),
+      `${consulta}: nao chama funcao da loja`,
+    );
+    assertStringIncludes(menu, `- ${consulta}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    for (const item of itens) assertStringIncludes(sql, `'${item}'`);
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A213}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B213}.sql`),
+  );
+  // A 213a aceita SO os corpos desta; a 213b, os da 1653 OU os desta (reaplicacao idempotente).
+  assertStringIncludes(sqlA, `= '${devDesta}'`);
+  assertStringIncludes(sqlA, `= '${conclDesta}'`);
+  assert(
+    !sqlA.includes(devVigente) && !sqlA.includes(conclVigente),
+    "a 213a nao pode aceitar os corpos da 1653",
+  );
+  assertStringIncludes(sqlB, `IN ('${devVigente}', '${devDesta}')`);
+  assertStringIncludes(sqlB, `IN ('${conclVigente}', '${conclDesta}')`);
+  // As consultas das antecessoras aceitam os desta como SUCESSORA: senao reprovam em toda loja depois do apply.
+  for (const [ficha, h] of [
+    [
+      "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+      devDesta,
+    ],
+    [
+      "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+      conclDesta,
+    ],
+    ["202a-conferir-a-peca-que-volta-sem-tamanho-aplicado", devDesta],
+    ["202a-conferir-a-peca-que-volta-sem-tamanho-aplicado", conclDesta],
+    [
+      "96a-conferir-o-estoque-que-volta-tranca-na-mesma-ordem-aplicado",
+      devDesta,
+    ],
+    [
+      "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado",
+      conclDesta,
+    ],
+    ["43a-conferir-reembolso-em-duvida-aplicado", conclDesta],
+    ["67a-conferir-reembolso-manual-reserva-aplicado", conclDesta],
+    ["8e-conferir-92-a-202-aplicado", conclDesta],
+  ])
+    assertStringIncludes(
+      sqlSemComentarios(
+        await Deno.readTextFile(`${CONSULTAS_DIR}/${ficha}.sql`),
+      ),
+      `'${h}'`,
+      ficha,
+    );
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/o-produto-todo-desligado-nao-volta-a-venda-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A213,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261657000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B213);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 213a: ${chave} nao se aplica`);
+  const ordem = canais.provasDeObjetos.map(
+    (p: { consulta: string }) => p.consulta,
+  );
+  const a209lote =
+    "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado";
+  assert(
+    ordem.indexOf(a209lote) >= 0 &&
+      ordem.indexOf(a209lote) < ordem.indexOf(A213),
+    "o lote da 213a vem depois do da 209a",
   );
 });
 
@@ -3430,6 +3630,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "admin_devolucao_concluir",
           h: "d146dc7aefb07a0bf580ed7265d9453e",
           versao: "20261653000000",
+        },
+        // 28/11/2026: o produto todo desligado nao volta a venda (a cadeia 241 -> 343 -> 395200 -> 1642 -> 1653 -> 1657).
+        {
+          fn: "admin_devolucao_concluir",
+          h: "b55bf2488a1d5165afddaa4d103d3e18",
+          versao: "20261657000000",
         },
         // 27/10/2026 (lote 231): a busca de devolucao acha o numero do pedido (a cadeia 199 -> 395).
         {
@@ -17605,6 +17811,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
     // 20261653000000: a peca da variacao desligada espera a lojista.
     "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+    // 20261657000000: o produto todo desligado nao volta a venda.
+    "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

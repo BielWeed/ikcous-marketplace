@@ -598,6 +598,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
     // 20261653000000: a peca da variacao desligada espera a lojista.
     "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+    // 20261657000000: o produto todo desligado nao volta a venda.
+    "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

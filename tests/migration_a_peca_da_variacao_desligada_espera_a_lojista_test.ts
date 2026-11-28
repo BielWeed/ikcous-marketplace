@@ -131,7 +131,7 @@ Deno.test("20261653: sem transacao propria, texto LF, lock_timeout de 5 s e stat
   assertEquals(r.recusado, false, `motivos: ${(r.motivos || []).join("; ")}`);
 });
 
-Deno.test("20261653: os corpos de partida ainda sao os vigentes (os da 20261642000000) e esta e' a ultima que redefine os dois", () => {
+Deno.test("20261653: os corpos de partida ainda sao os vigentes (os da 20261642000000) e, depois desta, so a sucessora 20261657000000 redefine os dois", () => {
   assertEquals(md5(corpo(dev642, "$devolver$")), H_DEV_642);
   assertEquals(md5(corpo(concl642, "$$")), H_CONCL_642);
   const fontes = (re: RegExp) =>
@@ -145,8 +145,18 @@ Deno.test("20261653: os corpos de partida ainda sao os vigentes (os da 202616420
     /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.admin_devolucao_concluir\s*\(/i,
   ]) {
     const f = fontes(re);
-    assertEquals(f.at(-1), NOME, `${re}: outra redefine depois desta`);
-    assertEquals(f.at(-2), NOME_642, `${re}: a antecessora e' a 642`);
+    // A 20261657000000 (o produto todo desligado) e' a sucessora desta, e a UNICA: o rollback dela devolve este corpo byte a byte.
+    assertEquals(
+      f.at(-1),
+      "20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql",
+      `${re}: outra redefine depois da sucessora`,
+    );
+    assertEquals(
+      f.at(-2),
+      NOME,
+      `${re}: outra redefine entre esta e a sucessora`,
+    );
+    assertEquals(f.at(-3), NOME_642, `${re}: a antecessora e' a 642`);
   }
 });
 

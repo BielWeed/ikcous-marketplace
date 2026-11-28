@@ -3,7 +3,8 @@
 -- catalogo; rol fechado de 6 linhas. NAO le nenhuma linha de pedido, devolucao, produto nem peca e NAO chama funcao nenhuma. Antes do apply (ou depois do
 -- rollback) as linhas da migration respondem 'AUSENTE' ou 'nao' (a 202a negativa e' esperada), nunca erro.
 -- SUCESSORA: a 20261653000000 (a peca da variacao desligada espera a lojista) mantem o ramo da peca sem tamanho e so acrescenta o bloco
--- da variacao desligada antes dele; os corpos dela contam como os desta nas linhas do md5 (a 209a confere qual).
+-- da variacao desligada antes dele; os corpos dela contam como os desta nas linhas do md5 (a 209a confere qual). A 20261657000000 (o
+-- produto todo desligado nao volta a venda) sucede a 20261653000000 e tambem mantem o ramo; os corpos dela contam igual (a 213a confere).
 WITH fn AS (
   SELECT p.proname::text AS nome, md5(replace(p.prosrc, chr(13), '')) AS h, p.oid
     FROM pg_catalog.pg_proc p
@@ -33,12 +34,12 @@ WITH fn AS (
    WHERE to_regclass('public.pecas_sem_tamanho') IS NOT NULL
 ), itens(item, esperado, vivo, ok) AS (
   SELECT 'devolver_estoque: corpo exato (md5)', '80b1a90baf10d1b4c59484772e4864c4',
-         COALESCE((SELECT CASE WHEN h = '2913f3178498938d0a79e3b47a1084d1' THEN '80b1a90baf10d1b4c59484772e4864c4' ELSE h END FROM fn WHERE nome = 'devolver_estoque'), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque') IN ('80b1a90baf10d1b4c59484772e4864c4', '2913f3178498938d0a79e3b47a1084d1'), false)
+         COALESCE((SELECT CASE WHEN h IN ('2913f3178498938d0a79e3b47a1084d1', 'c98a1d49d63e0174f4bdd95dcffc54f4') THEN '80b1a90baf10d1b4c59484772e4864c4' ELSE h END FROM fn WHERE nome = 'devolver_estoque'), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque') IN ('80b1a90baf10d1b4c59484772e4864c4', '2913f3178498938d0a79e3b47a1084d1', 'c98a1d49d63e0174f4bdd95dcffc54f4'), false)
   UNION ALL
   SELECT 'admin_devolucao_concluir: corpo exato (md5)', '1a548896acb8248f1b1771d765c92fcb',
-         COALESCE((SELECT CASE WHEN h = 'd146dc7aefb07a0bf580ed7265d9453e' THEN '1a548896acb8248f1b1771d765c92fcb' ELSE h END FROM fn WHERE nome = 'admin_devolucao_concluir'), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir') IN ('1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e'), false)
+         COALESCE((SELECT CASE WHEN h IN ('d146dc7aefb07a0bf580ed7265d9453e', 'b55bf2488a1d5165afddaa4d103d3e18') THEN '1a548896acb8248f1b1771d765c92fcb' ELSE h END FROM fn WHERE nome = 'admin_devolucao_concluir'), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir') IN ('1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e', 'b55bf2488a1d5165afddaa4d103d3e18'), false)
   UNION ALL
   SELECT 'pecas_sem_tamanho_pendentes: corpo exato (md5)', 'd6a9047fe26305d0c1446c284033245d',
          COALESCE((SELECT h FROM fn WHERE nome = 'pecas_sem_tamanho_pendentes'), 'AUSENTE'),

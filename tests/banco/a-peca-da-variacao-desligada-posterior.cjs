@@ -45,6 +45,11 @@ const VARIACAO_DESLIGADA = Object.freeze({
 
 /** Desfaz a 20261653000000 na conexao aberta, se no ar; repetir e' no-op. Devolve true se desfez. */
 async function desfazerVariacaoDesligadaNaTransacao(cliente) {
+  // A 20261657000000 (o produto todo desligado) sucede os dois corpos desta: sai ANTES (o pre-voo do rollback desta recusa o corpo
+  // dela). So se no ar; repetir e' no-op.
+  await require("./o-produto-todo-desligado-posterior.cjs").desfazerProdutoTodoDesligadoNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(VARIACAO_DESLIGADA.noAr);
   if (r.rows[0]?.sim !== true) return false;
   await cliente.query(

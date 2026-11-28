@@ -450,6 +450,8 @@ on:
           - 208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente
           - 209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado
           - 209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente
+          - 213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado
+          - 213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

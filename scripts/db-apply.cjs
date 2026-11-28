@@ -646,6 +646,35 @@ const VERIFICACOES = {
   // da variacao) e o destino da 642 que o bloco usa (uma vez cada); e a leitura NOVA pecas_sem_tamanho_da_devolucao (os itens da devolucao
   // com peca esperando, pela origem gravada na conclusao). O corpo exato (md5) e' da consulta 209a e do pos-voo; o comportamento, da prova
   // viva a-peca-da-variacao-desligada-viva.cjs.
+  // 20261657000000: o produto com TODOS os tamanhos desligados nao volta a venda sozinho. devolver_estoque e admin_devolucao_concluir
+  // (corpos da 20261653000000) ganham UM sub-bloco cada, dentro do bloco da 1653: a variacao desligada do item so vira "sem variacao"
+  // (cantinho) se o produto ainda tem variacao LIGADA; sem nenhuma ligada a peca fica na propria variacao e o pai nao recebe. Os
+  // marcadores sao as decisoes que, tiradas, voltam o defeito (o filtro de ligada pelo produto do item e a troca sob ele). O corpo exato
+  // (md5) e' da consulta 213a e do pos-voo; o comportamento, da prova viva o-produto-todo-desligado-nao-volta-a-venda-viva.cjs.
+  "20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql": [
+    {
+      funcao: "devolver_estoque",
+      esperado: [
+        {
+          texto:
+            "WHERE v.product_id = v_item.product_id AND v.active = true) THEN\n                v_item.variant_id := NULL;",
+          vezes: 1,
+        },
+        { texto: "-- >>> o produto todo desligado (20261657000000)", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_concluir",
+      esperado: [
+        {
+          texto:
+            "WHERE v.product_id = v_di.product_id AND v.active = true) THEN\n          v_di.variant_id := NULL;",
+          vezes: 1,
+        },
+        { texto: "-- >>> o produto todo desligado (20261657000000)", vezes: 1 },
+      ],
+    },
+  ],
   "20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql": [
     {
       funcao: "devolver_estoque",

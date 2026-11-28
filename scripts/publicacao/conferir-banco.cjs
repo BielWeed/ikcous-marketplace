@@ -3764,7 +3764,20 @@ const ROL_DA_209 = [
   "o destino da peca que espera: pecas_sem_tamanho e as RPCs da 20261642000000 no ar, com a forma e os corpos dela",
   "pecas_sem_tamanho_da_devolucao: corpo exato (md5), uma so, plpgsql SECURITY DEFINER STABLE, search_path=public, EXECUTE so de authenticated",
 ];
+// Lote 213 (20261657000000, o produto com todos os tamanhos desligados nao volta a venda sozinho: os corpos de devolver_estoque e de
+// admin_devolucao_concluir mudam, um sub-bloco cada, dentro do bloco da 20261653000000). Somente catalogo: nenhuma le pedido, devolucao,
+// produto nem peca e nenhuma chama funcao. A 213a espera os corpos desta (md5); a 213b, os da 20261653000000 ou os desta (reaplicacao
+// idempotente). Rol de 3, o mesmo nas duas (os dois corpos e os atributos e a ACL de sempre).
+const ROL_DA_213 = [
+  "devolver_estoque: corpo esperado (md5)",
+  "admin_devolucao_concluir: corpo esperado (md5)",
+  "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado":
+    ROL_DA_213,
+  "213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente":
+    ROL_DA_213,
   "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado":
     ROL_DA_209,
   "209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente":

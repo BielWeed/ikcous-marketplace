@@ -401,6 +401,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado",
       "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
       "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+      "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
   );
