@@ -423,6 +423,28 @@ describe("devolução: a peça que voltou sem tamanho", () => {
     expect(comVariacao).toContain("voltou ao estoque");
   });
 
+  it("loja sem a leitura nova (42883, a função que o Postgres não acha): a mesma leitura antiga do PGRST202", async () => {
+    erros.set("pecas_sem_tamanho_da_devolucao", {
+      code: "42883",
+      message:
+        "function public.pecas_sem_tamanho_da_devolucao(uuid) does not exist",
+    });
+    respostas.set("devolucao_detalhe", {
+      ...CONCLUIDA,
+      itens: [CONCLUIDA.itens[0], ITEM_P],
+    });
+    respostas.set("pecas_sem_tamanho_pendentes", [
+      PECA_DA_DEVOLUCAO,
+      { ...PECA_DA_DEVOLUCAO, id: "x-1", order_id: "o-9" },
+      { ...PECA_DA_DEVOLUCAO, id: "x-2", origem: "pedido_desfeito" },
+    ]);
+    await abrirFicha();
+
+    const [semVariacao, comVariacao] = linhasDosItens();
+    expect(semVariacao).toContain("voltou sem tamanho");
+    expect(comVariacao).toContain("voltou ao estoque");
+  });
+
   it("loja sem a leitura nova e a peça é de OUTRO pedido ou de pedido desfeito: 'voltou ao estoque'", async () => {
     erros.set("pecas_sem_tamanho_da_devolucao", RPC_AUSENTE);
     respostas.set("devolucao_detalhe", CONCLUIDA);

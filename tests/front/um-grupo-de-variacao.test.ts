@@ -17,6 +17,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  explicacaoDeOutroTipoDeVariacao,
   gruposDeVariacao,
   temGrupoDemais,
   travaDeUmGrupoSo,
@@ -150,5 +151,16 @@ describe("travaDeUmGrupoSo — produto LEGADO que já tem dois grupos", () => {
     // Continuaria em dois grupos, mas com MAIS uma peça de estoque somada
     // errado. Empatar em dois não é "não piorar": é engordar o defeito.
     expect(travaDeUmGrupoSo(legado, null, "Cor").bloqueia).toBe(true);
+  });
+});
+
+describe("explicacaoDeOutroTipoDeVariacao", () => {
+  it("grupo COMPOSTO (Cor / Tamanho): fala em variar em mais uma coisa, nunca em juntar o grupo com tamanho", () => {
+    const texto = explicacaoDeOutroTipoDeVariacao("Cor / Tamanho", false);
+    expect(texto).toContain(
+      "Para variar em mais uma coisa, exclua as opções da lista de variações e gere a grade de novo com tudo junto.",
+    );
+    expect(texto).not.toContain("Para vender");
+    expect(texto).not.toContain("cor / tamanho e tamanho juntos");
   });
 });

@@ -224,4 +224,13 @@ describe("trocasJaGravadasNoBanco", () => {
       ]),
     ).toEqual([]);
   });
+
+  it("antiga desligada no banco com OUTRO valor (outro aparelho renomeou M -> P e desligou) não é a troca desta tela, mesmo com o GG novo lá", () => {
+    expect(
+      trocasJaGravadasNoBanco(tela, abertura, [
+        variacao("v2", "P", { active: false }),
+        nova,
+      ]),
+    ).toEqual([]);
+  });
 });
