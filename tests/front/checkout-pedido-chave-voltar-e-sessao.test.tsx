@@ -165,6 +165,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const FRASE_SEM_CONEXAO =
   "Sem conexão agora. Seu carrinho está guardado; tente de novo em instantes.";
+const FRASE_LOGIN_MUDOU_NA_VISITANTE =
+  "O login deste aparelho mudou enquanto você finalizava. Nada foi enviado: confira na tela se está comprando com ou sem conta e finalize de novo.";
 const CHAVE_CONVIDADO = "ikcous-chave-do-pedido:convidado";
 const CHAVE_DA_CONTA_1 = "ikcous-chave-do-pedido:user-1";
 
@@ -857,7 +859,7 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
       expect(createOrder).toHaveBeenCalledTimes(1);
     });
 
-    it("outra aba entrou na conta B durante a espera: NÃO envia, mesma frase da conta, e o Finalizar fica livre", async () => {
+    it("outra aba entrou na conta B durante a espera: NÃO envia, diz que o login mudou (nunca 'sessão expirou') e o Finalizar fica livre", async () => {
       estado.libReal = true;
       getSession.mockResolvedValue(sessaoDeOutraConta());
       await abrirOApp();
@@ -867,10 +869,16 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
       expect(getSession).toHaveBeenCalled();
       expect(createOrder).not.toHaveBeenCalled();
       expect(String(toastError.mock.calls.at(-1)?.[0])).toBe(
-        "Sua sessão expirou. Entre de novo para finalizar o pedido.",
+        FRASE_LOGIN_MUDOU_NA_VISITANTE,
       );
+      // Ela não tinha sessão para "expirar", e o botão "Entrar" a tiraria do
+      // checkout para uma tela de login de quem já está logado.
+      expect(document.body.textContent).not.toContain("sessão expirou");
       expect(
         document.querySelector('button[data-acao="entrar_na_conta"]'),
+      ).toBeNull();
+      expect(
+        document.querySelector('button[data-acao="tentar_de_novo"]'),
       ).not.toBeNull();
       // Nada saiu: nenhuma chave de pedido de convidada ficou "em curso".
       expect(armazem.has(CHAVE_CONVIDADO)).toBe(false);
@@ -900,8 +908,8 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
         await esperarMicrotarefas();
       });
       expect(createOrder).not.toHaveBeenCalled();
-      expect(String(toastError.mock.calls.at(-1)?.[0])).toContain(
-        "Sua sessão expirou",
+      expect(String(toastError.mock.calls.at(-1)?.[0])).toBe(
+        FRASE_LOGIN_MUDOU_NA_VISITANTE,
       );
     });
 
@@ -942,6 +950,265 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
 
       expect(createOrder).not.toHaveBeenCalled();
       expect(botaoFinalizar()!.disabled).toBe(false);
+    });
+  });
+
+  // O "TENTAR DE NOVO" DA VISITANTE (caça 28/11/2026). O Finalizar já conferia a
+  // sessão (D), mas o reenvio da compra congelada não: olhava só a conta da
+  // TELA e mandava a RPC. Visitante sem resposta -> outra aba entra numa conta
+  // (a leitura da sessão nesta aba espera a trava da outra: segundos, com rede
+  // lenta) -> "Tentar de novo" -> o pedido saía na conta B. E como a chave só
+  // devolve o pedido já gravado ao MESMO dono, com outro dono nascia um pedido
+  // NOVO: dois pedidos, estoque e cupom gastos duas vezes.
+  describe("E) o 'Tentar de novo' da visitante confere a sessão como o Finalizar", () => {
+    const semNenhumaSessao = () => ({ data: { session: null }, error: null });
+    const sessaoDaContaB = () => ({
+      data: { session: { user: { id: "user-b" } } },
+      error: null,
+    });
+    const CHAVE_DO_PEDIDO_SEM_RESPOSTA = "ikcous-pedido-sem-resposta-v1";
+    const botaoTentarDeNovo = () =>
+      document.body.querySelector(
+        'button[data-acao="reenviar_mesma_compra"]',
+      ) as HTMLButtonElement | null;
+
+    /** A primeira tentativa fica sem resposta: o painel oferece o reenvio. */
+    async function ficarSemResposta() {
+      createOrder.mockRejectedValueOnce({});
+      await abrirOApp();
+      await preencherComoConvidada();
+      await clicarFinalizar();
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(botaoTentarDeNovo()).not.toBeNull();
+    }
+
+    async function clicarTentarDeNovo() {
+      await act(async () => {
+        botaoTentarDeNovo()!.click();
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+    }
+
+    it("sessão segue vazia: reenvia a MESMA compra, com a MESMA chave, e as duas sem sessão", async () => {
+      estado.libReal = true;
+      getSession.mockResolvedValue(semNenhumaSessao());
+      await ficarSemResposta();
+      const leiturasAntes = getSession.mock.calls.length;
+
+      createOrder.mockResolvedValueOnce({ id: "pedido-1234abcd" });
+      await clicarTentarDeNovo();
+
+      // A conferência leu a sessão de novo antes do reenvio.
+      expect(getSession.mock.calls.length).toBeGreaterThan(leiturasAntes);
+      expect(createOrder).toHaveBeenCalledTimes(2);
+      const [primeiro, opcoesDoPrimeiro] = createOrder.mock.calls[0];
+      const [segundo, opcoesDoSegundo] = createOrder.mock.calls[1];
+      expect(typeof primeiro.idempotencyKey).toBe("string");
+      expect(segundo.idempotencyKey).toBe(primeiro.idempotencyKey);
+      expect(segundo).toEqual(primeiro);
+      // O pedido da visitante vai SEM sessão mesmo que uma apareça entre a
+      // conferência e a RPC (a janela de milissegundos).
+      expect(opcoesDoPrimeiro).toEqual({
+        comPagamentoOnline: false,
+        semSessao: true,
+      });
+      expect(opcoesDoSegundo).toEqual({
+        comPagamentoOnline: false,
+        semSessao: true,
+      });
+    });
+
+    it("outra aba entrou na conta B antes do toque: NÃO reenvia e sai como o Finalizar", async () => {
+      estado.libReal = true;
+      let sessao: unknown = semNenhumaSessao();
+      getSession.mockImplementation(async () => sessao);
+      await ficarSemResposta();
+      expect(
+        sessionStorage.getItem(CHAVE_DO_PEDIDO_SEM_RESPOSTA),
+      ).not.toBeNull();
+
+      sessao = sessaoDaContaB();
+      await clicarTentarDeNovo();
+
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(String(toastError.mock.calls.at(-1)?.[0])).toBe(
+        FRASE_LOGIN_MUDOU_NA_VISITANTE,
+      );
+      expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+        FRASE_LOGIN_MUDOU_NA_VISITANTE,
+      );
+      expect(botaoTentarDeNovo()).toBeNull();
+      expect(
+        document.querySelector('button[data-acao="tentar_de_novo"]'),
+      ).not.toBeNull();
+      expect(document.body.textContent).not.toContain("sessão expirou");
+      expect(botaoFinalizar()!.disabled).toBe(false);
+      // A compra congelada (nome, WhatsApp e endereço da visitante) não fica
+      // no aparelho para a conta que entrou.
+      expect(sessionStorage.getItem(CHAVE_DO_PEDIDO_SEM_RESPOSTA)).toBeNull();
+    });
+
+    it("a leitura da sessão demora e, quando responde, já é a da conta B: o reenvio não sai", async () => {
+      estado.libReal = true;
+      getSession.mockResolvedValue(semNenhumaSessao());
+      await ficarSemResposta();
+
+      let liberarLeitura: (valor: unknown) => void = () => {};
+      getSession.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            liberarLeitura = resolve;
+          }),
+      );
+      await clicarTentarDeNovo();
+      expect(createOrder).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        liberarLeitura(sessaoDaContaB());
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(String(toastError.mock.calls.at(-1)?.[0])).toBe(
+        FRASE_LOGIN_MUDOU_NA_VISITANTE,
+      );
+    });
+
+    it("sem internet na conferência: NÃO reenvia, diz 'Sem conexão' e o 'Tentar de novo' fica; com a rede de volta, reenvia com a MESMA chave", async () => {
+      estado.libReal = true;
+      let sessao: unknown = semNenhumaSessao();
+      getSession.mockImplementation(async () => sessao);
+      await ficarSemResposta();
+
+      sessao = {
+        data: { session: null },
+        error: new AuthRetryableFetchError("Failed to fetch", 0),
+      };
+      await clicarTentarDeNovo();
+
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(String(toastError.mock.calls.at(-1)?.[0])).toBe(FRASE_SEM_CONEXAO);
+      // A compra congelada segue: o reenvio exato é a saída mais segura.
+      expect(botaoTentarDeNovo()).not.toBeNull();
+      expect(botaoFinalizar()!.disabled).toBe(true);
+
+      sessao = semNenhumaSessao();
+      createOrder.mockResolvedValueOnce({ id: "pedido-1234abcd" });
+      await clicarTentarDeNovo();
+      expect(createOrder).toHaveBeenCalledTimes(2);
+      expect(createOrder.mock.calls[1][0].idempotencyKey).toBe(
+        createOrder.mock.calls[0][0].idempotencyKey,
+      );
+    });
+
+    // O reenvio da compra congelada só nasce para quem compra SEM conta
+    // (`decidirSaidaDoCheckout`); a conferência é a MESMA função do Finalizar
+    // e espera o dono da compra. Para a conta, a regra é a de sempre.
+    it("a conferência do envio espera o dono da compra: conta A com a sessão virando B recusa como o Finalizar da conta", async () => {
+      estado.libReal = true;
+      const { conferirSessaoAntesDoEnvio } = await import(
+        "@/views/customer/CheckoutView"
+      );
+
+      getSession.mockResolvedValue(sessaoDaContaB());
+      expect(await conferirSessaoAntesDoEnvio("user-a")).toEqual({
+        semRede: false,
+        recusa: {
+          acao: "entrar_na_conta",
+          mensagem:
+            "Sua sessão expirou. Entre de novo para finalizar o pedido.",
+        },
+      });
+      expect(await conferirSessaoAntesDoEnvio(null)).toEqual({
+        semRede: false,
+        recusa: {
+          acao: "tentar_de_novo",
+          mensagem: FRASE_LOGIN_MUDOU_NA_VISITANTE,
+        },
+      });
+
+      getSession.mockResolvedValue({
+        data: { session: { user: { id: "user-a" } } },
+        error: null,
+      });
+      expect(await conferirSessaoAntesDoEnvio("user-a")).toBeNull();
+    });
+  });
+
+  // O LOGIN VELHO DO PRÓPRIO APARELHO (caça 28/11/2026). O app abriu sem
+  // internet com o login vencido: a renovação falha por rede, o supabase-js
+  // NÃO apaga a sessão guardada, e a tela trata a pessoa como visitante. A rede
+  // volta, ela finaliza como visitante, e a conferência renova a sessão — que é
+  // a DELA. Antes do #2070 o pedido saía na conta dela sem ela ver; depois, ela
+  // ouvia "Sua sessão expirou. Entre de novo" e era levada ao login, logada.
+  // Agora nada sai numa conta que ela não viu, a frase diz o que houve, e ela
+  // fica no checkout: a renovação avisa o AuthContext, a tela passa a mostrar a
+  // conta com o formulário preenchido, e o próximo Finalizar sai pela conta que
+  // ela VÊ.
+  describe("F) visitante com o login velho do aparelho renovado na conferência", () => {
+    const sessaoDaDona = () => ({
+      data: { session: { user: { id: "user-1" } } },
+      error: null,
+    });
+
+    it("não envia, não fala em sessão expirada, não leva ao login, e o checkout continua preenchido", async () => {
+      estado.libReal = true;
+      getSession.mockResolvedValue(sessaoDaDona());
+      await abrirOApp();
+      await preencherComoConvidada();
+      await clicarFinalizar();
+
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(String(toastError.mock.calls.at(-1)?.[0])).toBe(
+        FRASE_LOGIN_MUDOU_NA_VISITANTE,
+      );
+      expect(document.body.textContent).not.toContain("sessão expirou");
+      expect(
+        document.querySelector('button[data-acao="entrar_na_conta"]'),
+      ).toBeNull();
+      expect(onNavigate).not.toHaveBeenCalled();
+      expect(clearCart).not.toHaveBeenCalled();
+      expect(
+        (document.getElementById("checkout-name") as HTMLInputElement).value,
+      ).toBe("Cliente Teste");
+      expect(
+        (document.getElementById("guest-street") as HTMLInputElement).value,
+      ).toBe("Rua Teste");
+      expect(botaoFinalizar()!.disabled).toBe(false);
+    });
+
+    it("a tela passa a mostrar a conta dela: os dados digitados continuam, e o próximo Finalizar sai pela conta que ela vê", async () => {
+      estado.libReal = true;
+      getSession.mockResolvedValue(sessaoDaDona());
+      await abrirOApp();
+      await preencherComoConvidada();
+      await clicarFinalizar();
+      expect(createOrder).not.toHaveBeenCalled();
+
+      // A renovação avisou o AuthContext (TOKEN_REFRESHED): a tela é dela.
+      estado.user = { id: "user-1" };
+      estado.enderecos = [ENDERECO_DA_CONTA];
+      await abrirOApp();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      expect(
+        (document.getElementById("checkout-name") as HTMLInputElement).value,
+      ).toBe("Cliente Teste");
+
+      await act(async () => {
+        botaoPorTexto("Dinheiro na Entrega")?.click();
+        await esperarMicrotarefas();
+      });
+      createOrder.mockResolvedValueOnce({ id: "pedido-1234abcd" });
+      await clicarFinalizar();
+
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(createOrder.mock.calls[0][0].addressId).toBe("addr-1");
+      expect(createOrder.mock.calls[0][1]).toEqual({
+        comPagamentoOnline: false,
+      });
     });
   });
 });
