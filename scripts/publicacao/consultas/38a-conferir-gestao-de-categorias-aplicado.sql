@@ -14,6 +14,8 @@
 -- linhas das portas e das auxiliares.
 --
 --   * corpo      -- md5(replace(prosrc, chr(13), '')) do corpo vivo (LF ou CRLF) de cada porta: o da 20261237000000.
+--                   apagar_categoria_vazia aceita tambem o da SUCESSORA 20261650000000 (a categoria so com produto
+--                   excluido pode sair) e mostra o da 1237: sem isso a 38a reprovaria em toda loja depois daquele apply.
 --   * atributos  -- as tres portas: SECURITY DEFINER + plpgsql + `search_path=public` + retorno jsonb, e a volatilidade
 --                   de cada uma (renomear e apagar VOLATILE, categorias_com_uso STABLE).
 --   * EXECUTE    -- PUBLIC e' medido por aclexplode(coalesce(proacl, acldefault('f', dono))) (grantee 0), que da a mesma
@@ -73,7 +75,11 @@ WITH portas AS (
   UNION ALL
   SELECT 'apagar_categoria_vazia: corpo e o da 20261237000000 (md5)',
          '942449150bb5e6fadfa7cf003f3fa49e',
-         COALESCE((SELECT x.m FROM portas x WHERE x.proname = 'apagar_categoria_vazia'), 'AUSENTE')
+         -- aceita tambem o corpo da 20261650000000 (a categoria so com produto excluido pode sair; so a recusa por produto muda).
+         COALESCE((SELECT CASE WHEN x.m IN ('942449150bb5e6fadfa7cf003f3fa49e',
+                                            'f1526e7727709356677c83fdea745491')
+                               THEN '942449150bb5e6fadfa7cf003f3fa49e' ELSE x.m END
+                     FROM portas x WHERE x.proname = 'apagar_categoria_vazia'), 'AUSENTE')
   UNION ALL
   SELECT 'categorias_com_uso: corpo e o da 20261237000000 (md5)',
          '9e92ace839e626ff293e79b407e5768f',

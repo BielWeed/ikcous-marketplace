@@ -3718,6 +3718,14 @@ const ROL_DA_205 = [
   "devolucao_avisa_o_cliente: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno trigger, search_path=public, sem EXECUTE de PUBLIC, anon nem authenticated",
   "tr_devolucao_avisa_o_cliente: em devolucoes, ligado, chama a funcao",
 ];
+// Lote 206 (20261650000000, a categoria so com produto excluido pode sair: SO o corpo de apagar_categoria_vazia muda, a recusa por
+// produto). Somente catalogo: nenhuma le categoria nem produto. A 206a espera o corpo desta (md5); a 206b, o vigente (20261237000000)
+// ou o desta (reaplicacao idempotente). Rol de 3, o mesmo nas duas.
+const ROL_DA_206 = [
+  "apagar_categoria_vazia: corpo exato (md5), a categoria so com produto excluido pode sair",
+  "apagar_categoria_vazia: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno jsonb, search_path=public, EXECUTE so de authenticated e service_role",
+  "categoria__usos: corpo da 20261237000000 (md5), conta os produtos com os excluidos a parte",
+];
 // Lote 207 (20261651000000, a ordem dos banners muda numa trava so: DUAS RPCs NOVAS, normalize_banners_atomic e move_banner_atomic,
 // e nada mais muda). Somente catalogo: nenhuma le banner. A 207a espera as duas com o corpo desta (md5); a 207b, ausentes ou com o
 // corpo desta (reaplicacao idempotente). As duas conferem a reorder_banners_atomic da 20261381000000 (o app em cache a chama) e a base
@@ -3732,6 +3740,10 @@ const ROL_DA_207 = [
 const ROL_FECHADO_POR_CONSULTA = {
   "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado": ROL_DA_207,
   "207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente": ROL_DA_207,
+  "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado":
+    ROL_DA_206,
+  "206b-antes-a-categoria-so-com-produto-excluido-pode-sair-base-vigente":
+    ROL_DA_206,
   "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado":
     ROL_DA_205,
   "205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente":

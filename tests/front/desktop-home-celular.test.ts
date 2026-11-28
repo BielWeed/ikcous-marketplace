@@ -35,7 +35,9 @@ const BASE: Record<string, string> = {
     "a548e94b10a5b942d83e6ebdf5613fccbf13e956430ce2ffcffd8b8431708940",
   // 25/11/2026 (1.5.234): o bloco "Horário de atendimento" do celular ficou compacto, a pedido do dono (ocupava ~200 px); só essa lista mudou.
   "views/customer/HomeView.tsx":
-    "3fe49ed4949d9afeb77947e96b1999876486c115b10e5e87985a185c493f518d",
+    // 28/11/2026 (1.5.246): entrou só o cartão do pedido aguardando pagamento
+    // ("mx-3 mb-2 mt-3 sm:mx-4 lg:mx-0"); nenhuma classe antiga mudou.
+    "e81758cbebe5e62bad33b57c25223e5c581b9a21d902dc5acc4eac9fc381e6c6",
 };
 
 for (const [arquivo, esperado] of Object.entries(BASE)) {

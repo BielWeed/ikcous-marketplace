@@ -86,6 +86,12 @@ const SUCESSORAS = [
     consulta:
       "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
   },
+  // 20261650000000: a categoria so com produto excluido pode sair.
+  {
+    versao: "20261650000000",
+    consulta:
+      "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
+  },
   // 20261651000000: a ordem dos banners muda numa trava so.
   {
     versao: "20261651000000",

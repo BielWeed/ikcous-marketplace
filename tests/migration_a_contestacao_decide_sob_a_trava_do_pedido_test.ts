@@ -757,6 +757,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/as-listas-dos-ajustes-viva.cjs",
     // 20261645000000: o aviso do vale-troca diz que a loja combina (so a frase do ramo vale de devolucao_avisa_o_cliente).
     "tests/banco/o-aviso-do-vale-troca-diz-que-a-loja-combina-viva.cjs",
+    // 20261650000000: a categoria so com produto excluido pode sair (so a recusa por produto de apagar_categoria_vazia).
+    "tests/banco/a-categoria-so-com-produto-excluido-pode-sair-viva.cjs",
     // 20261651000000: a ordem dos banners muda numa trava so (normalize_banners_atomic e move_banner_atomic, RPCs novas sob a trava da pagina).
     "tests/banco/a-ordem-dos-banners-muda-numa-trava-so-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).

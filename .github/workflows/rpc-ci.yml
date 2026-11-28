@@ -372,6 +372,8 @@ on:
       - "scripts/publicacao/consultas/203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente.sql"
       - "scripts/publicacao/consultas/205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado.sql"
       - "scripts/publicacao/consultas/205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente.sql"
+      - "scripts/publicacao/consultas/206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado.sql"
+      - "scripts/publicacao/consultas/206b-antes-a-categoria-so-com-produto-excluido-pode-sair-base-vigente.sql"
       - "scripts/publicacao/consultas/207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado.sql"
       - "scripts/publicacao/consultas/207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -720,6 +722,8 @@ on:
       - "scripts/publicacao/consultas/203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente.sql"
       - "scripts/publicacao/consultas/205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado.sql"
       - "scripts/publicacao/consultas/205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente.sql"
+      - "scripts/publicacao/consultas/206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado.sql"
+      - "scripts/publicacao/consultas/206b-antes-a-categoria-so-com-produto-excluido-pode-sair-base-vigente.sql"
       - "scripts/publicacao/consultas/207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado.sql"
       - "scripts/publicacao/consultas/207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1555,6 +1559,12 @@ jobs:
       - name: Prova viva do aviso do vale-troca que diz que a loja combina (20261645000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-aviso-do-vale-troca-diz-que-a-loja-combina-viva.cjs
+      # Migration 20261650000000 (a categoria so com produto excluido pode sair): apagar_categoria_vazia troca SO a recusa por produto (o excluido nao segura).
+      # Controle com o corpo da 20261237000000 (recusa), so excluidos apaga e o nome escrito no produto excluido fica, o relatorio por categoria igual
+      # antes e depois, 1 vivo + excluidos recusa, banner e regra recusam, mutante vermelho, reaplicar 2x e CRLF, rollback byte a byte, pre-voo e 206a/206b/38a. CLONE proprio.
+      - name: Prova viva da categoria so com produto excluido que pode sair (20261650000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-categoria-so-com-produto-excluido-pode-sair-viva.cjs
       # Migration 20261651000000 (a ordem dos banners muda numa trava so): DUAS RPCs NOVAS, normalize_banners_atomic (arruma a pagina 1..n sob a trava
       # da pagina) e move_banner_atomic (acha o vizinho dentro do banco). DUAS conexoes reais: a segunda arrumacao espera a primeira e o fim nao repete posicao
       # (MUTANTE_R1651=sem-trava reprova); vizinho mudado por outro aparelho (controle com a troca antiga); recusas sem escrever; ACL; reaplicar 2x e CRLF,

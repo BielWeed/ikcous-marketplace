@@ -598,6 +598,22 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261650000000: a categoria so com produto excluido pode sair. UMA funcao (apagar_categoria_vazia), so a recusa por produto muda
+  // (produtos - excluidos); as duas travas de admin, a contagem pela categoria__usos e o DELETE seguem uma vez cada. O corpo exato
+  // (md5), os atributos e a ACL sao da consulta 206a; o comportamento, da prova viva.
+  "20261650000000_a_categoria_so_com_produto_excluido_pode_sair.sql": [
+    {
+      funcao: "apagar_categoria_vazia",
+      esperado: [
+        { texto: "IF v_produtos - v_excluidos > 0 THEN", vezes: 1 },
+        { texto: "'produtos_excluidos', v_excluidos", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "public.categoria__usos(p_id)", vezes: 1 },
+        { texto: "DELETE FROM public.categorias WHERE id = p_id", vezes: 1 },
+      ],
+    },
+  ],
   // 20261399993000: o CRM e a lista de clientes nao contam a mesma pessoa duas vezes. DUAS funcoes, uma checagem cada. crm__nunca_comprou ganha SO a
   // CTE wa_nao_pagos (le crm__pedidos_nao_pagos, user_id nulo, o 55 cortado como em wa_pagos) e o terceiro NOT EXISTS; get_admin_customers_paged troca SO
   // o LEFT JOIN de user_addresses por UM endereco principal (LATERAL ... LIMIT 1) antes de juntar os pedidos. As travas de admin, a busca, o GROUP BY e o
