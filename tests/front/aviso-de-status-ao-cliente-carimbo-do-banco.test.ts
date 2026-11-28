@@ -103,19 +103,33 @@ describe("aviso de status à cliente — carimbo é a hora do banco, não do apa
     ).toBe(retirado);
   });
 
+  // Pedido sem aviso anterior neste aparelho (cada chamada, um pedido): sem
+  // piso, o relógio local puro. Com aviso anterior, o carimbo nunca fica
+  // abaixo dele (lote 553: aviso-de-status-ao-cliente-sem-hora-do-banco-nao-
+  // volta-no-tempo.test.ts).
   it("sem a hora do banco (undefined, null), cai no relógio local, como antes", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_780_000_000_000);
-    await avisarOClienteDoStatus(PEDIDO, "shipping", ALVO);
+    await avisarOClienteDoStatus("pedido-sem-hora-undefined", "shipping", ALVO);
     expect(dataDoUltimoAviso().emitidoEm).toBe(1_780_000_000_000);
-    await avisarOClienteDoStatus(PEDIDO, "shipping", ALVO, null);
+    await avisarOClienteDoStatus(
+      "pedido-sem-hora-null",
+      "shipping",
+      ALVO,
+      null,
+    );
     expect(dataDoUltimoAviso().emitidoEm).toBe(1_780_000_000_000);
   });
 
   it("hora do banco ilegível ou vazia também cai no relógio local (nunca manda NaN)", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_780_000_000_000);
-    await avisarOClienteDoStatus(PEDIDO, "shipping", ALVO, "não é data");
+    await avisarOClienteDoStatus(
+      "pedido-hora-ilegivel",
+      "shipping",
+      ALVO,
+      "não é data",
+    );
     expect(dataDoUltimoAviso().emitidoEm).toBe(1_780_000_000_000);
-    await avisarOClienteDoStatus(PEDIDO, "shipping", ALVO, "");
+    await avisarOClienteDoStatus("pedido-hora-vazia", "shipping", ALVO, "");
     expect(dataDoUltimoAviso().emitidoEm).toBe(1_780_000_000_000);
   });
 });
