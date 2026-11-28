@@ -142,7 +142,10 @@ describe("P31 — faixas no fluxo e busca alinhada no computador", () => {
     [
       "HomeView",
       home,
-      "a2e6d4ff0b045317a6cb6578e085495c57991ee56b1c092d5d458f44380c20d0",
+      // 27/11/2026: o Início ganha o aviso do pedido aguardando pagamento
+      // ("mx-3 mb-2 mt-3 sm:mx-4", mais "lg:mx-0" só no PC); nenhuma classe
+      // existente mudou.
+      "637ba4817b7652fde438eb5c39ce4cb2487b909e1cfb7934ade472ce661968c0",
     ],
     [
       "SearchView",
