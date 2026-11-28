@@ -181,8 +181,11 @@ function fraseDoCancelado(
     case "pago":
       return "Seu pagamento foi recebido. Toque para ver o que acontece com ele.";
     case "recebido_na_entrega":
-    case "pago_apos_expirar":
       return "Seu pagamento foi recebido. Fale com a loja para resolver.";
+    // Pago depois de o pedido já estar cancelado (decisão do sócio,
+    // 28/11/2026): a loja devolve pelo app, como diz a ficha do pedido.
+    case "pago_apos_expirar":
+      return "Seu pagamento foi recebido. A loja vai devolver o valor.";
     case "recusado":
       return "O pagamento não foi aprovado e o pedido foi cancelado.";
     case "estornado":

@@ -12,8 +12,14 @@
 // e admin-orders-cancelar-pela-edge (botão "Cancelar pedido" da ficha).
 import {
   ErroCancelamentoNaoConcluido,
+  ErroCancelamentoOfflineRecusado,
   ErroPedidoMudou,
+  ErroReleituraDeStatusFalhou,
+  MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA,
+  MENSAGEM_CANCELAMENTO_RECUPERAVEL,
+  MENSAGEM_CANCELAMENTO_SEM_RESPOSTA,
 } from "@/hooks/useOrders";
+import { erroDeConsultaSemResposta } from "@/lib/prazo-da-requisicao";
 import type { Order } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -246,6 +252,39 @@ describe("AdminOrdersView — cancelar logo depois de avançar", () => {
       "ErroPedidoMudou (outro aparelho mexeu)",
       () => new ErroPedidoMudou("processing"),
     ],
+    // Lote 599: também são falhas em que o servidor com certeza NÃO cancelou.
+    [
+      "ErroCancelamentoNaoConcluido (regra do pedido recusou)",
+      () =>
+        new ErroCancelamentoNaoConcluido({
+          desfecho: "recusado",
+          mensagem: "Este pedido não pode ser cancelado.",
+        }),
+    ],
+    [
+      "ErroCancelamentoNaoConcluido sem certeza, mas a edge releu a etapa",
+      () =>
+        new ErroCancelamentoNaoConcluido({
+          desfecho: "recuperavel",
+          mensagem: MENSAGEM_CANCELAMENTO_RECUPERAVEL,
+          pedido: { status: "processing", paymentStatus: "pago" },
+        }),
+    ],
+    [
+      "ErroReleituraDeStatusFalhou (nada foi gravado)",
+      () => new ErroReleituraDeStatusFalhou(new Error("rede")),
+    ],
+    [
+      "ErroCancelamentoOfflineRecusado (sem internet, nada saiu)",
+      () => new ErroCancelamentoOfflineRecusado(),
+    ],
+    [
+      "recusa explícita da RPC (erro com código do Postgres)",
+      () =>
+        Object.assign(new Error("O pedido não está mais nesta etapa."), {
+          code: "P0001",
+        }),
+    ],
   ];
   it.each(falhasDoCancelamento)(
     "cancelamento que falha com %s: a resposta atrasada do avanço volta a oferecer o WhatsApp",
@@ -267,6 +306,66 @@ describe("AdminOrdersView — cancelar logo depois de avançar", () => {
         "A cliente não ativou os avisos no celular: mande pelo WhatsApp.",
       );
       expect(opcoes?.action?.label).toBe("WhatsApp");
+    },
+  );
+
+  // Lote 599 (ressalva da revisão do #2112): na falha INCERTA (prazo
+  // estourado, rede caída, resposta sem corpo) o servidor pode ter cancelado.
+  // A marca fica em "cancelado": devolvê-la ofereceria o WhatsApp da etapa
+  // abandonada num pedido que talvez já esteja cancelado. O mesmo quando a
+  // releitura diz que o pedido ESTÁ cancelado (outro aparelho cancelou).
+  const falhasIncertasDoCancelamento: [string, () => Error][] = [
+    [
+      "a edge não respondeu no prazo",
+      () =>
+        new ErroCancelamentoNaoConcluido({
+          desfecho: "recuperavel",
+          mensagem: MENSAGEM_CANCELAMENTO_SEM_RESPOSTA,
+        }),
+    ],
+    [
+      "a RPC não respondeu no prazo",
+      () => erroDeConsultaSemResposta(MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA),
+    ],
+    [
+      "a conexão caiu no meio da RPC",
+      () =>
+        Object.assign(new Error("TypeError: Failed to fetch"), { code: "" }),
+    ],
+    [
+      "a releitura mostra que outro aparelho já cancelou",
+      () => new ErroPedidoMudou("cancelled"),
+    ],
+    [
+      "a edge releu o pedido já cancelado",
+      () =>
+        new ErroCancelamentoNaoConcluido({
+          desfecho: "mudou",
+          mensagem: "Este pedido mudou há instantes.",
+          pedido: { status: "cancelled", paymentStatus: "pago" },
+        }),
+    ],
+  ];
+  it.each(falhasIncertasDoCancelamento)(
+    "cancelamento sem certeza (%s): a resposta atrasada do avanço segue descartada",
+    async (_nome, criarErro) => {
+      updateOrderStatus
+        .mockResolvedValueOnce({ gravadoNoBancoEm: null })
+        .mockRejectedValueOnce(criarErro());
+      await abrirAFicha();
+      await avancar();
+      await cancelar();
+      const antes = sucessos().length;
+
+      await soltarARespostaDoAvanco();
+
+      expect(sucessos()).toHaveLength(antes);
+      const comWhatsapp = sucessos().filter(
+        ([titulo, opcoes]) =>
+          titulo === "Status atualizado." &&
+          opcoes?.action?.label === "WhatsApp",
+      );
+      expect(comWhatsapp).toHaveLength(0);
     },
   );
 

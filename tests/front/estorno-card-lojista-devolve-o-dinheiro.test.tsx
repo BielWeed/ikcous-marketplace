@@ -1290,6 +1290,33 @@ describe("EstornoCard — lote R1: linha que pode ter saído não se repete", ()
     ).toBeDefined();
   });
 
+  // Lote 599: o botão padrão não quebra linha (`whitespace-nowrap`, altura
+  // fixa) e este texto mede ~254 px — passava da borda do cartão no celular.
+  // Aqui ele quebra, cresce na altura e mantém o alvo de toque de 44 px.
+  it("R1-E2: o botão dos 7 dias quebra linha em vez de passar da borda do cartão", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaDeExemplo({
+            status: "falhou",
+            pode_ter_saido: true,
+            por_fora_apos_espera_liberado: true,
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    const classes = (
+      botaoComTexto("Já devolvi por fora (depois de 7 dias)")?.className ?? ""
+    ).split(/\s+/);
+    expect(classes).toContain("whitespace-normal");
+    expect(classes).not.toContain("whitespace-nowrap");
+    expect(classes).toContain("h-auto");
+    expect(classes).not.toContain("h-8");
+    expect(classes).toContain("min-h-11");
+  });
+
   it("R1-F: linha concluída nunca mostra saída por fora, mesmo com o servidor liberando", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
       hookPadrao({

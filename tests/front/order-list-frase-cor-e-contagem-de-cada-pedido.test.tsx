@@ -315,9 +315,10 @@ describe("OrderList — o cartão de cada pedido", () => {
         { paymentStatus: "recebido_na_entrega" },
         "Seu pagamento foi recebido. Fale com a loja para resolver.",
       ],
+      // A loja devolve o pago depois do cancelamento (decisão do sócio).
       [
         { paymentStatus: "pago_apos_expirar" },
-        "Seu pagamento foi recebido. Fale com a loja para resolver.",
+        "Seu pagamento foi recebido. A loja vai devolver o valor.",
       ],
       [
         { paymentStatus: "recusado" },

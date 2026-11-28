@@ -3845,6 +3845,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "bedd211bba45261dfbf962241ca3c9dd",
           versao: "20261399992000",
         },
+        // 28/11/2026: o frete de ida so volta com reembolso (a cadeia 99 -> 3992 -> 1658: devolucao_elegibilidade ganha ja_reembolsada).
+        {
+          fn: "devolucao_elegibilidade",
+          h: "4776618e9ccd401f7c7eb9518ceaa62d",
+          versao: "20261658000000",
+        },
         {
           fn: "fin_caixa_abrir",
           h: "28ab512e291378a01d110e298af7a402",
@@ -17982,6 +17988,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "212a-conferir-a-visitante-deixa-o-email-aplicado",
     // 20261657000000: o produto todo desligado nao volta a venda.
     "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
+    // 20261658000000: o frete de ida so volta com reembolso.
+    "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

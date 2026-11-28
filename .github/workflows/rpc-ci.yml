@@ -388,6 +388,8 @@ on:
       - "scripts/publicacao/consultas/212b-antes-a-visitante-deixa-o-email-ausente.sql"
       - "scripts/publicacao/consultas/213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado.sql"
       - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
+      - "scripts/publicacao/consultas/214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado.sql"
+      - "scripts/publicacao/consultas/214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -750,6 +752,8 @@ on:
       - "scripts/publicacao/consultas/212b-antes-a-visitante-deixa-o-email-ausente.sql"
       - "scripts/publicacao/consultas/213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado.sql"
       - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
+      - "scripts/publicacao/consultas/214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado.sql"
+      - "scripts/publicacao/consultas/214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1146,6 +1150,13 @@ jobs:
       - name: Prova viva do portao da devolucao integral sem perder o centavo do cupom (consultas 157a e 157b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-devolucao-integral-nao-perde-o-centavo-do-cupom-portao-viva.cjs
+      # Migration 20261658000000 (o frete de ida so volta com reembolso): solicitar_devolucao e devolucao_elegibilidade. Base so com as
+      # anteriores, 214b positiva e 214a reprova so os dois corpos; aplicada, o contrario; estragos por funcao; dado antigo intacto;
+      # reaplicar LF e CRLF; rollback-manual devolve os corpos, recusa repetido e a migration volta. O comportamento (troca e vale nao
+      # contam para o frete de ida) e os mutantes MUTANTE_R1658 ficam em devolucoes-viva.cjs.
+      - name: Prova viva do portao do frete de ida que so volta com reembolso (consultas 214a e 214b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-frete-de-ida-so-volta-com-reembolso-portao-viva.cjs
       - name: Prova viva do portao do cancelamento da retirada pronta (consultas 158a e 158b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-retirada-pronta-portao-viva.cjs
