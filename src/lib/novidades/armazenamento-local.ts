@@ -3,6 +3,10 @@ import {
   ehNotaDaVersao,
   notasEntre,
 } from "@/lib/novidades/notas";
+import {
+  CHAVE_PENDENTES,
+  lerFaixasPendentes,
+} from "@/lib/novidades/registro-do-boot";
 import { nucleoSemver, partesDoNucleoSemver } from "@/lib/versao-do-servidor";
 import { useSyncExternalStore } from "react";
 
@@ -12,9 +16,12 @@ export interface Novidade extends NotaDaVersao {
   lida: boolean;
 }
 
+// Só o painel importa este módulo (e, com ele, o texto das notas). O boot da
+// vitrine apenas anota a faixa atravessada (registro-do-boot.ts); a anotação
+// vira novidade aqui, na primeira leitura, com a data do próprio boot.
+
 // O prefixo preserva as notas quando o app limpa os dados de uma versão antiga.
 const CHAVE = "notificacoes-novidades-do-app-v1";
-const CHAVE_ULTIMA_VISTA = "notificacoes-ultima-versao-vista-do-app-v1";
 const LIMITE = 20;
 const VAZIAS: Novidade[] = [];
 const ouvintes = new Set<() => void>();
@@ -86,6 +93,58 @@ function lerTexto(texto: string | null): Novidade[] {
   }
 }
 
+function incorporarFaixa(
+  atuais: Novidade[],
+  de: string | null,
+  para: string,
+  agora: Date,
+): { entradas: Novidade[]; gravadas: number } {
+  const conhecidas = new Set(atuais.map((entrada) => entrada.versao));
+  const data = Number.isFinite(agora.getTime()) ? agora : new Date();
+  const novas = notasEntre(de, para)
+    .filter(({ versao }) => !conhecidas.has(versao))
+    .map(
+      ({ versao, nota }): Novidade => ({
+        versao,
+        titulo: nota.titulo,
+        novidades: [...nota.novidades],
+        correcoes: [...nota.correcoes],
+        melhorias: [...nota.melhorias],
+        registradaEm: data.toISOString(),
+        lida: false,
+      }),
+    );
+  if (novas.length === 0) return { entradas: atuais, gravadas: 0 };
+  const entradas = limitarEOrdenar([...atuais, ...novas]);
+  const gravadas = entradas.filter(
+    (entrada) => !conhecidas.has(entrada.versao),
+  ).length;
+  // Não ressuscita versões já descartadas pelo teto ao repetir uma faixa.
+  return { entradas: gravadas > 0 ? entradas : atuais, gravadas };
+}
+
+/** Transforma as faixas anotadas pelo boot em novidades. Chamado dentro da
+ * leitura: grava sem avisar (quem lê já recebe o retrato novo). Repetir é
+ * inofensivo — versão conhecida nunca entra de novo nem perde o "lida". */
+function absorverPendentes(textoPendentes: string): void {
+  let entradas = retrato;
+  for (const { de, para, em } of lerFaixasPendentes(textoPendentes)) {
+    entradas = incorporarFaixa(entradas, de, para, new Date(em)).entradas;
+  }
+  if (entradas !== retrato) {
+    // Primeiro a memória: se a gravação falhar, a lojista ainda vê as notas
+    // nesta sessão, e a anotação fica para a próxima leitura.
+    retrato = entradas;
+    const texto = JSON.stringify(entradas);
+    window.localStorage.setItem(CHAVE, texto);
+    textoLido = texto;
+  }
+  // Outra aba pode ter anotado uma faixa nova no meio: essa fica.
+  if (window.localStorage.getItem(CHAVE_PENDENTES) === textoPendentes) {
+    window.localStorage.removeItem(CHAVE_PENDENTES);
+  }
+}
+
 function obterRetrato(): Novidade[] {
   if (somenteMemoria || typeof window === "undefined") return retrato;
   try {
@@ -95,6 +154,8 @@ function obterRetrato(): Novidade[] {
       retrato = lerTexto(texto);
       textoLido = texto;
     }
+    const pendentes = window.localStorage.getItem(CHAVE_PENDENTES);
+    if (pendentes !== null) absorverPendentes(pendentes);
   } catch {
     // Preserva o último estado conhecido, inclusive as notas já lidas.
     somenteMemoria = true;
@@ -130,52 +191,14 @@ export function registrarNovidadesDaAtualizacao({
   para: string;
   agora?: Date;
 }): number {
-  const atuais = obterRetrato();
-  const conhecidas = new Set(atuais.map((entrada) => entrada.versao));
-  const data = Number.isFinite(agora.getTime()) ? agora : new Date();
-  const novas = notasEntre(de, para)
-    .filter(({ versao }) => !conhecidas.has(versao))
-    .map(
-      ({ versao, nota }): Novidade => ({
-        versao,
-        titulo: nota.titulo,
-        novidades: [...nota.novidades],
-        correcoes: [...nota.correcoes],
-        melhorias: [...nota.melhorias],
-        registradaEm: data.toISOString(),
-        lida: false,
-      }),
-    );
-  if (novas.length === 0) return 0;
-  const entradas = limitarEOrdenar([...atuais, ...novas]);
-  const gravadas = entradas.filter(
-    (entrada) => !conhecidas.has(entrada.versao),
-  ).length;
-  // Não ressuscita versões já descartadas pelo teto ao repetir uma faixa.
+  const { entradas, gravadas } = incorporarFaixa(
+    obterRetrato(),
+    de,
+    para,
+    agora,
+  );
   if (gravadas > 0) salvar(entradas);
   return gravadas;
-}
-
-/** A versão vista sobrevive ao fechamento do app e à purga da atualização. */
-export function registrarNovidadesAoIniciar(
-  versaoAtual: string,
-  origemProvada?: string | null,
-): void {
-  const para = nucleoSemver(versaoAtual);
-  if (!para || typeof window === "undefined") return;
-  try {
-    // Sem a chave (aparelho que ainda roda o build anterior a ela), a origem
-    // PROVADA da troca de build — gravada pela própria atualização — faz as
-    // vezes da última versão vista; sem prova, só se estabelece a referência.
-    const de =
-      nucleoSemver(window.localStorage.getItem(CHAVE_ULTIMA_VISTA)) ??
-      nucleoSemver(origemProvada ?? null);
-    // Primeiro acesso (ou origem ilegível) só estabelece a referência.
-    if (de && de !== para) registrarNovidadesDaAtualizacao({ de, para });
-    window.localStorage.setItem(CHAVE_ULTIMA_VISTA, para);
-  } catch {
-    // Armazenamento indisponível nunca impede o boot.
-  }
 }
 
 export function listarNovidades(): Novidade[] {
@@ -202,7 +225,14 @@ export function marcarTodasComoLidas(): void {
 }
 
 function aoMudarStorage(evento: StorageEvent): void {
-  if (evento.key !== null && evento.key !== CHAVE) return;
+  // A anotação de outra aba (boot de versão nova) também redesenha a tela.
+  if (
+    evento.key !== null &&
+    evento.key !== CHAVE &&
+    evento.key !== CHAVE_PENDENTES
+  ) {
+    return;
+  }
   // Uma consulta fora do React pode ter lido a mudança antes deste evento.
   avisar();
 }
