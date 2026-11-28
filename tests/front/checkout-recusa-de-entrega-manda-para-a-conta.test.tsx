@@ -123,7 +123,9 @@ vi.mock("@/hooks/useOrders", async (importOriginal) => {
 vi.mock("@/lib/supabase", () => ({
   CHAVE_PUBLICA_DO_SUPABASE: "chave-publica-de-teste",
   supabase: {
-    auth: { getSession: async () => ({ data: { session: null }, error: null }) },
+    auth: {
+      getSession: async () => ({ data: { session: null }, error: null }),
+    },
   },
 }));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
