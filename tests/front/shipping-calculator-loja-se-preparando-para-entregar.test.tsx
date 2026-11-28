@@ -5,6 +5,12 @@
 // calada). A calculadora diz "Esta loja ainda está se preparando para entregar.",
 // sem "Tentar de novo" (só a lojista destrava) e, com WhatsApp da loja, com o
 // mesmo botão de combinar a entrega do estado sem opção.
+//
+// Com a retirada ligada, a edge responde 200 só com a retirada e
+// `entregaLocalPendente: true`: a mesma frase aparece acima da retirada (a
+// cliente da cidade não fica sem saber por que a entrega sumiu), também sem
+// "Tentar de novo", e essa resposta não vai para o cache do navegador (o cache
+// não guarda o aviso, e a entrega volta assim que a lojista confirma).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -85,9 +91,10 @@ describe("ShippingCalculator — loja se preparando para entregar", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   const onSelectOption = vi.fn();
+  let armazem: Map<string, string>;
 
   beforeEach(() => {
-    const armazem = new Map<string, string>();
+    armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, valor: string) => {
@@ -195,5 +202,69 @@ describe("ShippingCalculator — loja se preparando para entregar", () => {
     );
     expect(hospedeiro.textContent).toContain("Tentar de novo");
     expect(botaoDeCombinar()).toBeUndefined();
+  });
+
+  const retirada = {
+    id: "store-pickup",
+    name: "Retirar na loja",
+    price: 0,
+    deliveryDays: 0,
+    provider: "pickup",
+    pickupAddress: "Rua Exemplo, 100 - Centro",
+  };
+
+  it("200 só com a retirada e entregaLocalPendente: a frase acima da retirada, sem Tentar de novo, com o botão de combinar, e nada no cache", async () => {
+    lojaAtual.config = {
+      freeShippingMin: 0,
+      whatsappNumber: "(34) 99999-0000",
+      enabledShippingMethods: ["local-delivery", "store-pickup"],
+    };
+    invoke.mockResolvedValue({
+      data: {
+        options: [retirada],
+        cotacaoIncompleta: false,
+        entregaLocalPendente: true,
+      },
+      error: null,
+    });
+    await cotar();
+    await esperarUmPouco();
+
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(FRASE);
+    expect(hospedeiro.textContent).toContain("Retirar na loja");
+    expect(hospedeiro.textContent).not.toContain("Tentar de novo");
+    expect(botaoDeCombinar()).toBeDefined();
+    // O app nunca escolhe a retirada pela cliente.
+    expect(onSelectOption).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: "store-pickup" }),
+    );
+    expect(
+      [...armazem.keys()].filter((k) =>
+        k.startsWith("ikcous_shipping_cache_v2_"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("CONTROLE: 200 só com a retirada, SEM entregaLocalPendente: nenhuma frase, e a cotação vai para o cache", async () => {
+    lojaAtual.config = {
+      freeShippingMin: 0,
+      whatsappNumber: "(34) 99999-0000",
+      enabledShippingMethods: ["local-delivery", "store-pickup"],
+    };
+    invoke.mockResolvedValue({
+      data: { options: [retirada], cotacaoIncompleta: false },
+      error: null,
+    });
+    await cotar();
+    await esperarUmPouco();
+
+    expect(hospedeiro.textContent).toContain("Retirar na loja");
+    expect(hospedeiro.textContent).not.toContain(FRASE);
+    expect(botaoDeCombinar()).toBeUndefined();
+    expect(
+      [...armazem.keys()].filter((k) =>
+        k.startsWith("ikcous_shipping_cache_v2_"),
+      ),
+    ).toEqual(["ikcous_shipping_cache_v2_19999999"]);
   });
 });

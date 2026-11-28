@@ -760,12 +760,19 @@ export function ShippingCalculator({
       // transportadora mesmo depois de ela voltar.
       const cotacaoSaiuIncompleta = data.cotacaoIncompleta === true;
       const cotacaoSaiuParcial = data.cotacaoParcial === true;
+      // Entrega na cidade ainda não confirmada pela lojista (20261655000000):
+      // a edge devolve só a retirada; a frase do 409 diz por que a entrega
+      // sumiu. Também fora do cache: ele não guarda o aviso, e a entrega
+      // volta assim que a lojista confirma.
+      const entregaLocalPendente = data.entregaLocalPendente === true;
       setAviso(
         cotacaoSaiuIncompleta
           ? AVISO_COTACAO_INCOMPLETA
           : cotacaoSaiuParcial
             ? AVISO_COTACAO_PARCIAL
-            : null,
+            : entregaLocalPendente
+              ? FRASE_LOJA_SE_PREPARANDO_PARA_ENTREGAR
+              : null,
       );
       // Resposta vazia não preserva a escolha anterior: ela é preço de
       // outra cotação.
@@ -788,7 +795,11 @@ export function ShippingCalculator({
         revisaoConfig:
           typeof data.revisaoConfig === "string" ? data.revisaoConfig : null,
       };
-      if (!cotacaoSaiuIncompleta && !cotacaoSaiuParcial) {
+      if (
+        !cotacaoSaiuIncompleta &&
+        !cotacaoSaiuParcial &&
+        !entregaLocalPendente
+      ) {
         gravarNoCache(cacheKey, JSON.stringify(envelope));
       } else {
         // A resposta mais nova já está na tela. A cópia completa anterior
@@ -1652,7 +1663,7 @@ export function ShippingCalculator({
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
                 <span>{erroExibido ?? aviso}</span>
               </div>
-              {!(error && FRASES_DEFINITIVAS.has(error)) && (
+              {!FRASES_DEFINITIVAS.has(error ?? aviso ?? "") && (
                 <button
                   type="button"
                   onClick={tentarDeNovo}
@@ -1666,7 +1677,7 @@ export function ShippingCalculator({
             </div>
           )}
           {destinoValido &&
-            error === FRASE_LOJA_SE_PREPARANDO_PARA_ENTREGAR &&
+            (error ?? aviso) === FRASE_LOJA_SE_PREPARANDO_PARA_ENTREGAR &&
             temWhatsappDaLoja && (
               <BotaoWhatsapp onClick={combinarEntregaPeloWhatsapp}>
                 Combinar entrega pelo WhatsApp

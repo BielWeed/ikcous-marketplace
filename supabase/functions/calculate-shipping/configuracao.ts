@@ -112,7 +112,7 @@ export async function lerConfirmacaoDaEntregaDaLoja(supabase: any): Promise<{ ok
             return { ok: false }
         }
         if (!data) return { ok: false }
-        const valor = data[COLUNA_DA_CONFIRMACAO_DA_ENTREGA]
+        const valor: unknown = data.entrega_confirmada_em
         return { ok: true, confirmada: valor === undefined || valor !== null }
     } catch (error) {
         console.error('Error fetching local delivery confirmation:', error?.code ?? 'sem_codigo')

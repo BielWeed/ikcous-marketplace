@@ -4005,15 +4005,17 @@ export function CheckoutViewDaConta({
     // Total zero (14/10/2026): quem marca a forma é o efeito do total zero
     // (acima) — este aqui poderia escolher "online", que não cobra R$ 0,00.
     if (totalZero.zerado) return;
-    if (
-      formasNaEntregaOferecidas(config).includes(
-        paymentMethod as "pix" | "card" | "cash",
-      )
-    ) {
+    // Só os dois campos que decidem (as dependências abaixo), nunca a config
+    // inteira: ela muda a cada toque do realtime.
+    const formasNaEntrega = formasNaEntregaOferecidas({
+      formasPagamentoEntrega: config.formasPagamentoEntrega,
+      pagamentoNaEntregaLiberado: config.pagamentoNaEntregaLiberado,
+    });
+    if (formasNaEntrega.includes(paymentMethod as "pix" | "card" | "cash")) {
       return;
     }
     const proxima = primeiraFormaDePagamentoDisponivel({
-      formasNaEntrega: formasNaEntregaOferecidas(config),
+      formasNaEntrega,
       pagamentoOnlineLigado: pagamentoOnlineLigado(),
       logado: !!user,
     });
@@ -4024,6 +4026,8 @@ export function CheckoutViewDaConta({
     }
   }, [
     config.formasPagamentoEntrega,
+    // A liberação (20261655000000) muda pelo realtime sem a lista mudar.
+    config.pagamentoNaEntregaLiberado,
     ehEntregaLocal,
     selectedShippingOption,
     paymentMethod,
