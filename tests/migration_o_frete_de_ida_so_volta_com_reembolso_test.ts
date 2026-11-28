@@ -265,8 +265,8 @@ Deno.test("1658: a funcao que devolve o dinheiro nao e' tocada; a migration e' a
 
 Deno.test("1658: a cadeia de posteriores e o kit de publicacao conhecem a migration", () => {
   const suc = ler("tests/banco/sucessoras-da-99.cjs");
-  // A lista vai na ordem de NOME de arquivo (a que o CI aplica; o teste da grade do CRM cobra isso). Nas lojas a 1660 entrou
-  // antes da 1659, mas as duas mexem em funcoes diferentes; so as posteriores a esta (1659 e 1660) vem atras dela.
+  // A cadeia da 99 segue a ordem de arquivo. A 1661 sucede o motivo da 1600,
+  // não um corpo da 99: ela entra no inventário de publicação, não nesta cadeia.
   const inicio = suc.indexOf("const NOMES = [");
   const ordem = [
     ...suc
@@ -276,8 +276,8 @@ Deno.test("1658: a cadeia de posteriores e o kit de publicacao conhecem a migrat
   assert.ok(ordem.includes(nome.slice(0, 14)), "na lista de sucessoras");
   assert.deepEqual(
     ordem.slice(ordem.indexOf(nome.slice(0, 14)) + 1),
-    ["20261659000000", "20261660000000"],
-    "so a aplicada depois desta vem atras na lista de sucessoras",
+    ["20261659000000", "20261660000000", "20261663000000"],
+    "sucessoras da 99 posteriores à 1658, em ordem de arquivo",
   );
   assert.ok(suc.includes(`["${nome}", 2]`), "dois pares no pre-voo");
   const estoque = ler("tests/banco/estoque-do-painel-portao-viva.cjs");
@@ -327,6 +327,14 @@ Deno.test("1658: a cadeia de posteriores e o kit de publicacao conhecem a migrat
   // Kit de publicacao: db-apply, canais, menu do workflow, lista de rol fechado e o rpc-ci.
   assert.ok(ler("scripts/db-apply.cjs").includes(`"${nome}": [`));
   const canais = JSON.parse(ler("scripts/frota/canais-de-backend.json"));
+  const posteriores = canais.provasDeObjetos
+    .flatMap((l: { versoes: string[] }) => l.versoes)
+    .filter((v: string) => v > nome.slice(0, 14));
+  assert.deepEqual(
+    posteriores,
+    ["20261659000000", "20261660000000", "20261661000000", "20261663000000"],
+    "lotes publicados depois da 1658, em ordem numérica",
+  );
   const lote = canais.provasDeObjetos.find(
     (l: { consulta: string }) =>
       l.consulta ===

@@ -409,6 +409,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
       "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
       "217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado",
+      "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
   );

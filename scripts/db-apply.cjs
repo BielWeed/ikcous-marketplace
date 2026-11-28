@@ -99,6 +99,37 @@ const MARCADORES_RETIRADA_PRONTA = [
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261663000000: a despesa nao entra no caixa fechado. DUAS funcoes; so a leitura da sessao aberta passa a travar a linha
+  // (FOR SHARE OF s) no salvar e na baixa, para o fechamento nao calcular o esperado entre essa leitura e a gravacao. A regra
+  // do dia da abertura (20261654000000) e as travas de admin seguem uma vez cada. O corpo exato (md5), os atributos e a ACL sao
+  // da consulta 219a; o comportamento (as corridas com o fechamento), da prova viva.
+  "20261663000000_a_despesa_nao_entra_no_caixa_fechado.sql": [
+    {
+      funcao: "fin_lancamento_salvar",
+      esperado: [
+        {
+          texto: "ORDER BY s.aberto_em DESC LIMIT 1 FOR SHARE OF s;",
+          vezes: 1,
+        },
+        { texto: "AND v_real >= public.fin__dia(s.aberto_em)", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "ON CONFLICT (chave) DO NOTHING;", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_lancamento_baixar",
+      esperado: [
+        {
+          texto: "ORDER BY s.aberto_em DESC LIMIT 1 FOR SHARE OF s;",
+          vezes: 1,
+        },
+        { texto: "AND v_data >= public.fin__dia(s.aberto_em)", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   // 20261660000000: o caixa de ontem aberto nao some do saldo. TRES funcoes; so a recusa do saldo inicial depois do dia do caixa aberto
   // (fin_conta_salvar), a recusa da sangria/suprimento para conta que so conta o saldo depois desse dia e a contrapartida lida FOR SHARE
   // (fin_caixa_movimentar_com_chave) e a trava da sessao antes de conferir se fechou (fin_lancamento_cancelar) mudam. As travas de admin

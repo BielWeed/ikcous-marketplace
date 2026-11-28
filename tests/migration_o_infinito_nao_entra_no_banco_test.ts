@@ -151,6 +151,11 @@ const SUCESSORAS = [
     versao: "20261661000000",
     consulta: "217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado",
   },
+  // 20261663000000: a despesa nao entra no caixa fechado (fin_lancamento_salvar e fin_lancamento_baixar).
+  {
+    versao: "20261663000000",
+    consulta: "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));
