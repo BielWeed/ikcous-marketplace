@@ -80,15 +80,10 @@ function semOBloco(texto: string): string {
 }
 // Fora do bloco marcado, as UNICAS outras trocas (novo -> anterior): as variaveis declaradas e a trava da contrapartida.
 const FORA_DO_BLOCO: Record<Funcao, Array<[string, string]>> = {
-  fin_conta_salvar: [
-    ["  v_novo_em date;\n  v_dia_do_caixa date;\n", ""],
-  ],
+  fin_conta_salvar: [["  v_novo_em date;\n  v_dia_do_caixa date;\n", ""]],
   fin_caixa_movimentar_com_chave: [
     ["  v_tardia public.fin_contas%ROWTYPE;\n", ""],
-    [
-      "WHERE id = v_contra_id FOR SHARE;\n",
-      "WHERE id = v_contra_id;\n",
-    ],
+    ["WHERE id = v_contra_id FOR SHARE;\n", "WHERE id = v_contra_id;\n"],
   ],
   fin_lancamento_cancelar: [],
 };
@@ -462,7 +457,9 @@ Deno.test("1660: consultas 216a/216b so de catalogo, dez linhas fechadas, hashes
       `h IN ('134bd5b7c5872bf30041601725fc37ba', '${mover.antes}', '${mover.depois}')`,
     ),
   );
-  const c8e = ler("scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql");
+  const c8e = ler(
+    "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql",
+  );
   assert.ok(
     c8e.includes(`('fin_conta_salvar', '${conta.depois}', '20261660000000')`),
   );
