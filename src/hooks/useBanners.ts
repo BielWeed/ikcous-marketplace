@@ -12,6 +12,7 @@ import {
   semearBannersDoCofre,
 } from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
+import { destinoDoBanner } from "@/lib/destino-do-banner";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
   type OpcoesDoEnvioDeFoto,
@@ -26,6 +27,7 @@ import {
 import { arquivoJpegSemExif } from "@/lib/jpeg-sem-exif";
 import { marcaDe, nomesDasCopias } from "@/lib/piramide-da-foto-nomes";
 import {
+  PRAZO_DA_CONSULTA_DOS_BANNERS_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   ehGravacaoIncerta,
@@ -34,7 +36,7 @@ import {
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
 import type { Banner } from "@/types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
@@ -237,6 +239,24 @@ async function trocarAOrdemNoBanco(
  * implementam `isClosed` e contam como abertos. */
 function cofreFechado(vault: DataVault): boolean {
   return typeof vault.isClosed === "function" && vault.isClosed();
+}
+
+// Um id malformado faria o banco recusar o lote todo.
+const ID_DE_PRODUTO =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function produtoDoDestino(link: Banner["link"]): string | undefined {
+  try {
+    const destino = destinoDoBanner(link);
+    if (!destino) return;
+    const origem = window.location.origin;
+    const url = new URL(destino, origem);
+    if (url.origin !== origem || url.pathname !== "/product-detail") return;
+    const id = url.searchParams.get("id");
+    if (id && ID_DE_PRODUTO.test(id)) return id.toLowerCase();
+  } catch {
+    // Link inválido não impede a checagem dos outros banners.
+  }
 }
 
 export function useBanners(adminMode = false) {
@@ -519,6 +539,56 @@ export function useBanners(adminMode = false) {
     };
   }, [banners, adminMode, agora]);
 
+  // Só a lista que alimenta os carrosséis é filtrada. O cache e o cofre
+  // continuam com todos os banners para o painel mostrar seus avisos.
+  const produtosDosBanners = useMemo(() => {
+    const porBanner = new Map<string, string>();
+    if (!adminMode) {
+      for (const banner of banners) {
+        if (!banner.active) continue;
+        const id = produtoDoDestino(banner.link);
+        if (id) porBanner.set(banner.id, id);
+      }
+    }
+    return porBanner;
+  }, [adminMode, banners]);
+  const [indisponiveis, setIndisponiveis] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!produtosDosBanners.size) {
+      setIndisponiveis(null);
+      return;
+    }
+    let cancelada = false;
+    const ids = [...new Set(produtosDosBanners.values())];
+    // StrictMode pode desmontar o primeiro efeito antes da consulta sair.
+    void Promise.resolve().then(async () => {
+      if (cancelada) return;
+      try {
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase.from("vw_produtos_public").select("id").in("id", ids),
+          ),
+          PRAZO_DA_CONSULTA_DOS_BANNERS_MS,
+          () => erroDeConsultaSemResposta(),
+        );
+        if (cancelada) return;
+        // Só ausência confirmada na mesma visão pública da página do produto.
+        if (error || !data) {
+          setIndisponiveis(null);
+          return;
+        }
+        const encontrados = new Set(data.map((p) => p.id));
+        setIndisponiveis(new Set(ids.filter((id) => !encontrados.has(id))));
+      } catch {
+        if (!cancelada) setIndisponiveis(null);
+      }
+    });
+    return () => {
+      cancelada = true;
+    };
+  }, [produtosDosBanners]);
+
   const agoraNaTela = Date.now();
   const getBannersByPosition = useCallback(
     (position: Banner["position"]) => {
@@ -529,6 +599,8 @@ export function useBanners(adminMode = false) {
           if (adminMode) return true;
           if (!imagemDoBannerParaTela(b, computador)) return false;
           if (!b.active) return false;
+          const produto = produtosDosBanners.get(b.id);
+          if (produto && indisponiveis?.has(produto)) return false;
 
           if (b.startDate) {
             const start = new Date(b.startDate);
@@ -547,7 +619,14 @@ export function useBanners(adminMode = false) {
             (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
         );
     },
-    [banners, adminMode, agoraNaTela, computador],
+    [
+      banners,
+      adminMode,
+      agoraNaTela,
+      computador,
+      produtosDosBanners,
+      indisponiveis,
+    ],
   );
 
   const uploadBannerImage = async (

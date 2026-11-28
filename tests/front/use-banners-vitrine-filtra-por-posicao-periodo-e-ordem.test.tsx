@@ -34,7 +34,12 @@ vi.mock("@/lib/dataVault", () => ({
     }),
   },
 }));
-vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+const consultaPublica = vi.hoisted(() => {
+  const ids = vi.fn();
+  const select = vi.fn(() => ({ in: ids }));
+  return { ids, select, from: vi.fn(() => ({ select })) };
+});
+vi.mock("@/lib/supabase", () => ({ supabase: { from: consultaPublica.from } }));
 import { useBanners } from "@/hooks/useBanners";
 
 // @ts-expect-error flag interna do React.
@@ -95,6 +100,73 @@ async function mostrados(
   await act(async () => raiz.render(<Sonda />));
   return alvo.textContent ?? "";
 }
+
+describe("destinos de produto da vitrine", () => {
+  const pausado = "00000000-0000-4000-8000-000000000001";
+  const excluido = "00000000-0000-4000-8000-000000000002";
+  const esgotado = "00000000-0000-4000-8000-000000000003";
+  const link = (id: string) => `/product-detail?id=${id}`;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("esconde pausado e excluído, mas preserva esgotado e outros destinos", async () => {
+    consultaPublica.ids.mockResolvedValue({
+      data: [{ id: esgotado, stock: 0 }],
+      error: null,
+    });
+    expect(
+      await mostrados([
+        banner("pausado", { link: link(pausado) }),
+        banner("pausado-repetido", { link: link(pausado) }),
+        banner("excluido", { link: link(excluido) }),
+        banner("esgotado", { link: link(esgotado) }),
+        banner("categoria", { link: "/?category=Bolsas" }),
+        banner("externo", { link: `https://externo.invalid${link(pausado)}` }),
+        banner("sem-link", { productId: pausado }),
+      ]),
+    ).toBe("categoria,esgotado,externo,sem-link");
+    expect(consultaPublica.from).toHaveBeenCalledExactlyOnceWith(
+      "vw_produtos_public",
+    );
+    expect(consultaPublica.select).toHaveBeenCalledExactlyOnceWith("id");
+    expect(consultaPublica.ids).toHaveBeenCalledExactlyOnceWith("id", [
+      pausado,
+      excluido,
+      esgotado,
+    ]);
+  });
+
+  it("mantém o banner se a consulta falhar", async () => {
+    consultaPublica.ids.mockResolvedValue({
+      data: null,
+      error: { code: "503" },
+    });
+    expect(await mostrados([banner("produto", { link: link(pausado) })])).toBe(
+      "produto",
+    );
+    expect(consultaPublica.ids).toHaveBeenCalledTimes(1);
+  });
+
+  it("não consulta quando só há link de categoria", async () => {
+    expect(
+      await mostrados([banner("categoria", { link: "/?category=Bolsas" })]),
+    ).toBe("categoria");
+    expect(consultaPublica.from).not.toHaveBeenCalled();
+  });
+
+  it("não filtra a lista do painel", async () => {
+    expect(
+      await mostrados(
+        [banner("pausado", { link: link(pausado) })],
+        "home_top",
+        true,
+      ),
+    ).toBe("pausado");
+    expect(consultaPublica.from).not.toHaveBeenCalled();
+  });
+});
 
 describe("a posição e o ligado/desligado", () => {
   it("mostra só os banners da posição pedida", async () => {
