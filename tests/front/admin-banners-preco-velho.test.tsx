@@ -127,6 +127,7 @@ describe("AdminBannersView — banner que anuncia preço diferente do produto", 
   async function montarBanner(campos: {
     title?: string | null;
     subtitle?: string;
+    badgeText?: string;
     link?: string;
     active?: boolean;
   }) {
@@ -186,6 +187,30 @@ describe("AdminBannersView — banner que anuncia preço diferente do produto", 
     );
   });
 
+  it("o selo do banner também é conferido: 'Leve por R$ 79,90' num produto de R$ 100,00", async () => {
+    await montarBanner({ badgeText: "Leve por R$ 79,90" });
+    expect(textoDaTela()).toContain(
+      "Este banner anuncia R$ 79,90, mas o produto custa R$ 100,00 agora. Atualize o texto ou desligue o banner.",
+    );
+  });
+
+  it("os produtos chegam DEPOIS dos banners: o aviso aparece quando a lista chega", async () => {
+    lista.products = [];
+    await montarBanner({ subtitle: "Por apenas R$ 70,00" });
+    expect(textoDaTela()).toContain("Campanha");
+    expect(textoDaTela()).not.toContain(FIM_DO_AVISO);
+
+    // Mesma lista de banners (mesma referência); só os produtos chegaram.
+    lista.products = [vestido];
+    const { AdminBannersView } = await import("@/views/admin/AdminBannersView");
+    await act(async () =>
+      raiz.render(<AdminBannersView active onNavigate={vi.fn()} />),
+    );
+    expect(textoDaTela()).toContain(
+      "Este banner anuncia R$ 70,00, mas o produto custa R$ 100,00 agora.",
+    );
+  });
+
   it("banner desligado avisa também, como o aviso de produto pausado", async () => {
     await montarBanner({ subtitle: "Por apenas R$ 70,00", active: false });
     expect(textoDaTela()).toContain("Este banner anuncia R$ 70,00");
@@ -198,6 +223,14 @@ describe("AdminBannersView — banner que anuncia preço diferente do produto", 
       { subtitle: "Por R$ 120,00", link: "/product-detail?id=p-faixa" },
     ],
     ["texto sem valor", { subtitle: "Confira essa oferta especial!" }],
+    ["selo que bate com o preço", { badgeText: "Só R$ 100,00" }],
+    [
+      "combo, cupom e frete não são o preço do produto",
+      {
+        subtitle: "Leve 2 por R$150 · frete grátis acima de R$ 199",
+        badgeText: "Cupom de R$ 20",
+      },
+    ],
     [
       "produto fora da lista carregada (paginada)",
       { subtitle: "Por R$ 70,00", link: "/product-detail?id=p-fora" },
