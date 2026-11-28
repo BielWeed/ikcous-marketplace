@@ -1,14 +1,16 @@
-// `canvas.toBlob(cb, "image/webp")` não é uma ordem, é um pedido: o Safari do
-// iPhone (e todo navegador de iPhone, que usa o motor dele) não gera WebP e
-// devolve PNG sem avisar. Uma foto de câmera em PNG pesa alguns MB, e o envio
-// seguinte (`redimensionarImagem`) não consegue reduzi-la: PNG recomprimido não
-// fica menor e o arquivo grande é mantido. Cada recorte feito no iPhone subia
-// pesado para o armazenamento.
+// `canvas.toBlob(cb, formato)` não é uma ordem, é um pedido: o navegador pode
+// devolver outro tipo sem avisar. Este arquivo nasceu quando o ImageAdjuster
+// pedia `image/webp`: o Safari do iPhone (e todo navegador de iPhone, que usa
+// o motor dele) não gera WebP e devolvia PNG, que numa foto de câmera pesa
+// alguns MB e o envio seguinte (`redimensionarImagem`) não consegue reduzir.
+// Desde o #2075 o ImageAdjuster pede `image/jpeg` (iPhone com iOS 13 ou mais
+// velho não abre WebP); a conferência segue valendo para qualquer formato.
 //
-// Aqui confere-se o tipo que VOLTOU. Se o navegador caiu para outro formato,
-// refaz-se em JPEG (o canvas do editor já tem fundo opaco, então não há
-// transparência a perder). O nome e o Content-Type do arquivo continuam
-// honestos porque `arquivoDaImagemRecortada` os deriva do tipo real do blob.
+// Aqui confere-se o tipo que VOLTOU. Se não é o pedido, tenta-se JPEG (o
+// canvas do editor já tem fundo opaco, então não há transparência a perder)
+// e fica o menor dos dois; se o JPEG não sair, fica o que voltou (PNG, por
+// exemplo). O nome e o Content-Type do arquivo continuam honestos porque
+// `arquivoDaImagemRecortada` os deriva do tipo real do blob.
 
 function pedirBlob(
   canvas: HTMLCanvasElement,
