@@ -21,10 +21,12 @@ const PERCENTUAL_OFF = /(\d[\d,]*)\s*%\s*OFF\b/gi;
  * ("Leve 2 por R$ 150"), o cupom ("cupom de R$ 20", "R$ 20 OFF", "desconto de
  * R$ 30"), o frete ("frete R$ 9,90") e o mínimo de compra ("acima de R$ 199").
  * Conferi-los contra o preço do produto só dava falso aviso. Olha só o que
- * encosta no valor -- "Frete grátis! Vestido por R$ 70" segue conferido.
+ * encosta no valor -- "Frete grátis! Vestido por R$ 70" segue conferido -- e
+ * só tira o valor que é dos outros: "com desconto R$ 79,90", "frete grátis
+ * R$ 70" e "leve 1 vestido R$ 70" citam o preço do produto e são conferidos.
  */
 const ANTES_DE_VALOR_DE_FORA =
-  /(?:\b(?:leve|compre)\s+\d+\b[^\d$]{0,15}|\bacima\s+de\s*|\b(?:frete|cupom|desconto)(?:\sgr[áa]tis|\sfixo|\sde|\sdo|\sno|\sna){0,3}\s*[:\-–]?\s*)$/i;
+  /(?:\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}|\bacima\s+de\s*|\bdesconto\s+de\s*|\bcupom(?:\sde\sdesconto)?(?:\sde)?\s*[:\-–]?\s*|\bfrete(?:\sfixo)?(?:\sde)?\s*[:\-–]?\s*)$/i;
 const DEPOIS_DE_VALOR_DE_FORA = /^\s*(?:OFF\b|de\s+desconto\b)/i;
 
 /**

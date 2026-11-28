@@ -213,6 +213,20 @@ describe("precoAnunciadoVelho — o texto bate com o preço de agora?", () => {
     ).toEqual({ tipo: "preco", citado: 70, atual: 100, aPartirDe: false });
   });
 
+  // Revisão do #2110: textos que a lojista usa de verdade e em que o valor É o
+  // preço do produto. "com desconto", "frete grátis" e "leve 1" não tiram o
+  // valor da conferência -- só "desconto de", o valor DO frete e combo de 2+.
+  it.each([
+    ["Com desconto R$ 79,90", { tipo: "preco", citado: 79.9 }],
+    ["No Pix com desconto: R$ 79,90", { tipo: "preco", citado: 79.9 }],
+    ["FRETE GRÁTIS 30% OFF", { tipo: "percentual", citado: 30 }],
+    ["Frete grátis R$ 70", { tipo: "preco", citado: 70 }],
+    ["Leve 1 vestido R$ 70", { tipo: "preco", citado: 70 }],
+    ["Compre 1 por R$ 70", { tipo: "preco", citado: 70 }],
+  ])("o valor É o preço do produto e avisa: %j", (texto, esperado) => {
+    expect(precoAnunciadoVelho([texto], vestido(100))).toMatchObject(esperado);
+  });
+
   it("'R$ 70.50' (ponto como vírgula) é 70,50: bate com o preço 70,50", () => {
     expect(precoAnunciadoVelho(["Por R$ 70.50"], vestido(70.5))).toBeNull();
   });
