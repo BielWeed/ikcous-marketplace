@@ -1,3 +1,4 @@
+import { PRAZO_MS } from "./src/hospedagem/compartilhamento";
 import {
   classificarEntrada,
   registrarEntrada,
@@ -23,6 +24,7 @@ import {
   respostaManutencao,
 } from "./src/hospedagem/porteiro";
 import {
+  esgotadoNaPrevia,
   montarConsultaDeVariacoes,
   precoDaPrevia,
 } from "./src/hospedagem/precoDaPrevia";
@@ -366,6 +368,30 @@ export function escaparHtml(valor: string): string {
     .replace(/"/g, "&quot;");
 }
 
+// Uma leitura do ramo de robô com o MESMO prazo do Worker da Cloudflare
+// (`PRAZO_MS`, `compartilhamento.ts`): sem ele, um banco da loja lento segurava
+// a resposta até o robô do WhatsApp desistir, e o link ia sem prévia nenhuma.
+// Estourado, aborta o pedido e rejeita. `Promise.race` contra o temporizador,
+// e não só o sinal, para nunca depender do transporte respeitar o abort (mesma
+// forma de `lerConfiguracaoPublica` no porteiro).
+async function comPrazoDaPrevia<T>(
+  ler: (sinal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controle = new AbortController();
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  const prazoEsgotado = new Promise<never>((_resolve, reject) => {
+    temporizador = setTimeout(() => {
+      controle.abort();
+      reject(new Error(`prévia: prazo de ${PRAZO_MS} ms esgotado`));
+    }, PRAZO_MS);
+  });
+  try {
+    return await Promise.race([ler(controle.signal), prazoEsgotado]);
+  } finally {
+    clearTimeout(temporizador);
+  }
+}
+
 export default async function middleware(
   request: Request,
   context?: ContextoDaBorda,
@@ -497,85 +523,99 @@ export default async function middleware(
         // vitrine (menor preço das opções à venda, o do card e da página), e
         // não o `preco_venda` base. Falha aqui (rede, permissão, formato) vira
         // `null` e a prévia cai no preço-base — nunca derruba a prévia, nem
-        // vira "produto sem prévia".
+        // vira "produto sem prévia". As duas leituras levam o prazo do Worker:
+        // a das variações estourada = preço-base; a do produto estourada cai
+        // no `catch` abaixo e o robô recebe a prévia da loja (`semProduto`).
         const lerVariacoes = async (): Promise<unknown> => {
           try {
-            const respostaVariacoes = await fetch(
-              montarConsultaDeVariacoes(supabaseUrl, productId),
-              { headers: cabecalhosDaLeitura },
-            );
-            return respostaVariacoes.ok ? await respostaVariacoes.json() : null;
+            return await comPrazoDaPrevia(async (signal) => {
+              const respostaVariacoes = await fetch(
+                montarConsultaDeVariacoes(supabaseUrl, productId),
+                { headers: cabecalhosDaLeitura, signal },
+              );
+              return respostaVariacoes.ok
+                ? await respostaVariacoes.json()
+                : null;
+            });
           } catch (error) {
             console.error("[Middleware] Error fetching variants:", error);
             return null;
           }
         };
-        const [response, variacoes] = await Promise.all([
-          fetch(
-            `${supabaseUrl}/rest/v1/vw_produtos_public?id=eq.${encodeURIComponent(productId)}&select=*`,
-            { headers: cabecalhosDaLeitura },
-          ),
+        const lerProduto = (): Promise<unknown> =>
+          comPrazoDaPrevia(async (signal) => {
+            const response = await fetch(
+              `${supabaseUrl}/rest/v1/vw_produtos_public?id=eq.${encodeURIComponent(productId)}&select=*`,
+              { headers: cabecalhosDaLeitura, signal },
+            );
+            return response.ok ? await response.json() : null;
+          });
+        const [products, variacoes] = await Promise.all([
+          lerProduto(),
           lerVariacoes(),
         ]);
 
-        if (response.ok) {
-          const products = await response.json();
-          if (Array.isArray(products) && products.length > 0) {
-            const product = products[0];
+        if (Array.isArray(products) && products.length > 0) {
+          const product = products[0];
 
-            // Resolve values (escapados: nome/descrição vêm do banco, o
-            // lojista escreve, e um `"` ou `<` cru quebraria a meta tag).
-            const name = escaparHtml(product.nome || `Produto - ${storeName}`);
-            // Texto puro e curto (sem ** nem #, sem quebra, teto de ~200):
-            // o MESMO resumo do Worker (`compartilhamento.ts`).
-            const description = escaparHtml(
-              (typeof product.descricao === "string"
-                ? resumoParaPrevia(product.descricao)
-                : "") || `Confira os detalhes do produto no ${storeName}.`,
-            );
-            // Só número > 0 aparece: 0, negativo ou não numérico ficam sem
-            // preço na prévia (decisão do dono, 11/09/2026).
-            // O número é o preço de VITRINE (menor preço das opções à venda);
-            // sem variações utilizáveis é o `preco_venda` base.
-            const precoNumerico = precoDaPrevia(
-              Number(product.preco_venda),
-              variacoes,
-            );
-            const price =
-              Number.isFinite(precoNumerico) && precoNumerico > 0
-                ? escaparHtml(
-                    `R$ ${precoNumerico.toLocaleString("pt-BR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}`,
-                  )
-                : "";
-            // `imagem_urls` é o DEFAULT `[]` da coluna com frequência — um
-            // array vazio é truthy e não pode apagar `imagem_url` (decisão do
-            // dono, 11/09/2026). Ordem: cada item de `imagem_urls`, DEPOIS
-            // `imagem_url`.
-            const rawImages = [
-              ...(Array.isArray(product.imagem_urls)
-                ? product.imagem_urls
-                : []),
-              product.imagem_url,
-            ];
-            const images = rawImages.filter(
-              (img: any) => typeof img === "string" && img.trim() !== "",
-            );
-            // Só o fallback (a arte de compartilhamento da identidade, vinda
-            // de `ficha.identidade.localUrls.og` — Storage da PRÓPRIA loja,
-            // nunca mais um `${publicUrl}/og-image.png` do build assado) tem
-            // dimensão fixa: sempre PNG 1200x630. A foto do produto não tem
-            // tamanho conhecido — declarar 600x400 pra qualquer imagem
-            // distorcia a prévia; sem as duas metas, o robô mede a imagem
-            // sozinho.
-            const ehFallback = images.length === 0;
-            const imageUrl = escaparHtml(
-              images[0] || ficha.identidade.localUrls.og,
-            );
+          // Resolve values (escapados: nome/descrição vêm do banco, o
+          // lojista escreve, e um `"` ou `<` cru quebraria a meta tag).
+          const name = escaparHtml(product.nome || `Produto - ${storeName}`);
+          // Texto puro e curto (sem ** nem #, sem quebra, teto de ~200):
+          // o MESMO resumo do Worker (`compartilhamento.ts`).
+          const description = escaparHtml(
+            (typeof product.descricao === "string"
+              ? resumoParaPrevia(product.descricao)
+              : "") || `Confira os detalhes do produto no ${storeName}.`,
+          );
+          // Só número > 0 aparece: 0, negativo ou não numérico ficam sem
+          // preço na prévia (decisão do dono, 11/09/2026).
+          // O número é o preço de VITRINE (menor preço das opções à venda);
+          // sem variações utilizáveis é o `preco_venda` base.
+          const precoNumerico = precoDaPrevia(
+            Number(product.preco_venda),
+            variacoes,
+          );
+          const price =
+            Number.isFinite(precoNumerico) && precoNumerico > 0
+              ? escaparHtml(
+                  `R$ ${precoNumerico.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}`,
+                )
+              : "";
+          // O que vai depois do nome no og:title: "Esgotado" quando a página
+          // do produto mostra esse selo (a mesma conta de estoque), senão o
+          // preço; sem nenhum dos dois, nada — e sem espaço sobrando antes da
+          // barra.
+          const destaque = esgotadoNaPrevia(product.estoque, variacoes)
+            ? "Esgotado"
+            : price;
+          // `imagem_urls` é o DEFAULT `[]` da coluna com frequência — um
+          // array vazio é truthy e não pode apagar `imagem_url` (decisão do
+          // dono, 11/09/2026). Ordem: cada item de `imagem_urls`, DEPOIS
+          // `imagem_url`.
+          const rawImages = [
+            ...(Array.isArray(product.imagem_urls) ? product.imagem_urls : []),
+            product.imagem_url,
+          ];
+          const images = rawImages.filter(
+            (img: any) => typeof img === "string" && img.trim() !== "",
+          );
+          // Só o fallback (a arte de compartilhamento da identidade, vinda
+          // de `ficha.identidade.localUrls.og` — Storage da PRÓPRIA loja,
+          // nunca mais um `${publicUrl}/og-image.png` do build assado) tem
+          // dimensão fixa: sempre PNG 1200x630. A foto do produto não tem
+          // tamanho conhecido — declarar 600x400 pra qualquer imagem
+          // distorcia a prévia; sem as duas metas, o robô mede a imagem
+          // sozinho.
+          const ehFallback = images.length === 0;
+          const imageUrl = escaparHtml(
+            images[0] || ficha.identidade.localUrls.og,
+          );
 
-            const html = `<!DOCTYPE html>
+          const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
@@ -583,7 +623,7 @@ export default async function middleware(
   <meta name="description" content="${description}">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="${name} ${price ? `- ${price}` : ""} | ${storeNameHtml}" />
+  <meta property="og:title" content="${name}${destaque ? ` - ${destaque}` : ""} | ${storeNameHtml}" />
   <meta property="og:description" content="${description}" />
   <meta property="og:type" content="product" />
   <meta property="og:url" content="${escaparHtml(request.url)}" />
@@ -608,17 +648,16 @@ export default async function middleware(
 </body>
 </html>`;
 
-            return marcar(
-              new Response(html, {
-                headers: {
-                  "content-type": "text/html; charset=utf-8",
-                  vary: VARY_DA_PREVIA,
-                  "x-ikcous-og": "produto",
-                  "x-ikcous-caderneta": estadoCaderneta,
-                },
-              }),
-            );
-          }
+          return marcar(
+            new Response(html, {
+              headers: {
+                "content-type": "text/html; charset=utf-8",
+                vary: VARY_DA_PREVIA,
+                "x-ikcous-og": "produto",
+                "x-ikcous-caderneta": estadoCaderneta,
+              },
+            }),
+          );
         }
       } catch (error) {
         console.error("[Middleware] Error fetching product:", error);
