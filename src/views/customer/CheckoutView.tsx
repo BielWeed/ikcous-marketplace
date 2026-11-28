@@ -111,7 +111,6 @@ import {
   pedidoSemValorAPagar,
   rotuloDaFormaDoPedido,
 } from "@/lib/forma-de-pagamento";
-import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
   capaDeReservaDoItem,
   fotoDoItemDoCarrinho,
@@ -130,6 +129,7 @@ import {
   retiradaLivreParaQualquerCep,
 } from "@/lib/guarda-de-frete";
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
+import { formasNaEntregaOferecidas } from "@/lib/loja-se-preparando";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
@@ -3878,9 +3878,7 @@ export function CheckoutViewDaConta({
     freteFechado:
       cart.length > 0 && !semFreteSelecionado && !cupomEmConferencia,
     modalidadeDaLoja: ehEntregaLocal,
-    formasNaEntrega: formasPagamentoNaEntregaValidas(
-      config.formasPagamentoEntrega,
-    ),
+    formasNaEntrega: formasNaEntregaOferecidas(config),
     paymentMethod,
   });
   // O que a cliente tinha marcado ANTES de o total zerar: se era o pagamento
@@ -4008,16 +4006,14 @@ export function CheckoutViewDaConta({
     // (acima) — este aqui poderia escolher "online", que não cobra R$ 0,00.
     if (totalZero.zerado) return;
     if (
-      formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).includes(
+      formasNaEntregaOferecidas(config).includes(
         paymentMethod as "pix" | "card" | "cash",
       )
     ) {
       return;
     }
     const proxima = primeiraFormaDePagamentoDisponivel({
-      formasNaEntrega: formasPagamentoNaEntregaValidas(
-        config.formasPagamentoEntrega,
-      ),
+      formasNaEntrega: formasNaEntregaOferecidas(config),
       pagamentoOnlineLigado: pagamentoOnlineLigado(),
       logado: !!user,
     });
@@ -4126,9 +4122,8 @@ export function CheckoutViewDaConta({
 
   const modalidadePermiteTroco =
     !ehRetirada && (!selectedShippingOption || ehEntregaLocal);
-  const dinheiroNaEntregaDisponivel = formasPagamentoNaEntregaValidas(
-    config.formasPagamentoEntrega,
-  ).includes("cash");
+  const dinheiroNaEntregaDisponivel =
+    formasNaEntregaOferecidas(config).includes("cash");
   useEffect(() => {
     if (!storeConfigLoaded || authLoading || retomarPedidoId) return;
     const pendente = trocoPendenteDoRascunhoRef.current;
@@ -4693,9 +4688,7 @@ export function CheckoutViewDaConta({
   // test, não colada num componente inteiro.
   const formaDePagamentoDesligada = formaDePagamentoDesligadaNaLoja({
     paymentMethod,
-    formasNaEntrega: formasPagamentoNaEntregaValidas(
-      config.formasPagamentoEntrega,
-    ),
+    formasNaEntrega: formasNaEntregaOferecidas(config),
   });
 
   // Achado 1 do BLOQUEANTE (12/09/2026): `finalTotal` sempre soma `shipping`
@@ -7279,11 +7272,11 @@ export function CheckoutViewDaConta({
   // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a lista fixa vira filtrada
   // pela config — a loja liga/desliga cada uma no painel (AdminSettingsView,
   // grupo "Pagamentos" > "Formas de pagamento"). Ausente/inválido no dado
-  // lido é tratado como as três (`formasPagamentoNaEntregaValidas`) — loja
+  // lido é tratado como as três (`formasPagamentoNaEntregaValidas`, dentro de
+  // `formasNaEntregaOferecidas`, que zera a lista enquanto a loja nova não
+  // confirma o pagamento na entrega, 20261655000000) — loja
   // velha, sem a coluna ainda, não muda de comportamento sozinha.
-  const formasNaEntregaDisponiveis = formasPagamentoNaEntregaValidas(
-    config.formasPagamentoEntrega,
-  );
+  const formasNaEntregaDisponiveis = formasNaEntregaOferecidas(config);
   const opcoesNaEntrega: OpcaoDePagamento[] = (
     [
       {
