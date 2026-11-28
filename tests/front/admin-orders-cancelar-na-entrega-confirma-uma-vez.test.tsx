@@ -6,7 +6,7 @@
 // (`avancoConfirmadoPorQuemChamou`), porque a confirmação do avanço é dela;
 // o cancelamento continua confirmado pelo hook. A lojista vê exatamente UM
 // "Pedido cancelado." — nunca nenhum (o hook calado também no cancelamento)
-// nem o "Status atualizado" de um avanço com "Avisar pelo WhatsApp" da etapa
+// nem o "Status atualizado" de um avanço com o botão "WhatsApp" da etapa
 // "cancelado" (a ficha tratando o cancelamento como avanço).
 //
 // Hook e tela de verdade: só o banco, a sessão e os vizinhos que não vêm ao
