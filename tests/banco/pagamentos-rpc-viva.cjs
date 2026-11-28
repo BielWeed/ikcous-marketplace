@@ -1946,6 +1946,11 @@ async function desfazerPosterioresNaTransacao(c) {
   await require("./o-aviso-do-vale-troca-posterior.cjs").desfazerAvisoDoValeTrocaNaTransacao(
     c,
   );
+  // A 20261655000000 (a loja nova so vende o que confirmou) poe na vitrine duas colunas calculadas das datas da 20261652000000
+  // (sucessora da 99, na lista abaixo), cujo rollback apaga essas colunas: sai ANTES do laco. Nao chama is_admin_atual: nao entra na lista.
+  await require("./a-loja-nova-so-vende-posterior.cjs").desfazerSoVendeOConfirmadoNaTransacao(
+    c,
+  );
   // A 20261654000000 (o caixa pertence ao dia em que abriu) sucede os corpos da 252 (a PRIMEIRA da lista abaixo), o da 246 e o da 99:
   // sai ANTES do laco (o rollback da 252 recusa com o corpo novo no ar; so se no ar). O rollback dela devolve as quatro de uma vez.
   await require("./o-caixa-pertence-ao-dia-posterior.cjs").desfazerCaixaDoDiaDaAberturaNaTransacao(

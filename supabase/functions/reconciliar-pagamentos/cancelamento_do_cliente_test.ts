@@ -306,6 +306,8 @@ Deno.test("o PUSH lanca: o passo nao derruba nada (resposta 200, pagamento confi
   const r = await rodar(m, { quebrarPush: true });
   assertEquals(r.status, 200);
   assertEquals([r.corpo.confirmados, r.corpo.falhas], [1, 0]);
-  // Push que lanca = 0 entregas: a reserva e solta e a proxima rodada tenta.
-  assertEquals(m.reservas.size, 0);
+  // Push que lanca = 0 entregas: a reserva e solta e a proxima rodada tenta. A
+  // unica que fica e a do "Pedido pago" do candidato confirmado (lote-582), que
+  // sai pelo seam `enviarPush` (sem contagem: conta como entregue).
+  assertEquals([...m.reservas.entries()], [[`pedido_pago:${PEDIDO_PAGAR}`, true]]);
 });

@@ -258,6 +258,25 @@ async function defeitoECura(c, sql, fabrica) {
       { anon: 1, authenticated: 1 },
       "depois: v_store_config devolve 1 linha",
     );
+    // A ficha recém-semeada é de loja NOVA: com a 20261652000000 no ar as confirmações nascem NULL e, com a 20261655000000 (a loja
+    // nova só vende o que confirmou), o pagamento na entrega fica recusado até a lojista confirmar. A cura desta migration é a
+    // ficha existir (sem ela a recusa é por NOT FOUND, confirmada ou não): confirmado o pagamento, o pix passa.
+    const soVendeNoAr = (
+      await c.query(
+        "SELECT md5(replace(prosrc, chr(13), '')) = $1 AS v FROM pg_proc WHERE oid = to_regprocedure('public.forma_de_pagamento_aceita(text)')",
+        [require("./a-loja-nova-so-vende-posterior.cjs").HASH_ACEITA_DESTA],
+      )
+    ).rows[0]?.v;
+    if (soVendeNoAr) {
+      assert.equal(
+        await aceita(c, "pix"),
+        false,
+        "depois, loja nova sem confirmar o pagamento: pix recusado (20261655000000)",
+      );
+      await c.query(
+        "UPDATE public.store_config SET pagamento_confirmado_em = now() WHERE id = 1",
+      );
+    }
     assert.equal(await aceita(c, "pix"), true, "depois: pix aceito");
     assert.equal(await comentario(c), MARCA, "a marca fica no catálogo");
   });

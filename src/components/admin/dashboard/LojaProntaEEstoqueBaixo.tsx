@@ -168,6 +168,11 @@ export function LojaProntaEEstoqueBaixo({
       <p className="text-sm leading-relaxed text-zinc-300">
         {passo.aConfirmar}
       </p>
+      {passo.enquantoNaoConfirmar ? (
+        <p className="text-sm leading-relaxed text-zinc-400">
+          {passo.enquantoNaoConfirmar}
+        </p>
+      ) : null}
       {onConfirmar ? (
         <button
           type="button"

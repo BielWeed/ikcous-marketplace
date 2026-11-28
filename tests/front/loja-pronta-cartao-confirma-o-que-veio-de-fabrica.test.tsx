@@ -202,4 +202,40 @@ describe("Loja pronta — confirmar o que veio de fábrica", () => {
     expect(botoes("Está certo")).toHaveLength(0);
     expect(hospedeiro.textContent).toContain("6 de 6 passos concluídos");
   });
+
+  // A loja nova só vende o que confirmou (28/11/2026, migration 20261655000000): enquanto não confirma, a cliente não
+  // vê a entrega na cidade / não paga na entrega. O cartão diz isso embaixo do que vale hoje.
+  it("entrega a confirmar: diz o que acontece com as clientes enquanto não confirmar", async () => {
+    await montar({
+      config: { ...CONFIG, entregaConfirmada: false },
+      onConfirmar: vi.fn<OnConfirmar>(),
+    });
+    expect(hospedeiro.textContent).toContain(
+      "Enquanto você não confirmar, a entrega na cidade não aparece para as clientes.",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "Enquanto você não confirmar, a cliente não consegue pagar na entrega.",
+    );
+  });
+
+  it("pagamento a confirmar: diz que a cliente não consegue pagar na entrega enquanto não confirmar", async () => {
+    await montar({
+      config: { ...CONFIG, pagamentoConfirmado: false },
+      onConfirmar: vi.fn<OnConfirmar>(),
+    });
+    expect(hospedeiro.textContent).toContain(
+      "Enquanto você não confirmar, a cliente não consegue pagar na entrega.",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "a entrega na cidade não aparece para as clientes",
+    );
+  });
+
+  it("confirmado: nenhuma das duas frases de consequência", async () => {
+    await montar({
+      config: { ...CONFIG, entregaConfirmada: true, pagamentoConfirmado: true },
+      onConfirmar: vi.fn<OnConfirmar>(),
+    });
+    expect(hospedeiro.textContent).not.toContain("Enquanto você não confirmar");
+  });
 });
