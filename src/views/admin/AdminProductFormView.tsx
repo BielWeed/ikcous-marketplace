@@ -117,9 +117,11 @@ import type { Product, ProductVariant, View } from "@/types";
 import {
   type ComEstoqueHerdado,
   ESTOQUE_HERDADO,
+  type PrecoDaGradeEmConflito,
   camposQueMudaram,
   estoqueFoiHerdado,
   fotosAposConflito,
+  precosDaGradeEmConflito,
   variacaoMudou,
   variacoesAposConflito,
   variacoesQueMudaram,
@@ -1104,7 +1106,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const versaoDosPrecosRef = useRef<string | undefined>(undefined);
   const [conflitoDePrecosComGrade, setConflitoDePrecosComGrade] = useState<
     | (Pick<ProductFormFields, "price" | "costPrice" | "originalPrice"> & {
-        updatedAt: string;
+        // Sem versão (o banco não a devolveu), confirmar não adota versão
+        // nova para o preço: o salvar seguinte volta a ser recusado.
+        updatedAt?: string;
+        // Preço próprio de variação mudado aqui E em outro aparelho.
+        grade: PrecoDaGradeEmConflito[];
       })
     | null
   >(null);
@@ -4492,15 +4498,27 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           costPrice,
           originalPrice,
         } = camposDoFormularioDoProduto(atual);
+        // A junção abaixo mantém o preço próprio que ela editou mesmo quando
+        // outro aparelho gravou outro: o segundo salvar o gravaria por cima sem
+        // ela ver. Confirma antes, também quando ela só mexeu na grade.
+        const precosDaGrade = precosDaGradeEmConflito(
+          formData.variants,
+          initialData.variants,
+          variants,
+        );
         // Na recuperação do estoque, pode usar a versão que recarregou o
         // estoque se os três preços que a lojista viu ao abrir ainda valem.
         // Uma recusa de preço por si só não revalida a edição.
-        if (conferiaPrecoComGrade && atual.updatedAt) {
+        if (
+          (conferiaPrecoComGrade && atual.updatedAt) ||
+          precosDaGrade.length > 0
+        ) {
           setConflitoDePrecosComGrade({
             price,
             costPrice,
             originalPrice,
             updatedAt: atual.updatedAt,
+            grade: precosDaGrade,
           });
         } else if (
           !conferiaPrecoComGrade &&
@@ -4764,6 +4782,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const numero = numeroOpcionalDoCampo(valor);
     return numero == null ? "não informado" : formatCurrency(numero);
   };
+  // Preço próprio vazio = a variação segue o preço do produto ("Auto" na grade).
+  const textoDoPrecoDaGrade = (valor: number | null | undefined) =>
+    valor == null ? "automático" : formatCurrency(valor);
   const linhaDoPrecoEmConflito = (
     rotulo: string,
     atual: string,
@@ -4778,10 +4799,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     );
   const confirmarPrecosDoRascunho = () => {
     if (!conflitoDePrecosComGrade) return;
-    const { updatedAt, ...precos } = conflitoDePrecosComGrade;
+    const { updatedAt, grade: _grade, ...precos } = conflitoDePrecosComGrade;
     // Só confirma a versão mostrada. Outra escrita entre o aviso e Salvar
     // volta a ser recusada. Os preços não editados passam a mostrar os do banco.
-    versaoDosPrecosRef.current = updatedAt;
+    // Os da grade já estão na tela como ela digitou (ver `variacoesAposConflito`).
+    if (updatedAt !== undefined) versaoDosPrecosRef.current = updatedAt;
     setInitialData((anterior) => ({ ...anterior, ...precos }));
     setFormData((anterior) => ({
       ...anterior,
@@ -6511,7 +6533,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     >
                       {avisoDoPrecoDasVariacoes &&
                         avisoDoPrecoDasVariacoes.presas.length > 0 && (
-                          <p className="block text-[11px] font-bold leading-tight text-amber-400">
+                          <p className="block break-words text-[11px] font-bold leading-tight text-amber-400">
                             {juntarNomes(
                               avisoDoPrecoDasVariacoes.presas.map(
                                 (v) => v.value,
@@ -6535,7 +6557,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         )}
                       {avisoDoPrecoDasVariacoes &&
                         avisoDoPrecoDasVariacoes.diferentes.length > 0 && (
-                          <p className="block text-[11px] font-bold leading-tight text-zinc-400">
+                          <p className="block break-words text-[11px] font-bold leading-tight text-zinc-400">
                             {juntarNomes(
                               avisoDoPrecoDasVariacoes.diferentes.map(
                                 (v) =>
@@ -6552,7 +6574,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         <button
                           type="button"
                           data-testid="seguir-o-preco-do-produto"
-                          disabled={presasJaSeguem}
+                          // `aria-disabled`, não `disabled`: o botão tocado
+                          // vira o "Pronto" e o foco do teclado fica nele (o
+                          // `role="status"` lê o texto novo). O toque de novo
+                          // não faz nada: não sobra variação presa.
+                          aria-disabled={presasJaSeguem || undefined}
                           onClick={seguirOPrecoDoProduto}
                           className={cn(
                             "min-h-11 max-w-full rounded-xl border border-admin-border bg-admin-raised px-3 py-2 text-left text-[11px] font-bold text-white",
@@ -7720,6 +7746,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   formData.originalPrice,
                   mexeuNoPrecoDeAntes(),
                 )}
+                {conflitoDePrecosComGrade.grade.map(({ id, atual }) => {
+                  const naTela = formData.variants.find((v) => v.id === id);
+                  return (
+                    naTela && (
+                      <p key={id}>
+                        {naTela.value} · Atual: {textoDoPrecoDaGrade(atual)} ·
+                        Digitado: {textoDoPrecoDaGrade(naTela.priceOverride)}
+                      </p>
+                    )
+                  );
+                })}
               </div>
               <button
                 type="button"
