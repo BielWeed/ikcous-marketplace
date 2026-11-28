@@ -1158,7 +1158,8 @@ async function provaDaMigration() {
     assert.equal(await retrato(), dados, "o apply nao toca dado");
 
     // Pre-voo: um corpo estranho em QUALQUER das quatro recusa a migration e o rollback, sem trocar nada.
-    await C.query(`${ANALYTICS.replace("\n$$;", "\n-- estranho\n$$;")}`);
+    // Substituicao por FUNCAO: numa string de troca, "$$" vira "$" e o corpo ficaria sem fechar.
+    await C.query(ANALYTICS.replace("\n$$;", () => "\n-- estranho\n$$;"));
     const estranho = await hashes();
     assert.notEqual(estranho.ana, HASH_ANALYTICS_DESTA);
     assert.match(
