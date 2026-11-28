@@ -248,11 +248,12 @@ describe("AdminProductsView — duplicar: uma cópia, um aviso", () => {
     });
   }
 
-  it("avisa antes de confirmar que as 10 unidades do original serão copiadas", async () => {
+  it("avisa antes de confirmar que a cópia nasce sem estoque (as 10 unidades do original NÃO vão)", async () => {
     await montarEAbrirConfirmacao();
     expect(hospedeiro.textContent).toContain(
-      "O estoque do original (10 unidades) também é copiado. Ajuste antes de ativar.",
+      "A cópia nasce sem estoque: coloque as quantidades antes de ativar.",
     );
+    expect(hospedeiro.textContent).not.toContain("também é copiado");
     expect(addProduct).not.toHaveBeenCalled();
   });
 
@@ -308,9 +309,11 @@ describe("AdminProductsView — duplicar: uma cópia, um aviso", () => {
     expect(addProduct).toHaveBeenCalledWith(expect.anything(), {
       avisarSucesso: false,
     });
-    expect(toastSuccess).toHaveBeenCalledExactlyOnceWith("Produto Duplicado", {
-      description: "O produto foi duplicado com sucesso.",
-    });
+    expect(toastSuccess).toHaveBeenCalledExactlyOnceWith(
+      "Cópia criada, desativada e sem estoque.",
+    );
+    // A cópia nasce sem estoque (decisão de produto, 27/11/2026).
+    expect(addProduct.mock.calls[0][0].stock).toBe(0);
     expect(toastError).not.toHaveBeenCalled();
   });
 

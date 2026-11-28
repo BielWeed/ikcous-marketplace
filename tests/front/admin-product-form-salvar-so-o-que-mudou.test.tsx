@@ -319,8 +319,14 @@ describe("AdminProductFormView — editar manda só o que a lojista mudou", () =
     await salvar();
 
     const enviadas = variacoesEnviadas();
-    expect(enviadas.map((v) => v.id)).toEqual(["v1"]);
-    expect(enviadas[0]).toMatchObject({ value: "Rosa choque" });
+    // Desde 27/11/2026 trocar o valor cria opção nova: a antiga (v1) vai
+    // desligada, na frente, e a "Rosa choque" vai como linha nova (temp-).
+    expect(enviadas.map((v) => v.id.replace(/^temp-.*$/, "temp"))).toEqual([
+      "v1",
+      "temp",
+    ]);
+    expect(enviadas[0]).toMatchObject({ value: "Rosa", active: false });
+    expect(enviadas[1]).toMatchObject({ value: "Rosa choque" });
     // A que ela não mexeu não viaja: o preço próprio da Azul (65) fica como
     // está no banco, mesmo que outra pessoa o tenha mudado enquanto isso.
     expect(enviadas.some((v) => v.id === "v2")).toBe(false);

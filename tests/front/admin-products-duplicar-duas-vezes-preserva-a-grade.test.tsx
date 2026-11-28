@@ -49,8 +49,23 @@ const produtoTeste = {
   price: 100,
   costPrice: 50,
   variants: [
-    { id: "v-p", name: "Tamanho", value: "P", sku: "CAM-P", active: true },
-    { id: "v-m", name: "Tamanho", value: "M", sku: "CAM-M", active: true },
+    {
+      id: "v-p",
+      name: "Tamanho",
+      value: "P",
+      sku: "CAM-P",
+      active: true,
+      stockIncrement: 4,
+      priceOverride: 12.5,
+    },
+    {
+      id: "v-m",
+      name: "Tamanho",
+      value: "M",
+      sku: "CAM-M",
+      active: true,
+      stockIncrement: 6,
+    },
   ],
 };
 
@@ -279,16 +294,34 @@ describe("AdminProductsView — achado 546: duplicar duas vezes preserva a grade
     });
   }
 
-  it("avisa que o estoque de cada variação também será copiado", async () => {
+  it("avisa que a cópia nasce sem estoque, também nas variações", async () => {
     await montar();
     await act(async () => {
       localizarBotaoPorTexto(hospedeiro, "Duplicar Produto")!.click();
     });
 
     expect(hospedeiro.textContent).toContain(
-      "O estoque de cada variação também é copiado. Ajuste antes de ativar.",
+      "A cópia nasce sem estoque: coloque as quantidades antes de ativar.",
     );
+    expect(hospedeiro.textContent).not.toContain("também é copiado");
     expect(addProduct).not.toHaveBeenCalled();
+  });
+
+  it("a cópia nasce com estoque 0 no produto e em cada variação; preço, opções e foto continuam copiados", async () => {
+    await montar();
+    await duplicar();
+
+    expect(addProduct).toHaveBeenCalledTimes(1);
+    const payload = addProduct.mock.calls[0][0];
+    expect(payload.stock).toBe(0);
+    expect(payload.variants.map((v: any) => v.stockIncrement)).toEqual([0, 0]);
+    expect(payload.variants.map((v: any) => v.value)).toEqual(["P", "M"]);
+    expect(payload.variants.map((v: any) => v.priceOverride)).toEqual([
+      12.5,
+      undefined,
+    ]);
+    expect(payload.price).toBe(100);
+    expect(payload.images).toEqual(produtoTeste.images);
   });
 
   it("duplicar uma vez: a variante clonada NÃO herda o sufixo fixo '-COPY' que colide na próxima duplicação", async () => {

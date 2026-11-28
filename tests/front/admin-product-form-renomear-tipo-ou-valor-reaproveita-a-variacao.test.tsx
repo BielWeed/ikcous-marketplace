@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 //
-// Renomear o TIPO ("Cor" -> "Cores") ou o VALOR ("P" -> "Pequeno") de uma
-// variação que já existe reaproveita a linha: a variação segue com o mesmo id,
-// preço próprio, estoque e código interno, e nenhuma linha duplicada nasce.
+// Renomear o TIPO ("Cor" -> "Cores") de uma variação que já existe
+// reaproveita a linha: a variação segue com o mesmo id, preço próprio, estoque
+// e código interno, e nenhuma linha duplicada nasce. Trocar o VALOR ("P" ->
+// "Pequeno") vira opção nova desde 27/11/2026 (caso próprio abaixo).
 //
 // Suspeita investigada em 13/11/2026: "renomear deixa as antigas e gera novas
 // por cima". O caminho de edição troca a linha pelo id (não gera nada), e o
@@ -277,7 +278,11 @@ describe("AdminProductFormView — renomear tipo ou valor reaproveita a variaç�
     }
   });
 
-  it("renomear o VALOR (P -> Pequeno) troca só aquela linha, no mesmo id e com o resto intacto", async () => {
+  // Decisão de produto de 27/11/2026: trocar o VALOR (palavra diferente) deixou
+  // de reaproveitar a linha — vira opção nova, e a antiga sai (ou fica guardada
+  // desligada, se já foi vendida). Detalhe em
+  // admin-product-form-trocar-valor-cria-opcao-nova.test.tsx.
+  it("renomear o VALOR (P -> Pequeno) cria a opção nova com o preço, o código e o estoque da linha; a antiga vai para apagar", async () => {
     await montar(GRADE_GRAVADA);
 
     await editar("P");
@@ -289,18 +294,21 @@ describe("AdminProductFormView — renomear tipo ou valor reaproveita a variaç�
 
     await salvarProduto();
     const mandado = enviado();
-    expect(mandado?.apagar).toEqual([]);
-    expect(mandado?.variantes).toHaveLength(1);
+    expect(mandado?.apagar).toEqual(["v1"]);
+    expect(mandado?.variantes).toHaveLength(2);
     expect(mandado?.variantes[0]).toMatchObject({
       id: "v1",
+      value: "P",
+      active: false,
+    });
+    expect(mandado?.variantes[1].id).toMatch(/^temp-/);
+    expect(mandado?.variantes[1]).toMatchObject({
       name: "Cor",
       value: "Pequeno",
       priceOverride: 61.5,
       sku: "CAM-P",
+      stockIncrement: 4,
     });
-    // O estoque que a tela não mexeu NÃO viaja (o banco guarda o dele, que
-    // pode ter descido com uma venda): ausente do envio = intacto no banco.
-    expect(mandado?.variantes[0]).not.toHaveProperty("stockIncrement");
   });
 
   it("controle: salvar o produto sem renomear nada não manda variação nenhuma", async () => {
