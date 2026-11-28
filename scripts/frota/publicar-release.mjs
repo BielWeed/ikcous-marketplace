@@ -1140,6 +1140,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente",
   "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
   "216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente",
+  "221a-conferir-o-codigo-do-pedido-vale-nos-dois-celulares-aplicado",
+  "221b-antes-o-codigo-do-pedido-vale-nos-dois-celulares-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

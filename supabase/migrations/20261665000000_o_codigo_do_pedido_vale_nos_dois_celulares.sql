@@ -8,7 +8,7 @@ SET LOCAL statement_timeout = '30s';
 DO $preflight$
 BEGIN
   IF (SELECT md5(replace(prosrc, chr(13), '')) FROM pg_catalog.pg_proc
-       WHERE oid = to_regprocedure('public.generate_order_otp_v2(text,text,text)')) = '413d262f2644ae8f9509d8d82dda3d69'
+       WHERE oid = to_regprocedure('public.generate_order_otp_v2(text,text,text)')) = '133ed543a1ab73a235b059c8a4d8f87b'
      AND (SELECT md5(replace(prosrc, chr(13), '')) FROM pg_catalog.pg_proc
        WHERE oid = to_regprocedure('public.get_orders_by_otp_v2(text,text,text,text)')) = '95d6957283869602683047a97d608074' THEN
     RETURN;
@@ -40,6 +40,7 @@ DECLARE
     v_teto_por_pedido CONSTANT integer := 5;
     v_teto_por_destinatario CONSTANT integer := 10;
     v_teto_do_codigo_na_loja CONSTANT integer := 40;
+    v_max_tentativas CONSTANT integer := 5;
     v_otp text;
     v_expira timestamptz;
     v_order_id uuid;
@@ -99,6 +100,13 @@ BEGIN
      LIMIT 1
      FOR UPDATE;
     v_agora := clock_timestamp();
+
+    -- Um código bloqueado ainda ocupa a janela original, mas não pode mais
+    -- ser enviado: devolve o motivo antes de reservar qualquer vaga de e-mail.
+    IF v_rec.verified = false AND v_rec.expires_at > v_agora
+       AND v_rec.attempts >= v_max_tentativas THEN
+        RETURN jsonb_build_object('ok', false, 'motivo', 'bloqueado_ate_expirar');
+    END IF;
 
     -- created_at registra o último envio para manter o mesmo freio de 60 s,
     -- mesmo se o código expirar logo depois do reenvio.
@@ -350,7 +358,7 @@ $$;
 DO $conferencia$
 BEGIN
   IF (SELECT md5(replace(prosrc, chr(13), '')) FROM pg_catalog.pg_proc
-       WHERE oid = to_regprocedure('public.generate_order_otp_v2(text,text,text)')) IS DISTINCT FROM '413d262f2644ae8f9509d8d82dda3d69'
+       WHERE oid = to_regprocedure('public.generate_order_otp_v2(text,text,text)')) IS DISTINCT FROM '133ed543a1ab73a235b059c8a4d8f87b'
      OR (SELECT md5(replace(prosrc, chr(13), '')) FROM pg_catalog.pg_proc
        WHERE oid = to_regprocedure('public.get_orders_by_otp_v2(text,text,text,text)')) IS DISTINCT FROM '95d6957283869602683047a97d608074' THEN
     RAISE EXCEPTION '20261665000000: corpos de OTP inesperados após apply.';

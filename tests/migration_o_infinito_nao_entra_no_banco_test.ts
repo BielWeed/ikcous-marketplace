@@ -146,6 +146,11 @@ const SUCESSORAS = [
     consulta:
       "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
   },
+  {
+    versao: "20261665000000",
+    consulta:
+      "221a-conferir-o-codigo-do-pedido-vale-nos-dois-celulares-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

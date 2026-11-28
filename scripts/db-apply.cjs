@@ -99,6 +99,26 @@ const MARCADORES_RETIRADA_PRONTA = [
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261665000000: reenvio não renova prazo nem tentativas; ficha 221 prova os corpos exatos.
+  "20261665000000_o_codigo_do_pedido_vale_nos_dois_celulares.sql": [
+    {
+      funcao: "generate_order_otp_v2",
+      esperado: [
+        { texto: "FOR NO KEY UPDATE OF o", vezes: 1 },
+        { texto: "'motivo', 'bloqueado_ate_expirar'", vezes: 1 },
+        { texto: "v_otp := v_rec.otp_code;", vezes: 1 },
+        { texto: "v_expira := v_rec.expires_at;", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "get_orders_by_otp_v2",
+      esperado: [
+        { texto: "FOR NO KEY UPDATE OF o", vezes: 1 },
+        { texto: "SET attempts = attempts + 1", vezes: 1 },
+        { texto: "SET verified = TRUE", vezes: 1 },
+      ],
+    },
+  ],
   // 20261660000000: o caixa de ontem aberto nao some do saldo. TRES funcoes; so a recusa do saldo inicial depois do dia do caixa aberto
   // (fin_conta_salvar), a recusa da sangria/suprimento para conta que so conta o saldo depois desse dia e a contrapartida lida FOR SHARE
   // (fin_caixa_movimentar_com_chave) e a trava da sessao antes de conferir se fechou (fin_lancamento_cancelar) mudam. As travas de admin

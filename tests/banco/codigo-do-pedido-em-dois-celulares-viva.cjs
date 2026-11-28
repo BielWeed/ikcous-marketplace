@@ -2,6 +2,12 @@
 
 // O RPC CI aplica todas as migrations e entrega um clone descartável.
 const assert = require("node:assert/strict");
+const { readFileSync } = require("node:fs");
+const path = require("node:path");
+const {
+  ROL_FECHADO_POR_CONSULTA,
+  estruturaDoRolFechado,
+} = require("../../scripts/publicacao/conferir-banco.cjs");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
 
@@ -66,12 +72,19 @@ async function doisCelulares(c) {
   // acidental de o sorteio antigo gerar duas vezes os mesmos seis dígitos.
   assert.equal(b.otp_code, a.otp_code, "o segundo e-mail traz o mesmo código");
   assert.equal(b.expira_em, a.expira_em);
-  assert.deepEqual(await otp(c), inicial, "o reenvio não abre outra credencial");
+  assert.deepEqual(
+    await otp(c),
+    inicial,
+    "o reenvio não abre outra credencial",
+  );
   assert.equal((await gerar(c)).motivo, "muito_recente");
 
   const r = await verificar(c, a.otp_code);
   assert.equal(r.ok, true);
-  assert.deepEqual(r.orders.map((pedido) => pedido.id), [PEDIDO]);
+  assert.deepEqual(
+    r.orders.map((pedido) => pedido.id),
+    [PEDIDO],
+  );
   assert.deepEqual(await otp(c), [{ ...inicial[0], verified: true }]);
   assert.deepEqual(await verificar(c, b.otp_code), INVALIDO, "uso único");
 }
@@ -98,6 +111,34 @@ async function limiteCompartilhado(c) {
   assert.equal(bloqueado.ok, false);
   assert.equal(bloqueado.motivo, "bloqueado_ate_expirar");
   assert.equal((await otp(c))[0].attempts, 5);
+
+  const contarEnvios = async () =>
+    (
+      await c.query(
+        "SELECT to_jsonb(c) AS balde FROM public.email_da_loja_contadores c WHERE chave = $1 ORDER BY hora",
+        [`codigo:pedido:${PEDIDO}`],
+      )
+    ).rows;
+  const baldes = await contarEnvios();
+  assert.ok(baldes.length > 0);
+  assert.deepEqual(await gerar(c), {
+    ok: false,
+    motivo: "bloqueado_ate_expirar",
+  });
+  await liberarReenvio(c);
+  assert.deepEqual(await gerar(c), {
+    ok: false,
+    motivo: "bloqueado_ate_expirar",
+  });
+  assert.deepEqual(await contarEnvios(), baldes, "não gasta cota de envio");
+  assert.equal((await otp(c))[0].attempts, 5);
+
+  await c.query(
+    "UPDATE public.otp_verifications SET expires_at = now() - interval '1 second' WHERE order_id = $1",
+    [PEDIDO],
+  );
+  assert.equal((await gerar(c)).ok, true, "depois de vencer, pode pedir outro");
+  assert.equal((await otp(c))[0].attempts, 0);
 }
 
 async function expirado(c) {
@@ -159,6 +200,46 @@ async function simultaneos(c, connectionString) {
   }
 }
 
+async function conferirPortao(c) {
+  const aplicado =
+    "221a-conferir-o-codigo-do-pedido-vale-nos-dois-celulares-aplicado";
+  const base =
+    "221b-antes-o-codigo-do-pedido-vale-nos-dois-celulares-base-vigente";
+  const ler = (rel) =>
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Caminhos fixos da fixture, não vêm de entrada.
+    readFileSync(path.join(__dirname, "../..", rel), "utf8");
+  const reprovadas = async (consulta) => {
+    const { rows } = await c.query(
+      ler(`scripts/publicacao/consultas/${consulta}.sql`),
+    );
+    const rol = new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta);
+    assert.ok(rol);
+    assert.equal(estruturaDoRolFechado(rows, rol), null);
+    return rows
+      .filter((r) => r.ok !== true)
+      .map((r) => r.item)
+      .sort();
+  };
+  const corpos = [
+    "generate_order_otp_v2: corpo exato (md5)",
+    "get_orders_by_otp_v2: corpo exato (md5)",
+  ];
+  await c.query("BEGIN");
+  try {
+    assert.deepEqual(await reprovadas(aplicado), []);
+    assert.deepEqual(await reprovadas(base), corpos);
+    await c.query(
+      ler(
+        "supabase/migrations/rollback-manual-20261665000000_o_codigo_do_pedido_vale_nos_dois_celulares.sql",
+      ),
+    );
+    assert.deepEqual(await reprovadas(aplicado), corpos);
+    assert.deepEqual(await reprovadas(base), []);
+  } finally {
+    await c.query("ROLLBACK");
+  }
+}
+
 async function main() {
   const connectionString = lerDatabaseUrlEfemera();
   assert.match(new URL(connectionString).pathname, /^\/prova_/);
@@ -174,6 +255,7 @@ async function main() {
         await c.query("ROLLBACK");
       }
     }
+    await conferirPortao(c);
     await simultaneos(c, connectionString);
     console.log("PASSOU: reenvio, validade, uso único e limite compartilhado.");
   } finally {

@@ -9,7 +9,7 @@ SET LOCAL statement_timeout = '30s';
 DO $preflight$
 BEGIN
   IF (SELECT md5(replace(prosrc, chr(13), '')) FROM pg_catalog.pg_proc
-       WHERE oid = to_regprocedure('public.generate_order_otp_v2(text,text,text)')) IS DISTINCT FROM '413d262f2644ae8f9509d8d82dda3d69'
+       WHERE oid = to_regprocedure('public.generate_order_otp_v2(text,text,text)')) IS DISTINCT FROM '133ed543a1ab73a235b059c8a4d8f87b'
      OR (SELECT md5(replace(prosrc, chr(13), '')) FROM pg_catalog.pg_proc
        WHERE oid = to_regprocedure('public.get_orders_by_otp_v2(text,text,text,text)')) IS DISTINCT FROM '95d6957283869602683047a97d608074' THEN
     RAISE EXCEPTION '20261665000000: corpos de OTP inesperados antes do rollback.';

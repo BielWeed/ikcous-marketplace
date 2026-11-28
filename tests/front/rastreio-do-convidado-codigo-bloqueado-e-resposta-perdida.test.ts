@@ -167,6 +167,22 @@ describe("fetchOrdersByOtp — código bloqueado e código antigo", () => {
   });
 });
 
+it("o pedido de reenvio bloqueado não avança e pede para esperar o código vencer", async () => {
+  vi.mocked(toast.error).mockClear();
+  vi.mocked(supabase.functions.invoke).mockResolvedValueOnce({
+    data: { ok: false, motivo: "bloqueado_ate_expirar" },
+    error: null,
+  });
+  const { generateOrderOtp } = useOrders(false, false);
+
+  expect(await generateOrderOtp("a@b.c", TRIO.whatsapp, TRIO.fragmento)).toBe(
+    false,
+  );
+  expect(ultimoToast()).toBe(
+    "Código bloqueado por excesso de tentativas. Aguarde o código vencer antes de pedir outro.",
+  );
+});
+
 describe("fetchOrdersByOtp — resposta perdida na rede", () => {
   beforeEach(() => {
     vi.mocked(supabase.rpc).mockReset();

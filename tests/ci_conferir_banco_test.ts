@@ -18082,6 +18082,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
     // 20261660000000: o caixa de ontem aberto nao some do saldo.
     "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
+    // 20261665000000: o reenvio não invalida o código que já chegou.
+    "221a-conferir-o-codigo-do-pedido-vale-nos-dois-celulares-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

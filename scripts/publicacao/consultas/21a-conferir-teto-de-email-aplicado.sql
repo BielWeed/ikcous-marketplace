@@ -65,8 +65,8 @@ WITH alvo(nome, assinatura) AS (
          '30d5e84347fb2f3654b016433eab5bd19a7a4ea78ac6d431927e6eecc48478f9',
          COALESCE((SELECT CASE WHEN f.h IN ('30d5e84347fb2f3654b016433eab5bd19a7a4ea78ac6d431927e6eecc48478f9',
                                             'e924bbb0fdd5c3e314a516c0ef769088e14490bde66ac823e6138cb081bbd73b',
-                                            'ce9ef177931dd266bc8794bfbcdb26be4edd65fe28c344768c09e99b52797a43',
-                                            '520614e3e15f06957d8f1e9eb4f41c5cace24e976cac846ab3ffa36b25aa4279')
+                                            '65a4e5c4064d2bb8194efd8e8c9e112812e3b36214cca4719d3b721624c73aad',
+                                            'd741b97aa22a88b28f34b9da43b0aabfcbe3cc256b8a1fd7a869a62fe78f9798')
                                THEN '30d5e84347fb2f3654b016433eab5bd19a7a4ea78ac6d431927e6eecc48478f9'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'generate_order_otp_v2'), 'AUSENTE')
