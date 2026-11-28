@@ -180,3 +180,57 @@ describe("sessaoAindaEhDoDono — separa 'sem internet' de 'sem sessão'", () =>
     expect(await resposta).toBe(false);
   });
 });
+
+// DONO = NINGUÉM (caça 27/11/2026): o pedido da VISITANTE confere que a sessão
+// continua VAZIA no instante do envio. Sem isto, outra aba do mesmo aparelho
+// entrava na conta B durante a espera e o pedido saía com a sessão de B (e
+// aparecia em "Meus pedidos" de B com o nome e o endereço da visitante).
+describe("sessaoAindaEhDoDono(null) — a visitante só envia com a sessão vazia", () => {
+  let aoFalharPorRede: Mock<() => void>;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    armazem.clear();
+    rede.resposta = "fora-do-ar";
+    rede.pedidos = 0;
+    aoFalharPorRede = vi.fn<() => void>();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function conferirVisitante() {
+    const { sessaoAindaEhDoDono } = await import(
+      "@/lib/sessao-ainda-e-do-dono"
+    );
+    const resposta = sessaoAindaEhDoDono(null, aoFalharPorRede);
+    await vi.advanceTimersByTimeAsync(40_000);
+    return resposta;
+  }
+
+  it("sem sessão guardada: true, sem pedir nada à rede e sem avisar", async () => {
+    expect(await conferirVisitante()).toBe(true);
+    expect(aoFalharPorRede).not.toHaveBeenCalled();
+    expect(rede.pedidos).toBe(0);
+  });
+
+  it("outra aba entrou numa conta (sessão válida de alguém): false e NÃO é rede", async () => {
+    guardarSessao(3600, "user-b");
+    expect(await conferirVisitante()).toBe(false);
+    expect(aoFalharPorRede).not.toHaveBeenCalled();
+  });
+
+  it("há sessão de alguém, mas a renovação não saiu por falta de internet: false E avisa que foi a rede", async () => {
+    guardarSessao(-60, "user-b");
+    expect(await conferirVisitante()).toBe(false);
+    expect(aoFalharPorRede).toHaveBeenCalledTimes(1);
+  });
+
+  it("renovação recusada pelo servidor: false (não sei nunca vira pode enviar), e não é rede", async () => {
+    rede.resposta = "token-rejeitado";
+    guardarSessao(-60, "user-b");
+    expect(await conferirVisitante()).toBe(false);
+    expect(aoFalharPorRede).not.toHaveBeenCalled();
+  });
+});

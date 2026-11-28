@@ -36,6 +36,14 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { concluirBuscaDeCepSemEndereco } from "./duble-busca-de-cep";
 
+// A conferência da sessão antes de enviar — também a da visitante, que só
+// envia com a sessão vazia (caça 27/11/2026) — tem suíte própria
+// (checkout-pedido-chave-voltar-e-sessao.test.tsx); aqui a sessão é a de quem
+// está na tela.
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: async () => true,
+}));
+
 // CheckoutView importa `supabase` de "@/lib/supabase" (para o fluxo real de
 // pedido), e aquele módulo valida variável de ambiente na própria avaliação
 // (`src/lib/env.ts`, via `src/lib/supabase.ts:6`). Esta máquina tem `.env`;

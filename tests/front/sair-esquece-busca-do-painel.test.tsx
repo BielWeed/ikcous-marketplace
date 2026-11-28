@@ -107,12 +107,17 @@ const BUSCAS = {
   admin_orders_search_query: '"11 99999-1234"',
   admin_qa_search_query: '"maria"',
   admin_reviews_search_query: '"maria"',
+  // Caça 27/11/2026: a lista de Produtos guarda a busca com OUTRO sufixo
+  // (`_search_term`) e escapava da varredura — sobrevivia ao Sair.
+  admin_products_search_term: '"camiseta da maria"',
 };
 
 /** Preferências do aparelho que NÃO são dado de cliente e devem ficar. */
 const PREFERENCIAS = {
   admin_orders_view_mode: "cards",
   admin_products_view_mode: "list",
+  // O filtro de categoria da lista de Produtos é preferência: fica.
+  admin_products_filter_category: '"all"',
   admin_orders_filter_v2: '"pending"',
   admin_orders_payment_filter: '"all"',
   admin_reviews_rating_filter: '"all"',
