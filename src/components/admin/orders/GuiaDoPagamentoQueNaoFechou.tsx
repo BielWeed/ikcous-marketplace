@@ -282,17 +282,18 @@ export function GuiaDoPagamentoQueNaoFechou() {
             voltou sem tamanho, com o número deste pedido (acontece quando o
             produto ganhou tamanhos depois da venda ou quando o tamanho vendido
             foi desligado), ela não voltou ao estoque: ali, toque em “Não tenho
-            essa peça” e não tire nada do estoque. Nos outros casos a peça já
-            voltou ao estoque — tire as unidades enviadas à mão no cadastro do
-            produto (campo “Disponível para venda”; se o produto tem variações,
-            use esse campo dentro da variação). Esse pedido vai continuar no
-            aviso de pedidos cancelados como “Devolver ao cliente” (mesmo com
-            esse nome, não é para devolver), e a ficha dele vai continuar
-            mostrando o botão “Devolver R$ …”. Não toque nele: depois de enviar,
-            devolver é perder o produto e o dinheiro. Para quem abrir o pedido
-            depois saber, escreva em “Anotações internas” da ficha: produto
-            enviado em [data], combinado com o cliente, não devolver. Não toque
-            em “Já estornei”: nenhum dinheiro foi devolvido.
+            essa peça” e não tire nada do estoque. Se o produto foi excluído, a
+            peça também não voltou ao estoque: não tire nada. Nos outros casos a
+            peça já voltou ao estoque — tire as unidades enviadas à mão no
+            cadastro do produto (campo “Disponível para venda”; se o produto tem
+            variações, use esse campo dentro da variação). Esse pedido vai
+            continuar no aviso de pedidos cancelados como “Devolver ao cliente”
+            (mesmo com esse nome, não é para devolver), e a ficha dele vai
+            continuar mostrando o botão “Devolver R$ …”. Não toque nele: depois
+            de enviar, devolver é perder o produto e o dinheiro. Para quem abrir
+            o pedido depois saber, escreva em “Anotações internas” da ficha:
+            produto enviado em [data], combinado com o cliente, não devolver.
+            Não toque em “Já estornei”: nenhum dinheiro foi devolvido.
           </li>
         </ol>
       </div>

@@ -1513,8 +1513,24 @@ export function lerResultadoConclusao(v: unknown): ResultadoConclusao | null {
     reembolso_manual: campo(v, "reembolso_manual") === true,
     reestocados: numero(campo(v, "reestocados")) ?? 0,
     sem_tamanho: numero(campo(v, "sem_tamanho")) ?? 0,
+    fora_do_estoque: numero(campo(v, "fora_do_estoque")) ?? 0,
   };
 }
+
+/**
+ * A peça de produto excluído que voltou (20261659000000): não foi ao estoque
+ * nem à espera do tamanho. O que o aviso da conclusão diz no lugar de
+ * "voltou ao estoque", e o que a lojista faz se ainda vende a peça.
+ */
+export function fraseDasPecasDeProdutoExcluido(quantidade: number): string {
+  return quantidade === 1
+    ? "O produto foi excluído, então a peça não voltou ao estoque. Se você ainda vende essa peça, some 1 no estoque do produto certo."
+    : `O produto foi excluído, então ${quantidade} peças não voltaram ao estoque. Se você ainda vende essas peças, some ${quantidade} no estoque do produto certo.`;
+}
+
+/** O item da ficha cuja peça voltou de produto excluído (DetalheDaDevolucao). */
+export const TEXTO_ITEM_DE_PRODUTO_EXCLUIDO =
+  "não voltou ao estoque (produto excluído)";
 
 /** `admin_devolucao_liberar_vinculo_reverso` (20261179000000, achado 1/rodada 6b). */
 export function lerResultadoLiberacaoVinculo(

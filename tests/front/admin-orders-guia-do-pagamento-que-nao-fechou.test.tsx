@@ -392,6 +392,23 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     );
   });
 
+  // 20261659000000 (decisão do sócio, 28/11/2026): a peça de produto EXCLUÍDO não volta ao estoque no
+  // cancelamento. Tirar à mão do estoque seria tirar uma peça que nunca entrou; o guia diz isso na mesma linha.
+  it("caso 2, enviar: a peça de produto excluído não voltou ao estoque, então não se tira nada", async () => {
+    const texto = await textoDoGuia();
+    expect(texto).toContain(
+      "Se o produto foi excluído, a peça também não voltou ao estoque: não tire nada.",
+    );
+    // Vem ANTES do "Nos outros casos", que manda tirar à mão.
+    expect(
+      texto.indexOf(
+        "Se o produto foi excluído, a peça também não voltou ao estoque",
+      ),
+    ).toBeLessThan(
+      texto.indexOf("Nos outros casos a peça já voltou ao estoque"),
+    );
+  });
+
   it("não promete devolução automática em lugar nenhum", async () => {
     const texto = await textoDoGuia();
     expect(promessasDeDevolucaoSozinha(texto)).toEqual([]);
