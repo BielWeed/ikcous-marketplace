@@ -376,12 +376,15 @@ export function useBanners(adminMode = false) {
     };
   }, []);
 
+  // `doBanco`: releitura depois que a seta do painel mexeu na lista local e o
+  // banco pode ter gravado outra ordem. Sai como consulta nova, sem carona na
+  // que já estava em voo (começou antes da troca e devolveria o cache local).
   const fetchBanners = useCallback(
-    async (_onlyActive = false, forceRefresh = false) => {
+    async (_onlyActive = false, forceRefresh = false, doBanco = false) => {
       const geracao = geracaoDasMutacoesDeBanners();
       // If a network fetch is already active (a da tela ou a do boot), wait for
       // it (never duplicate parallel fetches)
-      const emVoo = consultaDeBannersEmVoo();
+      const emVoo = doBanco ? null : consultaDeBannersEmVoo();
       if (emVoo) {
         try {
           const data = await emVoo;
@@ -408,7 +411,9 @@ export function useBanners(adminMode = false) {
       isFetchingRef.current = true;
 
       try {
-        const mappedBanners = await pedirBanners();
+        const mappedBanners = await (doBanco
+          ? pedirBanners({ nova: true })
+          : pedirBanners());
         setBanners(
           geracao === geracaoDasMutacoesDeBanners()
             ? mappedBanners
@@ -428,10 +433,11 @@ export function useBanners(adminMode = false) {
 
   // Gravação que estourou o prazo: a tela é solta com o aviso da operação e a
   // lista é relida (sem esperar) para mostrar o que o servidor de fato guardou.
-  const aoFicarSemResposta = (erro: unknown): boolean => {
+  // `doBanco`: a seta do painel, que relê sem carona (ver `fetchBanners`).
+  const aoFicarSemResposta = (erro: unknown, doBanco = false): boolean => {
     if (!ehConsultaSemResposta(erro)) return false;
     toast.warning((erro as Error).message, { duration: 12_000 });
-    void fetchBanners(false, true);
+    void fetchBanners(false, true, doBanco);
     return true;
   };
 
@@ -1004,15 +1010,16 @@ export function useBanners(adminMode = false) {
       if (error) throw error;
       // O banco trocou com outro vizinho (outro aparelho mudou a lista) ou com
       // nenhum (já estava na ponta): a troca otimista da tela não é a gravada,
-      // então a lista é relida do banco.
+      // então a lista é relida do banco — de verdade, sem carona numa leitura
+      // que começou antes da troca e devolveria a troca otimista.
       if (vizinhoNoBanco !== undefined && vizinhoNoBanco !== overBannerId) {
-        void fetchBanners(false, true);
+        void fetchBanners(false, true, true);
       }
     } catch (error) {
       applyLocalBanners(previousBanners);
       console.error("Error reordering banners:", error);
       // Sem resposta: o aviso e a releitura já saíram por `aoFicarSemResposta`.
-      if (aoFicarSemResposta(error)) return;
+      if (aoFicarSemResposta(error, true)) return;
       // A RPC recusa com "Banner não encontrado." quando outro aparelho excluiu
       // um dos dois: o retrato desfeito ainda o mostra, então a lista é relida
       // do banco para ele sair da tela e do cofre local.
@@ -1022,7 +1029,7 @@ export function useBanners(adminMode = false) {
           ? TEXTO_BANNER_EXCLUIDO_EM_OUTRO_APARELHO
           : "Erro ao reordenar banners.",
       );
-      void fetchBanners(false, true);
+      void fetchBanners(false, true, true);
     }
   };
 
