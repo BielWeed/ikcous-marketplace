@@ -342,3 +342,26 @@ Deno.test("20261656: ligada na release — db-apply, rpc-ci e a prova viva exist
   assertStringIncludes(viva, `const H_INF = "${H_INF}";`);
   assertStringIncludes(viva, `const H_REI = "${H_REI}";`);
 });
+
+Deno.test("a porta da visitante esta na lista de portas do visitante (a prova viva das portas reprova sem ela)", () => {
+  const lista = JSON.parse(
+    lerTexto("tests/banco/portas-do-visitante-permitidas.json"),
+  );
+  const porta = lista.funcoes.find(
+    (p: { funcao: string }) =>
+      p.funcao ===
+      "public.informar_email_da_visitante(p_order_id uuid, p_email text)",
+  );
+  assert(porta, "a porta nao esta na lista do visitante");
+  assertEquals(porta.executa, ["anon", "authenticated"]);
+  assertEquals(porta.tipo, "volatil");
+  assertEquals(porta.secdef, true);
+  assertEquals(porta.situacao, "necessaria");
+  // a reserva e' so do service_role: nao pode aparecer na lista
+  assert(
+    !lista.funcoes.some((p: { funcao: string }) =>
+      p.funcao.startsWith("public.reivindicar_comprovante_da_visitante("),
+    ),
+    "a reserva da visitante nao e' porta de fora",
+  );
+});
