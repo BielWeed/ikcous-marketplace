@@ -72,7 +72,19 @@ vi.mock("@/lib/supabase", () => {
         return consulta;
       },
       rpc: () => Promise.resolve({ data: false, error: null }),
-      auth: { getSession: () => Promise.resolve({ data: { session: null } }) },
+      // A sessão imitada é a da conta logada (h.usuario), como no app: a lista vazia
+      // só é aceita com a sessão da dona (lista-vazia-da-conta.ts).
+      auth: {
+        getSession: () =>
+          Promise.resolve({
+            data: {
+              session: h.usuario ? { user: { id: h.usuario.id } } : null,
+            },
+          }),
+        onAuthStateChange: () => ({
+          data: { subscription: { unsubscribe: () => {} } },
+        }),
+      },
       channel: () => ({
         on: () => ({ subscribe: () => ({}) }),
         subscribe: () => ({}),

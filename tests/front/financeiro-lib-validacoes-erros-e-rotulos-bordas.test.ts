@@ -296,6 +296,12 @@ describe("classificação dos erros do servidor", () => {
       "PGRST301",
       "Só o administrador da loja mexe no Financeiro. Entre de novo com a conta de administrador.",
     ],
+    // "JWT expired" no PostgREST 13 em diante (erro de claim do JWT); até o
+    // 12 o mesmo token vencido vinha como PGRST301.
+    [
+      "PGRST303",
+      "Só o administrador da loja mexe no Financeiro. Entre de novo com a conta de administrador.",
+    ],
     ["23503", "O banco recusou os dados. Confira os campos e tente de novo."],
     ["22P02", "O banco recusou os dados. Confira os campos e tente de novo."],
     ["XX000", "Algo deu errado no servidor. Tente de novo em instantes."],

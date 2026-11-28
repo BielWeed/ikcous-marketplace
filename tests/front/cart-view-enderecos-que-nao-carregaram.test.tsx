@@ -119,6 +119,18 @@ vi.mock("sonner", () => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     functions: { invoke: (...args: unknown[]) => invoke(...args) },
+    // Sessão da conta logada: a lista vazia só é aceita com a sessão da dona.
+    auth: {
+      getSession: () =>
+        Promise.resolve({
+          data: {
+            session: conta.usuario ? { user: { id: conta.usuario.id } } : null,
+          },
+        }),
+      onAuthStateChange: () => ({
+        data: { subscription: { unsubscribe: () => {} } },
+      }),
+    },
     from: () => {
       const cadeia: any = {
         select: () => cadeia,

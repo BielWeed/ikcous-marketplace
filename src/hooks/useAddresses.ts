@@ -1,6 +1,11 @@
 import { useAuth } from "@/hooks/useAuth";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
+import {
+  confirmarListaVaziaDaConta,
+  ehLeituraSemSessaoDaDona,
+} from "@/lib/lista-vazia-da-conta";
 import { ehConexaoCaiuSemResposta } from "@/lib/prazo-da-requisicao";
+import { criarReligadorDaFila } from "@/lib/religar-fila-offline";
 import { supabase } from "@/lib/supabase";
 import { ufBrasileiraValida } from "@/lib/uf-brasileira";
 import type { Address } from "@/types";
@@ -109,6 +114,10 @@ async function lerEnderecosDoServidor(idDaConta: string): Promise<Address[]> {
   );
   if (error) throw error;
   if (!data) throw new Error("consulta de endereços voltou sem dados");
+  // Vazia sem a sessão da dona (renovação do token falhando, consulta com a
+  // chave anônima): estoura como qualquer falha de leitura, para ninguém gravar
+  // nem confirmar uma lista que a RLS escondeu.
+  if (data.length === 0) await confirmarListaVaziaDaConta(idDaConta);
   return data.map((a) => ({
     id: a.id,
     user_id: a.user_id,
@@ -163,6 +172,14 @@ export function useAddresses() {
   // outra, via publicação). Lista vazia em memória não prova "a conta não tem
   // endereço": também é o que sobra quando a leitura falhou ou ainda não veio.
   const leituraConfirmadaDeRef = useRef<string | null>(null);
+  // Leitura recusada por voltar vazia sem a sessão da dona (caça 28/11/2026):
+  // o religador espera o aviso de sessão renovada DESTA conta e relê uma vez.
+  // Só ouve depois de uma recusa -- o SIGNED_IN reanunciado a cada volta ao
+  // app não vira leitura extra por cima da releitura ao voltar.
+  const religadorDaLeituraRef = useRef<{
+    dono: string;
+    religador: ReturnType<typeof criarReligadorDaFila>;
+  } | null>(null);
 
   const gravarLista = useCallback(
     (dono: string, itens: Address[], leituraConfirmada = false) => {
@@ -267,9 +284,18 @@ export function useAddresses() {
         if (!atual()) return;
         gravarLista(idDaBusca, mapped, true);
         setContaComErro(null);
+        if (religadorDaLeituraRef.current?.dono === idDaBusca) {
+          religadorDaLeituraRef.current.religador.aoFimDaPassada(false);
+        }
         opcoes?.aoLer?.(mapped);
       } catch (error) {
         if (!atual()) return;
+        if (
+          ehLeituraSemSessaoDaDona(error) &&
+          religadorDaLeituraRef.current?.dono === idDaBusca
+        ) {
+          religadorDaLeituraRef.current.religador.aoFimDaPassada(true);
+        }
         console.error("Error fetching addresses:", error);
         // Só se cala quando a tela JÁ tem uma lista lida do servidor para
         // continuar mostrando. Sem ela (aparelho novo, leitura de abertura em
@@ -295,6 +321,32 @@ export function useAddresses() {
     },
     [usuarioId, gravarLista],
   );
+
+  // Um religador por conta (ver `religadorDaLeituraRef`). A releitura sai fora
+  // do aviso: o supabase-js o entrega segurando a própria trava de sessão, e a
+  // leitura confere a sessão. Troca de conta e desmonte encerram a espera.
+  const fetchAddressesRef = useRef(fetchAddresses);
+  useEffect(() => {
+    fetchAddressesRef.current = fetchAddresses;
+  });
+  useEffect(() => {
+    if (!usuarioId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const religador = criarReligadorDaFila(usuarioId, () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void fetchAddressesRef.current({ silencioso: true });
+      }, 0);
+    });
+    religadorDaLeituraRef.current = { dono: usuarioId, religador };
+    return () => {
+      clearTimeout(timer);
+      religador.encerrar();
+      if (religadorDaLeituraRef.current?.religador === religador) {
+        religadorDaLeituraRef.current = null;
+      }
+    };
+  }, [usuarioId]);
 
   // A escrita estourou o prazo e o servidor respondeu DEPOIS: a lista da tela
   // não sabe do que ele gravou. Relê do servidor (fonte da verdade) -- e só se

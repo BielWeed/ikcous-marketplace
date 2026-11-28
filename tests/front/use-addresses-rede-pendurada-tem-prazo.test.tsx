@@ -72,10 +72,21 @@ const { sessao, toast, supabase, chamadas } = vi.hoisted(() => {
       return this;
     }
   }
+  const sessao = { usuario: null as { id: string } | null };
   return {
-    sessao: { usuario: null as { id: string } | null },
+    sessao,
     toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
-    supabase: { from: (_tabela: string) => new Cadeia() },
+    supabase: {
+      from: (_tabela: string) => new Cadeia(),
+      // A sessão é da conta logada: a lista VAZIA que o banco devolve é a
+      // verdade (sem a sessão da dona, o vazio não seria confirmado).
+      auth: {
+        getSession: async () => ({
+          data: { session: sessao.usuario ? { user: sessao.usuario } : null },
+          error: null,
+        }),
+      },
+    },
     chamadas,
   };
 });

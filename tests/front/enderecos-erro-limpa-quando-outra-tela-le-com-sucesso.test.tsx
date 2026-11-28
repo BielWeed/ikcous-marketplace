@@ -47,6 +47,14 @@ vi.mock("@/lib/supabase", () => ({
       });
       return cadeia;
     },
+    // A sessão é da conta A: a lista VAZIA que o banco devolve a ela é a
+    // verdade (sem a sessão da dona, o vazio não seria confirmado).
+    auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: "conta-a" } } },
+        error: null,
+      }),
+    },
   },
 }));
 vi.mock("sonner", () => ({
