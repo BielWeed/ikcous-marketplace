@@ -17,7 +17,15 @@
 // pagamento" (`podeRetomarPagamento`) mais o prazo do Pix (`prazoDoPixPassou`).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { formatCurrency } from "@/lib/utils";
 
@@ -108,13 +116,13 @@ async function esperar() {
 describe("Início avisa do pedido aguardando pagamento", () => {
   let raiz: Root;
   let alvo: HTMLDivElement;
-  let navegar: ReturnType<typeof vi.fn>;
+  let navegar: Mock<(view: string, id?: string) => void>;
 
   beforeEach(() => {
     h.usuario = { id: "conta-1" };
     h.consultas.length = 0;
     bancoDevolve([]);
-    navegar = vi.fn();
+    navegar = vi.fn<(view: string, id?: string) => void>();
     alvo = document.createElement("div");
     document.body.append(alvo);
     raiz = createRoot(alvo);

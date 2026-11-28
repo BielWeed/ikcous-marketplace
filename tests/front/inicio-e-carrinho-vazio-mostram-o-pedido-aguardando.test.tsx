@@ -8,7 +8,15 @@
 // ao detalhe do pedido.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -120,7 +128,7 @@ class ObservadorDeMentira {
 describe("o aviso do pedido aguardando aparece no Início e no carrinho vazio", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
-  let navegar: ReturnType<typeof vi.fn>;
+  let navegar: Mock<(view: string, id?: string) => void>;
 
   beforeEach(() => {
     vi.stubGlobal("IntersectionObserver", ObservadorDeMentira);
@@ -128,7 +136,7 @@ describe("o aviso do pedido aguardando aparece no Início e no carrinho vazio", 
     vi.stubGlobal("CSS", { escape: (valor: string) => valor });
     h.usuario = { id: "conta-1" };
     h.tabelas.length = 0;
-    navegar = vi.fn();
+    navegar = vi.fn<(view: string, id?: string) => void>();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
