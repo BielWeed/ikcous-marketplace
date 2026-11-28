@@ -64,7 +64,9 @@ WITH alvo(nome, assinatura) AS (
   SELECT 'generate_order_otp_v2: corpo e o da 20261217000000 (sha256)',
          '30d5e84347fb2f3654b016433eab5bd19a7a4ea78ac6d431927e6eecc48478f9',
          COALESCE((SELECT CASE WHEN f.h IN ('30d5e84347fb2f3654b016433eab5bd19a7a4ea78ac6d431927e6eecc48478f9',
-                                            'e924bbb0fdd5c3e314a516c0ef769088e14490bde66ac823e6138cb081bbd73b')
+                                            'e924bbb0fdd5c3e314a516c0ef769088e14490bde66ac823e6138cb081bbd73b',
+                                            '65a4e5c4064d2bb8194efd8e8c9e112812e3b36214cca4719d3b721624c73aad',
+                                            'd741b97aa22a88b28f34b9da43b0aabfcbe3cc256b8a1fd7a869a62fe78f9798')
                                THEN '30d5e84347fb2f3654b016433eab5bd19a7a4ea78ac6d431927e6eecc48478f9'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'generate_order_otp_v2'), 'AUSENTE')
@@ -114,7 +116,9 @@ WITH alvo(nome, assinatura) AS (
                                             'a830cf0730526d73ef1c09b0036c9694e58d20edab17cb21ffb59b4b632b2212',
                                             '196021b99e1f020356e31a72d9832e81ea074065613305833e06bb082dd594e6',
                                             'cfb72d8d353a92560cf144c9d29465ebdf544a748f90a978431b8f6f82c467a3',
-                                            '571201678b8124f5c4400c11eb5c45ddf03a614c2460c7e6aa4d63f70a17788c')
+                                            '571201678b8124f5c4400c11eb5c45ddf03a614c2460c7e6aa4d63f70a17788c',
+                                            'ca4b80ab3650e9a352eec22db73f325a36ce9806f8bea456ec9ab210610a457d',
+                                            'dce22c6f2f927103295375124642715c89103d9696a8c8e78c815d28ef29079a')
                                THEN '36af86dd3249fb2da812afaff1a5edc4d0e8e1e09017f3be0ca4eac9f0c07862'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'get_orders_by_otp_v2'), 'AUSENTE')

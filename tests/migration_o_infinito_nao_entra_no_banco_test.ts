@@ -151,6 +151,11 @@ const SUCESSORAS = [
     versao: "20261663000000",
     consulta: "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
   },
+  {
+    versao: "20261665000000",
+    consulta:
+      "221a-conferir-o-codigo-do-pedido-vale-nos-dois-celulares-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

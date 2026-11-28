@@ -99,7 +99,8 @@ export function htmlDoCodigo(codigo: string, nome: string = NOME_PADRAO_DA_LOJA)
         ${codigo}
       </div>
       <p style="font-size: 11px; line-height: 16px; color: #a1a1aa; text-align: center; margin: 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">
-        Este código expira em 15 minutos. Se não foi você, ignore este e-mail.
+        Este código vale por até 15 minutos. Reenviar o e-mail não renova esse prazo.
+        Se não foi você, ignore este e-mail.
       </p>
     </div>
   `;
@@ -193,6 +194,9 @@ export async function handler(
         espereSegundos: Number(data.espere_segundos ?? 60),
       });
     }
+    if (data?.motivo === "bloqueado_ate_expirar") {
+      return montarResposta({ ok: false, motivo: "bloqueado_ate_expirar" });
+    }
     return montarResposta({ ok: false, motivo: "nao_confere" });
   }
 
@@ -207,9 +211,9 @@ export async function handler(
       remetente,
     );
   } catch (e) {
-    // O codigo ja esta gravado e vale 15 minutos. Nao apagamos: se o envio
-    // falhou por intermitencia, uma segunda tentativa depois da janela de
-    // 60 s gera outro codigo, e o antigo expira sozinho.
+    // O código já está gravado; não apagamos após uma falha de SMTP.
+    // Depois dos 60 s, o reenvio pode usar o mesmo código pelo prazo que
+    // restar, desde que ele não esteja bloqueado.
     console.error(
       `send-otp-email: envio falhou para ${mascarar(data.email)}: ${e?.message}`,
     );

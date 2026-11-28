@@ -44,7 +44,7 @@ it("depois de enviar o código, explica onde procurar e como pedir outro sem esc
     );
     expect(botao("Voltar")).toBeDefined();
     expect(tela.textContent).toContain(
-      "Não chegou? Confira o spam ou lixo eletrônico. Para pedir outro código, toque em Voltar e depois em Enviar Código. Pode ser preciso esperar até 1 minuto.",
+      "Não chegou? Confira o spam ou lixo eletrônico. Para reenviar, toque em Voltar e depois em Enviar Código. Pode ser preciso esperar até 1 minuto.",
     );
     await act(async () => botao("Voltar")?.click());
     expect(botao("Enviar Código")).toBeDefined();

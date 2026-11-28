@@ -7,7 +7,7 @@ WITH alvo(nome, assinatura, argumentos, config, anon_pode, h_esperado, hashes) A
   ('get_orders_by_otp_v2', 'public.get_orders_by_otp_v2(text,text,text,text)',
    'p_email text, p_whatsapp text, p_fragmento text, p_otp text',
    ARRAY['search_path=public']::text[], true,
-   '96f080db2a488d8887a2dfd959bd9862', ARRAY['96f080db2a488d8887a2dfd959bd9862']::text[])
+   '96f080db2a488d8887a2dfd959bd9862', ARRAY['96f080db2a488d8887a2dfd959bd9862', '95d6957283869602683047a97d608074']::text[])
 ), fn AS (
   SELECT a.*, md5(replace(p.prosrc, chr(13), '')) AS h,
     COALESCE(p.prokind = 'f' AND p.prosecdef AND p.provolatile = 'v'

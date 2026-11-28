@@ -16,9 +16,34 @@ const RASTREIO = Object.freeze({
   hash: "96f080db2a488d8887a2dfd959bd9862",
 });
 
+const MIGRATION_REENVIO =
+  "20261665000000_o_codigo_do_pedido_vale_nos_dois_celulares.sql";
+const HASH_RASTREIO_REENVIO = "95d6957283869602683047a97d608074";
+
+// As provas históricas precisam do corpo da 1410, não do reenvio que veio depois.
+async function desfazerReenvioNaTransacao(c) {
+  lerDatabaseUrlEfemera();
+  const { rows } = await c.query(
+    "SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHERE oid = to_regprocedure($1)",
+    [RASTREIO.assinatura],
+  );
+  if (rows[0]?.h !== HASH_RASTREIO_REENVIO) return;
+  await c.query(
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Caminho fixo da migration, não vem de entrada.
+    readFileSync(
+      path.join(
+        __dirname,
+        "../../supabase/migrations",
+        `rollback-manual-${MIGRATION_REENVIO}`,
+      ),
+      "utf8",
+    ),
+  );
+}
+
 // O chamador controla a transação. Os dois corpos voltam juntos, nunca apenas um.
 async function desfazerRotulosHistoricosNaTransacao(c) {
-  lerDatabaseUrlEfemera();
+  await desfazerReenvioNaTransacao(c);
   for (const alvo of [PAINEL, RASTREIO]) {
     const { rows } = await c.query(
       "SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHERE oid = to_regprocedure($1)",
@@ -60,6 +85,9 @@ async function prepararCloneSemRotulosHistoricos(c) {
 module.exports = {
   PAINEL,
   RASTREIO,
+  MIGRATION_REENVIO,
+  HASH_RASTREIO_REENVIO,
+  desfazerReenvioNaTransacao,
   prepararCloneSemRotulosHistoricos,
   desfazerRotulosHistoricosNaTransacao,
 };

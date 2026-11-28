@@ -3874,13 +3874,27 @@ const ROL_DA_214 = [
   "solicitar_devolucao: uma so, assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, retorno jsonb)",
   "solicitar_devolucao: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
+// Lote 221: os estados antes/depois medem as duas portas de OTP, só no catálogo.
+const ROL_DA_221 = [
+  "controle: funcoes de public visiveis a este papel",
+  "generate_order_otp_v2: corpo exato (md5)",
+  "generate_order_otp_v2: assinatura e atributos conhecidos",
+  "generate_order_otp_v2: EXECUTE esperado",
+  "get_orders_by_otp_v2: corpo exato (md5)",
+  "get_orders_by_otp_v2: assinatura e atributos conhecidos",
+  "get_orders_by_otp_v2: EXECUTE esperado",
+];
 const ROL_FECHADO_POR_CONSULTA = {
-  "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado": ROL_DA_219,
-  "219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente": ROL_DA_219,
   "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado":
     ROL_DA_216,
   "216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente":
     ROL_DA_216,
+  "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado": ROL_DA_219,
+  "219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente": ROL_DA_219,
+  "221a-conferir-o-codigo-do-pedido-vale-nos-dois-celulares-aplicado":
+    ROL_DA_221,
+  "221b-antes-o-codigo-do-pedido-vale-nos-dois-celulares-base-vigente":
+    ROL_DA_221,
   "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado":
     ROL_DA_215,
   "215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente":

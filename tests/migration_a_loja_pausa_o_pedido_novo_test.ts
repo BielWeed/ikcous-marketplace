@@ -614,6 +614,7 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
     // 20261663000000: a despesa nao entra no caixa fechado.
     "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
+    "221a-conferir-o-codigo-do-pedido-vale-nos-dois-celulares-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

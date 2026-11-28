@@ -12207,7 +12207,12 @@ async function hashesDoLote21() {
         ),
       ),
     );
-  return { porFuncao, mig, rb, sucessorasDaV2 };
+  const reenvio = await ler(
+    `${MIGRATIONS_DIR}/20261665000000_o_codigo_do_pedido_vale_nos_dois_celulares.sql`,
+  );
+  sucessorasDaV2.push(tres(corpoDe(reenvio, "get_orders_by_otp_v2")));
+  const emissaoReenvio = tres(corpoDe(reenvio, "generate_order_otp_v2"));
+  return { porFuncao, mig, rb, sucessorasDaV2, emissaoReenvio };
 }
 
 for (const [nome, nItens] of [
@@ -12284,7 +12289,8 @@ for (const [nome, nItens] of [
 }
 
 Deno.test("21a/21b — os hashes são EXATAMENTE os dos corpos que os arquivos definem; o pré-voo cita (vigente, desta); o rollback devolve o corpo de ANTES byte a byte", async (t) => {
-  const { porFuncao, mig, rb, sucessorasDaV2 } = await hashesDoLote21();
+  const { porFuncao, mig, rb, sucessorasDaV2, emissaoReenvio } =
+    await hashesDoLote21();
   const sqlA = sqlSemComentarios(
     await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_21A}.sql`),
   );
@@ -12295,7 +12301,7 @@ Deno.test("21a/21b — os hashes são EXATAMENTE os dos corpos que os arquivos d
     ...new Set([...sql.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1])),
   ];
   await t.step(
-    "21a: só os 12 sha256 posteriores e os 6 das sucessoras da v2 (1341, 1342 e 1410; LF e CRLF)",
+    "21a: só os hashes das funções do lote e das sucessoras da emissão e consulta (LF e CRLF)",
     () => {
       assertEquals(
         sucessorasDaV2.map((x: { md5: string }) => x.md5),
@@ -12303,6 +12309,7 @@ Deno.test("21a/21b — os hashes são EXATAMENTE os dos corpos que os arquivos d
           "34199947ecded0fd9400b5fd0276ea47",
           "02208ac9d2abe2e8b03790349d491ecb",
           "96f080db2a488d8887a2dfd959bd9862",
+          "95d6957283869602683047a97d608074",
         ],
       );
       const suc = sucessorasDaV2.flatMap((x: { lf: string; crlf: string }) => [
@@ -12314,18 +12321,23 @@ Deno.test("21a/21b — os hashes são EXATAMENTE os dos corpos que os arquivos d
         return [x.lf, x.crlf];
       });
       assertEquals(new Set(todos).size, 12);
-      assertEquals(hex64(sqlA).sort(), [...todos, ...suc].sort());
+      const emissao = [emissaoReenvio.lf, emissaoReenvio.crlf];
+      assertEquals(hex64(sqlA).sort(), [...todos, ...suc, ...emissao].sort());
       for (const f of FUNCOES_21) {
         const x = porFuncao.get(f.nome).depois;
         const linha = linhaDoItem(
           sqlA,
           `${f.nome}: corpo e o da 20261217000000 (sha256)`,
         );
+        const posteriores =
+          f.nome === "get_orders_by_otp_v2"
+            ? suc
+            : f.nome === "generate_order_otp_v2"
+              ? emissao
+              : [];
         assertEquals(
           [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
-          f.nome === "get_orders_by_otp_v2"
-            ? [x.lf, x.lf, x.crlf, ...suc, x.lf]
-            : [x.lf, x.lf, x.crlf, x.lf],
+          [x.lf, x.lf, x.crlf, ...posteriores, x.lf],
         );
         assertStringIncludes(
           linha,
@@ -18086,6 +18098,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
     // 20261663000000: a despesa nao entra no caixa fechado.
     "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
+    // 20261665000000: o reenvio não invalida o código que já chegou.
+    "221a-conferir-o-codigo-do-pedido-vale-nos-dois-celulares-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

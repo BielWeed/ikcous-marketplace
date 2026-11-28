@@ -466,6 +466,8 @@ on:
           - 216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente
           - 219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado
           - 219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente
+          - 221a-conferir-o-codigo-do-pedido-vale-nos-dois-celulares-aplicado
+          - 221b-antes-o-codigo-do-pedido-vale-nos-dois-celulares-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

@@ -70,7 +70,7 @@ Deno.test("htmlDoCodigo: nao crava cidade nem nome de loja nenhuma", () => {
 
 Deno.test("htmlDoCodigo: portugues com acento e o nome da loja (escapado)", () => {
   const html = htmlDoCodigo("123456", "Loja <Bela> & Cia");
-  for (const frase of ["Você pediu", "o código abaixo", "Este código expira em 15 minutos", "Se não foi você"]) {
+  for (const frase of ["Você pediu", "o código abaixo", "vale por até 15 minutos", "Se não foi você"]) {
     assertStringIncludes(html, frase);
   }
   assertStringIncludes(html, "Loja &lt;Bela&gt; &amp; Cia");
@@ -289,9 +289,23 @@ Deno.test("handler: corpo incompleto -> 400 pedido_invalido SEM nem resolver o r
   assertEquals(resolveu, false);
 });
 
-Deno.test("handler: codigo recusado pelo freio ou nao confere NAO envia nada", async () => {
+Deno.test("handler: o e-mail de reenvio não promete outros 15 minutos", async () => {
+  const enviados: string[] = [];
+  const r = await handler(pedidoDeCodigo(), {
+    supabase: supabaseDoCodigo(CODIGO_GERADO),
+    resolverRemetente: async () => REMETENTE_AMBIENTE,
+    enviarEmail: async (mensagem) => void enviados.push(mensagem.html),
+  });
+  assertEquals(await r.json(), { ok: true });
+  assertEquals(enviados.length, 1);
+  assertStringIncludes(enviados[0], "vale por até 15 minutos");
+  assertStringIncludes(enviados[0], "Reenviar o e-mail não renova esse prazo");
+});
+
+Deno.test("handler: código bloqueado, freio de envio ou dados incorretos não enviam e-mail", async () => {
   for (const [resposta, esperado] of [
     [{ ok: false, motivo: "muito_recente", espere_segundos: 42 }, "muito_recente"],
+    [{ ok: false, motivo: "bloqueado_ate_expirar" }, "bloqueado_ate_expirar"],
     [{ ok: false }, "nao_confere"],
   ] as const) {
     const enviados: unknown[] = [];
