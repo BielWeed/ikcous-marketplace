@@ -108,7 +108,7 @@ const TOAST_CONFERIR_ANTES =
  * `undefined`, `{}`, string solta, `new Error()`.
  */
 const CORPUS: ReadonlyArray<{ rotulo: string; erro: unknown }> = [
-  // Os três códigos que provam que a chamada nem chegou ao Postgres — o
+  // Os quatro códigos que provam que a chamada nem chegou ao Postgres — o
   // achado que bloqueou a primeira versão.
   {
     rotulo: "PGRST202 (função fora do cache de schema)",
@@ -121,6 +121,10 @@ const CORPUS: ReadonlyArray<{ rotulo: string; erro: unknown }> = [
   {
     rotulo: "PGRST301 (JWT inválido ou expirado)",
     erro: { code: "PGRST301", message: "JWT expired" },
+  },
+  {
+    rotulo: "PGRST303 (JWT vencido, PostgREST 13+)",
+    erro: { code: "PGRST303", message: "JWT expired" },
   },
   {
     rotulo: "PGRST302 (papel anônimo desabilitado)",

@@ -312,7 +312,9 @@ describe("AcoesDaDevolucao — valor sugerido e itens que não voltaram", () => 
     expect(hospedeiro.textContent).toContain(
       "Frete não incluído: nem todos os itens voltaram.",
     );
-    expect(hospedeiro.textContent).not.toContain("o pedido voltou inteiro");
+    expect(hospedeiro.textContent).not.toContain(
+      "o pedido inteiro foi reembolsado",
+    );
 
     await clicar(condicaoDe("Calça preta", "Nova, sem uso"));
 
@@ -355,7 +357,9 @@ describe("AcoesDaDevolucao — valor sugerido e itens que não voltaram", () => 
       expect(campoValor()?.value).toBe(valor);
       expect(hospedeiro.textContent).not.toContain("Frete não incluído");
       if (freteDaSolicitacao > 0) {
-        expect(hospedeiro.textContent).toContain("o pedido voltou inteiro");
+        expect(hospedeiro.textContent).toContain(
+          "o pedido inteiro foi reembolsado",
+        );
       } else {
         expect(hospedeiro.textContent).not.toContain("frete de ida");
       }

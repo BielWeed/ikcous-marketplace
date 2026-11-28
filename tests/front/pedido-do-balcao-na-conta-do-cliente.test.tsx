@@ -216,12 +216,15 @@ describe("pedido do balcão na conta da cliente", () => {
       expect(texto).not.toContain("o dinheiro foi devolvido");
     });
 
-    it("online cancelado e estornado (controle): a frase de sempre", async () => {
+    // Sem devolução concluída no livro, o online não prova que o dinheiro
+    // voltou (pode ser contestação no cartão): a frase de estornado sem prova.
+    it("online cancelado e estornado (controle): a frase do estornado online", async () => {
       const texto = await detalhe({ ...pedidoBase, ...estornado });
       esperarSelo("Pagamento estornado");
       expect(texto).toContain(
-        "Este pedido foi cancelado e o seu pagamento foi estornado: o dinheiro foi devolvido.",
+        "Este pedido foi cancelado e o pagamento foi estornado ou contestado no cartão.",
       );
+      expect(texto).not.toContain("anulada pela loja");
     });
   });
 
@@ -245,10 +248,11 @@ describe("pedido do balcão na conta da cliente", () => {
       expect(texto).not.toContain("foi devolvido");
     });
 
-    it("online cancelado e estornado (controle): 'foi devolvido' como antes", async () => {
+    it("online cancelado e estornado (controle): a frase do estornado online", async () => {
       const texto = await lista({ ...pedidoBase, ...estornado });
       esperarSelo("Pagamento estornado");
-      expect(texto).toContain("O dinheiro deste pedido foi devolvido.");
+      expect(texto).toContain("Pagamento estornado ou contestado no cartão.");
+      expect(texto).not.toContain("combinada com a loja");
     });
   });
 });

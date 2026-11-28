@@ -2,13 +2,13 @@
 
 /**
  * A 20261659000000 (a peca de produto excluido fica fora do estoque, e o vale-troca nao e dinheiro no ranking de lucro) redefine
- * QUATRO corpos: devolver_estoque e admin_devolucao_concluir (em cima dos da 20261653000000), resolver_peca_sem_tamanho (em cima do da
+ * QUATRO corpos: devolver_estoque e admin_devolucao_concluir (em cima dos da 20261657000000), resolver_peca_sem_tamanho (em cima do da
  * 20261642000000) e get_admin_analytics_v2 (em cima do da 20261399995000). Nenhum objeto novo, nenhuma tabela.
  *
- * Toda prova viva que mede a 20261653000000, a 20261642000000 ou a 20261399995000 (ou as antecessoras delas) ISOLADA tem de desfazer
+ * Toda prova viva que mede a 20261657000000, a 20261642000000 ou a 20261399995000 (ou as antecessoras delas) ISOLADA tem de desfazer
  * ANTES esta: os pre-voos dos rollbacks delas recusam o corpo desta ("sucessora no ar? nao desfaca por baixo dela"), e o comportamento
- * medido seria o desta. Quem chama este modulo primeiro: a-peca-da-variacao-desligada-posterior.cjs (a cadeia do estoque: 653 -> 642 ->
- * ...) e o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs (a cadeia do lucro: 3995 -> 3994 -> ...), e as provas vivas da 653 e
+ * medido seria o desta. Quem chama este modulo primeiro: o-produto-todo-desligado-posterior.cjs (a cadeia do estoque: 657 -> 653 -> 642 ->
+ * ...) e o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs (a cadeia do lucro: 3995 -> 3994 -> ...), e as provas vivas da 657 e
  * da 3995 no comeco.
  *
  * So nos clones efemeros: o chamador decide BEGIN/COMMIT/ROLLBACK; o rollback devolve os quatro corpos byte a byte e nao apaga nenhuma
@@ -24,12 +24,12 @@ const path = require("node:path");
 
 const NOME =
   "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql";
-const HASH_DEVOLVER_DESTA = "a2b4e093b3afee7b5f641a8dda2692c4";
-const HASH_CONCLUIR_DESTA = "b0373391f4d900670f01188103928e07";
+const HASH_DEVOLVER_DESTA = "e42582a472fd79ba987c11f161ad9a7a";
+const HASH_CONCLUIR_DESTA = "9ec7a021b965b7abdc77bc4b2b900c35";
 const HASH_RESOLVER_DESTA = "115378a67cd4f89b73129aeec4c46a7f";
 const HASH_ANALYTICS_DESTA = "1624212a7096b6f49a80370b30191a15";
-const HASH_DEVOLVER_653 = "2913f3178498938d0a79e3b47a1084d1";
-const HASH_CONCLUIR_653 = "d146dc7aefb07a0bf580ed7265d9453e";
+const HASH_DEVOLVER_657 = "c98a1d49d63e0174f4bdd95dcffc54f4";
+const HASH_CONCLUIR_657 = "b55bf2488a1d5165afddaa4d103d3e18";
 const HASH_RESOLVER_642 = "cac3d04d9be77c7d4004003bb70561c5";
 const HASH_ANALYTICS_3995 = "4f8fb94f6cb0018e10d0ef71541f1cbf";
 
@@ -71,8 +71,8 @@ async function desfazerProdutoExcluidoNaTransacao(cliente) {
     ),
   );
   for (const [assinatura, hash, de] of [
-    [DEVOLVER, HASH_DEVOLVER_653, "20261653000000"],
-    [CONCLUIR, HASH_CONCLUIR_653, "20261653000000"],
+    [DEVOLVER, HASH_DEVOLVER_657, "20261657000000"],
+    [CONCLUIR, HASH_CONCLUIR_657, "20261657000000"],
     [RESOLVER, HASH_RESOLVER_642, "20261642000000"],
     [ANALYTICS, HASH_ANALYTICS_3995, "20261399995000"],
   ])
@@ -90,8 +90,8 @@ module.exports = {
   HASH_CONCLUIR_DESTA,
   HASH_RESOLVER_DESTA,
   HASH_ANALYTICS_DESTA,
-  HASH_DEVOLVER_653,
-  HASH_CONCLUIR_653,
+  HASH_DEVOLVER_657,
+  HASH_CONCLUIR_657,
   HASH_RESOLVER_642,
   HASH_ANALYTICS_3995,
   desfazerProdutoExcluidoNaTransacao,

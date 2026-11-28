@@ -24,7 +24,7 @@
  *   7. DUAS CONEXOES REAIS: a lojista exclui o produto enquanto o pedido volta; a volta espera a trava do produto e ve o excluido;
  *   8. mutantes (cada um na guarda certa), restaurando o corpo exato depois;
  *   9. reaplicar (LF e CRLF), pre-voo, atomicidade, rollback (os quatro corpos byte a byte, OID/dono/ACL iguais, dado intacto, os
- *      rollbacks da 653 e da 3995 recusam por baixo desta), consultas 215a/215b e as fichas antigas que aceitam esta como sucessora.
+ *      rollbacks da 1657 e da 3995 recusam por baixo desta), consultas 215a/215b e as fichas antigas que aceitam esta como sucessora.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-de-produto-excluido-viva.cjs
  */
@@ -44,8 +44,8 @@ const {
   HASH_CONCLUIR_DESTA,
   HASH_RESOLVER_DESTA,
   HASH_ANALYTICS_DESTA,
-  HASH_DEVOLVER_653,
-  HASH_CONCLUIR_653,
+  HASH_DEVOLVER_657,
+  HASH_CONCLUIR_657,
   HASH_RESOLVER_642,
   HASH_ANALYTICS_3995,
 } = require("./a-peca-de-produto-excluido-posterior.cjs");
@@ -64,8 +64,8 @@ const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
 
 const MIGRATION = lerMigration(NOME);
 const ROLLBACK = lerMigration(`rollback-manual-${NOME}`);
-const ROLLBACK_653 = lerMigration(
-  "rollback-manual-20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql",
+const ROLLBACK_657 = lerMigration(
+  "rollback-manual-20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql",
 );
 const ROLLBACK_3995 = lerMigration(
   "rollback-manual-20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
@@ -96,6 +96,7 @@ const FICHAS_SUCESSORAS = [
   "147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado",
   "202a-conferir-a-peca-que-volta-sem-tamanho-aplicado",
   "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+  "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
 ].map((nome) => ({ nome, sql: lerConsulta(nome) }));
 
 const blocoDe = (sql, inicio, fim) => {
@@ -142,8 +143,8 @@ const DESTA = {
   ana: HASH_ANALYTICS_DESTA,
 };
 const ANTERIOR = {
-  dev: HASH_DEVOLVER_653,
-  concl: HASH_CONCLUIR_653,
+  dev: HASH_DEVOLVER_657,
+  concl: HASH_CONCLUIR_657,
   res: HASH_RESOLVER_642,
   ana: HASH_ANALYTICS_3995,
 };
@@ -394,7 +395,7 @@ const fotografia = async () =>
       [ASSIN.dev, ASSIN.concl, ASSIN.res, ASSIN.ana],
     )
   ).rows.map((r) => r.f);
-/** Os corpos anteriores (653, 642 e 3995) DENTRO da transacao aberta, pelo rollback desta (o ROLLBACK do fim os devolve). */
+/** Os corpos anteriores (1657, 642 e 3995) DENTRO da transacao aberta, pelo rollback desta (o ROLLBACK do fim os devolve). */
 async function corposAnteriores() {
   await C.query(ROLLBACK);
   assert.deepEqual(await hashes(), ANTERIOR);
@@ -530,6 +531,22 @@ async function provaDoPedidoDesfeito() {
       "a peca de produto excluido nao espera a lojista",
     );
     assert.equal(await estoqueVar(b3.v.M), 2);
+
+    // TODOS os tamanhos desligados e o produto excluido: o excluido vence tambem o caminho da 1657 (a peca na propria variacao).
+    const b4 = await produto(C, {
+      estoque: 0,
+      variacoes: [{ valor: "M", estoque: 2, ativa: false }],
+    });
+    const o6 = await pedido(C, [{ p: b4.produto, v: b4.v.M, q: 1 }]);
+    await excluir(b4.produto);
+    assert.equal(await devolverEstoque(o6), 0);
+    assert.equal(
+      await estoqueVar(b4.v.M),
+      2,
+      "nem a variacao desligada recebe",
+    );
+    assert.equal(await estoquePai(b4.produto), 0);
+    assert.equal((await cantinho(b4.produto)).length, 0);
 
     // Pedido misto: so o item do produto NAO excluido credita.
     const vivo = await simples();
@@ -674,10 +691,16 @@ async function matrizSemExclusao() {
   const p = await simples();
   const b = await blusa();
   const bd = await blusa(C, { ligadaM: false });
+  // Todos os tamanhos desligados (o caminho da 1657): a peca fica na propria variacao, nos dois corpos.
+  const td = await produto(C, {
+    estoque: 0,
+    variacoes: [{ valor: "M", estoque: 2, ativa: false }],
+  });
   const order = await pedido(C, [
     { p: p.produto, v: null, q: 2 },
     { p: b.produto, v: b.v.M, q: 1 },
     { p: bd.produto, v: bd.v.M, q: 1 },
+    { p: td.produto, v: td.v.M, q: 1 },
   ]);
   const dev = await devolucao(C, [
     { p: p.produto, v: null, q: 1 },
@@ -696,6 +719,8 @@ async function matrizSemExclusao() {
     m: await estoqueVar(b.v.M),
     pP: await estoqueVar(b.v.P),
     cantinhoDesligada: (await cantinho(bd.produto)).length,
+    todoDesligadoVariacao: await estoqueVar(td.v.M),
+    todoDesligadoPai: await estoquePai(td.produto),
   };
 }
 
@@ -714,13 +739,16 @@ async function provaDoControle() {
     "sem produto excluido, tudo igual aos corpos anteriores",
   );
   assert.deepEqual(antes, {
-    n: 3,
+    // a do produto todo desligado conta como creditada (na propria variacao, regra da 1657)
+    n: 4,
     reestocados: 2,
     sem_tamanho: 0,
     pai: 8,
     m: 3,
     pP: 3,
     cantinhoDesligada: 1,
+    todoDesligadoVariacao: 3,
+    todoDesligadoPai: 0,
   });
 }
 
@@ -1089,7 +1117,7 @@ async function provaDaMigration() {
 
     // Os rollbacks das antecessoras recusam por baixo desta (ordem).
     assert.match(
-      String((await tentarSql(ROLLBACK_653)).erro),
+      String((await tentarSql(ROLLBACK_657)).erro),
       /B1_BASELINE_DIVERGENT/,
     );
     assert.match(

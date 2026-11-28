@@ -28,6 +28,12 @@ describe("valoresCitados — o que o texto do banner promete", () => {
     ["Só R$ 70, corra!", [7000]],
     // Ponto sem três dígitos depois não é milhar: "70.00" é 70.
     ["Por R$ 70.00", [7000]],
+    // Ponto com exatamente dois dígitos depois é a vírgula dos centavos.
+    ["Por R$ 70.50", [7050]],
+    ["Por R$70.99!", [7099]],
+    // Três dígitos depois do ponto continua sendo milhar.
+    ["Por R$ 1.299", [129900]],
+    ["Por R$ 1.299,90", [129990]],
   ])("acha os reais em %j", (texto, centavos) => {
     expect(valoresCitados(texto).centavos).toEqual(centavos);
   });
@@ -50,6 +56,47 @@ describe("valoresCitados — o que o texto do banner promete", () => {
     "",
   ])("texto sem preço nem '% OFF' não cita nada: %j", (texto) => {
     expect(valoresCitados(texto)).toEqual({ centavos: [], percentuais: [] });
+  });
+
+  // Valor que NÃO é o preço do produto: combo por quantidade, cupom, frete e
+  // valor mínimo de compra. Conferir esses contra o preço só dava falso aviso.
+  it.each([
+    "Leve 2 por R$150",
+    "Leve 3 peças por R$ 199,90",
+    "Compre 2 por R$ 100",
+    "Use o cupom de R$ 20",
+    "Cupom R$20 na primeira compra",
+    "R$ 20 OFF na primeira compra",
+    "Ganhe R$ 15 de desconto",
+    "Desconto de R$ 30 no Pix",
+    "Frete grátis acima de R$ 199",
+    "Compras acima de R$ 299 ganham brinde",
+    "Frete R$ 9,90 para todo o Brasil",
+    "Frete fixo de R$ 15",
+    "Frete: R$ 12,00",
+  ])("valor que não é o preço do produto não conta: %j", (texto) => {
+    expect(valoresCitados(texto).centavos).toEqual([]);
+  });
+
+  it.each(["Cupom de 10% OFF", "Leve 3 com 20% OFF", "Frete 50% OFF"])(
+    "percentual de cupom, combo ou frete não conta: %j",
+    (texto) => {
+      expect(valoresCitados(texto).percentuais).toEqual([]);
+    },
+  );
+
+  it("no mesmo texto, o preço do produto conta e o do frete não", () => {
+    expect(
+      valoresCitados("Vestido por R$ 70,00 — frete grátis acima de R$ 199")
+        .centavos,
+    ).toEqual([7000]);
+    expect(
+      valoresCitados("Leve 2 por R$ 150 ou 1 por R$ 89,90").centavos,
+    ).toEqual([8990]);
+    // Só o que ENCOSTA no valor tira ele da conferência.
+    expect(valoresCitados("Frete grátis! Vestido por R$ 70").centavos).toEqual([
+      7000,
+    ]);
   });
 
   it("título vazio ou ausente não cita nada", () => {
@@ -128,6 +175,60 @@ describe("precoAnunciadoVelho — o texto bate com o preço de agora?", () => {
     expect(
       precoAnunciadoVelho(["Por apenas R$ 89,90"], vestido(89.9)),
     ).toBeNull();
+  });
+
+  it.each([
+    [19.99, "R$ 19,99"],
+    [0.29, "R$ 0,29"],
+    [4.35, "R$ 4,35"],
+  ])(
+    "preço que o ponto flutuante não representa exato (%d) bate com %j",
+    (preco, texto) => {
+      expect(precoAnunciadoVelho([`Por ${texto}`], vestido(preco))).toBeNull();
+    },
+  );
+
+  it("'De' MENOR que o preço não é desconto: o banner que o cita avisa", () => {
+    expect(
+      precoAnunciadoVelho(["De R$ 80,00 por R$ 100,00"], vestido(100, 80)),
+    ).toEqual({ tipo: "preco", citado: 80, atual: 100, aPartirDe: false });
+  });
+
+  it("falso aviso: combo, cupom e frete não acusam o banner de preço velho", () => {
+    expect(
+      precoAnunciadoVelho(
+        [
+          "Leve 2 por R$150",
+          "Cupom de R$ 20 · frete grátis acima de R$ 199",
+          "R$ 20 OFF",
+        ],
+        vestido(100),
+      ),
+    ).toBeNull();
+  });
+
+  it("o preço do produto no mesmo texto do combo continua sendo conferido", () => {
+    expect(
+      precoAnunciadoVelho(["Por R$ 70,00 · Leve 2 por R$ 150"], vestido(100)),
+    ).toEqual({ tipo: "preco", citado: 70, atual: 100, aPartirDe: false });
+  });
+
+  // Revisão do #2110: textos que a lojista usa de verdade e em que o valor É o
+  // preço do produto. "com desconto", "frete grátis" e "leve 1" não tiram o
+  // valor da conferência -- só "desconto de", o valor DO frete e combo de 2+.
+  it.each([
+    ["Com desconto R$ 79,90", { tipo: "preco", citado: 79.9 }],
+    ["No Pix com desconto: R$ 79,90", { tipo: "preco", citado: 79.9 }],
+    ["FRETE GRÁTIS 30% OFF", { tipo: "percentual", citado: 30 }],
+    ["Frete grátis R$ 70", { tipo: "preco", citado: 70 }],
+    ["Leve 1 vestido R$ 70", { tipo: "preco", citado: 70 }],
+    ["Compre 1 por R$ 70", { tipo: "preco", citado: 70 }],
+  ])("o valor É o preço do produto e avisa: %j", (texto, esperado) => {
+    expect(precoAnunciadoVelho([texto], vestido(100))).toMatchObject(esperado);
+  });
+
+  it("'R$ 70.50' (ponto como vírgula) é 70,50: bate com o preço 70,50", () => {
+    expect(precoAnunciadoVelho(["Por R$ 70.50"], vestido(70.5))).toBeNull();
   });
 
   it("preço com milhar bate: R$ 1.234,56", () => {

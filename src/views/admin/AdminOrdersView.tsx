@@ -56,7 +56,11 @@ import { useNumerosDosPedidos } from "@/hooks/useNumerosDosPedidos";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   ErroCancelamentoNaoConcluido,
+  ErroCancelamentoOfflineRecusado,
+  ErroFilaOfflineSemSessao,
   ErroPedidoMudou,
+  ErroReleituraDeStatusFalhou,
+  ErroStatusEsperadoDesconhecido,
   mensagemAmigavelErroAtualizacaoStatus,
   useOrders,
 } from "@/hooks/useOrders";
@@ -99,6 +103,7 @@ import {
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
+  ehGravacaoIncerta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import {
@@ -396,6 +401,40 @@ export function precisaConfirmarRetornoDoProduto(pedido: Order): boolean {
     Boolean(pedido.cancelledAfterShipping) &&
     !pedido.returnedToSellerAt
   );
+}
+
+/**
+ * Um cancelamento que falhou deixou o pedido FORA de "cancelado" com certeza?
+ * Só então a marca do último avanço volta (ver o `catch` de
+ * `handleStatusChange`). "Não sei" fica em "cancelado": devolver a marca de
+ * um pedido que o servidor cancelou ofereceria o WhatsApp da etapa abandonada.
+ */
+function cancelamentoComCertezaNaoAconteceu(err: unknown): boolean {
+  // O servidor releu o pedido: a etapa de verdade decide.
+  if (err instanceof ErroPedidoMudou) {
+    return err.statusVerdadeiro !== "cancelled";
+  }
+  if (err instanceof ErroCancelamentoNaoConcluido) {
+    const etapaRelida = err.pedido?.status;
+    if (typeof etapaRelida === "string") return etapaRelida !== "cancelled";
+    // `recuperavel` também é a resposta que não veio (prazo, rede caída,
+    // corpo ilegível): a edge pode ter cancelado. Os outros desfechos são a
+    // recusa dita pelo servidor.
+    return err.desfecho !== "recuperavel";
+  }
+  // Recusados ANTES de qualquer gravação.
+  if (
+    err instanceof ErroReleituraDeStatusFalhou ||
+    err instanceof ErroStatusEsperadoDesconhecido ||
+    err instanceof ErroCancelamentoOfflineRecusado ||
+    err instanceof ErroFilaOfflineSemSessao
+  ) {
+    return true;
+  }
+  // RPC: só a recusa com código do banco é certeza. Prazo estourado, rede
+  // caída e erro sem código podem ter gravado.
+  if (typeof err !== "object" || err === null) return false;
+  return !ehGravacaoIncerta(err);
 }
 
 /** O botão "Ver detalhes do pedido #N" do cartão daquele pedido, se estiver na tela. */
@@ -2069,7 +2108,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // Cancelar também é o último passo do pedido, e conta ANTES da gravação:
     // o envio do aviso de um avanço feito logo antes pode responder durante o
     // cancelamento ou depois dele, e não pode reabrir a confirmação com o
-    // WhatsApp da etapa abandonada (ver `ultimoAvancoRef`).
+    // WhatsApp da etapa abandonada (ver `ultimoAvancoRef`). O valor de antes
+    // fica guardado: se o cancelamento falhar, ele volta (ver o `catch`).
+    const marcaAntesDoCancelamento = ultimoAvancoRef.current.get(orderId);
     if (newStatus === "cancelled") {
       ultimoAvancoRef.current.set(orderId, newStatus);
     }
@@ -2127,6 +2168,22 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     } catch (err: any) {
       haptic.error();
       console.error("[handleStatusChange] Erro ao avançar status:", err);
+      // O cancelamento não aconteceu (pago no meio, outro aparelho mexeu): o
+      // pedido segue na etapa do avanço, e a resposta do aviso dele volta a
+      // valer. Só se a marca ainda é deste cancelamento, e só com CERTEZA:
+      // sem resposta o servidor pode ter cancelado (ver
+      // `cancelamentoComCertezaNaoAconteceu`).
+      if (
+        newStatus === "cancelled" &&
+        ultimoAvancoRef.current.get(orderId) === "cancelled" &&
+        cancelamentoComCertezaNaoAconteceu(err)
+      ) {
+        if (marcaAntesDoCancelamento === undefined) {
+          ultimoAvancoRef.current.delete(orderId);
+        } else {
+          ultimoAvancoRef.current.set(orderId, marcaAntesDoCancelamento);
+        }
+      }
       // Rodada 2 (achado 1/3 do laudo, deep link): quando o pedido não
       // está em `orders` (deep link/paginação), a correção que o hook faz
       // em `orders`/`cachedAdminOrders` é um no-op — a ficha aberta é
@@ -2263,9 +2320,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       void avisarOClienteDoStatus(orderId, newStatus, alvo, gravadoNoBancoEm);
       return;
     }
+    // Rótulo curto, o mesmo da outra confirmação: o Sonner não deixa o botão
+    // encolher, e "Avisar pelo WhatsApp" deixava ~5 px para o título num
+    // celular pequeno com letra grande (uma coluna de letras, ~490 px).
     toast.success("Status atualizado com sucesso", {
       id: idDaConfirmacao,
-      action: acaoDoWhatsapp("Avisar pelo WhatsApp"),
+      action: acaoDoWhatsapp("WhatsApp"),
       ...(temWhatsapp ? { duration: 8000 } : {}),
     });
     ultimoAvancoRef.current.set(orderId, newStatus);

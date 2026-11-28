@@ -57,6 +57,7 @@
 --   * `admin_devolucao_concluir` → ..., 20261343000000 e, DEPOIS dela, 20261395200000 (a conclusão da devolução tranca o estoque na mesma ordem da compra)
 --                                e, DEPOIS dela, 20261642000000 (a peça que volta sem tamanho espera a lojista)
 --                                e, DEPOIS dela, 20261653000000 (a peça da variação desligada espera a lojista)
+--                                e, DEPOIS dela, 20261657000000 (o produto todo desligado não volta à venda)
 --                                e, DEPOIS dela, 20261659000000 (a peça de produto excluído fica fora do estoque);
 --   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento)
 --                                e, DEPOIS dela, 20261392100000 (a busca do CRM acha o número com o +55);
@@ -216,7 +217,8 @@ WITH corpos AS (
     ('admin_devolucao_concluir', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '20261395200000'),
     ('admin_devolucao_concluir', '1a548896acb8248f1b1771d765c92fcb', '20261642000000'),
     ('admin_devolucao_concluir', 'd146dc7aefb07a0bf580ed7265d9453e', '20261653000000'),
-    ('admin_devolucao_concluir', 'b0373391f4d900670f01188103928e07', '20261659000000'),
+    ('admin_devolucao_concluir', 'b55bf2488a1d5165afddaa4d103d3e18', '20261657000000'),
+    ('admin_devolucao_concluir', '9ec7a021b965b7abdc77bc4b2b900c35', '20261659000000'),
     ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000'),
     ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
     ('get_admin_analytics_v2', 'ab25e738a3101cccbb0c09450b660ee0', '20261245000000'),
@@ -238,6 +240,7 @@ WITH corpos AS (
     ('fin_lancamento_salvar', '3e31817ce1d13bb091ce2d0871cbd718', '20261654000000'),
     ('fin_lancamento_baixar', '7d1204cdf214a290cfdb378482795f1b', '20261654000000'),
     ('devolucao_elegibilidade', 'bedd211bba45261dfbf962241ca3c9dd', '20261399992000'),
+    ('devolucao_elegibilidade', '4776618e9ccd401f7c7eb9518ceaa62d', '20261658000000'),
     ('devolucao_detalhe', 'a439e320641d553e3a21883c6606c6f2', '20261399992000'),
     ('devolucao_detalhe', 'b4eb7a928f8a6ff04c34e93f4f56188c', '20261404000000')), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),

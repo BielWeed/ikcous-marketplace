@@ -8,7 +8,7 @@
 --
 -- (a) Peça de produto EXCLUÍDO. A lojista exclui um produto (produtos.deleted_at preenchido: ele some do painel e da vitrine). Depois o
 --     Pix de um pedido dele vence, o pedido é cancelado, ou a devolução de uma peça dele é concluída com "voltar ao estoque":
---     devolver_estoque (corpo da 20261653000000) e admin_devolucao_concluir (corpo da 20261653000000) somam +1 no estoque do produto
+--     devolver_estoque (corpo da 20261657000000) e admin_devolucao_concluir (corpo da 20261657000000) somam +1 no estoque do produto
 --     excluído (ou da variação dele), ou põem a peça em pecas_sem_tamanho esperando a lojista escolher um tamanho de um produto que ela
 --     não vê. O painel diz "voltou ao estoque", mas a peça não volta a vender nunca. resolver_peca_sem_tamanho (corpo da
 --     20261642000000) ainda aceita pôr a peça num tamanho do produto excluído.
@@ -35,9 +35,9 @@
 --
 -- 3. O QUE MUDA EM CADA CORPO (só isto; o resto não muda um byte)
 --
---   devolver_estoque (corpo da 20261653000000): um bloco ">>> a peca de produto excluido (20261659000000)" logo ANTES do bloco da
---   variação desligada (CONTINUE).
---   admin_devolucao_concluir (corpo da 20261653000000): a variável v_fora_do_estoque; o mesmo bloco logo depois de "IF v_reestocar AND
+--   devolver_estoque (corpo da 20261657000000): um bloco ">>> a peca de produto excluido (20261659000000)" logo ANTES do bloco da
+--   variação desligada da 20261653000000 (com o sub-bloco do produto todo desligado da 20261657000000 dentro dele) (CONTINUE).
+--   admin_devolucao_concluir (corpo da 20261657000000): a variável v_fora_do_estoque; o mesmo bloco logo depois de "IF v_reestocar AND
 --   v_di.reestocado_em IS NULL THEN" (conta e zera produto e variação locais, então nenhum ramo de crédito roda e o carimbo segue); a
 --   resposta ganha 'fora_do_estoque' e 'reestocados' desconta essas unidades.
 --   resolver_peca_sem_tamanho (corpo da 20261642000000): a recusa, dentro de "IF p_variant_id IS NOT NULL", antes da do tamanho desligado.
@@ -58,19 +58,20 @@
 --
 -- 5. PRÉ-VOO (B1_BASELINE_DIVERGENT, ANTES de qualquer escrita)
 --
--- Recusa se: alguma das quatro faltar ou tiver sobrecarga; o corpo vivo de alguma não for o vigente (20261653000000 para as duas do
+-- Recusa se: alguma das quatro faltar ou tiver sobrecarga; o corpo vivo de alguma não for o vigente (20261657000000 para as duas do
 -- estoque, 20261642000000 para a decisão da peça, 20261399995000 para o painel) nem o desta; atributos ou ACL diferentes dos de sempre;
 -- faltar produtos.deleted_at ou product_variants (id, product_id). Fotografa OID, dono, ACL e atributos das quatro para o pós-voo.
 --
 -- 6. IDEMPOTÊNCIA, TRANSAÇÃO E TRAVA
 --
 -- CREATE OR REPLACE: rodar duas vezes deixa o mesmo estado (o pré-voo aceita o que esta migration deixa). SEM BEGIN/COMMIT (regra da casa,
--- AGENTS.md: o aplicador dá a transação); pré-voo, troca e pós-voo caem juntos ou não caem. lock_timeout = 5s: CREATE OR REPLACE espera o
+-- AGENTS.md: o aplicador dá a transação e o conferirCorpo do aplicar-migrations.yml RECUSA controle de transação no topo do arquivo);
+-- pré-voo, troca e pós-voo caem juntos ou não caem. lock_timeout = 5s: CREATE OR REPLACE espera o
 -- catálogo; melhor falhar e reaplicar.
 --
 -- 7. ORDEM
 --
--- DEPOIS da 20261653000000 e da 20261399995000 (o pré-voo recusa sem elas). Banco antes do front: o painel lê 'fora_do_estoque' como
+-- DEPOIS da 20261657000000 e da 20261399995000 (o pré-voo recusa sem elas). Banco antes do front: o painel lê 'fora_do_estoque' como
 -- ausente = 0 (loja sem esta segue mostrando o que mostrava).
 --
 -- 8. FICHA DE VERIFICAÇÃO: consultas 215a (depois) / 215b (antes).
@@ -78,8 +79,8 @@
 --
 -- 9. ROLLBACK
 --
--- rollback-manual-20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql devolve os QUATRO corpos anteriores byte a byte (os da 20261653000000, da 20261642000000 e da 20261399995000). Não
--- apaga nenhuma linha. Vem ANTES do rollback da 20261653000000 e do da 20261399995000 (o pré-voo deles recusa o corpo desta).
+-- rollback-manual-20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql devolve os QUATRO corpos anteriores byte a byte (os da 20261657000000, da 20261642000000 e da 20261399995000). Não
+-- apaga nenhuma linha. Vem ANTES do rollback da 20261657000000 e do da 20261399995000 (o pré-voo deles recusa o corpo desta).
 -- ============================================================================
 
 SET LOCAL lock_timeout = '5s';
@@ -104,8 +105,8 @@ BEGIN
   -- Corpo vivo: o vigente (a) ou o desta (b, reaplicacao idempotente). Recusa tambem redefinicao posterior.
   FOR r IN
     SELECT * FROM (VALUES
-      ('public.devolver_estoque(uuid)', '2913f3178498938d0a79e3b47a1084d1', 'a2b4e093b3afee7b5f641a8dda2692c4'),
-      ('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', 'd146dc7aefb07a0bf580ed7265d9453e', 'b0373391f4d900670f01188103928e07'),
+      ('public.devolver_estoque(uuid)', 'c98a1d49d63e0174f4bdd95dcffc54f4', 'e42582a472fd79ba987c11f161ad9a7a'),
+      ('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', 'b55bf2488a1d5165afddaa4d103d3e18', '9ec7a021b965b7abdc77bc4b2b900c35'),
       ('public.resolver_peca_sem_tamanho(uuid,uuid)', 'cac3d04d9be77c7d4004003bb70561c5', '115378a67cd4f89b73129aeec4c46a7f'),
       ('public.get_admin_analytics_v2(integer)', '4f8fb94f6cb0018e10d0ef71541f1cbf', '1624212a7096b6f49a80370b30191a15')
     ) AS esperado(assinatura, hash_a, hash_b)
@@ -167,7 +168,7 @@ BEGIN
 END $preflight_20261659000000$;
 
 -- ---------------------------------------------------------------------------
--- 1. devolver_estoque: o corpo da 20261653000000 + o bloco do produto excluido
+-- 1. devolver_estoque: o corpo da 20261657000000 + o bloco do produto excluido
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.devolver_estoque(p_order_id uuid)
 RETURNS integer
@@ -279,7 +280,17 @@ BEGIN
                             WHERE v.id = v_item.variant_id AND v.active = true) THEN
             v_item.product_id := COALESCE(v_item.product_id,
                                           (SELECT v.product_id FROM public.product_variants v WHERE v.id = v_item.variant_id));
-            v_item.variant_id := NULL;
+            -- >>> o produto todo desligado (20261657000000)
+            -- So vira peca SEM tamanho se o produto ainda tem variacao LIGADA (o MESMO predicado do ELSIF da 642 logo abaixo): ai
+            -- ela espera a lojista no cantinho. Com TODAS desligadas o ELSE creditava o PAI, e produto sem variacao ligada a compra
+            -- vende pelo pai: a peca voltava a venda sozinha, sem tamanho e pelo preco do pai. Ela fica na propria variacao
+            -- desligada (como antes da 20261653000000): o produto segue esgotado e a peca espera a lojista religar o tamanho. O
+            -- produto sem variacao nenhuma nao passa por aqui (variant_id nulo) e segue creditando o pai.
+            IF EXISTS (SELECT 1 FROM public.product_variants v
+                        WHERE v.product_id = v_item.product_id AND v.active = true) THEN
+                v_item.variant_id := NULL;
+            END IF;
+            -- <<< o produto todo desligado (20261657000000)
         END IF;
         -- <<< a peca da variacao desligada (20261653000000)
         -- IF/ELSE, não dois IF: a v23 debita XOR (variante OU produto, nunca os
@@ -317,7 +328,7 @@ END;
 $devolver$;
 
 -- ---------------------------------------------------------------------------
--- 2. admin_devolucao_concluir: o corpo da 20261653000000 + o bloco do produto excluido e 'fora_do_estoque'
+-- 2. admin_devolucao_concluir: o corpo da 20261657000000 + o bloco do produto excluido e 'fora_do_estoque'
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.admin_devolucao_concluir(
   p_id uuid,
@@ -480,7 +491,17 @@ BEGIN
                           WHERE v.id = v_di.variant_id AND v.active = true) THEN
         v_di.product_id := COALESCE(v_di.product_id,
                                     (SELECT v.product_id FROM public.product_variants v WHERE v.id = v_di.variant_id));
-        v_di.variant_id := NULL;
+        -- >>> o produto todo desligado (20261657000000)
+        -- So vira peca SEM tamanho se o produto ainda tem variacao LIGADA (o MESMO predicado do ELSIF da 642 logo abaixo): ai ela
+        -- espera a lojista no cantinho e conta em 'sem_tamanho'. Com TODAS desligadas o ELSIF do pai creditava produtos.estoque, e
+        -- produto sem variacao ligada a compra vende pelo pai: a peca voltava a venda sozinha, sem tamanho. Ela fica na propria
+        -- variacao desligada (como antes da 20261653000000) e espera a lojista religar o tamanho. O item sem variacao nenhuma nao
+        -- passa por aqui e segue creditando o pai.
+        IF EXISTS (SELECT 1 FROM public.product_variants v
+                    WHERE v.product_id = v_di.product_id AND v.active = true) THEN
+          v_di.variant_id := NULL;
+        END IF;
+        -- <<< o produto todo desligado (20261657000000)
       END IF;
       -- <<< a peca da variacao desligada (20261653000000)
       IF v_di.variant_id IS NOT NULL THEN
@@ -1263,8 +1284,8 @@ DECLARE
 BEGIN
   FOR r IN
     SELECT * FROM (VALUES
-      ('public.devolver_estoque(uuid)', 'a2b4e093b3afee7b5f641a8dda2692c4', 'excl659_dev'),
-      ('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', 'b0373391f4d900670f01188103928e07', 'excl659_concl'),
+      ('public.devolver_estoque(uuid)', 'e42582a472fd79ba987c11f161ad9a7a', 'excl659_dev'),
+      ('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', '9ec7a021b965b7abdc77bc4b2b900c35', 'excl659_concl'),
       ('public.resolver_peca_sem_tamanho(uuid,uuid)', '115378a67cd4f89b73129aeec4c46a7f', 'excl659_res'),
       ('public.get_admin_analytics_v2(integer)', '1624212a7096b6f49a80370b30191a15', 'excl659_ana')
     ) AS esperado(assinatura, hash, fotografia)

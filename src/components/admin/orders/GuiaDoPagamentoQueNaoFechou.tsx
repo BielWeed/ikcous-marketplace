@@ -33,13 +33,6 @@ import { getPaymentStatusConfig } from "./OrderStatusBadge";
  *     `confirmar_pagamento` devolve `pago_apos_expirar`, com falha do push só
  *     no log (reconciliar-pagamentos/index.ts, "PUSH AO ADMIN") — por isso
  *     "pode receber", nunca "vai receber".
- *   - A peça que volta sem tamanho (20261642000000): item vendido SEM
- *     variação de produto que, na hora da volta, tem variação ligada não
- *     credita o estoque; espera no aviso do topo da tela do produto
- *     (AvisoDePecaSemTamanho), com o número do pedido, até a lojista escolher
- *     o tamanho ou tocar em “Não tenho essa peça” (fecha sem mexer no
- *     estoque). Por isso o passo de enviar não manda tirar estoque à mão
- *     nesse caso.
  *   - Sem cobrança, a varredura cancela sozinha e devolve o estoque
  *     (`expirar_pedidos_vencidos`, 20261186000000). O prazo NÃO entra no
  *     texto: depende de qual versão da varredura está no banco da loja.
@@ -112,10 +105,12 @@ import { getPaymentStatusConfig } from "./OrderStatusBadge";
  *         (20260901000000) — o caso 1. Em `reimbursed` a loja ganhou a
  *         disputa e o dinheiro ficou com ELA. Por isso a linha manda conferir
  *         no painel do MP antes de enviar.
- *   - Depois de ENVIAR um `pago_apos_expirar`, o pedido segue cancelado e
- *     pago: continua em "Estorno devido" (AlertasCancelados.tsx:379-397) e a
- *     ficha continua com "Devolver R$ …" (OrderDetail.tsx:1604-1610). O
- *     registro para quem vier depois é o campo "Anotações internas" da ficha.
+ *   - Caso 2 (`pago_apos_expirar`), decisão do sócio de 28/11/2026: UM
+ *     caminho só, devolver pelo “Devolver R$ …” da ficha. O antigo "enviar o
+ *     produto por fora" saiu: o pedido seguia cancelado em "Estorno devido"
+ *     com o botão de devolver à mostra, o estoque era tirado à mão e a peça
+ *     que voltou sem tamanho (20261642000000) pedia um desvio próprio. Quem
+ *     ainda quer a peça faz um pedido novo depois da devolução.
  *   - Painel simples (onda 3, glossário): a lista que os itens acima chamam
  *     de "Estorno devido" hoje se chama "Devolver ao cliente" na tela
  *     (AlertasCancelados), e o texto diz "contestação no cartão" no lugar de
@@ -259,13 +254,13 @@ export function GuiaDoPagamentoQueNaoFechou() {
           O pagamento (cartão ou PIX) foi confirmado depois que o pedido já
           estava cancelado. O dinheiro entrou na sua conta do Mercado Pago, mas
           a peça já tinha voltado para a loja. Você pode receber o aviso
-          “Pagamento fora do fluxo” no celular. Nada é devolvido sozinho: a
-          decisão é sua.
+          “Pagamento fora do fluxo” no celular. Nada é devolvido sozinho: é você
+          quem devolve o dinheiro ao cliente.
         </p>
         <ol className="list-inside list-decimal space-y-1.5 text-xs text-zinc-400">
           <li>
             Fale com o cliente (o WhatsApp dele aparece na ficha do pedido) e
-            combinem: devolver o dinheiro ou enviar o produto.
+            combinem a devolução do dinheiro.
           </li>
           <li>
             Para devolver: abra o pedido, desça até “Devolução de dinheiro” e
@@ -276,24 +271,8 @@ export function GuiaDoPagamentoQueNaoFechou() {
             ícone ao lado do título Pedidos).
           </li>
           <li>
-            Para enviar o produto: o painel não reabre pedido cancelado. O envio
-            fica por sua conta, fora do app: o pedido continua cancelado aqui.
-            Se a peça aparece no topo da tela do produto, no aviso de peça que
-            voltou sem tamanho, com o número deste pedido (acontece quando o
-            produto ganhou tamanhos depois da venda ou quando o tamanho vendido
-            foi desligado), ela não voltou ao estoque: ali, toque em “Não tenho
-            essa peça” e não tire nada do estoque. Se o produto foi excluído, a
-            peça também não voltou ao estoque: não tire nada. Nos outros casos a
-            peça já voltou ao estoque — tire as unidades enviadas à mão no
-            cadastro do produto (campo “Disponível para venda”; se o produto tem
-            variações, use esse campo dentro da variação). Esse pedido vai
-            continuar no aviso de pedidos cancelados como “Devolver ao cliente”
-            (mesmo com esse nome, não é para devolver), e a ficha dele vai
-            continuar mostrando o botão “Devolver R$ …”. Não toque nele: depois
-            de enviar, devolver é perder o produto e o dinheiro. Para quem abrir
-            o pedido depois saber, escreva em “Anotações internas” da ficha:
-            produto enviado em [data], combinado com o cliente, não devolver.
-            Não toque em “Já estornei”: nenhum dinheiro foi devolvido.
+            Depois que a devolução terminar, avise o cliente que, se ainda
+            quiser a peça, ele pode fazer um pedido novo.
           </li>
         </ol>
       </div>

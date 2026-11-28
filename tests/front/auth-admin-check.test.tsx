@@ -250,7 +250,14 @@ describe("AuthContext — verificação de admin (issues #121 e #123)", () => {
     (
       supabase.auth.onAuthStateChange as unknown as ReturnType<typeof vi.fn>
     ).mockImplementation((cb: AuthChangeCallback) => {
-      callback = cb;
+      // Como o cliente real: depois do evento, `getSession` devolve a sessão
+      // dele (um "não" do `is_admin` só vale com a sessão da própria pessoa).
+      callback = (evento, sessao) => {
+        (
+          supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
+        ).mockResolvedValue({ data: { session: sessao }, error: null });
+        return cb(evento, sessao);
+      };
       return { data: { subscription: { unsubscribe: vi.fn() } } };
     });
 

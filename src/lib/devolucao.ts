@@ -632,7 +632,10 @@ export function centavosDeCadaLinha(
 /**
  * Arrependimento e defeito devolvem também o frete de ida quando o pedido
  * volta INTEIRO (CDC art. 49, parágrafo único) — mesma conta do servidor:
- * o que já está em devolução ativa + o que vai agora cobre o pedido todo.
+ * o que já voltou em DINHEIRO + o que vai agora cobre o pedido todo. Troca e
+ * vale-troca não devolvem dinheiro e não contam (20261658000000): a conta usa
+ * `ja_reembolsada`, não `ja_devolvida` (que inclui a troca). Banco sem o campo
+ * (antes da migration) cai em `ja_devolvida`, a regra antiga do servidor antigo.
  */
 export function devolveFreteDeIda(
   tipo: TipoDevolucao | null,
@@ -644,7 +647,9 @@ export function devolveFreteDeIda(
   let coberto = 0;
   for (const item of itens) {
     total += item.quantidade;
-    coberto += item.ja_devolvida + (selecao.get(item.order_item_id) ?? 0);
+    coberto +=
+      (item.ja_reembolsada ?? item.ja_devolvida) +
+      (selecao.get(item.order_item_id) ?? 0);
   }
   return total > 0 && coberto >= total;
 }
@@ -1179,6 +1184,9 @@ function lerItemElegivel(v: unknown): ItemElegivel | null {
   if (!id || quantidade === null || disponivel === null || valor === null) {
     return null;
   }
+  // Ausente ou ilegível fica AUSENTE (nunca vira 0): zero diria "nada voltou em dinheiro" e apagaria o frete que o banco
+  // antigo ainda devolve; ausente cai em ja_devolvida, a mesma regra do servidor antigo.
+  const reembolsada = numero(campo(v, "ja_reembolsada"));
   return {
     order_item_id: id,
     product_id: texto(campo(v, "product_id")),
@@ -1186,6 +1194,7 @@ function lerItemElegivel(v: unknown): ItemElegivel | null {
     image_url: texto(campo(v, "image_url")),
     quantidade,
     ja_devolvida: numero(campo(v, "ja_devolvida")) ?? 0,
+    ...(reembolsada === null ? {} : { ja_reembolsada: reembolsada }),
     disponivel,
     valor_unitario: valor,
   };

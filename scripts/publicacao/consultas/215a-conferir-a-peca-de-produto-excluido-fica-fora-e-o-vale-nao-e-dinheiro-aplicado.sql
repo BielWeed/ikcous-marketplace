@@ -1,11 +1,11 @@
 -- 215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado: DEPOIS da 20261659000000. SO LEITURA, somente catalogo,
 -- rol fechado de 7 linhas (o mesmo da 215b). Confirma que as quatro funcoes tem o corpo desta migration: devolver_estoque
--- (md5 a2b4e093b3afee7b5f641a8dda2692c4) e admin_devolucao_concluir (md5 b0373391f4d900670f01188103928e07) deixam a peca de produto EXCLUIDO fora
+-- (md5 e42582a472fd79ba987c11f161ad9a7a) e admin_devolucao_concluir (md5 9ec7a021b965b7abdc77bc4b2b900c35) deixam a peca de produto EXCLUIDO fora
 -- do estoque e do cantinho (a conclusao a conta em 'fora_do_estoque'), resolver_peca_sem_tamanho (md5 115378a67cd4f89b73129aeec4c46a7f) recusa
 -- o tamanho de produto excluido e get_admin_analytics_v2 (md5 1624212a7096b6f49a80370b30191a15) nao conta o vale-troca como dinheiro devolvido;
 -- os atributos e a ACL de sempre; e as colunas que a regra nova le. NAO le nenhuma linha de pedido, devolucao, produto nem peca e
 -- NAO chama funcao nenhuma. Tudo true = aplicado; qualquer false = PARE e leia a linha. Depois do rollback-manual as linhas dos corpos
--- reprovam (voltam os da 20261653000000, da 20261642000000 e da 20261399995000).
+-- reprovam (voltam os da 20261657000000, da 20261642000000 e da 20261399995000).
 WITH fn AS (
   SELECT p.proname::text AS nome, md5(replace(p.prosrc, chr(13), '')) AS h, p.oid,
          p.prosecdef AND p.proconfig = ARRAY['search_path=public']::text[]
@@ -49,13 +49,13 @@ WITH fn AS (
          CASE WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE pronamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END,
          EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE pronamespace = 'public'::regnamespace)
   UNION ALL
-  SELECT 'devolver_estoque: corpo esperado (md5)', 'a2b4e093b3afee7b5f641a8dda2692c4',
+  SELECT 'devolver_estoque: corpo esperado (md5)', 'e42582a472fd79ba987c11f161ad9a7a',
          COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1) = 'a2b4e093b3afee7b5f641a8dda2692c4', false)
+         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1) = 'e42582a472fd79ba987c11f161ad9a7a', false)
   UNION ALL
-  SELECT 'admin_devolucao_concluir: corpo esperado (md5)', 'b0373391f4d900670f01188103928e07',
+  SELECT 'admin_devolucao_concluir: corpo esperado (md5)', '9ec7a021b965b7abdc77bc4b2b900c35',
          COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1) = 'b0373391f4d900670f01188103928e07', false)
+         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1) = '9ec7a021b965b7abdc77bc4b2b900c35', false)
   UNION ALL
   SELECT 'resolver_peca_sem_tamanho: corpo esperado (md5)', '115378a67cd4f89b73129aeec4c46a7f',
          COALESCE((SELECT h FROM fn WHERE nome = 'resolver_peca_sem_tamanho' LIMIT 1), 'AUSENTE'),

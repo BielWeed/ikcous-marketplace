@@ -181,8 +181,11 @@ function fraseDoCancelado(
     case "pago":
       return "Seu pagamento foi recebido. Toque para ver o que acontece com ele.";
     case "recebido_na_entrega":
-    case "pago_apos_expirar":
       return "Seu pagamento foi recebido. Fale com a loja para resolver.";
+    // Pago depois de o pedido já estar cancelado (decisão do sócio,
+    // 28/11/2026): a loja devolve pelo app, como diz a ficha do pedido.
+    case "pago_apos_expirar":
+      return "Seu pagamento foi recebido. A loja vai devolver o valor.";
     case "recusado":
       return "O pagamento não foi aprovado e o pedido foi cancelado.";
     case "estornado":
@@ -191,9 +194,11 @@ function fraseDoCancelado(
       if (noBalcao) {
         return "Esta compra foi anulada pela loja. A devolução do valor é combinada com a loja.";
       }
-      // Pedido cancelado e estornado é o fim do reembolso: o dinheiro voltou.
-      // Não diz o meio (PIX/cartão): o app não sabe qual foi.
-      return "O dinheiro deste pedido foi devolvido. Toque para ver os detalhes.";
+      // `estornado` vale tanto para a devolução da loja quanto para a
+      // contestação no cartão (chargeback), inclusive a que a loja venceu e o
+      // dinheiro ficou com ela. A lista não lê o livro de devoluções, então
+      // não afirma que o dinheiro voltou: a ficha, que lê, decide.
+      return "Pagamento estornado ou contestado no cartão. Toque para ver os detalhes.";
     default:
       return "Toque para ver os detalhes do pedido.";
   }

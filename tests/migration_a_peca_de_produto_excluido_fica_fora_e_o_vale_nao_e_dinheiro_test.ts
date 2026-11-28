@@ -7,7 +7,7 @@
 // consultas 215a/215b) e' provado no Postgres efemero por tests/banco/a-peca-de-produto-excluido-viva.cjs; aqui ficam as ancoras que
 // se leem do arquivo, sem banco:
 //   - a migration e' ADITIVA, SEM transacao propria e SEM escrita em dado;
-//   - os quatro corpos novos sao os vigentes (653, 653, 642, 3995) com SO as mudancas marcadas, byte a byte;
+//   - os quatro corpos novos sao os vigentes (1657, 1657, 642, 3995) com SO as mudancas marcadas, byte a byte;
 //   - os md5 do pre-voo, do pos-voo, do rollback, das consultas e do modulo posterior sao os dos corpos que os arquivos carregam;
 //   - o rollback devolve os corpos anteriores BYTE A BYTE, passa a Fase 0 e nao apaga nada;
 //   - a migration esta ligada na release (canais, consultas, conferir-banco, rpc-ci, db-apply) e as provas das antecessoras a desfazem.
@@ -31,8 +31,8 @@ const DIR = fromFileUrl(new URL(".", import.meta.url));
 const RAIZ = `${DIR}..`;
 const NOME =
   "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql";
-const NOME_653 =
-  "20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql";
+const NOME_657 =
+  "20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql";
 const NOME_642 =
   "20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql";
 const NOME_3995 =
@@ -50,7 +50,7 @@ const lerTexto = (rel: string) =>
   Deno.readTextFileSync(`${RAIZ}/${rel}`).replace(/\r/g, "");
 const migration = lerMig(NOME);
 const rollback = lerMig(`rollback-manual-${NOME}`);
-const m653 = lerMig(NOME_653);
+const m657 = lerMig(NOME_657);
 const m642 = lerMig(NOME_642);
 const m3995 = lerMig(NOME_3995);
 const semComentario = (s: string) => s.replace(/--.*$/gm, "");
@@ -82,8 +82,8 @@ const ANA = [
   "CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(p_limit_days integer DEFAULT 90)",
   "\n$$;",
 ];
-const devAnt = bloco(m653, DEV[0], DEV[1]);
-const conclAnt = bloco(m653, CONCL[0], CONCL[1]);
+const devAnt = bloco(m657, DEV[0], DEV[1]);
+const conclAnt = bloco(m657, CONCL[0], CONCL[1]);
 const resAnt = bloco(m642, RES[0], RES[1]);
 const anaAnt = bloco(m3995, ANA[0], ANA[1]);
 const devNovo = bloco(migration, DEV[0], DEV[1]);
@@ -91,8 +91,8 @@ const conclNovo = bloco(migration, CONCL[0], CONCL[1]);
 const resNovo = bloco(migration, RES[0], RES[1]);
 const anaNovo = bloco(migration, ANA[0], ANA[1]);
 
-const H_DEV_653 = "2913f3178498938d0a79e3b47a1084d1";
-const H_CONCL_653 = "d146dc7aefb07a0bf580ed7265d9453e";
+const H_DEV_657 = "c98a1d49d63e0174f4bdd95dcffc54f4";
+const H_CONCL_657 = "b55bf2488a1d5165afddaa4d103d3e18";
 const H_RES_642 = "cac3d04d9be77c7d4004003bb70561c5";
 const H_ANA_3995 = "4f8fb94f6cb0018e10d0ef71541f1cbf";
 const H_DEV = md5(corpo(devNovo, "$devolver$"));
@@ -150,9 +150,9 @@ Deno.test("20261659: sem transacao propria, texto LF, lock_timeout de 5 s e stat
   assertEquals(r.recusado, false, `motivos: ${(r.motivos || []).join("; ")}`);
 });
 
-Deno.test("20261659: os corpos de partida ainda sao os vigentes (653, 653, 642, 3995) e esta e' a ultima que redefine os quatro", () => {
-  assertEquals(md5(corpo(devAnt, "$devolver$")), H_DEV_653);
-  assertEquals(md5(corpo(conclAnt, "$$")), H_CONCL_653);
+Deno.test("20261659: os corpos de partida ainda sao os vigentes (1657, 1657, 642, 3995) e esta e' a ultima que redefine os quatro", () => {
+  assertEquals(md5(corpo(devAnt, "$devolver$")), H_DEV_657);
+  assertEquals(md5(corpo(conclAnt, "$$")), H_CONCL_657);
   assertEquals(md5(corpo(resAnt, "$resolver$")), H_RES_642);
   assertEquals(md5(corpo(anaAnt, "$$")), H_ANA_3995);
   const fontes = (re: RegExp) =>
@@ -164,11 +164,11 @@ Deno.test("20261659: os corpos de partida ainda sao os vigentes (653, 653, 642, 
   for (const [re, antecessora] of [
     [
       /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.devolver_estoque\s*\(/i,
-      NOME_653,
+      NOME_657,
     ],
     [
       /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.admin_devolucao_concluir\s*\(/i,
-      NOME_653,
+      NOME_657,
     ],
     [
       /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.resolver_peca_sem_tamanho\s*\(/i,
@@ -185,7 +185,7 @@ Deno.test("20261659: os corpos de partida ainda sao os vigentes (653, 653, 642, 
   }
 });
 
-Deno.test("20261659: devolver_estoque novo = o da 653 com SO o bloco marcado, logo antes do bloco da variacao desligada, byte a byte", () => {
+Deno.test("20261659: devolver_estoque novo = o da 1657 com SO o bloco marcado, logo antes do bloco da variacao desligada, byte a byte", () => {
   const { ini, fim, texto } = ramo(devNovo, "        ");
   assertEquals(devNovo.slice(0, ini) + devNovo.slice(fim), devAnt);
   assertEquals(
@@ -193,7 +193,7 @@ Deno.test("20261659: devolver_estoque novo = o da 653 com SO o bloco marcado, lo
       "        -- >>> a peca da variacao desligada (20261653000000)\n",
     ),
     fim,
-    "o bloco fica antes do da 653 (o excluido nunca vira peca sem tamanho)",
+    "o bloco fica antes do da 653 (com o sub-bloco da 1657 dentro; o excluido nunca vira peca sem tamanho)",
   );
   assert(devNovo.indexOf("IF v_credito = 0 THEN") < ini);
   assertStringIncludes(
@@ -203,7 +203,7 @@ Deno.test("20261659: devolver_estoque novo = o da 653 com SO o bloco marcado, lo
   semEscrita(texto, "bloco do devolver_estoque");
 });
 
-Deno.test("20261659: admin_devolucao_concluir novo = o da 653 com SO o bloco, a variavel e o retorno com fora_do_estoque, byte a byte", () => {
+Deno.test("20261659: admin_devolucao_concluir novo = o da 1657 com SO o bloco, a variavel e o retorno com fora_do_estoque, byte a byte", () => {
   const { ini, fim, texto } = ramo(conclNovo, "      ");
   const ancora = "    IF v_reestocar AND v_di.reestocado_em IS NULL THEN\n";
   assertEquals(conclNovo.indexOf(ancora) + ancora.length, ini);
@@ -235,7 +235,7 @@ Deno.test("20261659: admin_devolucao_concluir novo = o da 653 com SO o bloco, a 
     .replace(DECL, "")
     .replace(RET_NOVO, RET_ANT);
   assertEquals(desfeito, conclAnt);
-  // O carimbo do item e a conta seguem DEPOIS do bloco, iguais aos da 653: a peca do excluido e' carimbada e soma em v_reestocados
+  // O carimbo do item e a conta seguem DEPOIS do bloco, iguais aos da 1657: a peca do excluido e' carimbada e soma em v_reestocados
   // (por isso o retorno a desconta).
   assert(
     conclNovo.indexOf(
@@ -320,10 +320,10 @@ Deno.test("20261659: os md5 do pre-voo, do pos-voo, do rollback, das consultas e
   const rbPre = blocoDo(rollback, "preflight_rollback_20261659000000");
   const rbPos = blocoDo(rollback, "posvoo_rollback_20261659000000");
   const linhas = [
-    ["public.devolver_estoque(uuid)", H_DEV_653, H_DEV],
+    ["public.devolver_estoque(uuid)", H_DEV_657, H_DEV],
     [
       "public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)",
-      H_CONCL_653,
+      H_CONCL_657,
       H_CONCL,
     ],
     ["public.resolver_peca_sem_tamanho(uuid,uuid)", H_RES_642, H_RES],
@@ -364,8 +364,8 @@ Deno.test("20261659: os md5 do pre-voo, do pos-voo, do rollback, das consultas e
     ["HASH_CONCLUIR_DESTA", H_CONCL],
     ["HASH_RESOLVER_DESTA", H_RES],
     ["HASH_ANALYTICS_DESTA", H_ANA],
-    ["HASH_DEVOLVER_653", H_DEV_653],
-    ["HASH_CONCLUIR_653", H_CONCL_653],
+    ["HASH_DEVOLVER_657", H_DEV_657],
+    ["HASH_CONCLUIR_657", H_CONCL_657],
     ["HASH_RESOLVER_642", H_RES_642],
     ["HASH_ANALYTICS_3995", H_ANA_3995],
   ])
@@ -403,6 +403,14 @@ Deno.test("20261659: os md5 do pre-voo, do pos-voo, do rollback, das consultas e
     ["43a-conferir-reembolso-em-duvida-aplicado", H_CONCL],
     ["67a-conferir-reembolso-manual-reserva-aplicado", H_CONCL],
     ["8e-conferir-92-a-202-aplicado", H_CONCL],
+    [
+      "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
+      H_DEV,
+    ],
+    [
+      "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
+      H_CONCL,
+    ],
     ["8e-conferir-92-a-202-aplicado", H_ANA],
     ["35a-conferir-lucro-so-com-custo-aplicado", H_ANA],
     ["45a-conferir-custo-do-dia-aplicado", H_ANA],
@@ -438,8 +446,8 @@ Deno.test("20261659: os md5 do pre-voo, do pos-voo, do rollback, das consultas e
 
 Deno.test("20261659: o rollback devolve os quatro corpos anteriores BYTE A BYTE e nao apaga nem escreve nada", () => {
   for (const [rotulo, b] of [
-    ["devolver_estoque da 653", devAnt],
-    ["admin_devolucao_concluir da 653", conclAnt],
+    ["devolver_estoque da 1657", devAnt],
+    ["admin_devolucao_concluir da 1657", conclAnt],
     ["resolver_peca_sem_tamanho da 642", resAnt],
     ["get_admin_analytics_v2 da 3995", anaAnt],
   ])
@@ -540,12 +548,12 @@ Deno.test("20261659: ligada na release - canais, consultas, conferir-banco, rpc-
         `${funcao}: o marcador "${texto.slice(0, 40)}" nao pega a regressao`,
       );
   }
-  // As provas que medem a 653, a 642 ou a 3995 desfazem esta antes (os rollbacks delas recusam o corpo desta).
+  // As provas que medem a 1657 (e a 653), a 642 ou a 3995 desfazem esta antes (os rollbacks delas recusam o corpo desta).
   const chamada = 'require("./a-peca-de-produto-excluido-posterior.cjs")';
   for (const arq of [
-    "tests/banco/a-peca-da-variacao-desligada-posterior.cjs",
+    "tests/banco/o-produto-todo-desligado-posterior.cjs",
     "tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs",
-    "tests/banco/a-peca-da-variacao-desligada-viva.cjs",
+    "tests/banco/o-produto-todo-desligado-nao-volta-a-venda-viva.cjs",
     "tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs",
   ])
     assertStringIncludes(lerTexto(arq), chamada, arq);
@@ -558,10 +566,10 @@ Deno.test("20261659: ligada na release - canais, consultas, conferir-banco, rpc-
       s.hashDesta,
     ]),
     [
-      ["public.devolver_estoque(uuid)", H_DEV_653, H_DEV],
+      ["public.devolver_estoque(uuid)", H_DEV_657, H_DEV],
       [
         "public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)",
-        H_CONCL_653,
+        H_CONCL_657,
         H_CONCL,
       ],
       ["public.resolver_peca_sem_tamanho(uuid,uuid)", H_RES_642, H_RES],

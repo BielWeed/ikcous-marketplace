@@ -74,6 +74,11 @@ export interface ItemElegivel {
   image_url: string | null;
   quantidade: number;
   ja_devolvida: number;
+  /**
+   * Quanto do item já voltou em DINHEIRO (devolução concluída com reembolso; 20261658000000). É a conta do frete de
+   * ida: troca e vale-troca contam em `ja_devolvida`, não aqui. Ausente = banco sem a migration (cai em `ja_devolvida`).
+   */
+  ja_reembolsada?: number;
   disponivel: number;
   valor_unitario: number;
 }

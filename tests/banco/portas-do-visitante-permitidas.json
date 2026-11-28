@@ -1073,6 +1073,14 @@
       "secdef": true,
       "situacao": "necessaria",
       "porque": "O app de gestao le a saude da reconciliacao com a chave PUBLICA da loja (20261500000000): so horarios, idade e se degradou; nunca quais etapas falharam nem pagamento."
+    },
+    {
+      "funcao": "public.informar_email_da_visitante(p_order_id uuid, p_email text)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "A visitante sem conta deixa o e-mail na tela 'Pedido recebido!' para receber o comprovante (20261656000000): grava customer_data.email uma vez, sem sobrescrever, so nos primeiros 15 minutos do pedido de visitante e com formato valido; linha trancada (FOR UPDATE)."
     }
   ]
 }

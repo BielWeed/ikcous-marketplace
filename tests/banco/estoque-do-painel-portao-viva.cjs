@@ -1556,6 +1556,17 @@ async function main() {
         "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
         "public.fin_lancamento_salvar(jsonb)",
       ],
+      // A 1658 (o frete de ida so volta com reembolso) troca so os corpos de devolucao_elegibilidade (sucede a 3992) e solicitar_devolucao
+      // (sucede a 5400); a 17a nao le nenhuma das duas. O rollback dela devolve as duas de uma vez (a primeira entrada desfaz; a outra ja
+      // encontra o corpo anterior, e a 5400 e a 3992 so caem depois dela, pela cadeia de posteriores).
+      [
+        "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql",
+        "public.devolucao_elegibilidade(uuid)",
+      ],
+      [
+        "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql",
+        "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])",
+      ],
       // A 1659 (a peca de produto excluido fica fora do estoque, e o vale nao e dinheiro no ranking) troca os corpos de
       // get_admin_analytics_v2 (sucede a 3995), devolver_estoque e admin_devolucao_concluir (sucedem a 653) e resolver_peca_sem_tamanho
       // (sucede a 642); a 17a le o analytics so pelo estoque, que ela nao muda. O rollback dela devolve as quatro de uma vez (a primeira

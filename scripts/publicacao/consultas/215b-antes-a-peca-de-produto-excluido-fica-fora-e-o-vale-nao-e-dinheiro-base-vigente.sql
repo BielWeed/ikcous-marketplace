@@ -1,6 +1,6 @@
 -- 215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente: ANTES da 20261659000000. SO LEITURA, somente catalogo,
--- rol fechado de 7 linhas (o mesmo da 215a). A base vigente e' o corpo da 20261653000000 de devolver_estoque (2913f3178498938d0a79e3b47a1084d1)
--- e de admin_devolucao_concluir (d146dc7aefb07a0bf580ed7265d9453e), o da 20261642000000 de resolver_peca_sem_tamanho
+-- rol fechado de 7 linhas (o mesmo da 215a). A base vigente e' o corpo da 20261657000000 de devolver_estoque (c98a1d49d63e0174f4bdd95dcffc54f4)
+-- e de admin_devolucao_concluir (b55bf2488a1d5165afddaa4d103d3e18), o da 20261642000000 de resolver_peca_sem_tamanho
 -- (cac3d04d9be77c7d4004003bb70561c5) e o da 20261399995000 de get_admin_analytics_v2 (4f8fb94f6cb0018e10d0ef71541f1cbf); aceita tambem os corpos
 -- desta para uma reaplicacao idempotente. Confere as premissas do pre-voo: atributos e ACL de sempre e as colunas que a regra nova le.
 -- NAO le nenhuma linha de pedido, devolucao, produto nem peca e NAO chama funcao nenhuma. Tudo true = pode aplicar; qualquer false =
@@ -48,13 +48,13 @@ WITH fn AS (
          CASE WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE pronamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END,
          EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE pronamespace = 'public'::regnamespace)
   UNION ALL
-  SELECT 'devolver_estoque: corpo esperado (md5)', '2913f3178498938d0a79e3b47a1084d1 ou a2b4e093b3afee7b5f641a8dda2692c4',
+  SELECT 'devolver_estoque: corpo esperado (md5)', 'c98a1d49d63e0174f4bdd95dcffc54f4 ou e42582a472fd79ba987c11f161ad9a7a',
          COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1) IN ('2913f3178498938d0a79e3b47a1084d1', 'a2b4e093b3afee7b5f641a8dda2692c4'), false)
+         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1) IN ('c98a1d49d63e0174f4bdd95dcffc54f4', 'e42582a472fd79ba987c11f161ad9a7a'), false)
   UNION ALL
-  SELECT 'admin_devolucao_concluir: corpo esperado (md5)', 'd146dc7aefb07a0bf580ed7265d9453e ou b0373391f4d900670f01188103928e07',
+  SELECT 'admin_devolucao_concluir: corpo esperado (md5)', 'b55bf2488a1d5165afddaa4d103d3e18 ou 9ec7a021b965b7abdc77bc4b2b900c35',
          COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1) IN ('d146dc7aefb07a0bf580ed7265d9453e', 'b0373391f4d900670f01188103928e07'), false)
+         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1) IN ('b55bf2488a1d5165afddaa4d103d3e18', '9ec7a021b965b7abdc77bc4b2b900c35'), false)
   UNION ALL
   SELECT 'resolver_peca_sem_tamanho: corpo esperado (md5)', 'cac3d04d9be77c7d4004003bb70561c5 ou 115378a67cd4f89b73129aeec4c46a7f',
          COALESCE((SELECT h FROM fn WHERE nome = 'resolver_peca_sem_tamanho' LIMIT 1), 'AUSENTE'),

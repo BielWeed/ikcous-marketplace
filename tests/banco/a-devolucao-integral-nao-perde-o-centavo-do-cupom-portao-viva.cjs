@@ -1,4 +1,6 @@
 "use strict";
+/* eslint-disable security/detect-non-literal-fs-filename --
+ * O arquivo lido e a migration sucessora do repositorio, nomeada por constante desta prova; so PG efemero. */
 /**
  * Prova VIVA das consultas 157a/157b (a devolucao integral nao perde o centavo do cupom: solicitar_devolucao com o corpo novo),
  * com a migration 20261405400000 real. Mesmo molde do portao 56 (conferencia-de-banco-comum.cjs): a base nasce do zero com SO
@@ -14,12 +16,18 @@
  * dela e depois de reaplicar (a migration troca so o texto da funcao; nenhuma devolucao antiga e reescrita). Reaplicar e
  * idempotente: a 157a segue POSITIVA.
  *
+ * A 157a aceita tambem o corpo da SUCESSORA 20261658000000 (o frete de ida so volta com reembolso, que redefine solicitar_devolucao
+ * por cima desta): aplicada por cima, a 157a segue POSITIVA, a 157b reprova so o corpo e o corpo dela com o texto trocado volta a
+ * reprovar so a linha do corpo.
+ *
  * Nao prova PostgREST, o Supabase hospedado nem o estado de loja alguma. O arredondamento do cupom (49,33 / 49,34 / 49,33) e'
  * da prova de comportamento da propria migration; aqui se prova a CONSULTA.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/a-devolucao-integral-nao-perde-o-centavo-do-cupom-portao-viva.cjs
  */
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { criarBancada } = require("./conferencia-de-banco-comum.cjs");
 const { estragosDeFuncao } = require("./conferencia-de-funcao-estragos.cjs");
 
@@ -30,6 +38,8 @@ const B =
 const ARQUIVO =
   "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql";
 const FN = "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])";
+const SUCESSORA_FRETE =
+  "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql";
 const U_CLI = "d1570000-0000-4000-8000-000000000001";
 const PEDIDO = "d1570000-0000-4000-8000-000000000002";
 const DEV = "d1570000-0000-4000-8000-000000000003";
@@ -159,6 +169,34 @@ rodarProva(async (H) => {
       for (const [rotulo, sql, itens] of comuns) {
         await sabotar(c, rotulo, A, sql, itens);
       }
+
+      // ---------- a sucessora 20261658000000, por cima ----------
+      await c.query(
+        fs.readFileSync(
+          path.join(
+            __dirname,
+            "..",
+            "..",
+            "supabase",
+            "migrations",
+            SUCESSORA_FRETE,
+          ),
+          "utf8",
+        ),
+      );
+      await consulta(c, A);
+      await consulta(c, B, [i.corpo]);
+      assert.deepEqual(await linhaDaDevolucao(c), antesDaMigration);
+      marcar(
+        "157a segue POSITIVA com a sucessora 20261658000000 por cima; 157b reprova SO o corpo; a devolucao segue intacta",
+      );
+      await sabotar(
+        c,
+        "solicitar_devolucao da sucessora com outro texto",
+        A,
+        (cc) => trocarCorpo(cc, FN),
+        [i.corpo],
+      );
     }),
   );
 });

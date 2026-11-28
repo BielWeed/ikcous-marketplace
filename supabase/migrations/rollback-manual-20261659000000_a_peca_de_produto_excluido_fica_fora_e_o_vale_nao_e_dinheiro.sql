@@ -2,8 +2,8 @@
 -- Rollback manual — a peça de produto excluído fica fora do estoque, e o vale-troca não é dinheiro no ranking (20261659000000)
 -- ============================================================================
 -- Devolve, byte a byte (LF), mantendo OID, dono, atributos, comentário e ACL (CREATE OR REPLACE; nenhum GRANT nem REVOKE):
---   public.devolver_estoque(uuid) ao corpo da 20261653000000 (md5 2913f3178498938d0a79e3b47a1084d1);
---   public.admin_devolucao_concluir(uuid, text, jsonb, numeric, text) ao corpo da 20261653000000 (md5 d146dc7aefb07a0bf580ed7265d9453e);
+--   public.devolver_estoque(uuid) ao corpo da 20261657000000 (md5 c98a1d49d63e0174f4bdd95dcffc54f4);
+--   public.admin_devolucao_concluir(uuid, text, jsonb, numeric, text) ao corpo da 20261657000000 (md5 b55bf2488a1d5165afddaa4d103d3e18);
 --   public.resolver_peca_sem_tamanho(uuid, uuid) ao corpo da 20261642000000 (md5 cac3d04d9be77c7d4004003bb70561c5);
 --   public.get_admin_analytics_v2(integer) ao corpo da 20261399995000 (md5 4f8fb94f6cb0018e10d0ef71541f1cbf).
 --
@@ -17,7 +17,7 @@
 -- no-op), ou se os atributos ou a ACL não forem os de sempre. O pós-voo recusa se os corpos não voltaram ou se OID, dono, ACL ou
 -- atributos mudaram.
 --
--- ORDEM: este vem ANTES do rollback da 20261653000000 e do da 20261399995000 (o pré-voo deles recusa o corpo desta). Executar pelo
+-- ORDEM: este vem ANTES do rollback da 20261657000000 e do da 20261399995000 (o pré-voo deles recusa o corpo desta). Executar pelo
 -- aplicar-migrations.yml (apaga o registro do ledger na mesma transação). Sem BEGIN/COMMIT de nível superior neste arquivo — regra da casa.
 -- ============================================================================
 
@@ -43,8 +43,8 @@ BEGIN
   -- Corpo vivo: o anterior (a, rollback reaplicado) ou o desta migration (b).
   FOR r IN
     SELECT * FROM (VALUES
-      ('public.devolver_estoque(uuid)', '2913f3178498938d0a79e3b47a1084d1', 'a2b4e093b3afee7b5f641a8dda2692c4'),
-      ('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', 'd146dc7aefb07a0bf580ed7265d9453e', 'b0373391f4d900670f01188103928e07'),
+      ('public.devolver_estoque(uuid)', 'c98a1d49d63e0174f4bdd95dcffc54f4', 'e42582a472fd79ba987c11f161ad9a7a'),
+      ('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', 'b55bf2488a1d5165afddaa4d103d3e18', '9ec7a021b965b7abdc77bc4b2b900c35'),
       ('public.resolver_peca_sem_tamanho(uuid,uuid)', 'cac3d04d9be77c7d4004003bb70561c5', '115378a67cd4f89b73129aeec4c46a7f'),
       ('public.get_admin_analytics_v2(integer)', '4f8fb94f6cb0018e10d0ef71541f1cbf', '1624212a7096b6f49a80370b30191a15')
     ) AS esperado(assinatura, hash_a, hash_b)
@@ -97,7 +97,7 @@ BEGIN
   PERFORM set_config('ikcous.excl659_rb_ana', (SELECT to_jsonb(p) - 'prosrc' FROM pg_proc p WHERE p.oid = v_ana)::text, true);
 END $preflight_rollback_20261659000000$;
 
--- devolver_estoque: o corpo da 20261653000000, byte a byte.
+-- devolver_estoque: o corpo da 20261657000000, byte a byte.
 CREATE OR REPLACE FUNCTION public.devolver_estoque(p_order_id uuid)
 RETURNS integer
 LANGUAGE plpgsql
@@ -196,7 +196,17 @@ BEGIN
                             WHERE v.id = v_item.variant_id AND v.active = true) THEN
             v_item.product_id := COALESCE(v_item.product_id,
                                           (SELECT v.product_id FROM public.product_variants v WHERE v.id = v_item.variant_id));
-            v_item.variant_id := NULL;
+            -- >>> o produto todo desligado (20261657000000)
+            -- So vira peca SEM tamanho se o produto ainda tem variacao LIGADA (o MESMO predicado do ELSIF da 642 logo abaixo): ai
+            -- ela espera a lojista no cantinho. Com TODAS desligadas o ELSE creditava o PAI, e produto sem variacao ligada a compra
+            -- vende pelo pai: a peca voltava a venda sozinha, sem tamanho e pelo preco do pai. Ela fica na propria variacao
+            -- desligada (como antes da 20261653000000): o produto segue esgotado e a peca espera a lojista religar o tamanho. O
+            -- produto sem variacao nenhuma nao passa por aqui (variant_id nulo) e segue creditando o pai.
+            IF EXISTS (SELECT 1 FROM public.product_variants v
+                        WHERE v.product_id = v_item.product_id AND v.active = true) THEN
+                v_item.variant_id := NULL;
+            END IF;
+            -- <<< o produto todo desligado (20261657000000)
         END IF;
         -- <<< a peca da variacao desligada (20261653000000)
         -- IF/ELSE, não dois IF: a v23 debita XOR (variante OU produto, nunca os
@@ -233,7 +243,7 @@ BEGIN
 END;
 $devolver$;
 
--- admin_devolucao_concluir: o corpo da 20261653000000, byte a byte.
+-- admin_devolucao_concluir: o corpo da 20261657000000, byte a byte.
 CREATE OR REPLACE FUNCTION public.admin_devolucao_concluir(
   p_id uuid,
   p_resolucao text,
@@ -379,7 +389,17 @@ BEGIN
                           WHERE v.id = v_di.variant_id AND v.active = true) THEN
         v_di.product_id := COALESCE(v_di.product_id,
                                     (SELECT v.product_id FROM public.product_variants v WHERE v.id = v_di.variant_id));
-        v_di.variant_id := NULL;
+        -- >>> o produto todo desligado (20261657000000)
+        -- So vira peca SEM tamanho se o produto ainda tem variacao LIGADA (o MESMO predicado do ELSIF da 642 logo abaixo): ai ela
+        -- espera a lojista no cantinho e conta em 'sem_tamanho'. Com TODAS desligadas o ELSIF do pai creditava produtos.estoque, e
+        -- produto sem variacao ligada a compra vende pelo pai: a peca voltava a venda sozinha, sem tamanho. Ela fica na propria
+        -- variacao desligada (como antes da 20261653000000) e espera a lojista religar o tamanho. O item sem variacao nenhuma nao
+        -- passa por aqui e segue creditando o pai.
+        IF EXISTS (SELECT 1 FROM public.product_variants v
+                    WHERE v.product_id = v_di.product_id AND v.active = true) THEN
+          v_di.variant_id := NULL;
+        END IF;
+        -- <<< o produto todo desligado (20261657000000)
       END IF;
       -- <<< a peca da variacao desligada (20261653000000)
       IF v_di.variant_id IS NOT NULL THEN
@@ -1142,8 +1162,8 @@ DECLARE
 BEGIN
   FOR r IN
     SELECT * FROM (VALUES
-      ('public.devolver_estoque(uuid)', '2913f3178498938d0a79e3b47a1084d1', 'excl659_rb_dev'),
-      ('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', 'd146dc7aefb07a0bf580ed7265d9453e', 'excl659_rb_concl'),
+      ('public.devolver_estoque(uuid)', 'c98a1d49d63e0174f4bdd95dcffc54f4', 'excl659_rb_dev'),
+      ('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', 'b55bf2488a1d5165afddaa4d103d3e18', 'excl659_rb_concl'),
       ('public.resolver_peca_sem_tamanho(uuid,uuid)', 'cac3d04d9be77c7d4004003bb70561c5', 'excl659_rb_res'),
       ('public.get_admin_analytics_v2(integer)', '4f8fb94f6cb0018e10d0ef71541f1cbf', 'excl659_rb_ana')
     ) AS esperado(assinatura, hash, fotografia)

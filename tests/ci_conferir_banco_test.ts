@@ -1195,15 +1195,17 @@ Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-vo
   const sqlB = sqlSemComentarios(
     await Deno.readTextFile(`${CONSULTAS_DIR}/${B209}.sql`),
   );
-  // A 209a aceita SO os corpos desta (e os da SUCESSORA 20261659000000, a peca de produto excluido, que a 215a confere); a 209b, os
-  // da 642 OU os desta (reaplicacao idempotente).
+  // A 209a aceita os corpos desta (e, como sucessoras, os da 20261657000000, que a 213a confere, e os da 20261659000000, que a 215a
+  // confere), nunca os da 642; a 209b, os da 642 OU os desta (reaplicacao idempotente).
   const m1659 = await Deno.readTextFile(
     `${MIGRATIONS_DIR}/20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql`,
   );
   const dev1659 = md5(corpo(m1659, "devolver_estoque"));
   const concl1659 = md5(corpo(m1659, "admin_devolucao_concluir"));
-  assertStringIncludes(sqlA, `IN ('${devDesta}', '${dev1659}')`);
-  assertStringIncludes(sqlA, `IN ('${conclDesta}', '${concl1659}')`);
+  assertStringIncludes(sqlA, `IN ('${devDesta}'`);
+  assertStringIncludes(sqlA, `IN ('${conclDesta}'`);
+  assertStringIncludes(sqlA, `'${dev1659}'`);
+  assertStringIncludes(sqlA, `'${concl1659}'`);
   assert(
     !sqlA.includes(devVigente) && !sqlA.includes(conclVigente),
     "a 209a nao pode aceitar os corpos da 642",
@@ -1221,14 +1223,11 @@ Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-vo
       `${CONSULTAS_DIR}/202a-conferir-a-peca-que-volta-sem-tamanho-aplicado.sql`,
     ),
   );
-  assertStringIncludes(
-    a202,
-    `IN ('${devVigente}', '${devDesta}', '${dev1659}')`,
-  );
-  assertStringIncludes(
-    a202,
-    `IN ('${conclVigente}', '${conclDesta}', '${concl1659}')`,
-  );
+  // (sem o fecha-parenteses: a 20261657000000 entra depois na mesma lista, tambem como sucessora)
+  assertStringIncludes(a202, `IN ('${devVigente}', '${devDesta}'`);
+  assertStringIncludes(a202, `IN ('${conclVigente}', '${conclDesta}'`);
+  assertStringIncludes(a202, `'${dev1659}'`);
+  assertStringIncludes(a202, `'${concl1659}'`);
   assertStringIncludes(
     rpc,
     "run: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-da-variacao-desligada-viva.cjs",
@@ -1252,6 +1251,370 @@ Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-vo
     ordem.indexOf(a202lote) >= 0 &&
       ordem.indexOf(a202lote) < ordem.indexOf(A209),
     "o lote da 209a vem depois do da 202a",
+  );
+});
+
+// 212 (28/11/2026): o lote da 20261656000000 (a visitante deixa o e-mail depois da compra). Rol fechado de 4 linhas, o mesmo na 212a e
+// na 212b, so catalogo; a 212a exige as duas funcoes novas com o corpo desta e a 212b as aceita AUSENTES ou com o corpo desta. Os md5
+// saem do PRE-VOO e do POS-VOO da propria migration e sao RECALCULADOS do arquivo; o rollback confere os mesmos antes de tira-las.
+Deno.test("212a/212b — rol fechado, um statement so de catalogo, md5 das duas funcoes novas recalculado do arquivo, menu, rpc-ci, release e lote no canais", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { createHash } = require("node:crypto");
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A212 = "212a-conferir-a-visitante-deixa-o-email-aplicado";
+  const B212 = "212b-antes-a-visitante-deixa-o-email-ausente";
+  const NOME = "20261656000000_a_visitante_deixa_o_email_depois_da_compra.sql";
+  const migration = await Deno.readTextFile(`${MIGRATIONS_DIR}/${NOME}`);
+  const rollback = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/rollback-manual-${NOME}`,
+  );
+  const corpo = (sql: string, fn: string) => {
+    const marca = `CREATE OR REPLACE FUNCTION public.${fn}(`;
+    assertEquals(sql.split(marca).length - 1, 1, `${fn}: uma definicao so`);
+    const i = sql.indexOf(marca);
+    const m = /\bAS (\$\w*\$)/.exec(sql.slice(i));
+    assert(m, "sem delimitador");
+    const a = i + m.index + m[0].length;
+    return sql.slice(a, sql.indexOf(m[1], a)).replace(/\r/g, "");
+  };
+  const md5 = (s: string) =>
+    createHash("md5").update(s).digest("hex") as string;
+  const hInf = md5(corpo(migration, "informar_email_da_visitante"));
+  const hRei = md5(corpo(migration, "reivindicar_comprovante_da_visitante"));
+  for (const h of [hInf, hRei]) {
+    // pre-voo (reaplicacao) e pos-voo citam o md5; o rollback confere o mesmo antes do DROP.
+    assertEquals(
+      migration.split(`'${h}'`).length - 1,
+      2,
+      `pre-voo e pos-voo citam ${h}`,
+    );
+    assertStringIncludes(rollback, `'${h}'`);
+  }
+  const itens = [
+    "informar_email_da_visitante: corpo exato (md5), uma so, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE de anon e authenticated (nem PUBLIC nem service_role)",
+    "reivindicar_comprovante_da_visitante: corpo exato (md5), uma so, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE so do service_role",
+    "o teto de e-mail da 20261217000000: reservar_vaga_de_email e chave_do_destinatario com os corpos dela, liberar_email_de_confirmacao no ar",
+    "marketplace_orders: as colunas que as duas leem, com o tipo esperado",
+  ];
+  for (const consulta of [A212, B212]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(
+      !/FROM\s+public\.(marketplace_orders|email_da_loja_contadores)\b/i.test(
+        limpo,
+      ),
+      `${consulta}: le so catalogo`,
+    );
+    assert(
+      !/\b(public\.)?(informar_email_da_visitante|reivindicar_comprovante_da_visitante|reservar_vaga_de_email|chave_do_destinatario|liberar_email_de_confirmacao)\s*\(/i.test(
+        limpo,
+      ),
+      `${consulta}: nao chama funcao da loja`,
+    );
+    assertStringIncludes(menu, `- ${consulta}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A212}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B212}.sql`),
+  );
+  // A 212a exige as duas com o corpo desta; a 212b aceita AUSENTE (antes do apply) ou o corpo desta.
+  for (const h of [hInf, hRei]) {
+    assertStringIncludes(
+      sqlA,
+      `COALESCE(f.n = 1 AND f.h = '${h}' AND f.atributos, false)`,
+    );
+    assertStringIncludes(
+      sqlB,
+      `COALESCE(f.n = 0 OR (f.n = 1 AND f.h = '${h}' AND f.atributos), false)`,
+    );
+  }
+  assert(!sqlA.includes("f.n = 0"), "a 212a nao aceita a funcao ausente");
+  // O teto que as duas usam: os corpos da 20261217000000, os mesmos do pre-voo.
+  for (const h of [
+    "373815e668edf9480d2dce94fb59d467",
+    "b5a9a0f8bb405c082cdb8cb7ee662d1e",
+  ]) {
+    assertStringIncludes(sqlA, `'${h}'`);
+    assertStringIncludes(sqlB, `'${h}'`);
+    assertStringIncludes(migration, `'${h}'`);
+  }
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/a-visitante-deixa-o-email-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A212,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261656000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B212);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 212a: ${chave} nao se aplica`);
+  for (const pedaco of [hInf, hRei, "212b", "212a", "rollback-manual-"])
+    assertStringIncludes(lote[0]._comentario, pedaco);
+});
+
+// 213 (28/11/2026): o lote da 20261657000000 (o produto com todos os tamanhos desligados nao volta a venda sozinho). Rol fechado de 3
+// linhas, o mesmo na 213a e na 213b, so catalogo; a 213a espera os corpos desta e a 213b os da 20261653000000 ou os desta. Os md5 saem do
+// PRE-VOO da propria migration e sao RECALCULADOS dos arquivos (os desta e os da 1653, que o rollback devolve byte a byte); as consultas
+// das antecessoras (209a, 202a, 96a, 110a, 43a, 67a e 8e) aceitam os desta como sucessora.
+Deno.test("213a/213b — rol fechado, um statement so de catalogo, md5 do pre-voo da 20261657000000 recalculado dos arquivos, menu, rpc-ci, release, lote no canais e as antecessoras aceitam a sucessora", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { createHash } = require("node:crypto");
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A213 =
+    "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado";
+  const B213 =
+    "213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente";
+  const NOME = "20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql";
+  const migration = await Deno.readTextFile(`${MIGRATIONS_DIR}/${NOME}`);
+  const rollback = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/rollback-manual-${NOME}`,
+  );
+  const m1653 = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql`,
+  );
+  const parDev = /v_hash NOT IN \('([0-9a-f]{32})', '([0-9a-f]{32})'\)/.exec(
+    migration,
+  );
+  assert(parDev, "o pre-voo cita (vigente, desta) de devolver_estoque");
+  const [, devVigente, devDesta] = parDev;
+  const parConcl =
+    /'public\.admin_devolucao_concluir\(uuid,text,jsonb,numeric,text\)', '([0-9a-f]{32})', '([0-9a-f]{32})'/.exec(
+      migration,
+    );
+  assert(
+    parConcl,
+    "o pre-voo cita (anterior, desta) de admin_devolucao_concluir",
+  );
+  const [, conclVigente, conclDesta] = parConcl;
+  // O corpo entre o delimitador de dolar do UM CREATE OR REPLACE da funcao no arquivo.
+  const corpo = (sql: string, fn: string) => {
+    const marca = `CREATE OR REPLACE FUNCTION public.${fn}(`;
+    assertEquals(sql.split(marca).length - 1, 1, `${fn}: uma definicao so`);
+    const i = sql.indexOf(marca);
+    const m = /\bAS (\$\w*\$)/.exec(sql.slice(i));
+    assert(m, "sem delimitador");
+    const a = i + m.index + m[0].length;
+    return sql.slice(a, sql.indexOf(m[1], a)).replace(/\r/g, "");
+  };
+  const md5 = (s: string) =>
+    createHash("md5").update(s).digest("hex") as string;
+  assertEquals(md5(corpo(migration, "devolver_estoque")), devDesta);
+  assertEquals(md5(corpo(m1653, "devolver_estoque")), devVigente);
+  assertEquals(md5(corpo(migration, "admin_devolucao_concluir")), conclDesta);
+  assertEquals(md5(corpo(m1653, "admin_devolucao_concluir")), conclVigente);
+  for (const fn of ["devolver_estoque", "admin_devolucao_concluir"])
+    assertEquals(
+      corpo(rollback, fn),
+      corpo(m1653, fn),
+      `o rollback e' o corpo da 1653 byte a byte (${fn})`,
+    );
+  const itens = [
+    "devolver_estoque: corpo esperado (md5)",
+    "admin_devolucao_concluir: corpo esperado (md5)",
+    "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
+  ];
+  for (const consulta of [A213, B213]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(
+      !/FROM\s+public\.(marketplace_orders|marketplace_order_items|devolucoes|devolucao_itens|produtos|product_variants|pecas_sem_tamanho)\b/i.test(
+        limpo,
+      ),
+      `${consulta}: le so catalogo`,
+    );
+    assert(
+      !/\b(public\.)?(devolver_estoque|admin_devolucao_concluir)\s*\(/i.test(
+        limpo,
+      ),
+      `${consulta}: nao chama funcao da loja`,
+    );
+    assertStringIncludes(menu, `- ${consulta}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    for (const item of itens) assertStringIncludes(sql, `'${item}'`);
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A213}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B213}.sql`),
+  );
+  // A 213a aceita os corpos desta (e, como sucessoras, os da 20261659000000, que a 215a confere), nunca os da 1653; a 213b, os da
+  // 1653 OU os desta (reaplicacao idempotente).
+  const m1659 = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql`,
+  );
+  const dev1659 = md5(corpo(m1659, "devolver_estoque"));
+  const concl1659 = md5(corpo(m1659, "admin_devolucao_concluir"));
+  assertStringIncludes(sqlA, `IN ('${devDesta}', '${dev1659}')`);
+  assertStringIncludes(sqlA, `IN ('${conclDesta}', '${concl1659}')`);
+  // O vivo da sucessora aparece como o esperado desta (a 215a e' quem diz qual).
+  assertStringIncludes(
+    sqlA,
+    `CASE WHEN h = '${dev1659}' THEN '${devDesta}' ELSE h END`,
+  );
+  assertStringIncludes(
+    sqlA,
+    `CASE WHEN h = '${concl1659}' THEN '${conclDesta}' ELSE h END`,
+  );
+  assert(
+    !sqlA.includes(devVigente) && !sqlA.includes(conclVigente),
+    "a 213a nao pode aceitar os corpos da 1653",
+  );
+  assertStringIncludes(sqlB, `IN ('${devVigente}', '${devDesta}')`);
+  assertStringIncludes(sqlB, `IN ('${conclVigente}', '${conclDesta}')`);
+  // As consultas das antecessoras aceitam os desta como SUCESSORA: senao reprovam em toda loja depois do apply.
+  for (const [ficha, h] of [
+    [
+      "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+      devDesta,
+    ],
+    [
+      "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+      conclDesta,
+    ],
+    ["202a-conferir-a-peca-que-volta-sem-tamanho-aplicado", devDesta],
+    ["202a-conferir-a-peca-que-volta-sem-tamanho-aplicado", conclDesta],
+    [
+      "96a-conferir-o-estoque-que-volta-tranca-na-mesma-ordem-aplicado",
+      devDesta,
+    ],
+    [
+      "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado",
+      conclDesta,
+    ],
+    ["43a-conferir-reembolso-em-duvida-aplicado", conclDesta],
+    ["67a-conferir-reembolso-manual-reserva-aplicado", conclDesta],
+    ["8e-conferir-92-a-202-aplicado", conclDesta],
+  ])
+    assertStringIncludes(
+      sqlSemComentarios(
+        await Deno.readTextFile(`${CONSULTAS_DIR}/${ficha}.sql`),
+      ),
+      `'${h}'`,
+      ficha,
+    );
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/o-produto-todo-desligado-nao-volta-a-venda-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A213,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261657000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B213);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 213a: ${chave} nao se aplica`);
+  const ordem = canais.provasDeObjetos.map(
+    (p: { consulta: string }) => p.consulta,
+  );
+  const a209lote =
+    "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado";
+  assert(
+    ordem.indexOf(a209lote) >= 0 &&
+      ordem.indexOf(a209lote) < ordem.indexOf(A213),
+    "o lote da 213a vem depois do da 209a",
   );
 });
 
@@ -3444,10 +3807,16 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "d146dc7aefb07a0bf580ed7265d9453e",
           versao: "20261653000000",
         },
+        // 28/11/2026: o produto todo desligado nao volta a venda (a cadeia 241 -> 343 -> 395200 -> 1642 -> 1653 -> 1657).
+        {
+          fn: "admin_devolucao_concluir",
+          h: "b55bf2488a1d5165afddaa4d103d3e18",
+          versao: "20261657000000",
+        },
         // 28/11/2026 (lote 598): a peca de produto excluido fica fora do estoque (a cadeia 241 -> 343 -> 395200 -> 1642 -> 1653 -> 1659).
         {
           fn: "admin_devolucao_concluir",
-          h: "b0373391f4d900670f01188103928e07",
+          h: "9ec7a021b965b7abdc77bc4b2b900c35",
           versao: "20261659000000",
         },
         // 27/10/2026 (lote 231): a busca de devolucao acha o numero do pedido (a cadeia 199 -> 395).
@@ -3506,6 +3875,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "devolucao_elegibilidade",
           h: "bedd211bba45261dfbf962241ca3c9dd",
           versao: "20261399992000",
+        },
+        // 28/11/2026: o frete de ida so volta com reembolso (a cadeia 99 -> 3992 -> 1658: devolucao_elegibilidade ganha ja_reembolsada).
+        {
+          fn: "devolucao_elegibilidade",
+          h: "4776618e9ccd401f7c7eb9518ceaa62d",
+          versao: "20261658000000",
         },
         {
           fn: "fin_caixa_abrir",
@@ -17675,6 +18050,12 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
     // 20261655000000: a loja nova so vende o que confirmou.
     "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
+    // 20261656000000: a visitante deixa o e-mail depois da compra.
+    "212a-conferir-a-visitante-deixa-o-email-aplicado",
+    // 20261657000000: o produto todo desligado nao volta a venda.
+    "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
+    // 20261658000000: o frete de ida so volta com reembolso.
+    "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
     // 20261659000000: a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking.
     "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
   ];

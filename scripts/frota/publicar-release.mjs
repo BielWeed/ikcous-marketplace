@@ -1130,6 +1130,12 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente",
   "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
   "211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente",
+  "212a-conferir-a-visitante-deixa-o-email-aplicado",
+  "212b-antes-a-visitante-deixa-o-email-ausente",
+  "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
+  "213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente",
+  "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
+  "214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente",
   "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
   "215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente",
 ]);

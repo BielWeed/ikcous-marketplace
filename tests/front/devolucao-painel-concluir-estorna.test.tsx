@@ -313,7 +313,7 @@ describe("AdminDevolucoesView — concluir e devolver o dinheiro", () => {
       p_id: "d-1",
       p_resolucao: "reembolso",
       p_itens: [{ item_id: "di-1", condicao: "nova", reestocar: true }],
-      // Padrão: itens + frete de ida (o pedido voltou inteiro).
+      // Padrão: itens + frete de ida (o pedido inteiro foi reembolsado).
       p_valor_reembolso: 219.8,
       p_observacao: null,
     });
