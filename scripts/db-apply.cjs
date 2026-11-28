@@ -99,6 +99,37 @@ const MARCADORES_RETIRADA_PRONTA = [
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261663000000: a despesa nao entra no caixa fechado. DUAS funcoes; so a leitura da sessao aberta passa a travar a linha
+  // (FOR SHARE OF s) no salvar e na baixa, para o fechamento nao calcular o esperado entre essa leitura e a gravacao. A regra
+  // do dia da abertura (20261654000000) e as travas de admin seguem uma vez cada. O corpo exato (md5), os atributos e a ACL sao
+  // da consulta 219a; o comportamento (as corridas com o fechamento), da prova viva.
+  "20261663000000_a_despesa_nao_entra_no_caixa_fechado.sql": [
+    {
+      funcao: "fin_lancamento_salvar",
+      esperado: [
+        {
+          texto: "ORDER BY s.aberto_em DESC LIMIT 1 FOR SHARE OF s;",
+          vezes: 1,
+        },
+        { texto: "AND v_real >= public.fin__dia(s.aberto_em)", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "ON CONFLICT (chave) DO NOTHING;", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_lancamento_baixar",
+      esperado: [
+        {
+          texto: "ORDER BY s.aberto_em DESC LIMIT 1 FOR SHARE OF s;",
+          vezes: 1,
+        },
+        { texto: "AND v_data >= public.fin__dia(s.aberto_em)", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   // 20261664000000: o reembolso por fora nao conta duas vezes. fin__movimentos (sucessora da 20261391200000) ganha a regra "ja devolvi
   // por fora" do ranking: a linha 'sistema' do MP depois de um reembolso de devolucao resolvido por fora conta so o resto, e a saida
   // estornado fora do app desconta so o que a linha nao contou. Os marcadores da 1b (20261177000000) e os textos da 20261391200000

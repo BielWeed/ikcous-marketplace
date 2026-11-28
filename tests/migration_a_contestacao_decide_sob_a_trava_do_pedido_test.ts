@@ -780,6 +780,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-peca-de-produto-excluido-viva.cjs",
     // 20261660000000: o caixa de ontem aberto nao some do saldo (o saldo inicial e a sangria nao passam do dia do caixa aberto; o cancelamento trava a sessao).
     "tests/banco/o-caixa-de-ontem-aberto-nao-some-do-saldo-viva.cjs",
+    // 20261663000000: a despesa nao entra no caixa fechado (a despesa e a baixa travam a sessao na leitura; corridas reais com o fechamento).
+    "tests/banco/a-despesa-nao-entra-no-caixa-fechado-viva.cjs",
     // 20261664000000: o reembolso por fora nao conta duas vezes (a linha do MP depois do reembolso resolvido por fora conta so o resto; o Financeiro casa com o ranking).
     "tests/banco/o-reembolso-por-fora-nao-conta-duas-vezes-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).

@@ -394,6 +394,8 @@ on:
       - "scripts/publicacao/consultas/215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente.sql"
       - "scripts/publicacao/consultas/216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado.sql"
       - "scripts/publicacao/consultas/216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente.sql"
+      - "scripts/publicacao/consultas/219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado.sql"
+      - "scripts/publicacao/consultas/219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente.sql"
       - "scripts/publicacao/consultas/220a-conferir-o-reembolso-por-fora-nao-conta-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/220b-antes-o-reembolso-por-fora-nao-conta-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -764,6 +766,8 @@ on:
       - "scripts/publicacao/consultas/215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente.sql"
       - "scripts/publicacao/consultas/216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado.sql"
       - "scripts/publicacao/consultas/216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente.sql"
+      - "scripts/publicacao/consultas/219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado.sql"
+      - "scripts/publicacao/consultas/219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente.sql"
       - "scripts/publicacao/consultas/220a-conferir-o-reembolso-por-fora-nao-conta-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/220b-antes-o-reembolso-por-fora-nao-conta-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1680,6 +1684,14 @@ jobs:
       - name: Prova viva do caixa de ontem aberto que nao some do saldo (20261660000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-caixa-de-ontem-aberto-nao-some-do-saldo-viva.cjs
+      # Migration 20261663000000 (a despesa nao entra no caixa fechado): fin_lancamento_salvar e fin_lancamento_baixar travam a sessao aberta
+      # (FOR SHARE) na leitura. Corridas reais com o fechamento (COMMIT no clone, pausa forcada por pg_advisory entre a leitura e a gravacao):
+      # sem quebra falsa e sem lancamento ligado ao caixa fechado; controle com o rollback e mutantes sem cada trava mostram o defeito. Casos de
+      # uma conexao iguais nos dois corpos, dado antigo intacto, reaplicar 2x e CRLF, pre-voo, rollback byte a byte, consultas 219a/219b (e
+      # 210a/49a como sucessora). CLONE proprio.
+      - name: Prova viva da despesa que nao entra no caixa fechado (20261663000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-despesa-nao-entra-no-caixa-fechado-viva.cjs
       # Migration 20261664000000 (o reembolso por fora nao conta duas vezes): fin__movimentos conta a linha sistema do Mercado Pago nascida
       # depois de um reembolso de devolucao resolvido por fora so no que ele ainda nao contou (a regra "ja devolvi por fora" do ranking), e a
       # saida estornado fora do app desconta so o resto. Cenarios do defeito (Financeiro x ranking, pedido a pedido), controle com o corpo

@@ -3833,6 +3833,19 @@ const ROL_DA_213 = [
   "admin_devolucao_concluir: corpo esperado (md5)",
   "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
 ];
+// Lote 219 (20261663000000, a despesa nao entra no caixa fechado: fin_lancamento_salvar e fin_lancamento_baixar trocam so o corpo,
+// a leitura da sessao aberta passa a travar a linha). A 219a e a 219b tem o MESMO rol de 7 linhas (controle e, para cada funcao, o
+// md5, os atributos e a ACL); a 219a espera os corpos desta e a 219b os vigentes de antes (20261654000000). So catalogo: nenhuma le
+// lancamento ou sessao de caixa, e nenhuma chama funcao da loja.
+const ROL_DA_219 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_lancamento_salvar: corpo exato (md5)",
+  "fin_lancamento_salvar: assinatura e atributos conhecidos",
+  "fin_lancamento_salvar: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_lancamento_baixar: corpo exato (md5)",
+  "fin_lancamento_baixar: assinatura e atributos conhecidos",
+  "fin_lancamento_baixar: EXECUTE authenticated, sem PUBLIC ou anon",
+];
 // Lote 220 (20261664000000, o reembolso por fora nao conta duas vezes: fin__movimentos troca so o corpo). A 220a e a 220b tem o MESMO
 // rol de 4 linhas (o do lote 100: controle, md5, atributos e ACL); a 220a espera o corpo desta e a 220b o da 20261391200000. So
 // catalogo: nenhuma le pedido, devolucao, estorno ou lancamento, e nenhuma chama a fin__movimentos.
@@ -3871,6 +3884,8 @@ const ROL_DA_214 = [
   "solicitar_devolucao: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
+  "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado": ROL_DA_219,
+  "219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente": ROL_DA_219,
   "220a-conferir-o-reembolso-por-fora-nao-conta-duas-vezes-aplicado":
     ROL_DA_220,
   "220b-antes-o-reembolso-por-fora-nao-conta-duas-vezes-base-vigente":
