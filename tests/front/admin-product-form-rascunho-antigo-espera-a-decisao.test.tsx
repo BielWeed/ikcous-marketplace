@@ -113,7 +113,8 @@ const opcoesDoAviso = () => {
   if (!chamada) throw new Error("O aviso de rascunho não apareceu.");
   return chamada[1] as {
     action: { onClick: () => void };
-    cancel: { onClick: () => void };
+    // Botão próprio (JSX): o `cancel` comum não roda num aviso não dismissible.
+    cancel: { props: { onClick: () => void } };
     duration: number;
     dismissible?: boolean;
     id?: string;
@@ -237,7 +238,7 @@ describe("AdminProductFormView — rascunho antigo espera a decisão", () => {
     expect(armazem.get(CHAVE)).toBe(rascunhoAntigo);
 
     await act(async () => {
-      opcoesDoAviso().cancel.onClick();
+      opcoesDoAviso().cancel.props.onClick();
     });
     expect(armazem.get(CHAVE)).toBeUndefined();
 
