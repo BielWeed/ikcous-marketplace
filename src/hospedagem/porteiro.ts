@@ -37,6 +37,7 @@ import { ehPaginaContavel } from "./contador";
 import { montarDataBlock } from "./ficha";
 import { buscarIdsDosProdutos, robotsTxt, sitemapXml } from "./mapaDoSite";
 import { deployDoHtml, idDoDeploy } from "./marcaDoDeploy";
+import { entradaDaReserva } from "./reservaDaCaderneta";
 
 // ─── Matcher: só DOCUMENTOS invocam o porteiro ─────────────────────────────
 //
@@ -188,7 +189,9 @@ export interface AmbientePorteiro {
 export interface ConexaoResolvida {
   readonly supabaseUrl: string;
   readonly publishableKey: string;
-  readonly origem: "caderneta" | "projeto";
+  /** `reserva` = veio da reserva da caderneta (T3/T4 do plano da reserva),
+   * nunca sem a conferência de domínio no banco da própria loja. */
+  readonly origem: "caderneta" | "projeto" | "reserva";
 }
 
 /**
@@ -210,8 +213,16 @@ export interface ConexaoResolvida {
  * inteira em 60 s. `atenderPorteiro` escreve este valor em `x-ikcous-caderneta` em
  * toda resposta que produz — inclusive quando a resposta final é a ficha
  * antiga servida por stale-if-error.
+ *
+ * `reserva` (plano `PLANO-RESERVA-DA-CADERNETA-26-11.md`, T3/T4): a caderneta
+ * falhou (ou disse `miss` para um host que a reserva conhece), não havia ficha
+ * de até 1 h, e a conexão veio da RESERVA (`lerReserva`) — sempre conferida
+ * no banco da própria loja como qualquer outra. Vale também para a decisão
+ * tomada depois dela (`discorda`, `encaminha`, banco da loja fora do ar):
+ * diz que a conexão daquela tentativa veio da reserva. Reserva que não dá
+ * conexão deixa o estado da caderneta como estava (`erro` ou `miss`).
  */
-export type EstadoCaderneta = "hit" | "miss" | "erro" | "ausente";
+export type EstadoCaderneta = "hit" | "miss" | "erro" | "ausente" | "reserva";
 
 /** L8 (estado de vida da loja): os dois estados em que a caderneta CONHECE a
  * loja mas ela não abre — `adormecida` (parou de pagar; volta quando acordar)
@@ -704,6 +715,22 @@ export function marcarVersaoDaCaderneta(
   });
 }
 
+/** T4 da reserva: o "não achei" (`sem-loja` com `miss`) diz se havia reserva
+ * para tentar — `ligada` com leitor injetado, `desligada` sem. É o sinal que o
+ * portão da publicação confere no candidato (a reserva configurada). */
+function marcarReservaNoNaoAchei(
+  resposta: Response,
+  reservaLigada: boolean,
+): Response {
+  const cabecalhos = new Headers(resposta.headers);
+  cabecalhos.set("x-ikcous-reserva", reservaLigada ? "ligada" : "desligada");
+  return new Response(resposta.body, {
+    status: resposta.status,
+    statusText: resposta.statusText,
+    headers: cabecalhos,
+  });
+}
+
 // ─── respostaEncaminhamento ─────────────────────────────────────────────────
 
 /**
@@ -1006,8 +1033,11 @@ export interface RecuoAposFalha {
  *     (`RECUO_APOS_FALHA_MS`). O "não achei" (`miss`) com ficha de até 1 h
  *     segue o MESMO caminho (26/11/2026): zero linhas para a frota inteira
  *     não pode fechar todas as lojas; sem ficha que valha, ele fecha;
- *   - falha sem ficha que valha: 503 `banco-indisponivel`, e 10 s de recuo
- *     sem perguntar (`RECUO_SEM_FICHA_MS`), no mapa do host sem ficha;
+ *   - falha (ou `miss`) sem ficha que valha, com a reserva conhecendo o host
+ *     (`lerReserva`): a loja abre pela conexão da reserva, conferida no banco
+ *     dela, e a ficha nasce com `caderneta: "reserva"`;
+ *   - falha sem ficha que valha nem reserva: 503 `banco-indisponivel`, e 10 s
+ *     de recuo sem perguntar (`RECUO_SEM_FICHA_MS`), no mapa do host sem ficha;
  *   - cada recuo aberto escreve UMA linha `[porteiro]` no log (host, etapa,
  *     nome da causa, estado da caderneta, duração; nunca chave nem URL). */
 export const CACHE_FRESCO_MS = 60_000;
@@ -1121,6 +1151,14 @@ export interface DependenciasPorteiro {
    * esperam a MESMA busca. Opcional: sem ele, cada pedido busca sozinho. */
   readonly indexHtmlEmVoo?: Map<string, Promise<IndexHtmlBaixado>>;
   readonly resolverNaCaderneta?: ResolverLojaNaCaderneta;
+  /** A RESERVA da caderneta (plano `PLANO-RESERVA-DA-CADERNETA-26-11.md`): lê
+   * o documento `reserva_v1` CRU — este arquivo o confere com
+   * `entradaDaReserva`, nunca confia no formato. Só é chamado quando a
+   * caderneta falhou (ou disse `miss`) e o host não tem ficha de até 1 h, uma
+   * vez por resolução compartilhada. Quem injeta garante que ele termina
+   * (prazo próprio): uma leitura pendurada segura a resolução do host. Lançar
+   * ou devolver nada = sem reserva. Ausente = reserva desligada. */
+  readonly lerReserva?: () => Promise<unknown>;
   /** Injetável só para teste; produção usa `readPublicStoreIdentity` real. */
   readonly lerIdentidade?: typeof readPublicStoreIdentity;
   /** `Map` de módulo — vive em `middleware.ts`, uma vez por isolate, e é
@@ -1256,11 +1294,66 @@ export interface FichaResolvida {
  * falhas, igual a `resolverFichaViaRede`. */
 export type ResolucaoEmVoo = Promise<FichaResolvida>;
 
+/** A conexão que a reserva guarda para ESTE host, ou `null` (sem leitor, leitor
+ * que lança, documento ou entrada fora do formato, host ausente). Nunca lança:
+ * reserva que não responde é só "sem reserva". */
+async function conexaoDaReserva(
+  host: string,
+  deps: DependenciasPorteiro,
+): Promise<ConexaoResolvida | null> {
+  if (!deps.lerReserva) return null;
+  let documento: unknown;
+  try {
+    documento = await deps.lerReserva();
+  } catch {
+    return null;
+  }
+  const entrada = entradaDaReserva(documento, host);
+  if (!entrada) return null;
+  return { ...entrada, origem: "reserva" };
+}
+
+/**
+ * A caderneta não deu a loja — falhou de verdade (`FalhaRpcCaderneta`: rede,
+ * prazo, HTTP fora de 2xx, corpo malformado) ou disse `miss` — e o host não
+ * tem ficha de até 1 h (`permitirReserva`). Se a reserva conhece o host, a
+ * resolução segue com a conexão dela e `caderneta: "reserva"`, pelo MESMO
+ * caminho de qualquer conexão: identidade e `dominio_publico` lidos no banco
+ * da própria loja, `decidirConcordancia` decide. Se não conhece, `null`, e
+ * quem chama segue como antes (a falha relança; o `miss` fecha). A marca de
+ * versão da caderneta não viaja: quem deu a conexão foi a reserva.
+ *
+ * NUNCA chega aqui: loja adormecida/encerrada (decisão explícita, antes),
+ * chave anômala (retorno `erro` sem conexão, não falha), caderneta `ausente`
+ * (preview), falha no banco da loja que a caderneta apontou.
+ */
+async function resolucaoPelaReserva(
+  host: string,
+  deps: DependenciasPorteiro,
+  permitirReserva: boolean,
+): Promise<ResolucaoConexao | null> {
+  if (!permitirReserva) return null;
+  const conexao = await conexaoDaReserva(host, deps);
+  if (!conexao) return null;
+  return { conexao, caderneta: "reserva" };
+}
+
+/** A caderneta respondeu "não achei" — e só isso: sem conexão, sem estado de
+ * vida, rótulo `miss` (a chave anômala sai `erro` e nunca entra). */
+function ehMissDaCaderneta(resolucao: ResolucaoConexao): boolean {
+  return (
+    resolucao.caderneta === "miss" &&
+    resolucao.conexao === null &&
+    resolucao.foraDoAr === undefined
+  );
+}
+
 async function resolverFichaViaRede(
   host: string,
   url: URL,
   ambiente: AmbientePorteiro,
   deps: DependenciasPorteiro,
+  permitirReserva: boolean,
 ): Promise<FichaResolvida> {
   // `caderneta` só é conhecida DEPOIS de `resolverConexao` resolver (ou
   // lançar) — por isso a chamada entrou para DENTRO do `try` (ADENDO B.1):
@@ -1277,11 +1370,35 @@ async function resolverFichaViaRede(
   const relogio = deps.agora ?? Date.now;
   const inicio = relogio();
   try {
-    const resolucao = await resolverConexao(
-      host,
-      ambiente,
-      deps.resolverNaCaderneta,
-    );
+    let resolucao: ResolucaoConexao;
+    try {
+      resolucao = await resolverConexao(
+        host,
+        ambiente,
+        deps.resolverNaCaderneta,
+      );
+    } catch (falha) {
+      // A RPC falhou de verdade: a reserva, se valer e conhecer o host; senão
+      // a mesma falha segue para o `catch` de baixo (stale-if-error).
+      if (!(falha instanceof FalhaRpcCaderneta)) throw falha;
+      const pelaReserva = await resolucaoPelaReserva(
+        host,
+        deps,
+        permitirReserva,
+      );
+      if (!pelaReserva) throw falha;
+      resolucao = pelaReserva;
+    }
+    // "Não achei" sem ficha: a reserva, se conhecer o host; senão o `miss`
+    // fecha a loja como sempre (e é guardado 60 s).
+    if (ehMissDaCaderneta(resolucao)) {
+      const pelaReserva = await resolucaoPelaReserva(
+        host,
+        deps,
+        permitirReserva,
+      );
+      if (pelaReserva) resolucao = pelaReserva;
+    }
     caderneta = resolucao.caderneta;
     versao = resolucao.versaoCaderneta;
     etapa = "banco-da-loja";
@@ -1368,16 +1485,24 @@ async function resolverFichaViaRede(
 /** Pedidos do mesmo host esperam a MESMA resolução (na hora ou em segundo
  * plano). Ela não depende do caminho do pedido (o encaminhamento monta o
  * destino por pedido) e a `publicUrl` é refeita por pedido. A entrada sai do
- * mapa quando a resolução termina, com sucesso ou erro. */
+ * mapa quando a resolução termina, com sucesso ou erro.
+ *
+ * `permitirReserva` é o de QUEM ABRIU a resolução; quem chega depois herda.
+ * Sem perigo nos dois sentidos: uma resolução aberta SEM ficha só é
+ * encontrada por pedidos também sem ficha (a ficha deste host só nasce do fim
+ * dela); uma aberta COM ficha (revalidação, ou ficha prestes a passar de 1 h)
+ * pode ser herdada por um pedido que já ficou sem — esse recebe, no máximo
+ * uma vez, o 503 de antes da reserva, e a próxima resolução já a permite. */
 function resolucaoCompartilhada(
   host: string,
   url: URL,
   ambiente: AmbientePorteiro,
   deps: DependenciasPorteiro,
+  permitirReserva: boolean,
 ): ResolucaoEmVoo {
   const emVoo = deps.resolucoesEmVoo?.get(host);
   if (emVoo) return emVoo;
-  const nova = resolverFichaViaRede(host, url, ambiente, deps);
+  const nova = resolverFichaViaRede(host, url, ambiente, deps, permitirReserva);
   const mapa = deps.resolucoesEmVoo;
   if (mapa) {
     mapa.set(host, nova);
@@ -1517,7 +1642,14 @@ function revalidarEmSegundoPlano(
   waitUntil: (promessa: Promise<unknown>) => void,
 ): void {
   const relogio = deps.agora ?? Date.now;
-  const revalidacao = resolucaoCompartilhada(host, url, ambiente, deps).then(
+  // Só revalida quem TEM ficha de até 1 h: a reserva nunca é lida aqui.
+  const revalidacao = resolucaoCompartilhada(
+    host,
+    url,
+    ambiente,
+    deps,
+    false,
+  ).then(
     (resolvida) => {
       guardarComTeto(deps.cache, host, {
         ficha: resolvida.ficha,
@@ -1728,9 +1860,12 @@ export async function obterFichaValidada(
   ) {
     return {
       tipo: "manutencao",
-      resposta: marcarVersaoDaCaderneta(
-        respostaManutencao("sem-loja", "miss"),
-        semLojaGuardada.versaoCaderneta,
+      resposta: marcarReservaNoNaoAchei(
+        marcarVersaoDaCaderneta(
+          respostaManutencao("sem-loja", "miss"),
+          semLojaGuardada.versaoCaderneta,
+        ),
+        deps.lerReserva !== undefined,
       ),
     };
   }
@@ -1792,7 +1927,16 @@ export async function obterFichaValidada(
     };
   }
   try {
-    const resolvida = await resolucaoCompartilhada(host, url, ambiente, deps);
+    // A reserva só vale para quem não tem ficha de até 1 h: com ela, a ficha
+    // velha (stale-if-error, abaixo) é a resposta à falha, e a reserva nem é
+    // lida.
+    const resolvida = await resolucaoCompartilhada(
+      host,
+      url,
+      ambiente,
+      deps,
+      !fichaNaReserva,
+    );
     guardarComTeto(deps.cache, host, {
       ficha: resolvida.ficha,
       quando: agora,
@@ -1873,17 +2017,21 @@ export async function obterFichaValidada(
       // Só o "não achei" DEFINITIVO da caderneta (`miss`) é guardado. A
       // chave anômala também vira `sem-loja`, mas com `caderneta: "erro"`:
       // é resposta estranha, não "não achei", e pergunta de novo.
-      if (ehNaoAchei(erro))
+      const naoAchei = ehNaoAchei(erro);
+      if (naoAchei)
         guardarComTeto(deps.cacheSemLoja, host, {
           quando: agora,
           ...comVersao(erro.versaoCaderneta),
         });
+      const resposta = marcarVersaoDaCaderneta(
+        respostaManutencao(erro.motivo, erro.caderneta),
+        erro.versaoCaderneta,
+      );
       return {
         tipo: "manutencao",
-        resposta: marcarVersaoDaCaderneta(
-          respostaManutencao(erro.motivo, erro.caderneta),
-          erro.versaoCaderneta,
-        ),
+        resposta: naoAchei
+          ? marcarReservaNoNaoAchei(resposta, deps.lerReserva !== undefined)
+          : resposta,
       };
     }
     // Falha de rede/schema (não é uma DECISÃO): stale-if-error por até 1h.

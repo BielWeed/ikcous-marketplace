@@ -27,6 +27,7 @@ import {
 import {
   COMO_RECUPERAR,
   GRAVIDADE,
+  bancoIndisponivel,
   classificar,
   conferirFrota,
   consultarVercel,
@@ -41,13 +42,17 @@ import {
   maioriaEstrita,
   montarContexto,
   problemasDoContrato,
+  refDaLojaSondada,
   sondarEndereco,
   tituloDaLinhaDoBanco,
   titulosRepetidos,
   verificarCanonico,
   verificarIsolamentoCruzado,
 } from "../scripts/frota/conferir-frota.mjs";
-import { problemasAntesDoPromote } from "../scripts/frota/publicar-release.mjs";
+import {
+  lojasDoInventario,
+  problemasAntesDoPromote,
+} from "../scripts/frota/publicar-release.mjs";
 
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
 const SCRIPT = join(RAIZ, "scripts/frota/conferir-frota.mjs");
@@ -182,7 +187,8 @@ function responder(m, dominio, caminho, n, busca = "") {
   if (e.tipo === "foraDoAr") {
     // Página própria do porteiro para loja adormecida/encerrada (contrato do
     // Lote 2 do L8): sem script, sem marca e sem ref Supabase no HTML.
-    const headers = { "x-ikcous-caderneta": "hit" };
+    // `cadernetaDaPagina`: a mesma página servida com a loja aberta pela reserva.
+    const headers = { "x-ikcous-caderneta": e.cadernetaDaPagina ?? "hit" };
     if (e.porteiro !== null) headers["x-ikcous-porteiro"] = e.porteiro;
     if (e.estado !== null) headers["x-ikcous-estado"] = e.estado;
     if (e.refPorteiro !== null) headers["x-ikcous-ref"] = e.refPorteiro;
@@ -205,13 +211,17 @@ function responder(m, dominio, caminho, n, busca = "") {
   }
   // loja: amostras alternadas simulam duas instâncias do porteiro com caches diferentes
   const alterna = e.alterna && n % 2 === 1;
+  // `cadernetaAlterna`: instâncias com caches diferentes, uma ainda com a
+  // ficha (hit) e outra já aberta pela reserva — a MESMA loja.
+  const caderneta =
+    e.cadernetaAlterna && n % 2 === 1 ? e.cadernetaAlterna : e.caderneta;
   const ref = alterna ? e.alterna.ref : e.ref;
   const titulo = alterna ? e.alterna.titulo : e.titulo;
   const publicUrl = "publicUrl" in e ? e.publicUrl : `https://${dominio}`;
   return {
     status: e.status,
     headers: {
-      "x-ikcous-caderneta": e.caderneta,
+      "x-ikcous-caderneta": caderneta,
       // O selo do middleware; `semSelo` simula uma borda em que ele nao rodou.
       ...(e.semSelo ? {} : { "x-ikcous-porteiro": e.porteiro ?? "ok" }),
       ...(e.cadernetaVersao
@@ -2665,6 +2675,332 @@ Deno.test("L8 política: lojasQueNuncaDormem = IKCOUS e Savy, os mesmos refs de 
   assertEquals(refs, [REF.ikcous, REF.savy].sort());
 });
 
+// ------------------------------------------------------------------ T10: loja aberta pela reserva da caderneta
+//
+// Plano PLANO-RESERVA-DA-CADERNETA-26-11.md, T10. Quando a caderneta central
+// falha e não há ficha, o porteiro abre a loja pela reserva e marca a resposta
+// com `x-ikcous-caderneta: reserva`. A loja está no ar, mas a caderneta caiu:
+// CADERNETA_NA_RESERVA, entre INALCANCAVEL e ENDERECO_ANTIGO, bloqueia antes do
+// promote e reprova depois. `reserva` NÃO conta como loja ativa.
+
+const paginaNaReserva = (extra = {}) => ({
+  status: 200,
+  caderneta: "reserva",
+  porteiro: "ok",
+  titulo: "Savy",
+  refs: [REF.savy],
+  ...extra,
+});
+const paginaHit = () => ({
+  status: 200,
+  caderneta: "hit",
+  porteiro: "ok",
+  titulo: "Savy",
+  refs: [REF.savy],
+});
+
+Deno.test("T10 GRAVIDADE: CADERNETA_NA_RESERVA fica logo abaixo de INALCANCAVEL e logo acima de ENDERECO_ANTIGO, com COMO_RECUPERAR", () => {
+  const i = (c) => GRAVIDADE.indexOf(c);
+  assert(i("CADERNETA_NA_RESERVA") >= 0, "a classe existe");
+  assertEquals(i("CADERNETA_NA_RESERVA"), i("INALCANCAVEL") + 1);
+  assertEquals(i("ENDERECO_ANTIGO"), i("CADERNETA_NA_RESERVA") + 1);
+  assertStringIncludes(COMO_RECUPERAR.CADERNETA_NA_RESERVA, "caderneta");
+});
+
+Deno.test("T10 classificar: loja servida pela reserva (200, x-ikcous-caderneta: reserva) = CADERNETA_NA_RESERVA, não OK nem 'sem ficha de loja'", () => {
+  const r = classificar(
+    LOJA,
+    sonda(LOJA.dominio, { pagina: paginaNaReserva() }),
+    CTX,
+  );
+  assertEquals(r.classe, "CADERNETA_NA_RESERVA", JSON.stringify(r.achados));
+  assert(
+    !r.achados.some((a) => a.motivo.includes("sem ficha de loja")),
+    JSON.stringify(r.achados),
+  );
+  assertStringIncludes(
+    r.achados.find((a) => a.classe === "CADERNETA_NA_RESERVA").motivo,
+    "reserva",
+  );
+});
+
+Deno.test("T10 classificar: na reserva vence ENDERECO_ANTIGO; INALCANCAVEL vence a reserva", () => {
+  const velho = classificar(
+    LOJA,
+    sonda(LOJA.dominio, {
+      pagina: paginaNaReserva(),
+      versao: { codeSha: SHA_VELHO, codeVersion: "1.5.17" },
+    }),
+    CTX,
+  );
+  assertEquals(velho.classe, "CADERNETA_NA_RESERVA");
+  assert(velho.achados.some((a) => a.classe === "ENDERECO_ANTIGO"));
+  const semVersao = classificar(
+    LOJA,
+    sonda(LOJA.dominio, {
+      pagina: paginaNaReserva(),
+      versao: null,
+      erroVersao: "version.json: timeout",
+    }),
+    CTX,
+  );
+  assertEquals(semVersao.classe, "INALCANCAVEL");
+  assert(semVersao.achados.some((a) => a.classe === "CADERNETA_NA_RESERVA"));
+});
+
+Deno.test("T10 classificar: as amostras só oscilam entre hit e reserva (MESMA loja) = CADERNETA_NA_RESERVA, nunca LOJA_TROCADA", () => {
+  for (const amostras of [
+    [paginaHit(), paginaNaReserva(), paginaHit()],
+    [paginaNaReserva(), paginaHit(), paginaHit()],
+  ]) {
+    const r = classificar(LOJA, sonda(LOJA.dominio, { amostras }), CTX);
+    assertEquals(r.classe, "CADERNETA_NA_RESERVA", JSON.stringify(r.achados));
+    assert(
+      !r.achados.some((a) => a.classe === "LOJA_TROCADA"),
+      JSON.stringify(r.achados),
+    );
+  }
+});
+
+Deno.test("T10 classificar: hit e reserva com ref, título ou HTTP DIFERENTES continua LOJA_TROCADA", () => {
+  for (const outra of [
+    paginaNaReserva({ refs: [REF.ikcous] }),
+    paginaNaReserva({ titulo: "IKCOUS - imports" }),
+    paginaNaReserva({ status: 503 }),
+  ]) {
+    const r = classificar(
+      LOJA,
+      sonda(LOJA.dominio, { amostras: [paginaHit(), outra, paginaHit()] }),
+      CTX,
+    );
+    assertEquals(r.classe, "LOJA_TROCADA", JSON.stringify(r.achados));
+  }
+  // `erro` não é a reserva: oscilar hit/erro segue sendo amostra divergente.
+  const comErro = classificar(
+    LOJA,
+    sonda(LOJA.dominio, {
+      amostras: [
+        paginaHit(),
+        paginaHit(),
+        { ...paginaHit(), caderneta: "erro" },
+      ],
+    }),
+    CTX,
+  );
+  assertEquals(comErro.classe, "LOJA_TROCADA", JSON.stringify(comErro.achados));
+});
+
+Deno.test("T10 classificar: página da reserva com dois refs ou sem título continua LOJA_TROCADA", () => {
+  const doisRefs = classificar(
+    LOJA,
+    sonda(LOJA.dominio, {
+      pagina: paginaNaReserva({ refs: [REF.savy, REF.ikcous] }),
+    }),
+    CTX,
+  );
+  assertEquals(
+    doisRefs.classe,
+    "LOJA_TROCADA",
+    JSON.stringify(doisRefs.achados),
+  );
+  const semTitulo = classificar(
+    LOJA,
+    sonda(LOJA.dominio, { pagina: paginaNaReserva({ titulo: null }) }),
+    CTX,
+  );
+  assertEquals(
+    semTitulo.classe,
+    "LOJA_TROCADA",
+    JSON.stringify(semTitulo.achados),
+  );
+});
+
+Deno.test("T10 classificar: endereço esperado (redirecionamento) que responde pela reserva também é CADERNETA_NA_RESERVA", () => {
+  const r = classificar(
+    { dominio: REDIRECIONA, esperado: "redirecionamento", para: null },
+    sonda(REDIRECIONA, {
+      pagina: { status: 308, caderneta: "reserva", titulo: null, refs: [] },
+    }),
+    CTX,
+  );
+  assert(
+    r.achados.some((a) => a.classe === "CADERNETA_NA_RESERVA"),
+    JSON.stringify(r.achados),
+  );
+});
+
+Deno.test("T10 reserva NÃO conta como loja ativa: refDaLojaSondada null e o publicar-release a lista como 'não é loja legível'", () => {
+  const s = sonda(LOJA.dominio, { pagina: paginaNaReserva() });
+  assertEquals(refDaLojaSondada(s.ficha), null);
+  const { lojas, problemas } = lojasDoInventario(
+    { completo: true, vercel: { ok: true }, sondas: [s] },
+    { enderecosEsperados: [] },
+  );
+  assertEquals(lojas, []);
+  assert(
+    problemas.some(
+      (p) => p.includes(LOJA.dominio) && p.includes("caderneta reserva"),
+    ),
+    JSON.stringify(problemas),
+  );
+});
+
+Deno.test("T10 problemasAntesDoPromote: CADERNETA_NA_RESERVA bloqueia mesmo escondida atrás de ENDERECO_ANTIGO", () => {
+  const r = classificar(
+    LOJA,
+    sonda(LOJA.dominio, {
+      pagina: paginaNaReserva(),
+      versao: { codeSha: SHA_VELHO, codeVersion: "1.5.17" },
+    }),
+    CTX,
+  );
+  const p = problemasAntesDoPromote(
+    {
+      resultados: [
+        { dominio: LOJA.dominio, ...r, versao: { codeSha: SHA_VELHO } },
+      ],
+    },
+    SHA,
+  );
+  assertEquals(p.length, 1, JSON.stringify(p));
+  assertStringIncludes(p[0], "CADERNETA_NA_RESERVA");
+});
+
+Deno.test("T10 conferirFrota: a Savy aberta pela reserva reprova a frota, não conta como sondada e o relatório diz como recuperar", async () => {
+  const mundo = mundoBase();
+  mundo["savycollection.vercel.app"].caderneta = "reserva";
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundo),
+    lojasObrigatorias: [
+      { ref: REF.ikcous, nome: "IKCOUS" },
+      { ref: REF.savy, nome: "Savy" },
+    ],
+  });
+  assertEquals(r.ok, false, r.relatorio);
+  const savy = r.resultados.find(
+    (x) => x.dominio === "savycollection.vercel.app",
+  );
+  assertEquals(
+    savy.classe,
+    "CADERNETA_NA_RESERVA",
+    JSON.stringify(savy.achados),
+  );
+  assertStringIncludes(r.relatorio, "**CADERNETA_NA_RESERVA**");
+  assertStringIncludes(
+    r.relatorio,
+    "a loja Savy está cadastrada mas não foi sondada",
+  );
+  const ik = r.resultados.find(
+    (x) => x.dominio === "ickous-marketplace.vercel.app",
+  );
+  assertEquals(ik.classe, "OK", JSON.stringify(ik.achados));
+});
+
+Deno.test("T10 conferirFrota: instâncias divergentes (uma hit, outra na reserva) da MESMA loja = CADERNETA_NA_RESERVA, não LOJA_TROCADA", async () => {
+  const mundo = mundoBase();
+  mundo["savycollection.vercel.app"].cadernetaAlterna = "reserva";
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundo),
+  });
+  assertEquals(r.ok, false, r.relatorio);
+  const savy = r.resultados.find(
+    (x) => x.dominio === "savycollection.vercel.app",
+  );
+  assertEquals(
+    savy.classe,
+    "CADERNETA_NA_RESERVA",
+    JSON.stringify(savy.achados),
+  );
+});
+
+// ------------------------------------------------------------------ T10 (revisão Opus): a reserva NÃO tira o endereço da conferência ENTRE endereços
+//
+// Amostras hit + reserva ficam `estavel=false` (a caderneta está na chave da
+// amostra). Se a conferência entre endereços (mesmo ref com outro título,
+// canônico) só aceitasse ficha estável hit, o endereço sumiria dela e o
+// LOJA_TROCADA que manda o rollback viraria só CADERNETA_NA_RESERVA.
+
+const REF_X = "xqxqxqxqxqxqxqxqxqxq";
+const TRIO = ["a.loja-x.example", "b.loja-x.example", "c.loja-x.example"];
+
+function mundoDoTrio(c = {}) {
+  const mundo = mundoBase();
+  const base = mundo["savycollection.vercel.app"];
+  mundo[TRIO[0]] = { ...base, ref: REF_X, titulo: "Loja A" };
+  mundo[TRIO[1]] = { ...base, ref: REF_X, titulo: "Loja A" };
+  mundo[TRIO[2]] = { ...base, ref: REF_X, titulo: "Loja ZZ", ...c };
+  return mundo;
+}
+async function classeDoC(c) {
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundoDoTrio(c)),
+    enderecosExtras: TRIO,
+  });
+  return r.resultados.find((x) => x.dominio === TRIO[2]);
+}
+
+Deno.test("T10b controle: só hit, c.com com o mesmo ref e outro título = LOJA_TROCADA", async () => {
+  const c = await classeDoC({});
+  assertEquals(c.classe, "LOJA_TROCADA", JSON.stringify(c.achados));
+});
+
+Deno.test("T10b (1) amostras misturadas hit + reserva em c.com com outro título continua LOJA_TROCADA", async () => {
+  const c = await classeDoC({ cadernetaAlterna: "reserva" });
+  assertEquals(c.classe, "LOJA_TROCADA", JSON.stringify(c.achados));
+  assert(
+    c.achados.some((a) => a.classe === "CADERNETA_NA_RESERVA"),
+    JSON.stringify(c.achados),
+  );
+});
+
+Deno.test("T10b (2) ficha toda na reserva com título divergente de outro endereço do mesmo ref = LOJA_TROCADA", async () => {
+  const c = await classeDoC({ caderneta: "reserva" });
+  assertEquals(c.classe, "LOJA_TROCADA", JSON.stringify(c.achados));
+});
+
+Deno.test("T10b (3) legítimo: tudo igual e a caderneta oscilando (ou toda na reserva) = só CADERNETA_NA_RESERVA", async () => {
+  for (const extra of [
+    { cadernetaAlterna: "reserva" },
+    { caderneta: "reserva" },
+  ]) {
+    const c = await classeDoC({ titulo: "Loja A", ...extra });
+    assertEquals(
+      c.classe,
+      "CADERNETA_NA_RESERVA",
+      `${JSON.stringify(extra)} ${JSON.stringify(c.achados)}`,
+    );
+    assert(
+      !c.achados.some((a) => a.classe === "LOJA_TROCADA"),
+      JSON.stringify(c.achados),
+    );
+  }
+});
+
+Deno.test("T10b canônico: ficha na reserva também tem o publicUrl conferido; canônico servido pela reserva vale", async () => {
+  const fora = await classeDoC({
+    titulo: "Loja A",
+    caderneta: "reserva",
+    publicUrl: "https://nao-inventariado.example",
+  });
+  assert(
+    fora.achados.some((a) => a.classe === "CANONICO_INVALIDO"),
+    JSON.stringify(fora.achados),
+  );
+  const mundo = mundoDoTrio({ titulo: "Loja A" });
+  mundo[TRIO[0]].publicUrl = `https://${TRIO[2]}`;
+  mundo[TRIO[2]].caderneta = "reserva";
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundo),
+    enderecosExtras: TRIO,
+  });
+  const a = r.resultados.find((x) => x.dominio === TRIO[0]);
+  assertEquals(a.classe, "OK", JSON.stringify(a.achados));
+});
+
 // ------------------------------------------------------------------ banco da loja fora do ar
 // O porteiro conhece a loja (caderneta hit), mas o banco Supabase DELA não
 // respondeu (projeto pausado ou incidente) e não há ficha guardada: ele responde
@@ -2859,4 +3195,138 @@ Deno.test("banco fora: conferirFrota reprova, diz em português que o banco caiu
     r.cobertura.lojasNaoSondadas.map((l) => l.ref),
     [REF.savy],
   );
+});
+
+// ------------------------------------------------------------------ banco fora COM a caderneta na reserva
+// Os dois incidentes juntos: a caderneta central caiu, o porteiro abriu a loja
+// pela reserva (`caderneta = "reserva"` já está decidido ANTES de ler o banco
+// da loja) e o banco dela também não respondeu. O porteiro serve o MESMO 503
+// banco-indisponivel, só que com `x-ikcous-caderneta: reserva`. São as duas
+// classes, nunca LOJA_TROCADA (que manda `vercel rollback`).
+
+const paginaBancoForaNaReserva = () =>
+  paginaBancoFora({ caderneta: "reserva" });
+
+Deno.test("banco fora na reserva: 503 banco-indisponivel com caderneta reserva nas 3 amostras = CADERNETA_NA_RESERVA + BANCO_INDISPONIVEL, sem LOJA_TROCADA nem ESTADO_INESPERADO", () => {
+  const s = sonda(LOJA.dominio, { pagina: paginaBancoForaNaReserva() });
+  assertEquals(bancoIndisponivel(s), true);
+  const r = classificar(LOJA, s, CTX);
+  assertEquals(
+    r.achados.map((a) => a.classe),
+    ["CADERNETA_NA_RESERVA", "BANCO_INDISPONIVEL"],
+    JSON.stringify(r.achados),
+  );
+  assertEquals(r.classe, "CADERNETA_NA_RESERVA");
+  const banco = r.achados.find((a) => a.classe === "BANCO_INDISPONIVEL");
+  assertStringIncludes(banco.motivo, "reserva");
+});
+
+Deno.test("banco fora na reserva: amostras que oscilam entre hit e reserva com o MESMO 503 são a mesma loja (as duas classes)", () => {
+  for (const amostras of [
+    [paginaBancoFora(), paginaBancoForaNaReserva(), paginaBancoFora()],
+    [paginaBancoForaNaReserva(), paginaBancoFora(), paginaBancoFora()],
+  ]) {
+    const s = sonda(LOJA.dominio, { amostras });
+    assertEquals(bancoIndisponivel(s), true, JSON.stringify(amostras));
+    const r = classificar(LOJA, s, CTX);
+    assertEquals(
+      r.achados.map((a) => a.classe),
+      ["CADERNETA_NA_RESERVA", "BANCO_INDISPONIVEL"],
+      JSON.stringify(r.achados),
+    );
+  }
+  // Oscilar com a caderneta `erro` (a caderneta é que caiu, sem reserva) não vale.
+  const comErro = sonda(LOJA.dominio, {
+    amostras: [
+      paginaBancoFora(),
+      paginaBancoFora({ caderneta: "erro" }),
+      paginaBancoFora(),
+    ],
+  });
+  assertEquals(bancoIndisponivel(comErro), false);
+});
+
+Deno.test("banco fora na reserva: os controles não mudam (hit + banco fora = só BANCO_INDISPONIVEL; reserva + 200 = só CADERNETA_NA_RESERVA)", () => {
+  const hit = classificar(
+    LOJA,
+    sonda(LOJA.dominio, { pagina: paginaBancoFora() }),
+    CTX,
+  );
+  assertEquals(
+    hit.achados.map((a) => a.classe),
+    ["BANCO_INDISPONIVEL"],
+    JSON.stringify(hit.achados),
+  );
+  const reserva = classificar(
+    LOJA,
+    sonda(LOJA.dominio, { pagina: paginaNaReserva() }),
+    CTX,
+  );
+  assertEquals(
+    reserva.achados.map((a) => a.classe),
+    ["CADERNETA_NA_RESERVA"],
+    JSON.stringify(reserva.achados),
+  );
+});
+
+Deno.test("banco fora na reserva: verificarCanonico não cobra publicUrl e o publicar-release a põe em bancoFora (bloqueio com o motivo do banco)", () => {
+  const s = sonda(LOJA.dominio, { pagina: paginaBancoForaNaReserva() });
+  assertEquals(verificarCanonico([s]).achados, {});
+  const { lojas, bancoFora, problemas } = lojasDoInventario(
+    { completo: true, vercel: { ok: true }, sondas: [s] },
+    { enderecosEsperados: [] },
+  );
+  assertEquals(lojas, []);
+  assertEquals(bancoFora, [LOJA.dominio]);
+  assertEquals(problemas, []);
+});
+
+Deno.test("banco fora na reserva: conferirFrota reprova com as duas classes e o relatório não manda vercel rollback nem fala em LOJA_TROCADA", async () => {
+  const mundo = mundoBase();
+  mundo["savycollection.vercel.app"] = {
+    ...mundo["savycollection.vercel.app"],
+    tipo: "foraDoAr",
+    status: 503,
+    porteiro: "banco-indisponivel",
+    estado: null,
+    refPorteiro: null,
+    cadernetaDaPagina: "reserva",
+  };
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundo),
+    lojasObrigatorias: [
+      { ref: REF.ikcous, nome: "IKCOUS" },
+      { ref: REF.savy, nome: "Savy" },
+    ],
+  });
+  assertEquals(r.ok, false, r.relatorio);
+  const savy = r.resultados.find(
+    (x) => x.dominio === "savycollection.vercel.app",
+  );
+  assertEquals(
+    savy.achados.map((a) => a.classe),
+    ["CADERNETA_NA_RESERVA", "BANCO_INDISPONIVEL"],
+    JSON.stringify(savy.achados),
+  );
+  assert(!r.relatorio.includes("vercel rollback"), r.relatorio);
+  assert(!r.relatorio.includes("LOJA_TROCADA"), r.relatorio);
+  assert(!r.relatorio.includes("CANONICO_INVALIDO"), r.relatorio);
+  // A classe da linha é a reserva (mais grave); o banco aparece junto.
+  assertStringIncludes(r.relatorio, "(também: BANCO_INDISPONIVEL)");
+  assertStringIncludes(
+    r.relatorio,
+    "o banco está fora do ar em savycollection",
+  );
+  // "Como recuperar" traz o conserto de CADA classe do endereço.
+  const comoRecuperar = r.relatorio.split("## Como recuperar")[1] ?? "";
+  assertStringIncludes(
+    comoRecuperar,
+    "**CADERNETA_NA_RESERVA** (savycollection.vercel.app)",
+  );
+  assertStringIncludes(
+    comoRecuperar,
+    "**BANCO_INDISPONIVEL** (savycollection.vercel.app)",
+  );
+  assertStringIncludes(comoRecuperar, "Restore project");
 });

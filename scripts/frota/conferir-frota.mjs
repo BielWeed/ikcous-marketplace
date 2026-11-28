@@ -68,8 +68,11 @@
 //                      FROTA_TIMEOUT_MS (padrão 15000).
 //
 // CLASSES (a mais grave vence): LOJA_TROCADA > SUSPEITA_ISOLAMENTO >
-// INALCANCAVEL > ENDERECO_ANTIGO > BANCO_INDISPONIVEL > CANONICO_INVALIDO >
-// BUILD_DIVERGENTE > ESTADO_INESPERADO > ENCERRADA > ADORMECIDA > OK.
+// INALCANCAVEL > CADERNETA_NA_RESERVA > ENDERECO_ANTIGO > BANCO_INDISPONIVEL >
+// CANONICO_INVALIDO > BUILD_DIVERGENTE > ESTADO_INESPERADO > ENCERRADA >
+// ADORMECIDA > OK. CADERNETA_NA_RESERVA fica acima de BANCO_INDISPONIVEL: a
+// caderneta central é de TODAS as lojas (decide qual loja cada endereço abre),
+// o banco fora é de UMA loja e não mexe no roteamento.
 // SAÍDA: 0 só se TUDO está OK (ou fora do ar por decisão: ADORMECIDA/ENCERRADA);
 // 1 em qualquer outro caso (inclui pedir --vercel e a consulta falhar); 2 = erro
 // de uso. Inventário PARCIAL (sem --vercel) com tudo OK sai 0, mas o relatório
@@ -85,6 +88,14 @@
 // e loja de politica.json lojasQueNuncaDormem fora do ar também.
 // x-ikcous-caderneta-versao: 1 (porteiro na caderneta antiga, que não conhece o
 // estado) vira AVISO no relatório.
+//
+// CADERNETA NA RESERVA (PLANO-RESERVA-DA-CADERNETA-26-11.md, T10): amostra de
+// "/" com x-ikcous-caderneta: reserva = a caderneta central falhou e o porteiro
+// abriu a loja pela reserva (Global Config). A loja está no ar, mas NÃO conta
+// como loja ativa (`refDaLojaSondada` só aceita hit): CADERNETA_NA_RESERVA
+// bloqueia antes do promote e reprova depois. Amostras que diferem SÓ na
+// caderneta (hit numa instância, reserva noutra: caches diferentes da MESMA
+// loja) não são LOJA_TROCADA; ref, título, HTTP ou publicUrl diferentes, sim.
 //
 // BANCO DA LOJA FORA DO AR (projeto Supabase pausado ou incidente): a caderneta
 // conhece a loja (hit), mas o banco DELA não respondeu e o porteiro não tem ficha
@@ -111,6 +122,7 @@ export const GRAVIDADE = [
   "LOJA_TROCADA",
   "SUSPEITA_ISOLAMENTO",
   "INALCANCAVEL",
+  "CADERNETA_NA_RESERVA",
   "ENDERECO_ANTIGO",
   "BANCO_INDISPONIVEL",
   "CANONICO_INVALIDO",
@@ -175,6 +187,8 @@ export const COMO_RECUPERAR = {
   BUILD_DIVERGENTE:
     "publicar de novo do mesmo SHA, de worktree limpa (version.json fora do contrato do build: campo ausente ou malformado).",
   INALCANCAVEL: "repetir a conferência; persistindo, abrir o endereço.",
+  CADERNETA_NA_RESERVA:
+    "NÃO promover: a caderneta central (frota_lojas no banco da caderneta) falhou e o porteiro está abrindo a loja pela reserva da caderneta (x-ikcous-caderneta: reserva). Consertar a caderneta (IKCOUS_FROTA_URL/chave da caderneta, banco no ar) e repetir a conferência até o endereço voltar a responder hit.",
   BANCO_INDISPONIVEL:
     'NÃO é caso de rollback do front: o banco da loja deste endereço está fora do ar (pausado pelo Supabase ou incidente) e o porteiro respondeu 503 banco-indisponivel. Restaurar o projeto ("Restore project" no painel do Supabase; para loja OAuth, `node scripts/frota/acordar-projeto.mjs`) e conferir de novo. Só para loja que não é a IKCOUS nem a Savy, a outra saída é adormecê-la pela caderneta (`node scripts/frota/estado-da-loja.mjs --adormecer ...`, decisão do sócio). Se o painel mostrar o projeto no ar e a loja continuar 503, a causa não é o banco: abrir o endereço.',
   ESTADO_INESPERADO:
@@ -514,6 +528,9 @@ export async function sondarEndereco(dominio, opcoes = {}) {
         refPorteiro: res.headers.get("x-ikcous-ref"),
         // "1" = o porteiro caiu na caderneta antiga (resolver_loja, sem estado).
         cadernetaVersao: res.headers.get("x-ikcous-caderneta-versao"),
+        // Destino de um 3xx (a reserva só aceita encaminhamento para loja da
+        // frota). Fora de `chaveDaAmostra`: não muda a estabilidade da ficha.
+        location: res.headers.get("location"),
         titulo: extrairTitulo(html),
         refs: extrairRefsSupabase(html),
         publicUrl: extrairPublicUrl(html),
@@ -633,22 +650,26 @@ export function lojaForaDoAr(sonda) {
  * O banco da loja deste endereço está fora do ar, dito pelo PORTEIRO em TODAS as
  * amostras de "/": HTTP 503, x-ikcous-porteiro = banco-indisponivel,
  * x-ikcous-caderneta = hit (a caderneta conhece a loja; o que caiu foi o banco
- * DELA), sem x-ikcous-estado nem x-ikcous-ref e sem ref Supabase no HTML.
- * Qualquer outra combinação (503 da Vercel sem o marcador, caderneta erro =
- * a caderneta é que caiu, amostras que discordam) devolve false.
+ * DELA) ou reserva (a caderneta TAMBÉM caiu e a reserva deu a conexão: as duas
+ * classes valem), sem x-ikcous-estado nem x-ikcous-ref e sem ref Supabase no
+ * HTML. Amostras que diferem SÓ entre hit e reserva são a mesma loja
+ * (`soACadernetaOscila`). Qualquer outra combinação (503 da Vercel sem o
+ * marcador, caderneta erro = a caderneta é que caiu sem reserva, amostras que
+ * discordam) devolve false.
  */
 export function bancoIndisponivel(sonda) {
   const ficha = sonda?.ficha;
-  if (!ficha || ficha.estavel === false) return false;
+  if (!ficha) return false;
   const amostras =
     Array.isArray(sonda.amostras) && sonda.amostras.length
       ? sonda.amostras
       : [ficha];
+  if (ficha.estavel === false && !soACadernetaOscila(amostras)) return false;
   return amostras.every(
     (a) =>
       a.status === 503 &&
       a.porteiro === PORTEIRO_BANCO_INDISPONIVEL &&
-      a.caderneta === "hit" &&
+      (a.caderneta === "hit" || a.caderneta === CADERNETA_RESERVA) &&
       (a.estado ?? null) === null &&
       (a.refPorteiro ?? null) === null &&
       Array.isArray(a.refs) &&
@@ -695,14 +716,56 @@ const norm = (s) =>
     .trim()
     .toLowerCase();
 
-// Fichas comparáveis entre endereços: estáveis, caderneta hit, UM ref e título.
+/** Valor de x-ikcous-caderneta quando o porteiro abriu pela reserva (T3). */
+const CADERNETA_RESERVA = "reserva";
+
+/**
+ * As amostras divergem SÓ na caderneta, entre hit e reserva (uma instância
+ * ainda com a ficha, outra já aberta pela reserva)? Então é a MESMA loja e a
+ * divergência é a caderneta caindo, não ficha trocada. Qualquer outro campo
+ * da comparação de estabilidade (`chaveDaAmostra`: HTTP, título, refs,
+ * publicUrl) diferente, ou outra caderneta (erro, miss), continua divergente.
+ */
+function soACadernetaOscila(amostras) {
+  if (amostras.length === 0) return false;
+  const semCaderneta = (a) =>
+    JSON.stringify([a.status, a.titulo, a.refs, a.publicUrl]);
+  const primeira = semCaderneta(amostras[0]);
+  return amostras.every(
+    (a) =>
+      (a.caderneta === "hit" || a.caderneta === CADERNETA_RESERVA) &&
+      semCaderneta(a) === primeira,
+  );
+}
+
+const amostrasDe = (sonda) =>
+  Array.isArray(sonda?.amostras) && sonda.amostras.length
+    ? sonda.amostras
+    : sonda?.ficha
+      ? [sonda.ficha]
+      : [];
+
+/**
+ * A ficha serve uma página de loja que entra nas conferências ENTRE
+ * endereços (isolamento cruzado e canônico)? Caderneta hit OU reserva, e
+ * estável OU divergindo só na caderneta (`soACadernetaOscila`). A reserva não
+ * pode tirar o endereço dessas conferências: senão um LOJA_TROCADA entre
+ * endereços some atrás de CADERNETA_NA_RESERVA (revisão Opus da T10).
+ */
+function fichaDeLojaConferivel(sonda) {
+  const f = sonda?.ficha;
+  if (!f) return false;
+  if (f.caderneta !== "hit" && f.caderneta !== CADERNETA_RESERVA) return false;
+  return f.estavel === true || soACadernetaOscila(amostrasDe(sonda));
+}
+
+// Fichas comparáveis entre endereços: conferíveis (hit ou reserva), UM ref e título.
 function fichasComparaveis(sondas, ignorar) {
   return sondas
     .filter(
       (s) =>
         !ignorar.has(s.dominio) &&
-        s.ficha?.estavel &&
-        s.ficha.caderneta === "hit" &&
+        fichaDeLojaConferivel(s) &&
         s.ficha.refs.length === 1 &&
         s.ficha.titulo,
     )
@@ -923,7 +986,8 @@ export async function lerTitulosNoBanco(
 
 /**
  * O endereço CANÔNICO de cada loja é o publicUrl da ficha (dominio_publico do
- * cadastro frota_lojas). Para cada loja com caderneta hit:
+ * cadastro frota_lojas). Para cada loja com caderneta hit (ou reserva:
+ * `fichaDeLojaConferivel`):
  *  - a ficha tem de trazer publicUrl https, sem caminho, query nem credencial;
  *  - o host dele tem de ser um endereço do inventário que responde 200 hit
  *    (senão o cliente cai num endereço que não serve a loja);
@@ -940,8 +1004,7 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
   const canonicos = new Set();
   for (const s of sondas) {
     const f = s.ficha;
-    if (ignorar.has(s.dominio) || !f?.estavel || f.caderneta !== "hit")
-      continue;
+    if (ignorar.has(s.dominio) || !fichaDeLojaConferivel(s)) continue;
     // Página de loja fora do ar (válida ou não) ou de banco fora do ar não
     // serve loja, então não tem canônico a provar: quem a reprova é `classificar`.
     if (alegaForaDoAr(f) || bancoIndisponivel(s)) continue;
@@ -974,7 +1037,13 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
         s.dominio,
         `publicUrl aponta para ${u.host}, que não é endereço do inventário`,
       );
-    } else if (!df || df.status !== 200 || df.caderneta !== "hit") {
+    } else if (
+      !df ||
+      df.status !== 200 ||
+      (df.caderneta !== "hit" && df.caderneta !== CADERNETA_RESERVA)
+    ) {
+      // Canônico aberto pela reserva serve a loja: vale aqui; a reserva em si
+      // já reprova o PRÓPRIO endereço dele (CADERNETA_NA_RESERVA).
       add(
         s.dominio,
         `publicUrl aponta para ${u.host}, que não responde 200 hit (HTTP ${df?.status ?? "-"}, caderneta ${df?.caderneta ?? "-"})`,
@@ -1072,10 +1141,21 @@ export function classificar(alvo, sonda, ctx) {
   const achados = [];
   const add = (classe, motivo) => achados.push({ classe, motivo });
   const { ficha, versao } = sonda;
+  const amostrasDaPagina = amostrasDe(sonda);
+  const naReserva = amostrasDaPagina.filter(
+    (a) => a.caderneta === CADERNETA_RESERVA,
+  ).length;
+
+  // 0) A caderneta central caiu e o porteiro abriu pela reserva (T10).
+  if (naReserva)
+    add(
+      "CADERNETA_NA_RESERVA",
+      `x-ikcous-caderneta: reserva em ${naReserva} de ${amostrasDaPagina.length} amostras de "/" (HTTP ${ficha?.status ?? "-"}): a caderneta central falhou e o porteiro abriu pela reserva`,
+    );
 
   // 1) A ficha que o porteiro serve.
   if (ficha) {
-    if (!ficha.estavel) {
+    if (!ficha.estavel && !soACadernetaOscila(amostrasDaPagina)) {
       const resumo = [
         ...new Set(
           sonda.amostras.map(
@@ -1108,24 +1188,34 @@ export function classificar(alvo, sonda, ctx) {
     } else if (!alvo.esperado && bancoIndisponivel(sonda)) {
       add(
         "BANCO_INDISPONIVEL",
-        `o banco da loja deste endereço está fora do ar (HTTP 503, x-ikcous-porteiro: ${PORTEIRO_BANCO_INDISPONIVEL}, caderneta hit): a caderneta conhece a loja, mas o banco Supabase dela não respondeu (projeto pausado ou incidente)`,
+        naReserva
+          ? `o banco da loja deste endereço está fora do ar (HTTP 503, x-ikcous-porteiro: ${PORTEIRO_BANCO_INDISPONIVEL}, caderneta reserva): a reserva da caderneta deu a conexão da loja, mas o banco Supabase dela não respondeu (projeto pausado ou incidente)`
+          : `o banco da loja deste endereço está fora do ar (HTTP 503, x-ikcous-porteiro: ${PORTEIRO_BANCO_INDISPONIVEL}, caderneta hit): a caderneta conhece a loja, mas o banco Supabase dela não respondeu (projeto pausado ou incidente)`,
       );
     } else if (!alvo.esperado) {
-      if (ficha.caderneta !== "hit") {
+      // Na reserva a página é de loja: confere-se como hit (refs, título,
+      // HTTP, selo); a reserva em si já virou CADERNETA_NA_RESERVA acima.
+      const comPagina =
+        ficha.caderneta === "hit" || ficha.caderneta === CADERNETA_RESERVA;
+      if (!comPagina) {
         add(
           "ESTADO_INESPERADO",
           `endereço sem ficha de loja (caderneta=${ficha.caderneta ?? "(ausente)"}, HTTP ${ficha.status}) e fora de enderecosEsperados da política`,
         );
       } else {
+        const cad = ficha.caderneta;
         if (ficha.refs.length === 0)
-          add("LOJA_TROCADA", "caderneta hit mas o HTML não traz ref Supabase");
+          add(
+            "LOJA_TROCADA",
+            `caderneta ${cad} mas o HTML não traz ref Supabase`,
+          );
         else if (ficha.refs.length > 1)
           add(
             "LOJA_TROCADA",
-            `caderneta hit com mais de um ref Supabase no HTML (${ficha.refs.join(", ")})`,
+            `caderneta ${cad} com mais de um ref Supabase no HTML (${ficha.refs.join(", ")})`,
           );
         if (!ficha.titulo)
-          add("LOJA_TROCADA", "caderneta hit mas a página não tem <title>");
+          add("LOJA_TROCADA", `caderneta ${cad} mas a página não tem <title>`);
         if (ficha.status !== 200)
           add(
             "ESTADO_INESPERADO",
@@ -1834,15 +1924,19 @@ export function montarRelatorio({
   }
   for (const aviso of vercel?.avisos ?? []) linhas.push(`- AVISO: ${aviso}`);
 
+  // O conserto de CADA classe do endereço, não só da mais grave: com a
+  // caderneta na reserva E o banco fora, os dois consertos aparecem.
+  const temClasse = (r, c) =>
+    r.classe === c || (r.achados ?? []).some((a) => a.classe === c);
   const presentes = GRAVIDADE.filter(
-    (c) => c !== "OK" && resultados.some((r) => r.classe === c),
+    (c) => c !== "OK" && resultados.some((r) => temClasse(r, c)),
   );
   if (presentes.length) {
     linhas.push("", "## Como recuperar", "");
     for (const c of presentes) {
       linhas.push(
         `- **${c}** (${resultados
-          .filter((r) => r.classe === c)
+          .filter((r) => temClasse(r, c))
           .map((r) => r.dominio)
           .join(", ")}): ${COMO_RECUPERAR[c]}`,
       );

@@ -85,9 +85,24 @@ describe("grafo de imports de middleware.ts (a borda)", () => {
     // Base de 31/10/2026: `publicStoreIdentity` (createClient + zod, ja roda na
     // borda) e o TIPO de `vite-plugin-pwa` em `manifestoBase`. Pacote novo aqui
     // e decisao consciente, nao efeito colateral.
+    // 26/11/2026: `@vercel/global-config` (o leitor da reserva da caderneta,
+    // plano `PLANO-RESERVA-DA-CADERNETA-26-11.md`, D1 aprovada pelo socio e
+    // T5: codigo lido, Apache-2.0, sem script de instalacao). Entra SO pelo
+    // leitor -- o teste abaixo trava isso.
     expect([...externos.keys()].sort()).toEqual(
-      ["@supabase/supabase-js", "vite-plugin-pwa", "zod"].sort(),
+      [
+        "@supabase/supabase-js",
+        "@vercel/global-config",
+        "vite-plugin-pwa",
+        "zod",
+      ].sort(),
     );
+  });
+
+  it("a Global Config so entra pelo leitor da reserva (nem o porteiro nem o middleware a importam)", () => {
+    expect(externos.get("@vercel/global-config")).toEqual([
+      "src/hospedagem/leitorDaReserva.ts",
+    ]);
   });
 
   it("o cartaz so importa modulos puros por caminho relativo", () => {

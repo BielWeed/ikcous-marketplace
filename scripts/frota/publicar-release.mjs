@@ -47,6 +47,13 @@
  *      também BLOQUEIA, pelo nome.
  *   4. Qualquer falha das etapas 1–3 IMPEDE o promote e diz o alvo e o comando
  *      que resolve. Sem `--promover`, para aqui (ensaio).
+ *   4b. RESERVA DA CADERNETA (politica.json reservaDaCaderneta; `passoDaReserva`):
+ *      sem bloqueio, o ensaio só lê a reserva na Global Config e mostra a
+ *      diferença; o `--promover` grava ANTES do promote se a lista de lojas
+ *      mudou, espera a propagação e só então promove. Gravação que falha (cota
+ *      inclusive) ou endereço indeterminado IMPEDE o promote. Com a reserva
+ *      configurada, o "/" do candidato também tem de dizer
+ *      `x-ikcous-reserva: ligada`. `globalConfigId` null = só avisa.
  *   5. `--promover`: `vercel promote <deployment>` — leva TODOS os domínios de
  *      produção de uma vez, sem rebuild — e roda a conferência da frota com o
  *      SHA: versão, isolamento e destino canônico de cada endereço, e a
@@ -76,6 +83,13 @@
  * (projeto pausado). Banco que responde à sonda = o defeito é do front novo
  * (FALHOU, rollback); sonda que não roda = FALHOU. Antes do promote, o banco fora
  * BLOQUEIA: a loja não é pulada (voltaria com o front novo sobre o banco velho).
+ * Depois do promote, CADERNETA NA RESERVA (com ou sem o banco da loja fora,
+ * provado pela mesma sonda direta) e nada mais = 1, mas SEM o rollback, só se a
+ * caderneta, perguntada de novo pelo endereço próprio do deployment promovido
+ * (sondarCadernetaDoDeployment), também não responder: o candidato só provou o
+ * caminho miss do porteiro novo, e caderneta respondendo (ou sonda que não
+ * roda) = a reserva pode ser do front novo, FALHOU com o rollback (ver
+ * cadernetaForaDepoisDoPromote).
  */
 
 import { execFile, execFileSync } from "node:child_process";
@@ -108,6 +122,19 @@ import {
   resolverCliVercel,
   validarVersao,
 } from "./conferir-frota.mjs";
+import {
+  configDaReserva,
+  criarVercelApi,
+  descreverDiferenca,
+  diferenca,
+  enderecosIndeterminados,
+  gravarReserva,
+  lerReservaAtual,
+  mesmaListaDeLojas,
+  montarReserva,
+  problemasDaReserva,
+  problemasDosIndeterminados,
+} from "./reserva-da-caderneta.mjs";
 
 const require = createRequire(import.meta.url);
 const {
@@ -202,13 +229,18 @@ const normalizar = (texto) =>
 
 // ------------------------------------------------------------------ etapa 1
 
-/** Confere o deployment candidato. Devolve { ok, deployment, problemas[] }. */
+/**
+ * Confere o deployment candidato. Devolve { ok, deployment, problemas[] }.
+ * `exigirReserva` (a reserva da caderneta configurada em politica.json): o
+ * "/" do candidato também tem de dizer `x-ikcous-reserva: ligada`.
+ */
 export async function conferirCandidato({
   sha,
   deploymentId,
   politica,
   vercelApi,
   fetchImpl,
+  exigirReserva = false,
 }) {
   const problemas = [];
   let d;
@@ -294,6 +326,7 @@ export async function conferirCandidato({
       await res.text();
       const porteiro = res.headers.get("x-ikcous-porteiro");
       const caderneta = res.headers.get("x-ikcous-caderneta");
+      const reserva = res.headers.get("x-ikcous-reserva");
       if (!porteiro)
         problemas.push(
           `candidato respondeu a "/" (HTTP ${res.status}) sem x-ikcous-porteiro: o middleware (porteiro) não carregou na borda`,
@@ -301,6 +334,13 @@ export async function conferirCandidato({
       else if (caderneta !== "miss" && caderneta !== "hit")
         problemas.push(
           `candidato respondeu a "/" (HTTP ${res.status}, x-ikcous-porteiro ${celula(porteiro)}) ${caderneta === null ? "sem x-ikcous-caderneta" : `com x-ikcous-caderneta=${celula(caderneta)}`}, esperado miss ou hit: a caderneta da frota não respondeu ao candidato (variáveis IKCOUS_FROTA_* erradas ou faltando, ou o banco da caderneta fora do ar); promover este deploy derrubaria todas as lojas`,
+        );
+      // Reserva configurada: o "não achei" do porteiro diz se o deploy novo
+      // enxerga a Global Config (`ligada`). Sem o cabeçalho, ou com outro
+      // valor, as lojas ficariam sem a reserva quando a caderneta cair.
+      else if (exigirReserva && reserva !== "ligada")
+        problemas.push(
+          `candidato respondeu a "/" (HTTP ${res.status}, x-ikcous-caderneta ${celula(caderneta)}) ${reserva === null ? "sem x-ikcous-reserva" : `com x-ikcous-reserva=${celula(reserva)}`}, esperado ligada: o deploy novo não enxerga a reserva da caderneta (variável GLOBAL_CONFIG ausente neste deploy, ou a Global Config não conectada em Production); promover este deploy deixaria as lojas sem a reserva se a caderneta cair`,
         );
     } catch (e) {
       problemas.push(`"/" do candidato não lida: ${e.message}`);
@@ -607,6 +647,93 @@ export async function provarBancosFora(
   return provas;
 }
 
+const RE_URL_DO_DEPLOYMENT = /^[a-z0-9.-]+\.vercel\.app$/;
+
+/**
+ * Pergunta à caderneta central se ela responde, DEPOIS do promote, pelo
+ * endereço próprio do deployment promovido (`<url>.vercel.app`, que não é
+ * loja): GET "/" como a 1a abertura, e o porteiro diz em `x-ikcous-caderneta`
+ * o que a caderneta respondeu. É o caminho `miss` que `conferirCandidato` já
+ * provou ANTES do promote, com o mesmo código e as mesmas variáveis
+ * IKCOUS_FROTA_* deste deployment (a sonda não precisa saber onde a caderneta
+ * mora nem a chave dela). Devolve { estado, detalhe }:
+ *  - "no-ar": miss ou hit em alguma tentativa — a caderneta respondeu;
+ *  - "fora": `erro` em TODAS as tentativas (1 + no máximo 1 nova);
+ *  - "nao-rodou": endereço fora de `<x>.vercel.app`, rede, resposta sem
+ *    `x-ikcous-porteiro` ou qualquer outro valor (ausente, reserva): o que não
+ *    prova a caderneta fora. O `detalhe` nunca leva a mensagem do erro.
+ */
+export async function sondarCadernetaDoDeployment(
+  url,
+  { fetchImpl = fetch, timeoutMs = 15000, novasTentativas = 1 } = {},
+) {
+  if (typeof url !== "string" || !RE_URL_DO_DEPLOYMENT.test(url))
+    return {
+      estado: "nao-rodou",
+      detalhe: "sem o endereço próprio (.vercel.app) do deployment promovido",
+    };
+  let ultimo = null;
+  let todasErro = true;
+  for (let n = 0; n <= Math.min(1, Math.max(0, novasTentativas)); n++) {
+    try {
+      const res = await fetchImpl(`https://${url}/?t=${Date.now()}`, {
+        cache: "no-store",
+        redirect: "manual",
+        headers: CABECALHOS_DE_PRIMEIRA_ABERTURA,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      await res.text().catch(() => "");
+      const porteiro = res.headers.get("x-ikcous-porteiro");
+      const caderneta = res.headers.get("x-ikcous-caderneta");
+      if (porteiro && (caderneta === "miss" || caderneta === "hit"))
+        return {
+          estado: "no-ar",
+          detalhe: `${url} respondeu HTTP ${res.status} com x-ikcous-caderneta: ${caderneta}`,
+        };
+      if (porteiro && caderneta === "erro") {
+        ultimo = `${url} respondeu HTTP ${res.status} com x-ikcous-caderneta: erro`;
+        continue;
+      }
+      todasErro = false;
+      ultimo = porteiro
+        ? `${url} respondeu HTTP ${res.status} com x-ikcous-caderneta: ${celula(caderneta ?? "(ausente)")}`
+        : `${url} respondeu HTTP ${res.status} sem x-ikcous-porteiro`;
+    } catch (e) {
+      todasErro = false;
+      ultimo = `${url} não respondeu (${e?.name === "TimeoutError" || e?.name === "AbortError" ? "tempo esgotado" : "erro de rede"})`;
+    }
+  }
+  return { estado: todasErro ? "fora" : "nao-rodou", detalhe: ultimo };
+}
+
+/**
+ * A prova de que a caderneta caiu, para a reserva depois do promote:
+ * `sondar(url)` (a dependência `sondarCaderneta`) protegida — dependência
+ * ausente, que lança ou que devolve algo fora do contrato = "nao-rodou", o
+ * lado seguro (o rollback fica).
+ */
+export async function provarCadernetaFora(url, sondar) {
+  if (typeof sondar !== "function")
+    return {
+      estado: "nao-rodou",
+      detalhe: "a sonda da caderneta não está disponível",
+    };
+  try {
+    const r = await sondar(url);
+    if (r?.estado === "fora" || r?.estado === "no-ar")
+      return { estado: r.estado, detalhe: String(r.detalhe ?? "") };
+    return {
+      estado: "nao-rodou",
+      detalhe: String(r?.detalhe ?? "sem resposta da sonda"),
+    };
+  } catch {
+    return {
+      estado: "nao-rodou",
+      detalhe: "a sonda da caderneta falhou ao rodar",
+    };
+  }
+}
+
 /** O bloqueio de UM endereço com o banco da loja fora do ar, antes do promote. */
 export function motivoDoBancoForaAntes(dominio) {
   return `o banco da loja em ${dominio} está fora do ar (pausado pelo Supabase ou incidente): o porteiro respondeu 503 banco-indisponivel. A loja NÃO é pulada: ela voltaria com o front novo sobre o banco velho. Saídas: (1) restaurar o projeto ("Restore project" no painel do Supabase; para loja OAuth, \`node scripts/frota/acordar-projeto.mjs\`) e rodar o ensaio de novo; (2) só se a loja NÃO for a IKCOUS nem a Savy, adormecê-la pela caderneta (\`node scripts/frota/estado-da-loja.mjs --adormecer ...\`, decisão do sócio) e rodar o ensaio de novo.`;
@@ -740,6 +867,95 @@ export function incertezaDepoisDoPromote(pos, deploymentId, lojasAntes = []) {
   if (!semResposta.size && !bancoFora.size) return null;
   return {
     semResposta: [...semResposta].sort(),
+    bancoFora: [...bancoFora].sort(),
+  };
+}
+
+/** Achados que, sozinhos, dizem "a caderneta e/ou o banco caiu", nunca "front errado". */
+const CLASSES_SEM_ROLLBACK = new Set([
+  "CADERNETA_NA_RESERVA",
+  "BANCO_INDISPONIVEL",
+]);
+
+/**
+ * DEPOIS do promote: o que reprova a conferência é SÓ a caderneta central na
+ * reserva (CADERNETA_NA_RESERVA), com ou sem o banco da loja fora
+ * (BANCO_INDISPONIVEL)? Devolve { naReserva, bancoFora } (domínios, em ordem)
+ * ou null. É CANDIDATO a FALHOU (código 1) sem o rollback, e só isso: o
+ * candidato `.vercel.app` não é loja e só exercitou o caminho `miss` do
+ * porteiro novo (`conferirCandidato`), nunca o `hit`, então a reserva nas
+ * lojas pode ser um porteiro novo que não lê o hit, com a caderneta no ar.
+ * Quem chama ainda tem de provar a caderneta fora (`provarCadernetaFora`,
+ * pelo endereço próprio do deployment promovido); respondendo ela, ou sem
+ * prova, é o FALHOU com o rollback. Mesmas provas
+ * de `incertezaDepoisDoPromote`: Vercel lida, inventário completo, cada
+ * endereço que reprova aponta para `deploymentId` e só tem estes achados,
+ * nenhum endereço sumiu, endereço na reserva COM página serve a ficha
+ * (`ficha.refs`) exatamente da loja dona dele em `lojasAntes` (sem ficha, sem
+ * dona ou com outro ref = null: a reserva abrindo a loja errada pede o
+ * rollback), e loja cadastrada que não apareceu tinha, antes do promote, um
+ * endereço agora na reserva (com a página dela) ou com o banco fora. Sem NENHUM
+ * endereço na reserva é null: só banco é o INCERTO de antes. O banco fora
+ * daqui ainda tem de ser provado pela sonda direta (quem chama).
+ */
+export function cadernetaForaDepoisDoPromote(
+  pos,
+  deploymentId,
+  lojasAntes = [],
+) {
+  if (pos?.ok === true || !Array.isArray(pos?.resultados)) return null;
+  if (typeof deploymentId !== "string" || !deploymentId) return null;
+  if (pos.vercel?.ok !== true || pos.inventario?.completo !== true) return null;
+  const cobertura = pos.cobertura;
+  if (
+    !Array.isArray(cobertura?.lojasNaoSondadas) ||
+    !Array.isArray(cobertura?.dominiosNaoSondados) ||
+    cobertura.dominiosNaoSondados.length
+  )
+    return null;
+  const naReserva = new Set();
+  const bancoFora = new Set();
+  const antes = Array.isArray(lojasAntes) ? lojasAntes : [];
+  for (const r of pos.resultados) {
+    if (CLASSES_SEM_FALHA.has(r?.classe)) continue;
+    const achados = Array.isArray(r?.achados) ? r.achados : [];
+    if (!achados.length || r.deploymentId !== deploymentId) return null;
+    if (!achados.every((a) => CLASSES_SEM_ROLLBACK.has(a?.classe))) return null;
+    const reserva = achados.some((a) => a.classe === "CADERNETA_NA_RESERVA");
+    const semBanco = achados.some((a) => a.classe === "BANCO_INDISPONIVEL");
+    // Na reserva COM página (sem o banco fora), a página tem de ser da loja
+    // DONA do endereço antes do promote: a reserva abrindo outra loja é
+    // isolamento quebrado, e pode ser do front novo. Só o 503 do banco fora
+    // não traz ref; esse passa pela sonda direta ao banco (quem chama).
+    if (reserva && !semBanco) {
+      const dona = antes.find(
+        (l) => Array.isArray(l?.dominios) && l.dominios.includes(r.dominio),
+      );
+      const refs = r.ficha?.refs;
+      if (
+        typeof dona?.ref !== "string" ||
+        !Array.isArray(refs) ||
+        refs.length !== 1 ||
+        refs[0] !== dona.ref
+      )
+        return null;
+    }
+    if (reserva) naReserva.add(r.dominio);
+    if (semBanco) bancoFora.add(r.dominio);
+  }
+  if (!naReserva.size) return null;
+  // Loja sumida: um endereço dela está agora na reserva (com a página DELA,
+  // conferida acima) ou com o banco fora (503 sem ref).
+  for (const loja of cobertura.lojasNaoSondadas) {
+    const dela = antes.find((l) => l?.ref === loja?.ref);
+    if (
+      !Array.isArray(dela?.dominios) ||
+      !dela.dominios.some((d) => naReserva.has(d) || bancoFora.has(d))
+    )
+      return null;
+  }
+  return {
+    naReserva: [...naReserva].sort(),
     bancoFora: [...bancoFora].sort(),
   };
 }
@@ -2259,6 +2475,130 @@ export async function contextoDaRelease({ sha, politica, canais, deps }) {
   };
 }
 
+// ------------------------------------------------------------------ passo 4b: reserva da caderneta
+
+/** Propagação da Global Config (até 10 s, doc da Vercel): grava, espera, promove. */
+export const ESPERA_DA_RESERVA_MS = 10000;
+
+/**
+ * O passo 4b (PLANO-RESERVA-DA-CADERNETA-26-11, T9), a partir do inventário
+ * que o portão JÁ leu. Só roda sem bloqueio nas etapas 1–3. Devolve
+ * { linhas, bloqueios }:
+ *  - desligada (politica.json globalConfigId null ou sem o bloco): só avisa;
+ *  - configuração fora do formato: bloqueia;
+ *  - ensaio: SÓ LÊ a store e mostra a diferença; bloqueia o que faria o
+ *    --promover recusar (endereço indeterminado, reserva recusada, store não
+ *    lida), para o "PRONTO" do ensaio continuar valendo para o --promover;
+ *  - --promover: `gravarReserva` (grava só se a LISTA de lojas mudou, relê e
+ *    confere); gravada = espera a propagação antes do promote; qualquer outro
+ *    desfecho (recusa, falha, cota) bloqueia e o front NÃO é promovido.
+ * `lojasObrigatorias` já vem SEM as lojas fora do ar por decisão: a reserva só
+ * leva loja ativa (D3), e loja adormecida não pode travar a publicação.
+ */
+export async function passoDaReserva({
+  config,
+  inventario,
+  politica,
+  sha,
+  agora,
+  lojasObrigatorias,
+  promover,
+  api,
+  esperar,
+}) {
+  const linhas = ["## 4b. Reserva da caderneta", ""];
+  const bloqueios = [];
+  const alvo = "reserva da caderneta";
+  if (config.globalConfigId === null) {
+    linhas.push(
+      `AVISO: ${config.motivo ?? "a reserva da caderneta não está configurada."} A publicação segue sem a reserva.`,
+      "",
+    );
+    return { linhas, bloqueios };
+  }
+  if (!config.configurada) {
+    bloqueios.push({
+      alvo: "scripts/frota/politica.json",
+      motivo: config.motivo,
+    });
+    linhas.push(`BLOQUEADO: ${config.motivo}`, "");
+    return { linhas, bloqueios };
+  }
+  const nova = montarReserva(inventario, { sha, agora, politica });
+  const indeterminados = enderecosIndeterminados(inventario, politica);
+  linhas.push(
+    `Montada: ${Object.keys(nova.hosts).length} endereços de lojas ativas.`,
+  );
+
+  if (!promover) {
+    for (const p of [
+      ...problemasDosIndeterminados(indeterminados),
+      ...problemasDaReserva(nova, { lojasObrigatorias }),
+    ])
+      bloqueios.push({ alvo, motivo: `o --promover recusaria: ${p}` });
+    let atual;
+    try {
+      atual = await lerReservaAtual(api, config);
+    } catch (e) {
+      bloqueios.push({
+        alvo,
+        motivo: `reserva atual não lida (o --promover também não gravaria): ${e.message}`,
+      });
+      linhas.push("Na store: NÃO LIDA.", "");
+      return { linhas, bloqueios };
+    }
+    linhas.push(
+      atual === null
+        ? "Na store: nenhuma reserva gravada ainda."
+        : "Na store: reserva lida.",
+      mesmaListaDeLojas(atual, nova)
+        ? "Igual à atual (só a lista de lojas conta): o --promover não gravaria nada."
+        : "Diferente da atual: o --promover gravaria a reserva antes de promover.",
+      "",
+      ...descreverDiferenca(diferenca(atual, nova)),
+      "",
+    );
+    return { linhas, bloqueios };
+  }
+
+  const r = await gravarReserva({
+    nova,
+    api,
+    config,
+    lojasObrigatorias,
+    indeterminados,
+  });
+  if (r.diferenca) linhas.push("", ...descreverDiferenca(r.diferenca));
+  if (r.estado === "igual")
+    linhas.push(
+      "",
+      "Igual à atual (só a lista de lojas conta): nada gravado.",
+      "",
+    );
+  else if (r.estado === "gravada") {
+    linhas.push(
+      "",
+      `Gravada e conferida na releitura. Esperando ${ESPERA_DA_RESERVA_MS / 1000} s para a Global Config propagar antes de promover.`,
+      "",
+    );
+    await esperar(ESPERA_DA_RESERVA_MS);
+  } else {
+    // Cota tem mensagem e alvo próprios: nada está quebrado, o plano grátis
+    // só não aceita mais gravações neste mês.
+    const alvoDaFalha =
+      r.estado === "cota"
+        ? "reserva da caderneta (cota de gravações da Vercel)"
+        : alvo;
+    for (const m of r.motivos)
+      bloqueios.push({
+        alvo: alvoDaFalha,
+        motivo: `${m}. O front NÃO foi promovido: sem a reserva em dia, uma loja da lista nova ficaria fora do ar se a caderneta cair`,
+      });
+    linhas.push(`BLOQUEADO (${r.estado}).`, "");
+  }
+  return { linhas, bloqueios };
+}
+
 // ------------------------------------------------------------------ orquestração
 
 export async function publicarRelease(opcoes, deps) {
@@ -2274,6 +2614,10 @@ export async function publicarRelease(opcoes, deps) {
     "",
   ];
 
+  // A reserva da caderneta (passo 4b): desligada = politica.json sem a store
+  // (globalConfigId null, ou sem o bloco); aí nada a exige.
+  const configReserva = configDaReserva(politica);
+
   // 1. candidato
   const cand = await conferirCandidato({
     sha,
@@ -2281,6 +2625,7 @@ export async function publicarRelease(opcoes, deps) {
     politica,
     vercelApi: deps.vercelApi,
     fetchImpl: deps.fetchImpl,
+    exigirReserva: configReserva.globalConfigId !== null,
   });
   linhas.push(
     "## 1. Candidato",
@@ -2522,6 +2867,29 @@ export async function publicarRelease(opcoes, deps) {
     );
   }
 
+  // 4b. reserva da caderneta: só sem bloqueio (nunca grava para uma release
+  // que não vai ao ar). Ensaio só lê; --promover grava ANTES do promote, e o
+  // que ele recusar entra nos bloqueios abaixo: o front não é promovido.
+  if (!bloqueios.length) {
+    const foraDoArRefs = new Set(foraDoAr.map((l) => l.ref));
+    const passo = await passoDaReserva({
+      config: configReserva,
+      inventario,
+      politica,
+      sha,
+      agora,
+      lojasObrigatorias: lojasObrigatorias.filter(
+        (l) => !foraDoArRefs.has(l.ref),
+      ),
+      promover,
+      api: deps.reservaApi,
+      esperar:
+        deps.esperar ?? ((ms) => new Promise((ok) => setTimeout(ok, ms))),
+    });
+    linhas.push(...passo.linhas);
+    bloqueios.push(...passo.bloqueios);
+  }
+
   // 4. portão
   if (bloqueios.length) {
     linhas.push(
@@ -2628,6 +2996,41 @@ export async function publicarRelease(opcoes, deps) {
   const bancoNaoProvado = provasDoBanco.filter((p) => p.estado !== "fora");
   if (bancoNaoProvado.length) incerteza = null;
   const incerto = incerteza !== null;
+  // Caderneta central na reserva (com ou sem o banco da loja fora) depois do
+  // promote: FALHOU, mas SEM o rollback, só com a PROVA de que a caderneta
+  // caiu. O candidato (.vercel.app, que não é loja) só exercitou o caminho
+  // `miss` do porteiro novo, nunca o `hit`: um porteiro novo que não lê o hit
+  // também cai na reserva, com a caderneta no ar. Então a caderneta é
+  // perguntada de novo pelo endereço próprio do deployment promovido
+  // (sondarCadernetaDoDeployment): respondeu = o defeito é do front novo,
+  // FALHOU com o rollback; sonda que não roda também. O banco fora daqui passa
+  // pela sonda direta ao banco: banco que responde (ou sonda que não roda) = o
+  // 503 pode ser do front novo, FALHOU com rollback.
+  let cadernetaFora =
+    ok || incerto || producaoDepois !== deploymentId
+      ? null
+      : cadernetaForaDepoisDoPromote(pos, deploymentId, lojas);
+  const provasDoBancoNaReserva = cadernetaFora?.bancoFora.length
+    ? await provarBancosFora(
+        cadernetaFora.bancoFora,
+        lojas,
+        chavesPorRef,
+        deps.sondarBanco,
+      )
+    : [];
+  const bancoSemProva = [
+    ...bancoNaoProvado,
+    ...provasDoBancoNaReserva.filter((p) => p.estado !== "fora"),
+  ];
+  if (bancoSemProva.length) cadernetaFora = null;
+  const provaDaCaderneta = cadernetaFora
+    ? await provarCadernetaFora(cand.deployment?.url, deps.sondarCaderneta)
+    : null;
+  const cadernetaSemProva =
+    provaDaCaderneta && provaDaCaderneta.estado !== "fora"
+      ? provaDaCaderneta
+      : null;
+  if (cadernetaSemProva) cadernetaFora = null;
   const acordou = lojasQueAcordaramNaPublicacao(foraDoAr, pos, inventario, sha);
   linhas.push(
     "",
@@ -2665,17 +3068,42 @@ export async function publicarRelease(opcoes, deps) {
       linhas.push(
         `A sonda direta ao banco (sem o porteiro) confirmou o banco fora: ${resumoDasProvas(provasDoBanco)}. Se depois de restaurado o banco a loja continuar com o 503 banco-indisponivel, rode este portão de novo: com o banco respondendo, ele diz FALHOU e o rollback.`,
       );
-  } else if (!ok) {
-    if (bancoNaoProvado.length)
+  } else if (cadernetaFora) {
+    const { naReserva, bancoFora: bancoForaNaReserva } = cadernetaFora;
+    linhas.push(
+      "",
+      `**FALHOU.** A caderneta central está fora: o porteiro abriu a loja pela reserva da caderneta (x-ikcous-caderneta: reserva) em ${naReserva.join(", ")}, e a caderneta, perguntada de novo pelo endereço próprio do deployment promovido (o caminho que o candidato provou antes do promote), também não respondeu: ${provaDaCaderneta.detalhe}. Voltar a frota não conserta a caderneta: NÃO é caso de rollback. Consertar a caderneta (IKCOUS_FROTA_URL/chave da caderneta, banco da caderneta no ar) e conferir de novo até os endereços voltarem a responder hit.`,
+    );
+    if (bancoForaNaReserva.length)
       linhas.push(
         "",
-        `O porteiro respondeu 503 banco-indisponivel, mas a sonda direta ao banco (sem o porteiro) não confirmou banco fora: ${resumoDasProvas(bancoNaoProvado)}. ${bancoNaoProvado.some((p) => p.estado === "no-ar") ? "Onde o banco respondeu, ele está no ar e a causa é o front novo (o porteiro deste deployment não consegue montar a loja)." : ""}${bancoNaoProvado.some((p) => p.estado === "nao-rodou") ? " Onde a sonda direta ao banco não rodou, não há prova de que o banco caiu." : ""}`,
+        `Além disso, ${lojasComBancoFora(bancoForaNaReserva, lojas).join("; ")} (o porteiro respondeu 503 banco-indisponivel e a sonda direta ao banco confirmou: ${resumoDasProvas(provasDoBancoNaReserva)}). Voltar a frota também não traz o banco de volta: restaure o banco ("Restore project" no painel do Supabase; para loja OAuth, \`node scripts/frota/acordar-projeto.mjs\`).`,
+      );
+    linhas.push(
+      "```",
+      `node scripts/frota/conferir-frota.mjs --sha ${sha} --vercel`,
+      "```",
+    );
+  } else if (!ok) {
+    if (bancoSemProva.length)
+      linhas.push(
+        "",
+        `O porteiro respondeu 503 banco-indisponivel, mas a sonda direta ao banco (sem o porteiro) não confirmou banco fora: ${resumoDasProvas(bancoSemProva)}. ${bancoSemProva.some((p) => p.estado === "no-ar") ? "Onde o banco respondeu, ele está no ar e a causa é o front novo (o porteiro deste deployment não consegue montar a loja)." : ""}${bancoSemProva.some((p) => p.estado === "nao-rodou") ? " Onde a sonda direta ao banco não rodou, não há prova de que o banco caiu." : ""}`,
+      );
+    if (cadernetaSemProva)
+      linhas.push(
+        "",
+        cadernetaSemProva.estado === "no-ar"
+          ? `O porteiro abriu as lojas pela reserva da caderneta, mas a caderneta respondeu ao deployment promovido (${cadernetaSemProva.detalhe}): ela está no ar e a causa é o porteiro novo (não lê a resposta da caderneta para uma loja), não a caderneta.`
+          : `O porteiro abriu as lojas pela reserva da caderneta, mas a sonda da caderneta pelo deployment promovido não provou que a caderneta caiu (${cadernetaSemProva.detalhe}): sem essa prova, a reserva pode ser do front novo.`,
       );
     linhas.push(
       "",
-      bancoNaoProvado.some((p) => p.estado === "no-ar")
+      bancoSemProva.some((p) => p.estado === "no-ar")
         ? "**FALHOU.** O front novo não monta a loja com o banco no ar: voltar AGORA a frota inteira:"
-        : "**FALHOU.** Se houver LOJA_TROCADA (isolamento), voltar AGORA a frota inteira:",
+        : cadernetaSemProva?.estado === "no-ar"
+          ? "**FALHOU.** O porteiro novo não lê a caderneta que está no ar: voltar AGORA a frota inteira:"
+          : "**FALHOU.** Se houver LOJA_TROCADA (isolamento), voltar AGORA a frota inteira:",
       "```",
       `vercel rollback ${producaoAnterior} --yes --scope ${politica.projetoVercel?.escopo ?? "<slug do time>"}`,
       "```",
@@ -3115,6 +3543,8 @@ export function dependenciasReais({ rodarGh, rodarSupabase } = {}) {
     fetchImpl: fetch,
     // Só leitura, chave publicável, 5 s, no máximo 1 nova tentativa.
     sondarBanco: (supabaseUrl, chave) => sondarBancoDaLoja(supabaseUrl, chave),
+    // GET "/" do endereço próprio do deployment promovido, 15 s, no máximo 1 nova tentativa.
+    sondarCaderneta: (url) => sondarCadernetaDoDeployment(url),
     vercelApi: executor,
     inventariar: (p) =>
       inventariar(p, { pedirVercel: true, executorVercel: executor }),
@@ -3134,6 +3564,9 @@ export function dependenciasReais({ rodarGh, rodarSupabase } = {}) {
       );
       return rodar(comando, args, { timeout: 400000 });
     },
+    // Passo 4b: a Global Config pela sessão da CLI vercel logada (D2).
+    reservaApi: criarVercelApi(),
+    esperar: (ms) => new Promise((ok) => setTimeout(ok, ms)),
     listarMigrationsNoSha: async (sha) =>
       (await git(["ls-tree", "--name-only", `${sha}:supabase/migrations`]))
         .split("\n")

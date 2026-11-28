@@ -4,6 +4,8 @@ import {
   registrarEntrada,
 } from "./src/hospedagem/contador";
 import type { CanalDeEntrada } from "./src/hospedagem/contador";
+import type { AmbienteDaReserva } from "./src/hospedagem/leitorDaReserva";
+import { leitorDaReservaDoAmbiente } from "./src/hospedagem/leitorDaReserva";
 import type {
   AmbientePorteiro,
   EntradaCacheCartaz,
@@ -29,6 +31,14 @@ import {
   precoDaPrevia,
 } from "./src/hospedagem/precoDaPrevia";
 import { VARY_DA_PREVIA, ehRoboDaPrevia } from "./src/hospedagem/roboDaPrevia";
+import type {
+  AmbienteDaSonda,
+  JanelaDaSonda,
+} from "./src/hospedagem/sondaDoCandidato";
+import {
+  CAMINHO_DA_SONDA,
+  atenderSonda,
+} from "./src/hospedagem/sondaDoCandidato";
 import { resumoParaPrevia } from "./src/lib/resumo-para-previa";
 
 // O `matcher` PRECISA ser um array-LITERAL bem aqui — a Vercel/Next lê
@@ -127,6 +137,10 @@ const indexHtmlEmVoo = new Map<string, Promise<IndexHtmlBaixado>>();
 // banco ainda nao tem `contar_entrada` (404) ficam 10 min caladas, por
 // `supabaseUrl` -- ver `registrarEntrada` em `src/hospedagem/contador.ts`.
 const silencioDoContador = new Map<string, number>();
+
+// O teto da sonda do candidato (plano `PLANO-RESERVA-DA-CADERNETA-26-11.md`,
+// T7), por instancia: ver `TETO_DA_SONDA_POR_JANELA` em `sondaDoCandidato.ts`.
+const janelaDaSonda: JanelaDaSonda = { inicio: 0, usados: 0 };
 
 // O segundo argumento que a Vercel entrega ao `middleware` em qualquer
 // framework que nao seja o Next (doc oficial "Routing Middleware", `context`
@@ -408,6 +422,23 @@ export default async function middleware(
     typeof context?.waitUntil === "function"
       ? (promessa: Promise<unknown>) => context.waitUntil(promessa)
       : undefined;
+  // A reserva da caderneta (plano `PLANO-RESERVA-DA-CADERNETA-26-11.md`, T6):
+  // `undefined` sem `GLOBAL_CONFIG`/`EDGE_CONFIG` aceita = reserva desligada
+  // (o porteiro marca `x-ikcous-reserva: desligada`). O MESMO leitor vale para
+  // o documento e para o ramo de robô: um cliente e um cache por instância.
+  const lerReserva = leitorDaReservaDoAmbiente(
+    process.env as AmbienteDaReserva,
+  );
+  // A sonda do candidato (T7): so responde no `.vercel.app` do proprio deploy
+  // com `IKCOUS_SONDA_DO_CANDIDATO=1` em producao; fora disso, 404 sem tocar
+  // em nada. Usa o MESMO `lerReserva` (cache por instancia) e caches novos.
+  if (url.pathname === CAMINHO_DA_SONDA)
+    return atenderSonda(request, process.env as AmbienteDaSonda, {
+      fetchImpl: fetch,
+      resolverNaCaderneta,
+      lerReserva,
+      janela: janelaDaSonda,
+    });
   const caminhoDaPrevia = url.pathname.replace(/\/$/, "");
   if (
     caminhoDaPrevia === "/product-detail" &&
@@ -428,6 +459,7 @@ export default async function middleware(
       {
         fetchImpl: fetch,
         resolverNaCaderneta,
+        lerReserva,
         cache: cachePorteiro,
         cacheForaDoAr,
         cacheSemLoja,
@@ -678,6 +710,7 @@ export default async function middleware(
   return atenderPorteiro(request, process.env as AmbientePorteiro, {
     fetchImpl: fetch,
     resolverNaCaderneta,
+    lerReserva,
     cache: cachePorteiro,
     cacheForaDoAr,
     cacheSemLoja,
