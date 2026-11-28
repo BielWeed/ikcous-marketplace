@@ -31,14 +31,15 @@
  * (`tests/banco/pagamentos-rpc-viva.cjs`, prova (14)). Quem recebeu
  * 'ja_pago' não dispara nada, seja o webhook, o cron ou a confirmação
  * imediata. O comprovante tem ainda a reserva própria
- * (`reivindicar_email_de_confirmacao`). O push NÃO tem reserva própria: a
- * garantia dele é só essa transição única — por isso a regra "efeito só
- * depois de a RPC dizer que ESTE chamador confirmou" vale para o push e o
- * comprovante. ÚNICA exceção: o webhook, em 'ja_pago' de pedido
- * 'pago_apos_expirar' cujo aviso por e-mail ainda não saiu — ou de pedido
- * 'pago' online e recente cujo comprovante ainda não saiu — reenvia SÓ esse
- * e-mail (`reenviarEmailPendenteDoPagamento`); a reserva atômica decide quem
- * envia.
+ * (`reivindicar_email_de_confirmacao`), e o push ao lojista também
+ * (`avisos_ao_lojista`: `pago_fora_do_fluxo:<pedido>` desde o r210-h,
+ * `pedido_pago:<pedido>` desde o lote-582). A regra "efeito só depois de a RPC
+ * dizer que ESTE chamador confirmou" vale para o push e o comprovante. ÚNICAS
+ * exceções, todas do webhook em 'ja_pago' e todas decididas por reserva
+ * atômica: o push ao lojista que a transição entregou a 0
+ * (`reavisarLojistaNaReentrega`), e o e-mail ao cliente que ainda não saiu —
+ * aviso de 'pago_apos_expirar' ou comprovante de 'pago' online e recente
+ * (`reenviarEmailPendenteDoPagamento`).
  *
  * O TEXTO MORA AQUI, UMA VEZ: `webhook-mercadopago/index.ts` e
  * `reconciliar-pagamentos/index.ts` chamam `serve()` no import (guardado só
@@ -82,7 +83,8 @@ export const TETO_DO_EMAIL_MS = ORCAMENTO_DO_ENVIO_MS + 5000;
 export type DepsDosEfeitos = {
   enviarPush?: (args: { supabase: Supabase; aviso: Aviso }) => Promise<void>;
   /** Como `enviarPush`, mas DIZ quantas inscrições receberam (0 = ninguém). É o que o
-   * aviso de 'pago_apos_expirar' usa para reservar/liberar (`avisarAdminUmaVez`).
+   * push ao lojista ('pago' e 'pago_apos_expirar') usa para reservar/liberar
+   * (`avisarAdminUmaVez`).
    * `enviarPush`, quando injetado, tem precedência (o seam antigo, sem contagem: um
    * envio que não lançou conta como entregue). Sem nenhum dos dois: o push real. */
   enviarPushContado?: (args: { supabase: Supabase; aviso: Aviso }) => Promise<number>;
@@ -166,21 +168,29 @@ export function chaveDoAvisoForaDoFluxo(orderId: string): string {
   return `pago_fora_do_fluxo:${orderId}`;
 }
 
+/** A chave da reserva do aviso "Pedido pago" (lote-582): uma por pedido, na MESMA
+ * tabela `avisos_ao_lojista`. Separada da de 'pago_apos_expirar': são dois fatos. */
+export function chaveDoAvisoDePedidoPago(orderId: string): string {
+  return `pedido_pago:${orderId}`;
+}
+
 /**
- * O push "Pagamento fora do fluxo" com reserva e nova tentativa
- * (`avisarAdminUmaVez`): entregue a 1+ inscrição → a chave fica 'enviado' e NUNCA
- * se repete; entrega 0 (sem admin inscrito, VAPID falhou, push lançou) → a reserva
- * é liberada e a próxima entrega do MP ('ja_pago', `reavisarPagamentoForaDoFluxo`)
+ * O push ao lojista do pagamento confirmado ("Pedido pago" ou "Pagamento fora do
+ * fluxo") com reserva e nova tentativa (`avisarAdminUmaVez`): entregue a 1+
+ * inscrição → a chave fica 'enviado' e NUNCA se repete; entrega 0 (sem admin
+ * inscrito, VAPID falhou, push service 5xx ou lento, push lançou) → a reserva é
+ * liberada e a próxima entrega do MP ('ja_pago', `reavisarLojistaNaReentrega`)
  * tenta de novo. Nunca lança.
  */
-async function avisarPagamentoForaDoFluxo(args: {
+async function avisarLojistaComReserva(args: {
   supabase: Supabase;
   orderId: string;
+  resultado: "pago" | "pago_apos_expirar";
   aviso: Aviso;
   enviarPush?: DepsDosEfeitos["enviarPush"];
   enviarPushContado?: DepsDosEfeitos["enviarPushContado"];
 }): Promise<void> {
-  const { supabase, orderId, aviso } = args;
+  const { supabase, orderId, resultado, aviso } = args;
   const injetado = args.enviarPush;
   const empurrar = injetado
     ? async (a: { supabase: Supabase; aviso: Aviso }) => {
@@ -196,14 +206,14 @@ async function avisarPagamentoForaDoFluxo(args: {
     } catch (_erro) {
       // Push que lança = entrega zero (a reserva é liberada). O MESMO registro de
       // antes, para quem vigia o log: o aviso de dinheiro que não saiu.
-      console.error("efeitos-do-pagamento: push ao lojista falhou", { orderId, resultado: "pago_apos_expirar" });
+      console.error("efeitos-do-pagamento: push ao lojista falhou", { orderId, resultado });
       return 0;
     }
   };
   await avisarAdminUmaVez({
     supabase,
     enviarPushContado,
-    chave: chaveDoAvisoForaDoFluxo(orderId),
+    chave: resultado === "pago_apos_expirar" ? chaveDoAvisoForaDoFluxo(orderId) : chaveDoAvisoDePedidoPago(orderId),
     aviso,
     rotulo: "efeitos-do-pagamento",
   });
@@ -245,18 +255,22 @@ export async function aplicarEfeitosDoPagamentoConfirmado(args: {
     }
     const aviso = avisoAoLojista(orderId, resultado, pedido?.total ?? pedido?.total_amount);
 
-    const enviarPush = args.enviarPush ?? dispararPushAoLojistaReal;
     try {
-      // A rejeição de um `enviarPush` injetado cai no catch abaixo, como a de
-      // qualquer efeito. Com teto (o cron: um push service lento não pode
-      // prender o laço de candidatos), a espera é limitada por `comTempoLimite`.
+      // Com teto (o cron: um push service lento não pode prender o laço de
+      // candidatos), a espera é limitada por `comTempoLimite`.
       if (aviso) {
-        // 'pago_apos_expirar' é dinheiro do cliente parado no lojista: o aviso tem
-        // reserva e nova tentativa (a entrega a 0 libera a chave e a reentrega
-        // 'ja_pago' do webhook tenta de novo). 'pago' segue no envio simples.
-        const emVoo = resultado === "pago_apos_expirar"
-          ? avisarPagamentoForaDoFluxo({ supabase, orderId, aviso, enviarPush: args.enviarPush, enviarPushContado: args.enviarPushContado })
-          : enviarPush({ supabase, aviso });
+        // Os dois avisos têm reserva e nova tentativa: a entrega a 0 libera a
+        // chave e a reentrega 'ja_pago' do webhook tenta de novo. 'pago_apos_expirar'
+        // desde o r210-h; 'pago' desde o lote-582 (antes era tiro único, e um push
+        // service fora do ar calava a venda paga).
+        const emVoo = avisarLojistaComReserva({
+          supabase,
+          orderId,
+          resultado,
+          aviso,
+          enviarPush: args.enviarPush,
+          enviarPushContado: args.enviarPushContado,
+        });
         await (args.tetoDoPushMs ? comTempoLimite(emVoo, args.tetoDoPushMs) : emVoo);
       }
     } catch (_erro) {
@@ -282,15 +296,6 @@ export async function aplicarEfeitosDoPagamentoConfirmado(args: {
   } catch (_erro) {
     console.error("efeitos-do-pagamento: efeitos do pagamento confirmado falharam", { orderId, resultado });
   }
-}
-
-/**
- * Push aos admins inscritos (`aviso-ao-lojista.ts`, o mecanismo único — as
- * mesmas leituras, a mesma montagem VAPID, o mesmo `enviarParaInscritos`).
- * Nunca lança.
- */
-export async function dispararPushAoLojistaReal(args: { supabase: Supabase; aviso: Aviso }): Promise<void> {
-  await dispararPushContadoReal({ supabase: args.supabase, aviso: args.aviso, rotulo: "efeitos-do-pagamento" });
 }
 
 /**
@@ -456,54 +461,69 @@ export async function dispararAvisoDePagamentoAtrasadoReal(args: {
 }
 
 /**
- * r210-h — a REENTREGA do aviso "Pagamento fora do fluxo". O push da transição
- * ('pago_apos_expirar') é um tiro: se ele entregou a 0 (nenhum admin com push
- * inscrito, VAPID falhou), a reentrega do MP chega como 'ja_pago' e, pela regra
- * "efeito só para quem fez a transição", não avisava de novo — o dinheiro do
- * cliente ficava no lojista sem alerta. Agora o webhook chama isto no 'ja_pago':
- * só para pedido que ESTÁ 'pago_apos_expirar', pede a MESMA reserva da transição
- * (`pago_fora_do_fluxo:<pedido>`) e: 'enviado' → não repete (sem spam);
- * 'em_envio' → quem está enviando é a outra entrega; 'reservado' (a transição
- * entregou a 0 e liberou) → tenta o push de novo. O texto é o de sempre.
+ * r210-h + lote-582 — a REENTREGA do push ao lojista. O push da transição é um
+ * tiro: se ele entregou a 0 (nenhum admin com push inscrito, VAPID falhou, push
+ * service fora do ar ou lento), a reentrega do MP chega como 'ja_pago' e, pela
+ * regra "efeito só para quem fez a transição", não avisava de novo. Agora o
+ * webhook chama isto no 'ja_pago' e pede a MESMA reserva da transição:
+ * `pago_fora_do_fluxo:<pedido>` para o pedido que ESTÁ 'pago_apos_expirar' (r210-h)
+ * e `pedido_pago:<pedido>` para o que ESTÁ 'pago' com `paid_at` dentro de 24 h
+ * (lote-582). Na reserva: 'enviado' → não repete (sem spam); 'em_envio' → quem
+ * está enviando é a outra entrega; 'reservado' (a transição entregou a 0 e
+ * liberou) → tenta o push de novo. O texto é o de sempre.
  *
- * Pedidos que viraram 'pago_apos_expirar' ANTES desta versão não têm linha de
- * reserva: a primeira reentrega do MP que chegar depois da publicação avisa UMA
- * vez a mais (e confirma a chave); daí em diante, nunca mais.
+ * Pedidos que viraram 'pago_apos_expirar' (ou 'pago', dentro da janela) ANTES da
+ * versão que reserva a chave deles não têm linha de reserva: a primeira reentrega
+ * do MP que chegar depois da publicação avisa UMA vez a mais (e confirma a chave);
+ * daí em diante, nunca mais. A janela do 'pago' existe para isso não alcançar a
+ * notificação tardia de um pedido antigo (o lojista receberia "Pedido pago" de uma
+ * venda de semanas atrás).
  *
  * Nada de e-mail, estoque, status ou dinheiro (o e-mail ao cliente é de
  * `reenviarEmailPendenteDoPagamento`). Nunca lança.
  */
-export async function reavisarPagamentoForaDoFluxo(args: {
+export async function reavisarLojistaNaReentrega(args: {
   supabase: Supabase;
   orderId: string;
   enviarPush?: DepsDosEfeitos["enviarPush"];
   enviarPushContado?: DepsDosEfeitos["enviarPushContado"];
   /** Teto de espera pelo push (o webhook passa o dele); ausente = sem teto. */
   tetoDoPushMs?: number;
+  /** Só o teste fixa o relógio; em produção vale `Date.now()`. */
+  agoraMs?: number;
 }): Promise<void> {
   const { supabase, orderId } = args;
   try {
     const { data, error } = await supabase
       .from("marketplace_orders")
-      .select("payment_status, total, total_amount")
+      .select("payment_status, total, total_amount, paid_at")
       .eq("id", orderId)
       .maybeSingle();
     if (error) throw error;
     const pedido = data as Record<string, unknown> | null;
-    // Falha FECHADA: só o estado lido 'pago_apos_expirar' reavisa.
-    if (pedido?.payment_status !== "pago_apos_expirar") return;
-    const aviso = avisoAoLojista(orderId, "pago_apos_expirar", pedido.total ?? pedido.total_amount);
+    // Falha FECHADA: só o estado lido reavisa — 'pago_apos_expirar' sempre, 'pago'
+    // só com `paid_at` legível dentro da janela.
+    let resultado: "pago" | "pago_apos_expirar";
+    if (pedido?.payment_status === "pago_apos_expirar") {
+      resultado = "pago_apos_expirar";
+    } else if (pedido?.payment_status === "pago" && pagoDentroDaJanela(pedido.paid_at, args.agoraMs ?? Date.now())) {
+      resultado = "pago";
+    } else {
+      return;
+    }
+    const aviso = avisoAoLojista(orderId, resultado, pedido.total ?? pedido.total_amount);
     if (!aviso) return;
-    const emVoo = avisarPagamentoForaDoFluxo({
+    const emVoo = avisarLojistaComReserva({
       supabase,
       orderId,
+      resultado,
       aviso,
       enviarPush: args.enviarPush,
       enviarPushContado: args.enviarPushContado,
     });
     await (args.tetoDoPushMs ? comTempoLimite(emVoo, args.tetoDoPushMs) : emVoo);
   } catch (_erro) {
-    console.error("efeitos-do-pagamento: reaviso do pagamento fora do fluxo falhou", { orderId });
+    console.error("efeitos-do-pagamento: reaviso do push ao lojista falhou", { orderId });
   }
 }
 
@@ -512,11 +532,21 @@ export async function reavisarPagamentoForaDoFluxo(args: {
  * (o SMTP caiu e voltou em minutos ou horas; as notificações irmãs do MP chegam em
  * segundos ou minutos) e deixa de fora o pedido antigo: `confirmation_email_sent_at`
  * nasceu em 21/08/2026 SEM preenchimento retroativo, então todo pedido pago antes
- * disso tem a reserva nula sem nunca ter sido "esquecido". */
+ * disso tem a reserva nula sem nunca ter sido "esquecido". A MESMA janela vale para
+ * o reaviso do push "Pedido pago" (lote-582). */
 export const JANELA_DO_REENVIO_DO_COMPROVANTE_MS = 24 * 60 * 60 * 1000;
 
 /** Quanto um `paid_at` pode estar à frente do relógio desta função (relógios de máquinas diferentes). */
 const TOLERANCIA_DE_RELOGIO_MS = 5 * 60 * 1000;
+
+/** `paid_at` legível e dentro da janela de reentrega. Ausente, nulo, ilegível,
+ * antigo ou do futuro (além da tolerância de relógio) é "não". */
+function pagoDentroDaJanela(paidAt: unknown, agoraMs: number): boolean {
+  if (typeof paidAt !== "string") return false;
+  const idadeMs = agoraMs - Date.parse(paidAt);
+  if (!Number.isFinite(idadeMs)) return false;
+  return idadeMs <= JANELA_DO_REENVIO_DO_COMPROVANTE_MS && idadeMs >= -TOLERANCIA_DE_RELOGIO_MS;
+}
 
 /**
  * Falha FECHADA: só vale o que a leitura afirma. Pago pelo site (`online` no
@@ -526,10 +556,7 @@ const TOLERANCIA_DE_RELOGIO_MS = 5 * 60 * 1000;
  */
 function comprovanteDeReentregaPermitido(pedido: Record<string, unknown>, agoraMs: number): boolean {
   if (pedido.payment_method !== "online" || pedido.canal !== "online") return false;
-  if (typeof pedido.paid_at !== "string") return false;
-  const idadeMs = agoraMs - Date.parse(pedido.paid_at);
-  if (!Number.isFinite(idadeMs)) return false;
-  return idadeMs <= JANELA_DO_REENVIO_DO_COMPROVANTE_MS && idadeMs >= -TOLERANCIA_DE_RELOGIO_MS;
+  return pagoDentroDaJanela(pedido.paid_at, agoraMs);
 }
 
 /**
@@ -546,9 +573,9 @@ function comprovanteDeReentregaPermitido(pedido: Record<string, unknown>, agoraM
  * O que faz: só quando a reserva do e-mail está livre (`confirmation_email_sent_at`
  * nulo — ninguém enviou nem está enviando), repete UM efeito, o e-mail ao
  * cliente: o aviso para 'pago_apos_expirar'; o comprovante para 'pago', este
- * só dentro de `comprovanteDeReentregaPermitido`. Nada de push (o lojista já foi
- * avisado na transição, e o push não tem reserva própria), nada de estoque,
- * status ou dinheiro. Qualquer outro `payment_status` não faz nada.
+ * só dentro de `comprovanteDeReentregaPermitido`. Nada de push (o reaviso ao
+ * lojista é de `reavisarLojistaNaReentrega`, com a reserva própria), nada de
+ * estoque, status ou dinheiro. Qualquer outro `payment_status` não faz nada.
  *
  * SÓ É CHAMADA no caminho 'ja_pago' do webhook, nunca na primeira confirmação
  * (que tem o efeito normal em `aplicarEfeitosDoPagamentoConfirmado`).

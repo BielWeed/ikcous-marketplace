@@ -256,7 +256,7 @@ describe("ShippingCalculator com envelope vazio ou sem data válida no localStor
     expect(cotacoes()).toHaveLength(1);
     expect(confirmacoesDeRevisao()).toHaveLength(0);
     expect(hospedeiro.textContent).toContain(
-      "Nenhuma opção de entrega para este endereço.",
+      "Esta loja ainda não entrega neste CEP. Confira se o CEP está certo.",
     );
   });
 
@@ -267,7 +267,7 @@ describe("ShippingCalculator com envelope vazio ou sem data válida no localStor
 
     expect(cotacoes()).toHaveLength(1);
     expect(hospedeiro.textContent).not.toContain(
-      "Nenhuma opção de entrega para este endereço.",
+      "Esta loja ainda não entrega neste CEP. Confira se o CEP está certo.",
     );
     expect(hospedeiro.textContent).toContain("19,01");
     expect(selecionada?.id).toBe("superfrete-17");

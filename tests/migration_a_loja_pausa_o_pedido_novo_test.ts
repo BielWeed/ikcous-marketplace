@@ -600,6 +600,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
     // 20261654000000: o caixa pertence ao dia em que abriu.
     "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
+    // 20261655000000: a loja nova so vende o que confirmou.
+    "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

@@ -318,7 +318,19 @@ export interface PassoDaLoja {
    * confirmação (o passo segue o rótulo de sempre).
    */
   readonly aConfirmar?: string;
+  /**
+   * O que acontece com as clientes ENQUANTO a lojista não confirma (migration
+   * 20261655000000: o servidor não oferece o que não foi confirmado). Vem junto
+   * com `aConfirmar`, embaixo da frase.
+   */
+  readonly enquantoNaoConfirmar?: string;
 }
+
+/** O que a cliente perde enquanto a lojista não toca "Está certo" (20261655000000). */
+export const ENQUANTO_NAO_CONFIRMAR_A_ENTREGA =
+  "Enquanto você não confirmar, a entrega na cidade não aparece para as clientes.";
+export const ENQUANTO_NAO_CONFIRMAR_O_PAGAMENTO =
+  "Enquanto você não confirmar, a cliente não consegue pagar na entrega.";
 
 /** Só o que os seis passos leem da config da loja. */
 export interface ConfigDosSeisPassos {
@@ -620,7 +632,10 @@ export function seisPassosDaLojaPronta(
       rotuloPendente: recebeAConfirmar
         ? "Confirmar como você recebe"
         : "Configurar como você recebe",
-      ...(recebeAConfirmar && { aConfirmar: recebeAConfirmar }),
+      ...(recebeAConfirmar && {
+        aConfirmar: recebeAConfirmar,
+        enquantoNaoConfirmar: ENQUANTO_NAO_CONFIRMAR_O_PAGAMENTO,
+      }),
       estado: estados.recebe,
       destino: "admin-settings",
     },
@@ -637,7 +652,10 @@ export function seisPassosDaLojaPronta(
         : entregaAlcanceCurto
           ? "Confirmar até onde você entrega"
           : "Configurar a entrega",
-      ...(entregaAConfirmar && { aConfirmar: entregaAConfirmar }),
+      ...(entregaAConfirmar && {
+        aConfirmar: entregaAConfirmar,
+        enquantoNaoConfirmar: ENQUANTO_NAO_CONFIRMAR_A_ENTREGA,
+      }),
       ...(entregaAlcanceCurto && {
         explicacaoPendente: entregaPrefixo
           ? `Hoje você entrega só em CEPs que começam com ${entregaPrefixo}`
