@@ -156,7 +156,7 @@ describe("mensagemDaFalhaDaVenda — o que já era tratado segue idêntico", () 
       precisaEntrarDeNovo: true,
     });
     expect(mensagemDaFalhaDaVenda({ code: "23505" }).mensagem).toBe(
-      "Esta chave de venda já foi usada por outro pedido.",
+      "Esta venda não foi registrada. Toque em Começar uma venda nova e registre de novo.",
     );
     expect(
       mensagemDaFalhaDaVenda({

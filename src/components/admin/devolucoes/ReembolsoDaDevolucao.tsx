@@ -9,6 +9,7 @@ import {
 import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   aguardarComPrazo,
+  ehConexaoCaiuSemResposta,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
@@ -205,8 +206,9 @@ export function ReembolsoDaDevolucao({
       // A gravação pode ter chegado ao servidor: nunca dizer "não foi feito".
       // A resposta que chegar tarde foi descartada pelo prazo: não vira aviso.
       // O `finally` solta os botões e a ficha relê, para repetir só olhando
-      // a situação real.
-      if (ehConsultaSemResposta(e)) {
+      // a situação real. A conexão que CAI no meio (iPhone trocando de app) é
+      // tão incerta quanto o prazo: o mesmo aviso, nunca "tente de novo".
+      if (ehConsultaSemResposta(e) || ehConexaoCaiuSemResposta(e)) {
         toast.warning(SEM_RESPOSTA, { duration: 12_000 });
       } else {
         toast.error(mensagemDoErro(e, ERRO));
@@ -254,6 +256,8 @@ export function ReembolsoDaDevolucao({
         PRAZO_DA_EDGE_MS,
         () => erroDeConsultaSemResposta(),
       );
+      // Sem corpo para ler: segue o ramo do prazo, no `catch`.
+      if (ehConexaoCaiuSemResposta(error)) throw error;
       const c = avisar(error ? await corpoDoErroDaEdge(error) : data);
       if (c.resultado !== "reemitido") return false;
       // A tentativa nova nasce `solicitado`; o clique a executa (o mesmo

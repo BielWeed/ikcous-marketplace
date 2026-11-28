@@ -278,21 +278,21 @@ export function GuiaDoPagamentoQueNaoFechou() {
           <li>
             Para enviar o produto: o painel não reabre pedido cancelado. O envio
             fica por sua conta, fora do app: o pedido continua cancelado aqui.
-            Se o produto não tinha tamanhos quando foi vendido e ganhou tamanhos
-            depois, a peça não voltou ao estoque: ela aparece no topo da tela do
-            produto, no aviso de peça que voltou sem tamanho, com o número deste
-            pedido. Ali, toque em “Não tenho essa peça” e não tire nada do
-            estoque. Nos outros casos a peça já voltou ao estoque — tire as
-            unidades enviadas à mão no cadastro do produto (campo “Disponível
-            para venda”; se o produto tem variações, use esse campo dentro da
-            variação). Esse pedido vai continuar no aviso de pedidos cancelados
-            como “Devolver ao cliente” (mesmo com esse nome, não é para
-            devolver), e a ficha dele vai continuar mostrando o botão “Devolver
-            R$ …”. Não toque nele: depois de enviar, devolver é perder o produto
-            e o dinheiro. Para quem abrir o pedido depois saber, escreva em
-            “Anotações internas” da ficha: produto enviado em [data], combinado
-            com o cliente, não devolver. Não toque em “Já estornei”: nenhum
-            dinheiro foi devolvido.
+            Se a peça aparece no topo da tela do produto, no aviso de peça que
+            voltou sem tamanho, com o número deste pedido (acontece quando o
+            produto ganhou tamanhos depois da venda ou quando o tamanho vendido
+            foi desligado), ela não voltou ao estoque: ali, toque em “Não tenho
+            essa peça” e não tire nada do estoque. Nos outros casos a peça já
+            voltou ao estoque — tire as unidades enviadas à mão no cadastro do
+            produto (campo “Disponível para venda”; se o produto tem variações,
+            use esse campo dentro da variação). Esse pedido vai continuar no
+            aviso de pedidos cancelados como “Devolver ao cliente” (mesmo com
+            esse nome, não é para devolver), e a ficha dele vai continuar
+            mostrando o botão “Devolver R$ …”. Não toque nele: depois de enviar,
+            devolver é perder o produto e o dinheiro. Para quem abrir o pedido
+            depois saber, escreva em “Anotações internas” da ficha: produto
+            enviado em [data], combinado com o cliente, não devolver. Não toque
+            em “Já estornei”: nenhum dinheiro foi devolvido.
           </li>
         </ol>
       </div>

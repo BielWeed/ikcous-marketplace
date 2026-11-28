@@ -624,7 +624,7 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
     expect(variantesNaTela()).toEqual(["Cor / Tamanho: Branca / PP"]);
   });
 
-  it("trava de um grupo: grade com atributo novo em produto legado recebe diagnóstico e NÃO converte", async () => {
+  it("trava de um grupo: produto legado não oferece outro atributo na grade, explica antes e NÃO converte", async () => {
     await montarEmEdicao([
       {
         id: "v9",
@@ -648,25 +648,17 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
     await act(async () => {
       clicarChipObrigatorio("Branca");
     });
-    // Mas misturar com Tamanho viraria o segundo grupo que mente no estoque.
-    await act(async () => {
-      clicarObrigatorio("+ Adicionar outro atributo");
-    });
-    // O seletor já não oferece a peça Tamanho a um produto que usa Cor; o
-    // caminho que sobra é o "Outro" (nome livre), e a trava recusa igual.
-    await escolherAtributo(1, "Tamanho", "grade-nome-1", digitarCampo, {
-      viaOutro: true,
-    });
-    await digitarCampo("grade-valor-1", "P");
-    await act(async () => {
-      clicarPorRotulo("Adicionar valor do atributo 2");
-    });
-    await act(async () => {
-      clicarObrigatorio(BOTAO_GERAR_GRADE);
-    });
-
-    expect(toastError).toHaveBeenCalledTimes(1);
-    expect(toastError.mock.calls[0][0]).toContain('Este produto já usa "Cor"');
+    // Mas misturar com Tamanho viraria o segundo grupo que mente no estoque:
+    // o botão do segundo atributo nem aparece (a trava recusaria no "Gerar",
+    // depois de montado) e a grade diz ANTES o caminho real.
+    expect(
+      botaoPorTexto(document.body, "+ Adicionar outro atributo"),
+    ).toBeUndefined();
+    expect(
+      document.querySelector('[data-testid="outro-tipo-de-variacao"]')
+        ?.textContent,
+    ).toContain("exclua as opções");
+    expect(toastError).not.toHaveBeenCalled();
     // Ficou no passo 1 — nada foi gerado nem convertido.
     expect(botaoPorTexto(document.body, BOTAO_GERAR_GRADE)).toBeDefined();
     expect(linhasDaGrade()).toEqual([]);

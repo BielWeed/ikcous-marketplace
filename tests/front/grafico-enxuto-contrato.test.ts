@@ -140,6 +140,7 @@ function arquivos(pasta: string): string[] {
 }
 
 describe("contrato dos gráficos enxutos — guarda permanente", () => {
+  // Varre o disco; no runner lento do CI passou de 5 s (28/11, run 46121436423).
   it("nenhum gráfico pede implementação removida, outra curva, escala ou range", () => {
     const fontes = arquivos("src");
     expect(fontes.length).toBeGreaterThan(0);
@@ -149,7 +150,7 @@ describe("contrato dos gráficos enxutos — guarda permanente", () => {
       ),
     );
     expect(erros).toEqual([]);
-  });
+  }, 30_000);
 
   it.each([
     "Brush",

@@ -204,7 +204,7 @@ describe("FechamentoDaVenda — valores iniciais e destrava depois da falha", ()
       expect(registrar).toHaveBeenCalledTimes(1);
       // Preso: a falha não convida a repetir, e a saída é a venda nova.
       expect(hospedeiro.textContent).toContain(
-        "Esta chave de venda já foi usada por outro pedido.",
+        "Esta venda não foi registrada. Toque em Começar uma venda nova e registre de novo.",
       );
       expect(botao(hospedeiro, "Registrar venda")?.disabled).toBe(true);
       expect(botao(hospedeiro, "Começar uma venda nova")).toBeDefined();

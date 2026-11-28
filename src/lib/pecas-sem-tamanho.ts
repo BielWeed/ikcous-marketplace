@@ -93,22 +93,25 @@ export function textoDoAviso(pecas: readonly PecaSemTamanho[]): {
       pecas.flatMap((p) => (p.orderId ? [numeroDoPedido(p.orderId)] : [])),
     ),
   ];
+  // Duas origens (20261642000000 e 20261653000000): vendida antes de o produto
+  // ganhar tamanhos, ou num tamanho que a lojista desligou depois. A tela não
+  // sabe qual das duas; a frase vale para as duas.
   const origem =
     numeros.length === 0
       ? n === 1
-        ? "vendida antes de você criar os tamanhos"
-        : "vendidas antes de você criar os tamanhos"
+        ? "vendida sem tamanho ou num tamanho hoje desligado"
+        : "vendidas sem tamanho ou em tamanhos hoje desligados"
       : numeros.length === 1
-        ? `pedido ${listaDePedidos(numeros)}, vendido antes de você criar os tamanhos`
-        : `pedidos ${listaDePedidos(numeros)}, vendidos antes de você criar os tamanhos`;
+        ? `pedido ${listaDePedidos(numeros)}, vendido sem tamanho ou num tamanho hoje desligado`
+        : `pedidos ${listaDePedidos(numeros)}, vendidos sem tamanho ou em tamanhos hoje desligados`;
   if (n === 1)
     return {
-      titulo: `1 peça deste produto voltou sem tamanho (${origem}). Ela não está à venda.`,
+      titulo: `1 peça deste produto voltou e espera você escolher o tamanho (${origem}). Ela não está à venda.`,
       pergunta: "Em qual tamanho ela entra?",
     };
   const primeira = pecas[0]?.orderId;
   return {
-    titulo: `${n} peças deste produto voltaram sem tamanho (${origem}). Elas não estão à venda.`,
+    titulo: `${n} peças deste produto voltaram e esperam você escolher o tamanho (${origem}). Elas não estão à venda.`,
     pergunta: primeira
       ? `Em qual tamanho entra a do pedido #${numeroDoPedido(primeira)}?`
       : "Em qual tamanho entra a primeira delas?",
@@ -118,16 +121,63 @@ export function textoDoAviso(pecas: readonly PecaSemTamanho[]): {
 /**
  * A peça que voltou (pedido desfeito ou devolução) e espera o tamanho: o que
  * os avisos de pedido e de devolução dizem no lugar de "voltou ao estoque".
+ * Vale para a peça vendida sem tamanho e para a de um tamanho que hoje está
+ * desligado (20261653000000): as duas esperam a lojista escolher onde entram.
  */
 export function fraseDasPecasSemTamanho(quantidade: number): string {
   return quantidade === 1
-    ? "1 peça voltou sem tamanho: escolha o tamanho dela na tela do produto para ela voltar à venda."
-    : `${quantidade} peças voltaram sem tamanho: escolha o tamanho delas na tela do produto para elas voltarem à venda.`;
+    ? "1 peça ficou esperando você escolher o tamanho dela na tela do produto para ela voltar à venda."
+    : `${quantidade} peças ficaram esperando você escolher o tamanho delas na tela do produto para elas voltarem à venda.`;
 }
 
 /** O item da devolução que voltou e espera o tamanho (ficha e conferência). */
 export const TEXTO_ITEM_ESPERANDO_TAMANHO =
   "voltou sem tamanho: escolha o tamanho na tela do produto";
+
+/**
+ * Quais itens de uma devolução deixaram peça esperando o tamanho.
+ *
+ * `porItem` (20261653000000, `pecas_sem_tamanho_da_devolucao`): os itens que o
+ * banco gravou NA HORA da conclusão — vale para o item sem variação e para o de
+ * um tamanho que estava desligado, e religar o tamanho depois não muda o que
+ * aconteceu. `porProdutoSemVariacao` (loja só com a 20261642000000): a lista
+ * antiga só diz o produto, e ali só o item SEM variação vai para o cantinho.
+ */
+export type PecasQueEsperamNaDevolucao =
+  | { readonly porItem: ReadonlySet<string> }
+  | { readonly porProdutoSemVariacao: ReadonlySet<string> };
+
+/** As linhas de `pecas_sem_tamanho_da_devolucao`; `null` = forma torta (não sei). */
+export function lerItensQueEsperamTamanho(data: unknown): string[] | null {
+  if (!Array.isArray(data)) return null;
+  const itens: string[] = [];
+  for (const linha of data) {
+    if (typeof linha !== "object" || linha === null) return null;
+    const id = (linha as Record<string, unknown>).devolucao_item_id;
+    if (!texto(id)) return null;
+    itens.push(id);
+  }
+  return itens;
+}
+
+/** O item da devolução voltou e espera o tamanho? `null` (não sei) = não: a ficha diz o de sempre. */
+export function itemEsperaTamanho(
+  item: {
+    readonly id: string;
+    readonly reestocado_em: string | null;
+    readonly variant_id: string | null;
+    readonly product_id: string | null;
+  },
+  pecas: PecasQueEsperamNaDevolucao | null,
+): boolean {
+  if (item.reestocado_em == null || !pecas) return false;
+  if ("porItem" in pecas) return pecas.porItem.has(item.id);
+  return (
+    !item.variant_id &&
+    item.product_id != null &&
+    pecas.porProdutoSemVariacao.has(item.product_id)
+  );
+}
 
 /**
  * Nenhuma variação LIGADA e GRAVADA: a RPC só aceita essas, e o Salvar do

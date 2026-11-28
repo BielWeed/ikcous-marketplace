@@ -252,5 +252,17 @@ describe("AdminProductFormView — fotos do produto por teclado", () => {
       });
       expect(cliquesCamera).toHaveBeenCalledTimes(1);
     });
+
+    it("a dica de várias fotos aponta para o botão que existe aqui: 'Mais fotos'", async () => {
+      fetchProduct.mockResolvedValue(comFotos);
+      await montar("prod-1");
+      // "Tirar foto" sobe uma foto por vez: a dica diz o caminho de várias.
+      expect(
+        document.querySelector('[data-testid="dica-de-varias-fotos"]')
+          ?.textContent,
+      ).toBe(
+        'Para várias fotos: tire todas com a câmera do celular e escolha juntas em "Mais fotos".',
+      );
+    });
   });
 });

@@ -174,6 +174,38 @@ describe("lançamento: a tentativa sobrevive ao prazo, só muda com o conteúdo"
     expect(document.getElementById("fin-novo-lancamento")).toBeNull();
   });
 
+  it("a conexão cai sem resposta: diz que pode ter sido salvo e o reenvio igual leva a mesma chave", async () => {
+    // Forma do postgrest-js quando o fetch cai (iPhone trocando de app).
+    rpcFalso.mockResolvedValueOnce({
+      data: null,
+      error: { message: "TypeError: Load failed", code: "" },
+    });
+    await enviar();
+    const tela = document.body.textContent ?? "";
+    expect(tela).toContain("pode ter sido salvo");
+    expect(tela).toContain("não duplica");
+    expect(tela).not.toContain("tente de novo");
+    expect(salvo).not.toHaveBeenCalled();
+    rpcFalso.mockResolvedValueOnce({
+      data: { ids: ["original"] },
+      error: null,
+    });
+    await enviar();
+    expect(payload(1)).toEqual(payload(0));
+    expect(salvo).toHaveBeenCalledWith("Lançamento salvo.");
+  });
+
+  it("controle: recusa do servidor (com código) segue a frase do banco", async () => {
+    rpcFalso.mockResolvedValueOnce({
+      data: null,
+      error: { message: "Conta inativa.", code: "P0001" },
+    });
+    await enviar();
+    const tela = document.body.textContent ?? "";
+    expect(tela).toContain("Conta inativa.");
+    expect(tela).not.toContain("pode ter sido salvo");
+  });
+
   it.each([
     ["fin-lanc-valor", "13000"],
     ["fin-lanc-descricao", "Internet"],
