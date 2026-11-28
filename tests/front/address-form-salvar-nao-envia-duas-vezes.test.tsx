@@ -157,4 +157,37 @@ describe("AddressForm — salvar não envia duas vezes", () => {
     await esvaziar();
     expect(onBack).toHaveBeenCalledTimes(1);
   });
+
+  it("dois toques no mesmo instante gravam um endereço só", async () => {
+    const gravacao = gravacaoEmVoo();
+    addAddress.mockReturnValue(gravacao.promessa);
+    const onBack = vi.fn();
+    const { AddressFormView } = await import(
+      "@/views/customer/AddressFormView"
+    );
+    await act(async () => {
+      raiz.render(<AddressFormView onBack={onBack} />);
+    });
+    await act(async () => digitar("cep", "38500000"));
+    await esvaziar();
+    await act(async () => digitar("number", "1250"));
+
+    const salvar = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    )!;
+    expect(salvar.disabled).toBe(false);
+    // Os dois cliques saem antes de o React desenhar o botão desabilitado:
+    // só uma trava síncrona segura o segundo.
+    await act(async () => {
+      salvar.click();
+      salvar.click();
+    });
+    await esvaziar();
+    expect(addAddress).toHaveBeenCalledTimes(1);
+
+    await act(async () => gravacao.terminar({ id: "novo" }));
+    await esvaziar();
+    expect(addAddress).toHaveBeenCalledTimes(1);
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
 });
