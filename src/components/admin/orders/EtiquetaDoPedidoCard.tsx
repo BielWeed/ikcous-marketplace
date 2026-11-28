@@ -815,14 +815,13 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           if (orderIdAtualRef.current !== orderIdDoClique) return;
           if (!pedidoRelido) {
             toast.info(
-              "O rastreio foi alterado em outro aparelho. Não foi possível recarregar o pedido agora. Tente novamente.",
+              "Não foi possível recarregar o pedido agora. Tente novamente.",
             );
             return;
           }
-          onTrackingAtualizado?.(
-            orderIdDoClique,
-            pedidoRelido.tracking_code ?? "",
-          );
+          const codigoSalvo = pedidoRelido.tracking_code ?? "";
+          if (codigoSalvo === (pedido?.tracking_code ?? "")) return;
+          onTrackingAtualizado?.(orderIdDoClique, codigoSalvo);
           toast.info(
             "O rastreio foi alterado em outro aparelho. Mostrando o que está salvo agora.",
           );
@@ -919,6 +918,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       onTrackingAtualizado,
       fetchPedido,
       pedido?.shipping_label_id,
+      pedido?.tracking_code,
     ],
   );
 

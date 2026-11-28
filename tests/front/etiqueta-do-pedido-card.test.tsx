@@ -859,6 +859,43 @@ describe("EtiquetaDoPedidoCard", () => {
     );
   });
 
+  it("relê a etiqueta trocada sem avisar que o código de rastreio mudou", async () => {
+    const tracking_code = "ME23002OWZ7BR";
+    const linkDaEtiqueta = () =>
+      hospedeiro.querySelector("a")?.getAttribute("href");
+    pedidoState.data = pedido({
+      shipping_label_id: "lbl-antiga",
+      shipping_label_url: "https://imprimir.teste/antiga",
+      tracking_code,
+    });
+    await abrirCard();
+    expect(linkDaEtiqueta()).toBe("https://imprimir.teste/antiga");
+
+    pedidoState.data = pedido({
+      shipping_label_id: "lbl-nova",
+      shipping_label_url: "https://imprimir.teste/nova",
+      tracking_code,
+    });
+    invokeMock.mockResolvedValue({
+      data: {
+        success: true,
+        label_id: "lbl-antiga",
+        tracking_code,
+        rastreio_atualizado: false,
+        rastreio_preservado: true,
+      },
+    });
+
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+      await esperarMicrotarefas();
+    });
+
+    expect(linkDaEtiqueta()).toBe("https://imprimir.teste/nova");
+    expect(hospedeiro.textContent).toContain(tracking_code);
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
   it("só o id reservado mantém o rótulo anterior sem nova compra nem aviso de etiqueta paga", async () => {
     pedidoState.data = pedido({
       status: "cancelled",
