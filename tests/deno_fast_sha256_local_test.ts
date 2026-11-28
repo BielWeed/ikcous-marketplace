@@ -80,8 +80,13 @@ Deno.test("a cópia local do fast-sha256 é o conteúdo travado no lock", async 
   // Equivalência provada byte a byte: cabeçalho fora, linha do mapa de volta.
   const texto = new TextDecoder().decode(bytes);
   const inicio = texto.indexOf(INICIO_DO_CONTEUDO);
-  assert(inicio > 0, "a cópia deveria ter o cabeçalho de proveniência antes do conteúdo");
-  const original = new TextEncoder().encode(texto.slice(inicio) + LINHA_DO_MAPA);
+  assert(
+    inicio > 0,
+    "a cópia deveria ter o cabeçalho de proveniência antes do conteúdo",
+  );
+  const original = new TextEncoder().encode(
+    texto.slice(inicio) + LINHA_DO_MAPA,
+  );
   assertEquals(await sha256(original), SHA256_TRAVADO_NO_LOCK);
 });
 
@@ -115,7 +120,9 @@ Deno.test("a cópia local do fast-sha256 calcula hash e hmac de verdade", async 
     false,
     ["sign"],
   );
-  const esperado = new Uint8Array(await crypto.subtle.sign("HMAC", chave, mensagem));
+  const esperado = new Uint8Array(
+    await crypto.subtle.sign("HMAC", chave, mensagem),
+  );
   assertEquals(hex(sha.hmac(segredo, mensagem)), hex(esperado));
 });
 
