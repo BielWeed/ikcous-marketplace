@@ -27,6 +27,12 @@ import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const consultarCaixa = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/situacao-do-caixa", () => ({
+  consultarSituacaoDoCaixa: consultarCaixa,
+}));
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: vi.fn((nome: string) =>
@@ -212,7 +218,7 @@ vi.mock("@/components/ui/alert-dialog", async () => {
     AlertDialogContent: ({ children }: { children: ReactNode }) => {
       const estado = useContext(Estado);
       if (estado && !estado.aberto) return null;
-      return <div>{children}</div>;
+      return <div role="alertdialog">{children}</div>;
     },
     AlertDialogHeader: ({ children }: { children: ReactNode }) => (
       <div>{children}</div>
@@ -311,6 +317,7 @@ describe("OrderDetail (ficha do pedido) — pergunta se recebeu ao avançar para
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
+    consultarCaixa.mockReset().mockResolvedValue("nunca_aberto");
     onStatusChangeMock = vi.fn(async () => {});
     onRegistrarPagamentoMock = vi.fn(async () => ({
       payment_status: "recebido_na_entrega",
@@ -323,6 +330,81 @@ describe("OrderDetail (ficha do pedido) — pergunta se recebeu ao avançar para
     });
     hospedeiro.remove();
     vi.restoreAllMocks();
+  });
+
+  async function abrirConfirmacao(paymentMethod: PaymentMethod) {
+    await renderizar(
+      pedidoFake({ id: "ped-caixa", status: "delivered", paymentMethod }),
+    );
+    expect(consultarCaixa).not.toHaveBeenCalled();
+    const marcar = botaoComTexto(hospedeiro, "Marcar como recebido");
+    expect(marcar).toBeTruthy();
+    await act(async () => marcar!.click());
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      "Recebeu os R$ 100,00 deste pedido?",
+    );
+  }
+
+  it("avisa se o caixa está fechado, mas deixa confirmar dinheiro na entrega", async () => {
+    consultarCaixa.mockResolvedValueOnce("fechado");
+    await abrirConfirmacao("cash");
+
+    const dialogo = document.querySelector('[role="dialog"]')!;
+    expect(dialogo.querySelector('[role="status"]')?.textContent).toContain(
+      "Caixa fechado",
+    );
+    const recebi = botaoComTexto(document.body, "Recebi");
+    expect(recebi?.disabled).toBe(false);
+    await act(async () => recebi!.click());
+    expect(onRegistrarPagamentoMock).toHaveBeenCalledExactlyOnceWith(
+      "ped-caixa",
+      true,
+    );
+  });
+
+  it.each(["aberto", "nunca_aberto"])(
+    "não avisa para dinheiro na entrega quando o caixa está %s",
+    async (situacao) => {
+      consultarCaixa.mockResolvedValueOnce(situacao);
+      await abrirConfirmacao("cash");
+
+      expect(consultarCaixa).toHaveBeenCalledTimes(1);
+      expect(
+        document.querySelector('[role="dialog"]')?.textContent,
+      ).not.toContain("Caixa fechado");
+    },
+  );
+
+  it.each(["card", "pix"] as const)(
+    "não consulta nem avisa sobre o caixa no recebimento em %s",
+    async (paymentMethod) => {
+      await abrirConfirmacao(paymentMethod);
+
+      expect(consultarCaixa).not.toHaveBeenCalled();
+      expect(
+        document.querySelector('[role="dialog"]')?.textContent,
+      ).not.toContain("Caixa fechado");
+    },
+  );
+
+  it("permite confirmar enquanto a consulta do caixa está pendente ou falha", async () => {
+    let rejeitar!: (erro: Error) => void;
+    consultarCaixa.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejeitar = reject;
+      }),
+    );
+    await abrirConfirmacao("cash");
+
+    const dialogo = document.querySelector('[role="dialog"]')!;
+    const recebi = botaoComTexto(document.body, "Recebi")!;
+    expect(dialogo.textContent).not.toContain("Caixa fechado");
+    expect(recebi.disabled).toBe(false);
+
+    await act(async () => rejeitar(new Error("consulta indisponível")));
+    expect(dialogo.textContent).not.toContain("Caixa fechado");
+    await act(async () => recebi.click());
+    expect(onRegistrarPagamentoMock).toHaveBeenCalledWith("ped-caixa", true);
   });
 
   async function renderizar(order: Order) {
@@ -370,6 +452,49 @@ describe("OrderDetail (ficha do pedido) — pergunta se recebeu ao avançar para
     ).toBeTruthy();
     expect(onStatusChangeMock).not.toHaveBeenCalled();
   });
+
+  it.each(["fechado", "aberto"] as const)(
+    "ao finalizar a entrega em dinheiro, confere o caixa %s antes do Recebi",
+    async (situacao) => {
+      consultarCaixa.mockResolvedValueOnce(situacao);
+      await renderizar(pedidoFake({ id: "ped-entrega-caixa" }));
+      expect(consultarCaixa).not.toHaveBeenCalled();
+
+      await clicarAvancar();
+
+      const dialogo = hospedeiro.querySelector<HTMLElement>(
+        '[role="alertdialog"]',
+      )!;
+      expect(dialogo.textContent).toContain(
+        "Recebeu os R$ 100,00 deste pedido?",
+      );
+      const aviso = dialogo.querySelector('[role="status"]');
+      if (situacao === "fechado") {
+        expect(aviso?.textContent).toBe(
+          "Caixa fechado: abra o caixa antes de finalizar para esta venda entrar no relatório de hoje.",
+        );
+      } else {
+        expect(aviso).toBeNull();
+      }
+      expect(consultarCaixa).toHaveBeenCalledTimes(1);
+      expect(onRegistrarPagamentoMock).not.toHaveBeenCalled();
+      expect(onStatusChangeMock).not.toHaveBeenCalled();
+
+      const recebi = botaoComTexto(dialogo, "Recebi");
+      expect(recebi?.disabled).toBe(false);
+      await act(async () => recebi!.click());
+
+      expect(onRegistrarPagamentoMock).toHaveBeenCalledExactlyOnceWith(
+        "ped-entrega-caixa",
+        true,
+      );
+      expect(onStatusChangeMock).toHaveBeenCalledExactlyOnceWith(
+        "ped-entrega-caixa",
+        "delivered",
+        "shipping",
+      );
+    },
+  );
 
   it("caso 2: clicar 'Recebi' — registra o pagamento E DEPOIS avança o status, nessa ordem", async () => {
     const order = pedidoFake({

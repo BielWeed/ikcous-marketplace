@@ -18,7 +18,7 @@ export const TEXTO_DO_CAIXA_FECHADO =
 
 export interface PropsDoAvisoDeCaixaFechado {
   /** Leva à abertura do caixa (a view navega para o Financeiro, aba Caixa). */
-  readonly aoAbrirCaixa: () => void;
+  readonly aoAbrirCaixa?: () => void;
   /** Venda sendo registrada: trava como os outros botões da seção. */
   readonly desabilitado: boolean;
 }
@@ -33,17 +33,19 @@ export function AvisoDeCaixaFechado({
         <AlertTriangle aria-hidden="true" className="pdv-icon pdv-orange" />
         <span>{TEXTO_DO_CAIXA_FECHADO}</span>
       </p>
-      <div className="pdv-actions">
-        <Button
-          type="button"
-          variant="outline"
-          className="pdv-secondary"
-          disabled={desabilitado}
-          onClick={aoAbrirCaixa}
-        >
-          Abrir caixa
-        </Button>
-      </div>
+      {aoAbrirCaixa && (
+        <div className="pdv-actions">
+          <Button
+            type="button"
+            variant="outline"
+            className="pdv-secondary"
+            disabled={desabilitado}
+            onClick={aoAbrirCaixa}
+          >
+            Abrir caixa
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

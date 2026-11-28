@@ -1,5 +1,8 @@
 import { LazyImage } from "@/components/LazyImage";
-import { ConfirmarRecebimento } from "@/components/admin/orders/ConfirmarRecebimento";
+import {
+  AvisoDeCaixaNoRecebimento,
+  ConfirmarRecebimento,
+} from "@/components/admin/orders/ConfirmarRecebimento";
 import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import { EnviarAoMototaxi } from "@/components/admin/orders/EnviarAoMototaxi";
 import {
@@ -71,6 +74,7 @@ import {
   rotuloDaVariacao,
   rotuloDaVariacaoGuardada,
 } from "@/lib/rotulo-da-variacao";
+import { consultarSituacaoDoCaixa } from "@/lib/situacao-do-caixa";
 import { supabase } from "@/lib/supabase";
 import { telefoneDaLojaParaExibicao } from "@/lib/telefone-br";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
@@ -1377,6 +1381,11 @@ function OrderFinanceCard({
               total={order.total}
               disabled={registrandoPagamento}
               retiradaNaLoja={order.retiradaNaLoja}
+              consultarCaixa={
+                order.paymentMethod === "cash"
+                  ? consultarSituacaoDoCaixa
+                  : undefined
+              }
               aoConfirmar={() => onRegistrarPagamento(order.id, true)}
             />
           )}
@@ -3163,6 +3172,12 @@ export const OrderDetail = memo(function OrderDetail({
                   salvo no pedido.
                 </AlertDialogDescription>
               </AlertDialogHeader>
+              {order.paymentMethod === "cash" && !avancoDesatualizado && (
+                <AvisoDeCaixaNoRecebimento
+                  key={order.id}
+                  consultarCaixa={consultarSituacaoDoCaixa}
+                />
+              )}
               <AlertDialogFooter className="mt-4 gap-2">
                 <AlertDialogAction
                   onClick={confirmPendingAdvance}
