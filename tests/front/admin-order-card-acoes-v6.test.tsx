@@ -3,6 +3,7 @@ import { AdminOrderCard } from "@/components/admin/orders/AdminOrderCard";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import type { Order } from "@/types";
+import type { SituacaoDoCaixa } from "@/types/financeiro";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
@@ -65,7 +66,11 @@ async function abrirAcoes() {
       .click(),
   );
 }
-function montar(order: Order, offline = false) {
+function montar(
+  order: Order,
+  offline = false,
+  consultarCaixa?: () => Promise<SituacaoDoCaixa>,
+) {
   act(() =>
     root.render(
       <AdminOrderCard
@@ -74,6 +79,7 @@ function montar(order: Order, offline = false) {
         onSelect={selecionar}
         onWhatsApp={vi.fn()}
         onRegistrarPagamento={receber}
+        consultarCaixa={consultarCaixa}
         registrandoPagamento={false}
         onStatusChange={avancar}
         onReceberAntesDeAvancar={receber}
@@ -400,6 +406,33 @@ it("finalizar sem recebimento preserva a pergunta e registra o dinheiro antes do
 
 const pedidoLocal = pedido({ paymentMethod: "cash", paymentStatus: null });
 const pedidoZerado = { ...pedidoLocal, total: 0, discount: 20 };
+
+it.each([
+  ["Marcar como recebido", "pending"],
+  ["Avançar → Finalizado", "shipping"],
+] as const)(
+  "o cartão avisa do caixa fechado em %s antes de gravar",
+  async (acao, status) => {
+    const consultarCaixa = vi.fn<() => Promise<SituacaoDoCaixa>>();
+    consultarCaixa.mockResolvedValue("fechado");
+    montar({ ...pedidoLocal, status }, false, consultarCaixa);
+    if (status === "shipping") await abrirAcoes();
+    expect(consultarCaixa).not.toHaveBeenCalled();
+
+    await clicar(acao);
+
+    const dialogo = document.querySelector('[role="dialog"]');
+    expect(dialogo?.textContent).toContain("Recebeu os R$ 20,00 deste pedido?");
+    expect(dialogo?.querySelector('[role="status"]')?.textContent).toBe(
+      "Caixa fechado: abra o caixa antes de finalizar para esta venda entrar no relatório de hoje.",
+    );
+    expect(consultarCaixa).toHaveBeenCalledTimes(1);
+    expect(receber).not.toHaveBeenCalled();
+
+    await clicar("Recebi");
+    expect(receber).toHaveBeenCalledExactlyOnceWith("pedido-abc123", true);
+  },
+);
 
 it("pedido zerado não oferece recebimento manual nem no cartão nem em Ações", async () => {
   montar(pedidoZerado);

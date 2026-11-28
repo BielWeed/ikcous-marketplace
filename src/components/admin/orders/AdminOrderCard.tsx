@@ -1,5 +1,8 @@
 import { LazyImage } from "@/components/LazyImage";
-import { PerguntaDoRecebimento } from "@/components/admin/orders/ConfirmarRecebimento";
+import {
+  AvisoDeCaixaNoRecebimento,
+  PerguntaDoRecebimento,
+} from "@/components/admin/orders/ConfirmarRecebimento";
 import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import {
   OrderStatusBadge,
@@ -49,6 +52,7 @@ import { cn } from "@/lib/utils";
 import { tempoSegurandoEstoque } from "@/lib/vagas-de-visitante";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus } from "@/types";
+import type { SituacaoDoCaixa } from "@/types/financeiro";
 import {
   Check,
   ChevronRight,
@@ -72,6 +76,7 @@ interface AdminOrderCardProps {
   readonly onWhatsApp: (order: Order) => void;
   readonly changeType?: "INSERT" | "UPDATE";
   readonly onRegistrarPagamento: (orderId: string, recebido: boolean) => void;
+  readonly consultarCaixa?: () => Promise<SituacaoDoCaixa>;
   readonly registrandoPagamento: boolean;
   readonly onStatusChange?: (
     orderId: string,
@@ -120,6 +125,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   onWhatsApp,
   changeType,
   onRegistrarPagamento,
+  consultarCaixa,
   registrandoPagamento,
   onStatusChange,
   onReceberAntesDeAvancar,
@@ -742,6 +748,18 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           <DialogDescription className="break-words text-sm text-zinc-400">
             {nome} · #{numero} · R$ {total}
           </DialogDescription>
+          {(painel === "receber" || painel === "entregar") &&
+            faltaReceber &&
+            !semValorAPagar &&
+            !avancoDesatualizado &&
+            order.paymentMethod === "cash" &&
+            consultarCaixa && (
+              <AvisoDeCaixaNoRecebimento
+                key={order.id}
+                consultarCaixa={consultarCaixa}
+                desabilitado={bloqueado}
+              />
+            )}
           {painelExibido === "acoes" ? (
             <div className="space-y-2 border-t border-admin-border pt-2">
               {[

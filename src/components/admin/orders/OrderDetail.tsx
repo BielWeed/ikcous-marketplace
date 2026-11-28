@@ -1,5 +1,8 @@
 import { LazyImage } from "@/components/LazyImage";
-import { ConfirmarRecebimento } from "@/components/admin/orders/ConfirmarRecebimento";
+import {
+  AvisoDeCaixaNoRecebimento,
+  ConfirmarRecebimento,
+} from "@/components/admin/orders/ConfirmarRecebimento";
 import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import { EnviarAoMototaxi } from "@/components/admin/orders/EnviarAoMototaxi";
 import {
@@ -3169,6 +3172,12 @@ export const OrderDetail = memo(function OrderDetail({
                   salvo no pedido.
                 </AlertDialogDescription>
               </AlertDialogHeader>
+              {order.paymentMethod === "cash" && !avancoDesatualizado && (
+                <AvisoDeCaixaNoRecebimento
+                  key={order.id}
+                  consultarCaixa={consultarSituacaoDoCaixa}
+                />
+              )}
               <AlertDialogFooter className="mt-4 gap-2">
                 <AlertDialogAction
                   onClick={confirmPendingAdvance}

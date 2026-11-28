@@ -218,7 +218,7 @@ vi.mock("@/components/ui/alert-dialog", async () => {
     AlertDialogContent: ({ children }: { children: ReactNode }) => {
       const estado = useContext(Estado);
       if (estado && !estado.aberto) return null;
-      return <div>{children}</div>;
+      return <div role="alertdialog">{children}</div>;
     },
     AlertDialogHeader: ({ children }: { children: ReactNode }) => (
       <div>{children}</div>
@@ -452,6 +452,49 @@ describe("OrderDetail (ficha do pedido) — pergunta se recebeu ao avançar para
     ).toBeTruthy();
     expect(onStatusChangeMock).not.toHaveBeenCalled();
   });
+
+  it.each(["fechado", "aberto"] as const)(
+    "ao finalizar a entrega em dinheiro, confere o caixa %s antes do Recebi",
+    async (situacao) => {
+      consultarCaixa.mockResolvedValueOnce(situacao);
+      await renderizar(pedidoFake({ id: "ped-entrega-caixa" }));
+      expect(consultarCaixa).not.toHaveBeenCalled();
+
+      await clicarAvancar();
+
+      const dialogo = hospedeiro.querySelector<HTMLElement>(
+        '[role="alertdialog"]',
+      )!;
+      expect(dialogo.textContent).toContain(
+        "Recebeu os R$ 100,00 deste pedido?",
+      );
+      const aviso = dialogo.querySelector('[role="status"]');
+      if (situacao === "fechado") {
+        expect(aviso?.textContent).toBe(
+          "Caixa fechado: abra o caixa antes de finalizar para esta venda entrar no relatório de hoje.",
+        );
+      } else {
+        expect(aviso).toBeNull();
+      }
+      expect(consultarCaixa).toHaveBeenCalledTimes(1);
+      expect(onRegistrarPagamentoMock).not.toHaveBeenCalled();
+      expect(onStatusChangeMock).not.toHaveBeenCalled();
+
+      const recebi = botaoComTexto(dialogo, "Recebi");
+      expect(recebi?.disabled).toBe(false);
+      await act(async () => recebi!.click());
+
+      expect(onRegistrarPagamentoMock).toHaveBeenCalledExactlyOnceWith(
+        "ped-entrega-caixa",
+        true,
+      );
+      expect(onStatusChangeMock).toHaveBeenCalledExactlyOnceWith(
+        "ped-entrega-caixa",
+        "delivered",
+        "shipping",
+      );
+    },
+  );
 
   it("caso 2: clicar 'Recebi' — registra o pagamento E DEPOIS avança o status, nessa ordem", async () => {
     const order = pedidoFake({

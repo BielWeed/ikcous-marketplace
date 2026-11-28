@@ -66,6 +66,33 @@ export function PerguntaDoRecebimento({
   );
 }
 
+/** Montado só enquanto a confirmação de recebimento em dinheiro está aberta. */
+export function AvisoDeCaixaNoRecebimento({
+  consultarCaixa,
+  desabilitado = false,
+}: Readonly<{
+  consultarCaixa: () => Promise<SituacaoDoCaixa>;
+  desabilitado?: boolean;
+}>) {
+  const [caixaFechado, setCaixaFechado] = useState(false);
+  useEffect(() => {
+    let valendo = true;
+    consultarCaixa().then(
+      (situacao) => {
+        if (valendo) setCaixaFechado(situacao === "fechado");
+      },
+      () => {}, // Como no balcão: sem certeza, não avisa nem bloqueia.
+    );
+    return () => {
+      valendo = false;
+    };
+  }, [consultarCaixa]);
+
+  return caixaFechado ? (
+    <AvisoDeCaixaFechado desabilitado={desabilitado} />
+  ) : null;
+}
+
 export function ConfirmarRecebimento({
   total,
   disabled,
@@ -80,21 +107,6 @@ export function ConfirmarRecebimento({
   aoConfirmar: () => Promise<void>;
 }>) {
   const [aberto, setAberto] = useState(false);
-  const [caixaFechado, setCaixaFechado] = useState(false);
-  useEffect(() => {
-    if (!aberto || !consultarCaixa) return;
-    let valendo = true;
-    consultarCaixa().then(
-      (situacao) => {
-        if (valendo) setCaixaFechado(situacao === "fechado");
-      },
-      () => {}, // Como no balcão: sem certeza, não avisa nem bloqueia.
-    );
-    return () => {
-      valendo = false;
-      setCaixaFechado(false);
-    };
-  }, [aberto, consultarCaixa]);
   // O Voltar do aparelho fecha só a pergunta: a ficha do pedido fica.
   useVoltarFechaAFolha(aberto, () => setAberto(false));
   const emVoo = useRef(false);
@@ -124,8 +136,11 @@ export function ConfirmarRecebimento({
         aria-describedby={undefined}
       >
         <DialogTitle>Registrar recebimento</DialogTitle>
-        {aberto && consultarCaixa && caixaFechado && (
-          <AvisoDeCaixaFechado desabilitado={Boolean(disabled)} />
+        {aberto && consultarCaixa && (
+          <AvisoDeCaixaNoRecebimento
+            consultarCaixa={consultarCaixa}
+            desabilitado={disabled}
+          />
         )}
         <PerguntaDoRecebimento
           total={total}

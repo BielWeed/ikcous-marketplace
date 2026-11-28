@@ -111,6 +111,7 @@ import {
   rotuloDaVariacaoGuardada,
 } from "@/lib/rotulo-da-variacao";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
+import { consultarSituacaoDoCaixa } from "@/lib/situacao-do-caixa";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import {
@@ -3335,6 +3336,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       order={order}
                       onStatusChange={handleStatusChange}
                       onReceberAntesDeAvancar={registrarPagamentoRecebido}
+                      consultarCaixa={consultarSituacaoDoCaixa}
                       onAnularVenda={anularVendaDaLista}
                       isOffline={isOffline}
                       destaquePrimario={indice === 0}
@@ -3356,6 +3358,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       order={order}
                       onStatusChange={handleStatusChange}
                       onReceberAntesDeAvancar={registrarPagamentoRecebido}
+                      consultarCaixa={consultarSituacaoDoCaixa}
                       onAnularVenda={anularVendaDaLista}
                       isOffline={isOffline}
                       destaquePrimario={indice === 0}
