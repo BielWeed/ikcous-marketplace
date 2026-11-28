@@ -257,12 +257,9 @@ describe("precoAnunciadoVelho — o texto bate com o preço de agora?", () => {
     "Leve 2 blusas por R$ 150 cada, kit fechado",
     "Leve 2 blusas por R$ 150 por unidade. Unidade de venda: kit com 2 peças.",
     "Leve 2 kits por R$ 150 cada",
-  ])(
-    "'%s' é preço do grupo, não da peça",
-    (texto) => {
-      expect(precoAnunciadoVelho([texto], vestido(90))).toBeNull();
-    },
-  );
+  ])("'%s' é preço do grupo, não da peça", (texto) => {
+    expect(precoAnunciadoVelho([texto], vestido(90))).toBeNull();
+  });
 
   it.each(["COMPRE 2 PEÇAS R$ 70 À UNIDADE", "Compre 2 peças R$ 70 à unidade"])(
     "'%s' (com acento) é preço da peça e é conferido",

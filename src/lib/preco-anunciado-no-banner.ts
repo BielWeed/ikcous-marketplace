@@ -43,7 +43,8 @@ const PECA_DEPOIS_DE_CADA = /^[^\S\r\n]+(?:um|uma|pe[cç]a|unidade|item)\b/i;
 const FECHA_A_FRASE = /^[\s.!?…]*$/;
 
 /** "Leve 2 kits por R$ 150 cada": o "cada" é do kit, não da peça. */
-const COMBO_DE_KITS = /\b(?:kits?|combos?|conjuntos?|pacotes?|caixas?|lotes?)\b[^\d$]{0,15}$/i;
+const COMBO_DE_KITS =
+  /\b(?:kits?|combos?|conjuntos?|pacotes?|caixas?|lotes?)\b[^\d$]{0,15}$/i;
 
 function precoUnitarioDepois(depois: string, antes: string): boolean {
   if (COMBO_DE_KITS.test(antes)) return false;
