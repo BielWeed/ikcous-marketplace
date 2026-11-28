@@ -75,9 +75,13 @@ vi.mock("@/lib/supabase", () => ({
       }),
     }),
     rpc: (
-      _nome: string,
+      nome: string,
       args: { p_banner_id_1: string; p_banner_id_2: string },
     ) => {
+      // Loja sem as RPCs da trava da página (20261651000000): arrumar volta a
+      // ser leitura + uma gravação por banner, o caminho que a fila protege.
+      if (nome !== "reorder_banners_atomic")
+        return Promise.resolve({ data: null, error: { code: "PGRST202" } });
       banco.chamadasDaRpc.push(`${args.p_banner_id_1}<->${args.p_banner_id_2}`);
       const um = banco.linhas.find((b) => b.id === args.p_banner_id_1)!;
       const dois = banco.linhas.find((b) => b.id === args.p_banner_id_2)!;

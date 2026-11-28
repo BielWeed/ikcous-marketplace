@@ -121,6 +121,7 @@ const {
 const {
   DEVOLUCAO_COM_CHAVE,
 } = require("./a-devolucao-com-a-mesma-chave-posterior.cjs");
+const { A_ORDEM_DOS_BANNERS } = require("./a-ordem-dos-banners-posterior.cjs");
 const {
   PRECO_HISTORICO,
 } = require("./o-preco-do-produto-deixa-historico-posterior.cjs");
@@ -1905,6 +1906,10 @@ const POSTERIORES_A_97 = [
   // (B1_BASELINE_DIVERGENT). O rollback-manual (comum) dela tira so a funcao e DEIXA a coluna chave_da_solicitacao e o indice. Definicao
   // unica em tests/banco/a-devolucao-com-a-mesma-chave-posterior.cjs. No FIM da lista de proposito.
   DEVOLUCAO_COM_CHAVE,
+  // 20261651000000: as RPCs normalize_banners_atomic e move_banner_atomic chamam is_admin_atual(): sem esta entrada o rollback
+  // da 97 recusa (B1_BASELINE_DIVERGENT). O rollback-manual dela tira so as duas funcoes (nenhum dado). Definicao unica em
+  // tests/banco/a-ordem-dos-banners-posterior.cjs. No FIM da lista de proposito.
+  A_ORDEM_DOS_BANNERS,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

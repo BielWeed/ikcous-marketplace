@@ -444,6 +444,8 @@ on:
           - 205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente
           - 206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado
           - 206b-antes-a-categoria-so-com-produto-excluido-pode-sair-base-vigente
+          - 207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado
+          - 207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

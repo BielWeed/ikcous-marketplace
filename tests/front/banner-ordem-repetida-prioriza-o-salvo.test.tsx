@@ -23,6 +23,9 @@ const banco = vi.hoisted(() => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     storage: { from: () => ({ remove: banco.remover }) },
+    // Loja sem as RPCs da trava da página (20261651000000): arrumar as
+    // posições é o caminho antigo, banner a banner, que este teste mede.
+    rpc: () => Promise.resolve({ data: null, error: { code: "PGRST202" } }),
     from: () => ({
       select: (_colunas: string) => ({
         order: () => ({
