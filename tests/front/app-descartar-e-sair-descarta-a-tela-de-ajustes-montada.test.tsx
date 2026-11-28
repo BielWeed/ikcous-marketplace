@@ -448,6 +448,10 @@ function dubleDeArmazem() {
 }
 
 const CHAVE_DO_P1 = "ikcous_product_form_draft_edit_p-1:lojista-1";
+const CHAVE_DA_POLITICA =
+  "ikcous_rascunho_de_texto_politica-de-devolucao:lojista-1";
+const CHAVE_DA_POLITICA_DE_OUTRA_CONTA =
+  "ikcous_rascunho_de_texto_politica-de-devolucao:lojista-2";
 
 describe("Descartar e Sair descarta de verdade a tela que continua montada", () => {
   let raiz: Root | null = null;
@@ -743,6 +747,30 @@ describe("Descartar e Sair descarta de verdade a tela que continua montada", () 
     await clicarNoTexto("Descartar e Sair");
 
     expect(localStorage.getItem(CHAVE_DO_P1)).toBeNull();
+    await esperarAte(() => view() === "admin-orders");
+  });
+
+  it("Descartar e Sair em Ajustes apaga o rascunho do texto da política (senão voltaria como Restaurar?)", async () => {
+    const rascunho = JSON.stringify({
+      texto: "rascunho",
+      base: "",
+      salvoEm: Date.now(),
+    });
+    localStorage.setItem(CHAVE_DA_POLITICA, rascunho);
+    localStorage.setItem(CHAVE_DA_POLITICA_DE_OUTRA_CONTA, rascunho);
+    await abrir("/admin-settings", { view: "admin-settings" });
+    await abrirAPoliticaEmAjustes();
+    await sujarOPrazo();
+    await clicar("ir-pedidos");
+    expect(localStorage.getItem(CHAVE_DA_POLITICA)).not.toBeNull();
+
+    await clicarNoTexto("Descartar e Sair");
+
+    expect(localStorage.getItem(CHAVE_DA_POLITICA)).toBeNull();
+    // O de outra conta no mesmo aparelho não é dela para descartar.
+    expect(localStorage.getItem(CHAVE_DA_POLITICA_DE_OUTRA_CONTA)).toBe(
+      rascunho,
+    );
     await esperarAte(() => view() === "admin-orders");
   });
 });

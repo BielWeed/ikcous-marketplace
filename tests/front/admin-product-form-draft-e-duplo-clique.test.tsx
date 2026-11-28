@@ -697,7 +697,8 @@ describe("AdminProductFormView — #98 auto-save apaga rascunho ao abrir para ed
       (c) => c[0] === "Rascunho não salvo encontrado para este produto",
     );
     await act(async () => {
-      chamada![1].cancel.onClick();
+      // Botão próprio (JSX): o `cancel` comum não roda num aviso não dismissible.
+      chamada![1].cancel.props.onClick();
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
@@ -732,9 +733,10 @@ describe("AdminProductFormView — #98 auto-save apaga rascunho ao abrir para ed
     const chamada = toastInfo.mock.calls.find(
       (c) => c[0] === "Rascunho não salvo encontrado para este produto",
     );
-    const acaoDescartar = chamada![1].cancel;
+    // Botão próprio (JSX): o `cancel` comum não roda num aviso não dismissible.
+    const acaoDescartar = chamada![1].cancel.props;
     expect(acaoDescartar).toBeDefined();
-    expect(acaoDescartar.label).toBe("Descartar");
+    expect(acaoDescartar.children).toBe("Descartar");
 
     expect(armazem.has(draftKey)).toBe(true);
 

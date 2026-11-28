@@ -22,7 +22,9 @@ import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
+import { useAuth } from "@/hooks/useAuth";
 import { useCategories } from "@/hooks/useCategories";
+import { useRascunhoDeTexto } from "@/hooks/useRascunhoDeTexto";
 import {
   COLUNAS_DA_POLITICA,
   METODOS_LOCAIS,
@@ -239,6 +241,7 @@ export function PoliticaDeDevolucaoSection({
 }>) {
   const { categories } = useCategories();
   const { config } = useStore();
+  const usuarioId = useAuth().user?.id;
   const [salva, setSalva] = useState<PoliticaDevolucao | null>(null);
   const [form, setForm] = useState<FormDaPolitica | null>(null);
   const [erroDeLeitura, setErroDeLeitura] = useState(false);
@@ -397,6 +400,18 @@ export function PoliticaDeDevolucaoSection({
     },
     [],
   );
+
+  // O texto da política é longo: se o celular descarta a aba no meio, o
+  // rascunho guardado ao ocultar a aba volta como oferta ao reabrir.
+  const { apagarRascunho: apagarRascunhoDoTexto } = useRascunhoDeTexto({
+    nome: "politica-de-devolucao",
+    userId: usuarioId,
+    texto: form?.texto_politica ?? "",
+    salvo: salva?.texto_politica ?? "",
+    pronto: form !== null && salva !== null,
+    ativo: ativa,
+    aoRestaurar: (texto) => mudar("texto_politica", texto),
+  });
 
   // O defeito depende do arrependimento: a função muda junto com ele, e o
   // campo de defeito (que só valida o próprio texto) revalida sozinho.
@@ -575,6 +590,8 @@ export function PoliticaDeDevolucaoSection({
         return;
       }
       aplicar(gravada);
+      // O texto foi junto (e gravou): o rascunho dele não tem mais o que oferecer.
+      if (mexido("texto_politica")) apagarRascunhoDoTexto();
       // O sino do painel recalcula a janela dos recebimentos por marcar.
       window.dispatchEvent(new Event("admin:recontar-avisos"));
       toast.success("Política de trocas e devoluções salva.");
