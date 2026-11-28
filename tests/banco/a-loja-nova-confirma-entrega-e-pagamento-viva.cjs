@@ -19,7 +19,9 @@
  *                      as duas colunas, e repetido recusa sem escrever; o pre-voo recusa SEM escrever (corpo estranho,
  *                      EXECUTE aberto ao anon, coluna pela metade, coluna com outro tipo).
  *  MUTANTES            sem o ramo da marca de instalacao a loja nova nasce confirmada (vermelho); sem o COALESCE a
- *                      segunda confirmacao troca a data (vermelho); sem a validacao, `false` confirma (vermelho).
+ *                      segunda confirmacao troca a data (vermelho); sem a validacao, `false` confirma (vermelho); sem o
+ *                      COALESCE do pagamento, ou com o ELSE da entrega ou do pagamento em NULL, as datas gravadas mudam
+ *                      ao salvar outro campo ou ao confirmar de novo (vermelho).
  *  CONSULTAS           208a positiva depois e negativa so nas linhas do corpo e das colunas antes; 208b positiva nos
  *                      dois e negativa com corpo estranho; 203a, 60a, 47a, 40a, 8e e 9a positivas com esta no ar.
  *
@@ -314,6 +316,39 @@ async function aPrimeiraConfirmacaoFica() {
   assert.equal(f.pagamento, null, "confirmar a entrega mexeu no pagamento");
 }
 
+/**
+ * As datas gravadas ficam: salvar OUTRO campo da loja nao mexe em nenhuma das duas (os dois ELSE), e confirmar o
+ * pagamento de novo nao troca a data dele (o COALESCE do pagamento). As datas entram por UPDATE com a ANTIGA, nao pela
+ * RPC: dentro da transacao do caso o now() e' um so, e uma data gravada pela RPC empataria com o now() do mutante.
+ */
+async function asDatasGravadasFicam() {
+  await C.query(
+    "UPDATE public.store_config SET entrega_confirmada_em = $1, pagamento_confirmado_em = $1 WHERE id = 1",
+    [ANTIGA],
+  );
+  const iguais = (valor, msg) =>
+    assert.equal(
+      valor === null ? null : new Date(valor).toISOString(),
+      new Date(ANTIGA).toISOString(),
+      msg,
+    );
+  const outro = await salvar({ store_name: "Loja 1652 outro campo" });
+  assert.ok(outro.linhas, JSON.stringify(outro));
+  const f = await ficha();
+  assert.equal(
+    f.store_name,
+    "Loja 1652 outro campo",
+    "o outro campo nao gravou",
+  );
+  iguais(f.entrega, "salvar outro campo mexeu na data da entrega");
+  iguais(f.pagamento, "salvar outro campo mexeu na data do pagamento");
+  const p = await salvar({ pagamento_confirmado_em: true });
+  assert.ok(p.linhas, JSON.stringify(p));
+  const g = await ficha();
+  iguais(g.pagamento, "a segunda confirmacao do pagamento trocou a data");
+  iguais(g.entrega, "confirmar o pagamento mexeu na data da entrega");
+}
+
 /** So `true` confirma: `false` recusa 22023 sem gravar nada (nem a outra chave). */
 async function soTrueConfirma() {
   await C.query(
@@ -395,6 +430,13 @@ prova(
       assert.equal((await ficha()).pagamento, f.agora);
     });
     await emTransacao(aPrimeiraConfirmacaoFica);
+  },
+);
+
+prova(
+  "RPC: com as duas datas gravadas, salvar outro campo nao mexe nelas e confirmar o pagamento de novo nao troca a data",
+  async () => {
+    await emTransacao(asDatasGravadasFicam);
   },
 );
 
@@ -581,6 +623,29 @@ prova(
       await C.query(corpoParaAplicar(semValidacao));
       await vermelho("sem a validacao", soTrueConfirma);
     });
+    for (const [nome, de, para] of [
+      [
+        "sem o COALESCE do pagamento",
+        "THEN COALESCE(store_config.pagamento_confirmado_em, now())",
+        "THEN now()",
+      ],
+      [
+        "ELSE da entrega vira NULL",
+        "ELSE store_config.entrega_confirmada_em END",
+        "ELSE NULL END",
+      ],
+      [
+        "ELSE do pagamento vira NULL",
+        "ELSE store_config.pagamento_confirmado_em END",
+        "ELSE NULL END",
+      ],
+    ]) {
+      const mutado = mutar(MIGRATION, de, para);
+      await emTransacao(async () => {
+        await C.query(corpoParaAplicar(mutado));
+        await vermelho(nome, asDatasGravadasFicam);
+      });
+    }
   },
 );
 
