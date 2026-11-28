@@ -105,7 +105,6 @@ import {
   chaveDaLinha,
   notaDasEscolhas,
 } from "@/lib/escolhas-do-item";
-import { pagamentoOnlineLigado } from "@/lib/flags";
 import {
   type MetodoOnline,
   ROTULO_SEM_VALOR_A_PAGAR,
@@ -141,6 +140,10 @@ import {
   saidaDoTotalZero,
   textoDoPedidoSemValor,
 } from "@/lib/pagamento-com-total-zero";
+import {
+  marcarPagamentoPeloAppRecusado,
+  usePagamentoPeloAppNaSessao,
+} from "@/lib/pagamento-pelo-app-na-sessao";
 import {
   AVISO_PIX_CONTINUA_ABERTO_AO_VOLTAR,
   esquecerPedidoPendenteDoCheckout,
@@ -2021,10 +2024,15 @@ export function CheckoutViewDaConta({
   // erro), como sempre recebeu. Quem decide o que MOSTRAR enquanto não está
   // pronto é `estadoDoCartao`: lista parcial nunca se apresenta como final, e
   // erro de leitura nunca se apresenta como "cartão desligado".
-  const estadoDoCartao = useConfigDoCartao(pagamentoOnlineLigado());
+  // O pagamento pelo app vale NESTA sessão? A ficha do boot, menos a recusa
+  // do servidor (a loja desligou com o checkout aberto — ver
+  // `pagamento-pelo-app-na-sessao.ts`). Toda decisão desta tela sobre o
+  // "No app" lê daqui, nunca direto da ficha.
+  const onlineLigado = usePagamentoPeloAppNaSessao();
+  const estadoDoCartao = useConfigDoCartao(onlineLigado);
   const configDoCartao =
     estadoDoCartao.estado === "pronto" ? estadoDoCartao.config : null;
-  const cartaoDisponivel = pagamentoOnlineLigado() && configDoCartao !== null;
+  const cartaoDisponivel = onlineLigado && configDoCartao !== null;
   const metodoOnlineEfetivo: MetodoOnline =
     paymentMethod === "online" && metodoOnline === "cartao" && cartaoDisponivel
       ? "cartao"
@@ -3992,7 +4000,7 @@ export function CheckoutViewDaConta({
     if (!antes) return;
     escolhaAntesDoTotalZeroRef.current = null;
     if (paymentMethod !== antes.marcada) return;
-    if (authLoading || !user || !pagamentoOnlineLigado()) return;
+    if (authLoading || !user || !onlineLigado) return;
     setFormaTrocadaSemToque(true);
     setPaymentMethod("online");
     setMetodoOnline(antes.metodoOnline);
@@ -4003,6 +4011,7 @@ export function CheckoutViewDaConta({
     metodoOnline,
     authLoading,
     user,
+    onlineLigado,
   ]);
 
   // TRANSPORTADORA EXIGE PAGAMENTO ANTECIPADO (regra do dono, 21/09/2026).
@@ -4029,7 +4038,7 @@ export function CheckoutViewDaConta({
     if (!selectedShippingOption) return;
     if (ehEntregaLocal) return;
     if (paymentMethod === "online") return;
-    if (!pagamentoOnlineLigado()) return;
+    if (!onlineLigado) return;
     if (authLoading || !user) return;
     // Total zero (14/10/2026): não existe PIX de R$ 0,00 para selecionar — o
     // Finalizar trava com a explicação própria (`totalZero.travaPor`).
@@ -4045,6 +4054,7 @@ export function CheckoutViewDaConta({
     authLoading,
     user,
     totalZero.zerado,
+    onlineLigado,
   ]);
 
   // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a loja pode desligar a forma
@@ -4079,7 +4089,7 @@ export function CheckoutViewDaConta({
     }
     const proxima = primeiraFormaDePagamentoDisponivel({
       formasNaEntrega,
-      pagamentoOnlineLigado: pagamentoOnlineLigado(),
+      pagamentoOnlineLigado: onlineLigado,
       logado: !!user,
     });
     if (proxima) {
@@ -4097,6 +4107,7 @@ export function CheckoutViewDaConta({
     authLoading,
     user,
     totalZero.zerado,
+    onlineLigado,
   ]);
 
   // O PERFIL SÓ PREENCHE O QUE A CLIENTE NÃO MEXEU. Antes, este efeito
@@ -4743,7 +4754,7 @@ export function CheckoutViewDaConta({
     temOpcaoSelecionada: !!selectedShippingOption,
     ehEntregaLocal,
     paymentMethod,
-    pagamentoOnlineLigado: pagamentoOnlineLigado(),
+    pagamentoOnlineLigado: onlineLigado,
   });
 
   // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o segundo eixo — a loja
@@ -5323,14 +5334,13 @@ export function CheckoutViewDaConta({
     // orientação depende da modalidade, e nenhuma delas manda cliente de
     // outra cidade "escolher entrega local" — impossível para ele.
     if (pagamentoIncompativel) {
-      const onlineStale =
-        paymentMethod === "online" && !pagamentoOnlineLigado();
+      const onlineStale = paymentMethod === "online" && !onlineLigado;
       toast.error(
         onlineStale
           ? ehEntregaLocal
             ? `O pagamento pelo app saiu do ar nesta loja. Escolha um meio de pagamento na ${ehRetirada ? "retirada" : "entrega"} para finalizar.`
             : "O pagamento pelo app saiu do ar nesta loja, e o envio por transportadora exige pagamento antecipado. Fale com a loja para combinar a entrega."
-          : pagamentoOnlineLigado()
+          : onlineLigado
             ? cartaoDisponivel
               ? "Envio por transportadora exige pagamento antecipado. Escolha um pagamento pelo app para finalizar."
               : "Envio por transportadora exige pagamento antecipado. Escolha \u201cPagar agora com PIX\u201d para finalizar."
@@ -6008,7 +6018,14 @@ export function CheckoutViewDaConta({
       // desligada continuaria aparecendo disponível até um refresh manual da
       // página. Fogo-e-esquece: a tela já segue o caminho normal (toast +
       // painel) abaixo, com ou sem essa atualização ter terminado.
+      // O PAGAMENTO PELO APP não está na config que a releitura traz: mora na
+      // ficha do boot, que não se relê (caça 28/11/2026 — a cliente escolhia
+      // o PIX de novo e recebia a mesma recusa, em laço). Pedido "online"
+      // recusado com esta frase É o servidor dizendo `pagamento_online`
+      // desligado: o "No app" some daqui até o fim da página, e as guardas
+      // de sempre (online stale, transportadora sem online) dizem a saída.
       if (ehErroDeFormaDePagamentoDesligada(error)) {
+        if (ehOnline) marcarPagamentoPeloAppRecusado();
         refreshStoreConfig({ onlyConfig: true }).catch(() => {});
       }
       // CUPONS DESLIGADOS (#645): a mesma corrida — a chave virou entre a
@@ -7311,7 +7328,7 @@ export function CheckoutViewDaConta({
   // app, pra ficar mais organizado. E não tudo misturado como está agora."
   // Os quatro meios continuam sendo A MESMA escolha (um `radiogroup` só,
   // `paymentMethod` guarda um valor só) — só o AGRUPAMENTO visual é novo.
-  // `opcoesNoApp` fica vazio quando `pagamentoOnlineLigado()` é falso, e o
+  // `opcoesNoApp` fica vazio quando `onlineLigado` é falso, e o
   // grupo inteiro (título incluso) some — ele nunca aparece com zero opções
   // dentro.
   interface OpcaoDePagamento {
@@ -7326,8 +7343,7 @@ export function CheckoutViewDaConta({
 
   // Total zero (14/10/2026): o grupo "No app" some inteiro — não existe
   // cobrança de R$ 0,00 (ver `totalZero`, acima dos efeitos de pagamento).
-  const appOferecidoNestaCompra =
-    pagamentoOnlineLigado() && !totalZero.escondeApp;
+  const appOferecidoNestaCompra = onlineLigado && !totalZero.escondeApp;
   const opcoesNoApp: OpcaoDePagamento[] = appOferecidoNestaCompra
     ? [
         {
@@ -8813,7 +8829,7 @@ export function CheckoutViewDaConta({
                 !ehEntregaLocal &&
                 !totalZero.zerado && (
                   <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
-                    {pagamentoOnlineLigado()
+                    {onlineLigado
                       ? estadoDoCartao.estado !== "pronto"
                         ? // Config do cartão ainda carregando ou com leitura
                           // falhada: o checkout NÃO sabe quais formas existem,

@@ -74,7 +74,7 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os fixados: cliente 708 kB, painel 620 kB", () => {
+  it("os tetos de JS são os fixados: cliente 708 kB, painel 624 kB", () => {
     // cliente 696 -> 700 em 21/11/2026 (1.5.230; o CI mediu 697,13 kB, 1,13 kB acima; regra do dono: o teto sobe).
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito. cliente 652 -> 656 e painel 530 -> 534 em 12/11/2026 (1.5.173; a base ficou sem folga e cada PR novo reprovava; regra do dono: o teto sobe).
@@ -168,7 +168,8 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // painel 596 -> 600 em 27/11/2026 (peça que volta sem tamanho, PR #2028: o painel mediu 596,01 kB no CI; degrau de 4 kB; regra do dono: o teto sobe);
     // painel 600 -> 604 em 28/11/2026 (PR #2078 mediu 600,28 kB no CI; degrau de 4 kB; regra do dono: o teto sobe);
     // painel 604 -> 620 em 28/11/2026 (lote-562: o texto das notas foi da vitrine para o painel; mediu 616,68 kB; regra do dono: o teto sobe);
-    expect(entrada("painel.map(")).toContain('limit: "620 kB"');
+    // painel 620 -> 624 em 28/11/2026 (PR #2128; mediu 620,38 kB no CI; regra do dono: o teto sobe);
+    expect(entrada("painel.map(")).toContain('limit: "624 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
   });
 });
