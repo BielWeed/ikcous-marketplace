@@ -53,7 +53,11 @@ const pedidoBase: Order = {
 
 let pedidoAtual: Order = pedidoBase;
 let linhasDeDevolucao: Array<Record<string, unknown>> = [];
-const consultasAoLivro = vi.fn();
+type RespostaDoLivro = {
+  data: typeof linhasDeDevolucao | null;
+  error: Error | null;
+};
+const consultasAoLivro = vi.fn<() => Promise<RespostaDoLivro>>();
 
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
@@ -77,13 +81,7 @@ vi.mock("@/lib/supabase", () => ({
         return {
           select: () => ({
             eq: () => ({
-              order: () => {
-                consultasAoLivro();
-                return Promise.resolve({
-                  data: linhasDeDevolucao,
-                  error: null,
-                });
-              },
+              order: () => consultasAoLivro(),
             }),
           }),
         };
@@ -197,7 +195,11 @@ describe("OrderDetailsView — cancelado e estornado", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
-    consultasAoLivro.mockClear();
+    consultasAoLivro.mockReset();
+    consultasAoLivro.mockImplementation(async () => ({
+      data: linhasDeDevolucao,
+      error: null,
+    }));
     linhasDeDevolucao = [];
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -208,6 +210,8 @@ describe("OrderDetailsView — cancelado e estornado", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   async function renderizar(pedido: Order) {
@@ -268,6 +272,60 @@ describe("OrderDetailsView — cancelado e estornado", () => {
     expect(consultasAoLivro).toHaveBeenCalledTimes(2);
   });
 
+  async function simularFalhaAposEstorno(falhaPersistente = false) {
+    vi.useFakeTimers();
+    const pixTardio: Order = {
+      ...pedidoBase,
+      paymentStatus: "pago_apos_expirar",
+      metodoOnline: "pix",
+    };
+    await renderizar(pixTardio);
+    expect(consultasAoLivro).toHaveBeenCalledTimes(1);
+
+    const falha = { data: null, error: new Error("Rede indisponível") };
+    if (falhaPersistente) consultasAoLivro.mockResolvedValue(falha);
+    else consultasAoLivro.mockResolvedValueOnce(falha);
+    linhasDeDevolucao = [concluida(100)];
+    const tela = await renderizar({ ...pixTardio, paymentStatus: "estornado" });
+    expect(consultasAoLivro).toHaveBeenCalledTimes(2);
+    expect(tela).not.toContain("Devolução concluída");
+  }
+
+  it("mostra o estorno sem sair da ficha se a primeira consulta após a mudança falhar", async () => {
+    await simularFalhaAposEstorno();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(hospedeiro.textContent).toMatch(/Devolução concluída: R\$\s?100,00/);
+    expect(consultasAoLivro).toHaveBeenCalledTimes(3);
+  });
+
+  it("para depois de três novas tentativas se a consulta continuar falhando", async () => {
+    await simularFalhaAposEstorno(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(consultasAoLivro).toHaveBeenCalledTimes(5);
+    expect(hospedeiro.textContent).not.toContain("Devolução concluída");
+  });
+
+  it("cancela a nova tentativa agendada ao sair da ficha", async () => {
+    await simularFalhaAposEstorno();
+
+    await act(async () => {
+      raiz.render(null);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(consultasAoLivro).toHaveBeenCalledTimes(2);
+  });
+
   it("devolução em duas linhas concluídas: soma as duas", async () => {
     linhasDeDevolucao = [concluida(60), concluida(40)];
     const tela = await renderizar(pedidoBase);
@@ -318,6 +376,18 @@ describe("OrderDetailsView — cancelado e estornado", () => {
   it("estornado em pedido NÃO cancelado: não lê o livro (controle)", async () => {
     await renderizar({ ...pedidoBase, status: "pending" });
     expect(consultasAoLivro).not.toHaveBeenCalled();
+  });
+
+  it("mostra só o valor devolvido pelo app se a outra tentativa foi recusada", async () => {
+    linhasDeDevolucao = [
+      concluida(30),
+      { ...concluida(70), status: "recusado", concluido_em: null },
+    ];
+    const tela = await renderizar({ ...pedidoBase, paymentStatus: "pago" });
+    expect(tela).toContain(
+      "R$ 30,00 devolvidos pelo app. Fale com a loja para confirmar se falta algum valor.",
+    );
+    expect(tela).not.toContain("Devolução concluída");
   });
 
   it("PAGO e cancelado continua lendo o livro e mostrando a devolução de sempre (controle)", async () => {

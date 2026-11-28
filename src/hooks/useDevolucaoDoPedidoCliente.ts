@@ -17,6 +17,7 @@ const ESTADOS_EM_CURSO = ["solicitado", "em_processamento"] as const;
 // tentativa caiu.
 const TENTATIVAS_ATE_DESISTIR = 3;
 const ATRASO_DA_NOVA_TENTATIVA_MS = 4_000;
+const ATRASOS_DA_RELEITURA_DO_ESTORNO_MS = [2_000, 5_000, 10_000];
 
 interface DevolucaoDoPedidoCliente {
   linhas: LinhaDevolucaoDoCliente[];
@@ -70,6 +71,11 @@ export function useDevolucaoDoPedidoCliente(
   const carregarRef = useRef<() => Promise<void>>(async () => {});
   const lidoRef = useRef<string | null>(null);
   const falhasRef = useRef(0);
+  const leituraAnteriorRef = useRef<{
+    orderId: string;
+    status: Order["paymentStatus"];
+  } | null>(null);
+  const releituraDoEstornoRef = useRef(false);
   const novaTentativaRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ativoRef = useRef(true);
 
@@ -79,25 +85,33 @@ export function useDevolucaoDoPedidoCliente(
 
   const carregar = useCallback(async () => {
     if (!habilitado) return;
+    if (novaTentativaRef.current !== null) {
+      clearTimeout(novaTentativaRef.current);
+      novaTentativaRef.current = null;
+    }
     const rodada = ++rodadaRef.current;
     const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
     setCarregando(true);
-    // Falha: mostra o erro; se ainda não houve leitura boa deste pedido,
-    // tenta de novo algumas vezes e só então desiste. Depois de uma leitura
-    // boa, a falha de uma volta do relógio não apaga o que já se sabe.
+    // A leitura anterior, mesmo boa, não confirma um estorno que acabou de
+    // acontecer. Tenta de novo só nessa transição ou na primeira leitura.
     const aoFalhar = () => {
       setIdDoErro(orderId);
       setErro(true);
-      if (lidoRef.current === orderId) return;
-      falhasRef.current += 1;
-      if (falhasRef.current >= TENTATIVAS_ATE_DESISTIR) {
-        setDesistiuDe(orderId);
+      const jaLido = lidoRef.current === orderId;
+      if (jaLido && !releituraDoEstornoRef.current) return;
+      const falhas = falhasRef.current++;
+      const atraso = releituraDoEstornoRef.current
+        ? ATRASOS_DA_RELEITURA_DO_ESTORNO_MS.at(falhas)
+        : falhas + 1 < TENTATIVAS_ATE_DESISTIR
+          ? ATRASO_DA_NOVA_TENTATIVA_MS
+          : undefined;
+      if (atraso === undefined) {
+        if (!jaLido) setDesistiuDe(orderId);
         return;
       }
-      if (novaTentativaRef.current) clearTimeout(novaTentativaRef.current);
       novaTentativaRef.current = setTimeout(() => {
         void carregarRef.current();
-      }, ATRASO_DA_NOVA_TENTATIVA_MS);
+      }, atraso);
     };
     try {
       // Rede "pendurada" conecta e não responde: sem prazo, "Conferindo sua
@@ -125,6 +139,7 @@ export function useDevolucaoDoPedidoCliente(
       setLinhas((data ?? []) as unknown as LinhaDevolucaoDoCliente[]);
       setErro(false);
       lidoRef.current = orderId;
+      releituraDoEstornoRef.current = false;
       falhasRef.current = 0;
       setLidoDoPedido(orderId);
       setDesistiuDe(null);
@@ -143,14 +158,23 @@ export function useDevolucaoDoPedidoCliente(
   // muda, mesmo quando ainda não há linha ativa para ligar o intervalo.
   useEffect(() => {
     ativoRef.current = true;
+    const anterior = leituraAnteriorRef.current;
+    releituraDoEstornoRef.current =
+      anterior?.orderId === orderId &&
+      anterior.status === "pago_apos_expirar" &&
+      statusDoPagamento === "estornado";
+    leituraAnteriorRef.current = { orderId, status: statusDoPagamento };
     falhasRef.current = 0;
     setDesistiuDe(null);
     if (habilitado) void carregar();
     return () => {
       ativoRef.current = false;
-      if (novaTentativaRef.current) clearTimeout(novaTentativaRef.current);
+      if (novaTentativaRef.current !== null) {
+        clearTimeout(novaTentativaRef.current);
+        novaTentativaRef.current = null;
+      }
     };
-  }, [habilitado, carregar, statusDoPagamento]);
+  }, [habilitado, carregar, orderId, statusDoPagamento]);
 
   // Tela aberta por muito tempo, ou conexão que caiu e voltou: relê ao voltar
   // à aba ou à rede (a guarda de rodada de `carregar` descarta a resposta
