@@ -34,7 +34,7 @@ const ANTES_DE_COMBO = /\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}$/i;
 const DEPOIS_DE_PRECO_UNITARIO =
   /^\s+(?:cada\b|(?:a|à|À|por)\s+unidade\b)/i;
 const DEPOIS_DE_PRECO_DE_GRUPO =
-  /^\s+cada[^\S\r\n]+(?:\d|(?:dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze)\b)/i;
+  /^\s+cada[^\S\r\n]+(?:\d|(?:dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|meia|d[uú]zia|dezena|centena)\b)/i;
 const ANTES_DE_VALOR_DE_FORA =
   /(?:\bacima\s+de\s*|\bdesconto\s+de\s*|\bcupom(?:\sde\sdesconto)?(?:\sde)?\s*[:\-–]?\s*|\bfrete(?:\sfixo)?(?:\sde)?\s*[:\-–]?\s*)$/i;
 const DEPOIS_DE_VALOR_DE_FORA = /^\s*(?:OFF\b|de\s+desconto\b)/i;

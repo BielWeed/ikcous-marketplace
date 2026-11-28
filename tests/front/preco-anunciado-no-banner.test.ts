@@ -245,6 +245,8 @@ describe("precoAnunciadoVelho — o texto bate com o preço de agora?", () => {
     "R$ 70 cada sete peças",
     "R$ 70 cada 10 peças",
     "Meias no atacado: R$ 70 cada 1 dúzia",
+    "Meias no atacado: R$ 70 cada dúzia",
+    "R$ 40 cada meia dúzia",
   ])(
     "'%s' é preço do grupo, não da peça",
     (texto) => {
