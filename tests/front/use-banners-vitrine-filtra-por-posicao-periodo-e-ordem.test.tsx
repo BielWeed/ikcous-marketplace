@@ -153,6 +153,57 @@ describe("destinos de produto da vitrine", () => {
     ]);
   });
 
+  it("esconde o banner de produto pausado mesmo com o ID em maiúsculas", async () => {
+    const id = "abcdef12-3456-4789-8abc-def012345678";
+    consultaPublica.ids.mockResolvedValue({ data: [], error: null });
+
+    expect(
+      await mostrados([banner("pausado", { link: link(id.toUpperCase()) })]),
+    ).toBe("");
+    expect(consultaPublica.ids).toHaveBeenCalledExactlyOnceWith("id", [id]);
+  });
+
+  it("mantém o banner escondido quando a consulta anterior responde por último", async () => {
+    type Resposta = { data: { id: string }[]; error: null };
+    const antiga = Promise.withResolvers<Resposta>();
+    const nova = Promise.withResolvers<Resposta>();
+    consultaPublica.ids
+      .mockReturnValueOnce(antiga.promise)
+      .mockReturnValueOnce(nova.promise);
+    h.banners = [banner("produto", { link: link(pausado) })];
+
+    function Sonda() {
+      const { getBannersByPosition, refreshBanners } = useBanners();
+      return (
+        <button type="button" onClick={() => void refreshBanners()}>
+          {getBannersByPosition("home_top")
+            .map((b) => b.id)
+            .join(",")}
+        </button>
+      );
+    }
+
+    await act(async () => raiz.render(<Sonda />));
+    expect(consultaPublica.ids).toHaveBeenCalledExactlyOnceWith("id", [
+      pausado,
+    ]);
+    expect(alvo.textContent).toBe("produto");
+
+    h.banners = [...h.banners];
+    await act(async () => alvo.querySelector("button")?.click());
+    expect(consultaPublica.ids).toHaveBeenCalledTimes(2);
+    expect(consultaPublica.ids).toHaveBeenNthCalledWith(2, "id", [pausado]);
+
+    // A consulta nova já sabe que o produto foi pausado; a antiga ainda não.
+    await act(async () => nova.resolve({ data: [], error: null }));
+    expect(alvo.textContent).toBe("");
+
+    await act(async () =>
+      antiga.resolve({ data: [{ id: pausado }], error: null }),
+    );
+    expect(alvo.textContent).toBe("");
+  });
+
   it("mantém o banner se a consulta falhar", async () => {
     consultaPublica.ids.mockResolvedValue({
       data: null,
