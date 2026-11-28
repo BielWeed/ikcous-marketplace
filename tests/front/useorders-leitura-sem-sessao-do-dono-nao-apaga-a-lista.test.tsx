@@ -324,6 +324,20 @@ describe("useOrders — lista vazia sem a sessão da dona não apaga os pedidos"
     expect(estado.leituras).toBe(leiturasAntes);
   });
 
+  it("renovação falhou: uma consulta que devolve um pedido ainda mostra o pedido sem erro", async () => {
+    await montar();
+    expect(exposto.orders).toEqual([]);
+
+    renovacaoFalhando();
+    estado.linhas = [linha("ped-1")];
+    await act(async () => {
+      await exposto.fetchUserOrders!(true);
+    });
+
+    expect(exposto.orders.map((p) => p.id)).toEqual(["ped-1"]);
+    expect(exposto.ordersLoadError).toBeNull();
+  });
+
   it("lista vazia COM a sessão da dona é a verdade: a conta não tem pedido", async () => {
     await montar();
     await act(async () => {
