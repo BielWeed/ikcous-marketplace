@@ -42,7 +42,8 @@ WITH fn AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim', CASE WHEN COALESCE(((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace)), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   -- A sucessora 20261654000000 (o caixa pertence ao dia em que abriu) tambem conta: ela mantem a chave de tentativa inteira.
-  SELECT 'fin_lancamento_salvar: corpo conhecido (md5)', 'sim', CASE WHEN COALESCE(((SELECT h IN ('1356dbfc037a9202ef163ba598854891', '3e31817ce1d13bb091ce2d0871cbd718') FROM fn)), false) THEN 'sim' ELSE 'nao' END
+  -- E a 20261663000000 (a despesa nao entra no caixa fechado) sucede a 1654, tambem com a chave de tentativa inteira.
+  SELECT 'fin_lancamento_salvar: corpo conhecido (md5)', 'sim', CASE WHEN COALESCE(((SELECT h IN ('1356dbfc037a9202ef163ba598854891', '3e31817ce1d13bb091ce2d0871cbd718', '729fc6e3e4a643459df835d214fa082e') FROM fn)), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'fin_lancamento_salvar: atributos e dependencias de sempre', 'sim', CASE WHEN COALESCE(((SELECT atributos FROM fn)), false) THEN 'sim' ELSE 'nao' END
   UNION ALL

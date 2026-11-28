@@ -1608,6 +1608,17 @@ async function main() {
         "20261662000000_o_frete_de_ida_so_sai_do_lucro_quando_foi_devolvido.sql",
         "public.get_admin_analytics_v2(integer)",
       ],
+      // A 1663 (a despesa nao entra no caixa fechado) troca so os corpos de fin_lancamento_salvar e fin_lancamento_baixar (sucede a
+      // 1654 nas duas: so a leitura da sessao aberta trava a linha); a 17a nao le nenhuma das duas. O rollback dela devolve as duas de
+      // uma vez (a primeira entrada desfaz; a outra ja encontra o corpo anterior).
+      [
+        "20261663000000_a_despesa_nao_entra_no_caixa_fechado.sql",
+        "public.fin_lancamento_baixar(uuid,date,uuid)",
+      ],
+      [
+        "20261663000000_a_despesa_nao_entra_no_caixa_fechado.sql",
+        "public.fin_lancamento_salvar(jsonb)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
