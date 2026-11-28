@@ -153,8 +153,8 @@ describe("produtoCombinaComBusca", () => {
     const blusa = {
       ...produto("Blusa básica"),
       variants: [
-        { value: "Azul", active: true, sku: "RÉF   9027" },
-        { value: "Preto", active: false, sku: "REF9028" },
+        { value: "Azul", active: true, stockIncrement: 1, sku: "RÉF   9027" },
+        { value: "Preto", active: false, stockIncrement: 1, sku: "REF9028" },
       ],
     };
     expect(produtoCombinaComBusca(blusa, "ref 9027")).toBe(true);
@@ -166,7 +166,7 @@ describe("produtoCombinaComBusca", () => {
     const blusa = {
       ...produto("Blusa básica", "Roupas", "Algodao macio"),
       sku,
-      variants: [{ value: "Azul", active: true, sku }],
+      variants: [{ value: "Azul", active: true, stockIncrement: 1, sku }],
     };
     for (const busca of ["blusa", "roupas", "algodao", "azul"]) {
       expect(produtoCombinaComBusca(blusa, busca)).toBe(true);
@@ -180,7 +180,9 @@ describe("produtoCombinaComBusca", () => {
     const blusa = { ...produto("Blusa"), sku: "REF9027" };
     const calca = {
       ...produto("Calca"),
-      variants: [{ value: "Azul", active: true, sku: "REF9027" }],
+      variants: [
+        { value: "Azul", active: true, stockIncrement: 1, sku: "REF9027" },
+      ],
     };
     expect(pontuar(blusa)).toBeGreaterThan(pontuar(descricao));
     expect(pontuar(calca)).toBeGreaterThan(pontuar(descricao));
@@ -188,7 +190,9 @@ describe("produtoCombinaComBusca", () => {
     expect(
       pontuar({
         ...calca,
-        variants: [{ value: "Azul", active: false, sku: "REF9027" }],
+        variants: [
+          { value: "Azul", active: false, stockIncrement: 1, sku: "REF9027" },
+        ],
       }),
     ).toBe(0);
   });
@@ -212,6 +216,7 @@ describe("produtoCombinaComBusca — cor e tamanho das variacoes", () => {
     name,
     value,
     active,
+    stockIncrement: 1,
   });
   const camiseta = {
     ...produto("Camiseta Básica", "Roupas", "Algodão macio"),

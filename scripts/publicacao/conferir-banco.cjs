@@ -3726,7 +3726,21 @@ const ROL_DA_206 = [
   "apagar_categoria_vazia: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno jsonb, search_path=public, EXECUTE so de authenticated e service_role",
   "categoria__usos: corpo da 20261237000000 (md5), conta os produtos com os excluidos a parte",
 ];
+// Lote 209 (20261653000000, a peca que volta para uma variacao desligada espera a lojista: SO os corpos de devolver_estoque e de
+// admin_devolucao_concluir mudam, um bloco cada). Somente catalogo: nenhuma le pedido, devolucao, produto nem peca e nenhuma chama
+// funcao. A 209a espera os corpos desta (md5); a 209b, os da 20261642000000 ou os desta (reaplicacao idempotente). Rol de 4, o mesmo
+// nas duas (atributos e ACL de sempre e o destino da peca que espera: a tabela e as RPCs da 20261642000000).
+const ROL_DA_209 = [
+  "devolver_estoque: corpo esperado (md5)",
+  "admin_devolucao_concluir: corpo esperado (md5)",
+  "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
+  "o destino da peca que espera: pecas_sem_tamanho e as RPCs da 20261642000000 no ar, com a forma e os corpos dela",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado":
+    ROL_DA_209,
+  "209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente":
+    ROL_DA_209,
   "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado":
     ROL_DA_206,
   "206b-antes-a-categoria-so-com-produto-excluido-pode-sair-base-vigente":

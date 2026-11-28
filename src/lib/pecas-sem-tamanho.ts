@@ -93,22 +93,25 @@ export function textoDoAviso(pecas: readonly PecaSemTamanho[]): {
       pecas.flatMap((p) => (p.orderId ? [numeroDoPedido(p.orderId)] : [])),
     ),
   ];
+  // Duas origens (20261642000000 e 20261653000000): vendida antes de o produto
+  // ganhar tamanhos, ou num tamanho que a lojista desligou depois. A tela não
+  // sabe qual das duas; a frase vale para as duas.
   const origem =
     numeros.length === 0
       ? n === 1
-        ? "vendida antes de você criar os tamanhos"
-        : "vendidas antes de você criar os tamanhos"
+        ? "vendida sem tamanho ou num tamanho hoje desligado"
+        : "vendidas sem tamanho ou em tamanhos hoje desligados"
       : numeros.length === 1
-        ? `pedido ${listaDePedidos(numeros)}, vendido antes de você criar os tamanhos`
-        : `pedidos ${listaDePedidos(numeros)}, vendidos antes de você criar os tamanhos`;
+        ? `pedido ${listaDePedidos(numeros)}, vendido sem tamanho ou num tamanho hoje desligado`
+        : `pedidos ${listaDePedidos(numeros)}, vendidos sem tamanho ou em tamanhos hoje desligados`;
   if (n === 1)
     return {
-      titulo: `1 peça deste produto voltou sem tamanho (${origem}). Ela não está à venda.`,
+      titulo: `1 peça deste produto voltou e espera você escolher o tamanho (${origem}). Ela não está à venda.`,
       pergunta: "Em qual tamanho ela entra?",
     };
   const primeira = pecas[0]?.orderId;
   return {
-    titulo: `${n} peças deste produto voltaram sem tamanho (${origem}). Elas não estão à venda.`,
+    titulo: `${n} peças deste produto voltaram e esperam você escolher o tamanho (${origem}). Elas não estão à venda.`,
     pergunta: primeira
       ? `Em qual tamanho entra a do pedido #${numeroDoPedido(primeira)}?`
       : "Em qual tamanho entra a primeira delas?",
@@ -118,11 +121,13 @@ export function textoDoAviso(pecas: readonly PecaSemTamanho[]): {
 /**
  * A peça que voltou (pedido desfeito ou devolução) e espera o tamanho: o que
  * os avisos de pedido e de devolução dizem no lugar de "voltou ao estoque".
+ * Vale para a peça vendida sem tamanho e para a de um tamanho que hoje está
+ * desligado (20261653000000): as duas esperam a lojista escolher onde entram.
  */
 export function fraseDasPecasSemTamanho(quantidade: number): string {
   return quantidade === 1
-    ? "1 peça voltou sem tamanho: escolha o tamanho dela na tela do produto para ela voltar à venda."
-    : `${quantidade} peças voltaram sem tamanho: escolha o tamanho delas na tela do produto para elas voltarem à venda.`;
+    ? "1 peça ficou esperando você escolher o tamanho dela na tela do produto para ela voltar à venda."
+    : `${quantidade} peças ficaram esperando você escolher o tamanho delas na tela do produto para elas voltarem à venda.`;
 }
 
 /** O item da devolução que voltou e espera o tamanho (ficha e conferência). */

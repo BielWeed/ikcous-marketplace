@@ -398,6 +398,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado",
       "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
       "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
+      "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
   );

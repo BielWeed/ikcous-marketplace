@@ -234,7 +234,7 @@ describe("devolução: a peça que voltou sem tamanho", () => {
     await clicar(botao("Concluir devolução"));
 
     expect(toast.success).toHaveBeenCalledWith(
-      "Devolução concluída. 1 peça voltou sem tamanho: escolha o tamanho dela na tela do produto para ela voltar à venda.",
+      "Devolução concluída. 1 peça ficou esperando você escolher o tamanho dela na tela do produto para ela voltar à venda.",
     );
     const todos = [toast.success, toast.info, toast.warning].flatMap((t) =>
       t.mock.calls.map((c) => String(c[0])),
@@ -259,7 +259,7 @@ describe("devolução: a peça que voltou sem tamanho", () => {
     await clicar(botao("Concluir devolução"));
 
     expect(toast.success).toHaveBeenCalledWith(
-      "Devolução concluída. 1 unidade voltou ao estoque. 2 peças voltaram sem tamanho: escolha o tamanho delas na tela do produto para elas voltarem à venda.",
+      "Devolução concluída. 1 unidade voltou ao estoque. 2 peças ficaram esperando você escolher o tamanho delas na tela do produto para elas voltarem à venda.",
     );
   });
 

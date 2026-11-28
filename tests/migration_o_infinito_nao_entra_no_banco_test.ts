@@ -92,6 +92,12 @@ const SUCESSORAS = [
     consulta:
       "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
   },
+  // 20261653000000: a peca da variacao desligada espera a lojista (devolver_estoque e admin_devolucao_concluir).
+  {
+    versao: "20261653000000",
+    consulta:
+      "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));
