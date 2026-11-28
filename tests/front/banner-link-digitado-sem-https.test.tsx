@@ -296,7 +296,11 @@ describe("AdminBannersView: o link digitado chega corrigido ao salvar", () => {
       addBanner.mockImplementation(async () => {
         // A mensagem emitida pelo hook é comprovada no teste do hook real.
         h.toastError(sessao ? mensagem : "Erro ao adicionar banner.");
-        throw { message: sessao ? "JWT expired" : "Falha de rede" };
+        // Recusa com código: erro SEM código é queda de rede (pode ter
+        // gravado), e essa tem aviso próprio no hook.
+        throw sessao
+          ? { message: "JWT expired" }
+          : { code: "23514", message: "Recusado pelo banco" };
       });
       vi.spyOn(console, "error").mockImplementation(() => {});
       await abrirNoModoLinkCustomizado();

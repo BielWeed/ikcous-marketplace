@@ -392,6 +392,10 @@ describe("CartView — retrato do rastreio sem conta vencido tira a lista da tel
       // Só o Date: adiantar o Date não dispara o setTimeout real. Quem tira a
       // lista aqui é a releitura ao voltar para a aba, não o relógio.
       vi.useFakeTimers({ toFake: ["Date"] });
+      // Meio-dia no fuso do runner: o retrato gravado minutos ANTES de "agora"
+      // não pode cair no dia anterior (aí a frase vira "Status de DD/MM às
+      // HH:MM"), o que acontecia rodando entre 00:00 e 00:05.
+      vi.setSystemTime(new Date(2026, 10, 27, 12, 0, 0));
     });
 
     it("ao voltar à aba depois do prazo, a lista velha não fica na tela", async () => {

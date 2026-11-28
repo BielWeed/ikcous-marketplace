@@ -142,6 +142,8 @@ describe("banner de modelo pronto com produto sem foto", () => {
     await clicar("Salvar Banner");
     expect(addBanner).toHaveBeenCalledWith(
       expect.objectContaining({ imageUrl: "https://loja.test/produto.webp" }),
+      // O id do banner novo nasce no aparelho e vai junto.
+      { idDoFormulario: expect.any(String) },
     );
   });
 });

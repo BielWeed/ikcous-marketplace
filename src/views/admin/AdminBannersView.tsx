@@ -102,6 +102,7 @@ import {
 import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { distanciaCurta } from "@/lib/tempo-relativo";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
+import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type { Banner, View } from "@/types";
 import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
@@ -883,6 +884,10 @@ export const AdminBannersView = memo(function AdminBannersView({
   const isSubmittingRef = useRef(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
+  // Id do banner novo, gerado ao abrir o editor em modo novo e mandado no
+  // INSERT, o MESMO em toda nova tentativa: se a conexão cai depois de o banco
+  // gravar, repetir não cria um segundo banner igual para as clientes.
+  const idDoBannerNovoRef = useRef<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const geracaoDoUploadPendente = useRef<number | null>(null);
   const geracaoDoEditor = useRef(0);
@@ -1851,6 +1856,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     setEdicaoPendenteAposSalvar(false);
     setTela("jeito");
     if (banner?.id) {
+      idDoBannerNovoRef.current = null;
       setTela("editor");
       setEditingBanner(banner);
       // Banner com texto abre em Completo para permitir revisar a campanha.
@@ -1898,6 +1904,7 @@ export const AdminBannersView = memo(function AdminBannersView({
           banner.showTextOverlay ?? defaultsParaEdicao.showTextOverlay,
       });
     } else {
+      idDoBannerNovoRef.current = gerarUuidV4();
       setEditingBanner(null);
       setBannerMode(modoAoAbrirOBanner(null, lerModoDoEditor()));
       const defaultPosition =
@@ -2300,12 +2307,25 @@ export const AdminBannersView = memo(function AdminBannersView({
           await updateBanner(editingBanner.id, mexidos);
         }
       } else {
+        idDoBannerNovoRef.current ??= gerarUuidV4();
         const criado = await addBanner(
           dataToSubmit as Required<Omit<Banner, "id">>,
+          { idDoFormulario: idDoBannerNovoRef.current },
         );
-        // Se houve nova edição, o próximo salvar atualiza o banner criado.
-        // A imagem enviada já está publicada e não é mais um upload órfão.
-        if (criado?.id) {
+        // A tentativa anterior já tinha gravado (a resposta se perdeu na
+        // queda). O que está no ar é o que o banco guardou: se a lojista mexeu
+        // depois, o editor fica aberto, já na edição dele, para salvar o resto.
+        if (criado?.recuperadoAposConflito) {
+          setEditingBanner(criado.bannerGravado);
+          if (isBannerFormDirty(dataToSubmit, criado.bannerGravado)) {
+            toast.info(
+              "Este banner já estava salvo. Toque em Salvar de novo para gravar o que você mudou depois.",
+            );
+            return;
+          }
+        } else if (criado?.id) {
+          // Se houve nova edição, o próximo salvar atualiza o banner criado.
+          // A imagem enviada já está publicada e não é mais um upload órfão.
           setEditingBanner({ ...dataToSubmit, id: criado.id } as Banner);
         }
       }
@@ -2348,6 +2368,8 @@ export const AdminBannersView = memo(function AdminBannersView({
       if (
         !ehConsultaSemResposta(error) &&
         !(!editingBanner && mensagemDeErroDeSessaoDoPainel(error)) &&
+        // Banner novo sem resposta: o hook já avisou que não se sabe e relê.
+        !(!editingBanner && ehGravacaoIncerta(error)) &&
         !(
           error instanceof Error &&
           (error.name === "BannerIndisponivel" ||
@@ -2362,6 +2384,17 @@ export const AdminBannersView = memo(function AdminBannersView({
       isSubmittingRef.current = false;
     }
   };
+
+  // A conexão caiu depois de o banner novo gravar e a lista relida já o traz:
+  // o editor sai de "Novo Banner", e o próximo Salvar edita em vez de criar.
+  useEffect(() => {
+    const idNovo = idDoBannerNovoRef.current;
+    if (!isDialogOpen || editingBanner || isSubmitting || !idNovo) return;
+    const gravado = banners.find((b) => b.id === idNovo);
+    if (!gravado) return;
+    setEditingBanner(gravado);
+    toast.info("O banner foi salvo. Agora você está na edição dele.");
+  }, [banners, isDialogOpen, editingBanner, isSubmitting]);
 
   const handleDelete = (id: string, imageUrl: string) => {
     if (isOffline) {

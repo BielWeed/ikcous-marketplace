@@ -15,8 +15,9 @@ import { toast } from "sonner";
 export type PedidoDoAviso = Pick<Order, "userId" | "retiradaNaLoja">;
 
 /** O `updated_at` da linha que a gravação do status devolveu (as RPCs do
- *  painel devolvem a linha do pedido inteira), ou `null` quando a resposta não
- *  o traz (resposta vazia, versão antiga, gravação confirmada por releitura). */
+ *  painel devolvem a linha do pedido inteira) ou que a releitura do pedido
+ *  leu (gravação confirmada sem a resposta, cancelamento pela edge), ou
+ *  `null` quando a linha não o traz (resposta vazia, versão antiga). */
 export function horaGravadaNoBanco(linhaGravada: unknown): string | null {
   if (
     linhaGravada === null ||
