@@ -4001,7 +4001,19 @@ export type Database = {
         };
         Returns: number;
       };
+      move_banner_atomic: {
+        Args: { p_banner_id: string; p_direcao: string; p_position: string };
+        Returns: string;
+      };
       nome_publico_de: { Args: { p_nome: string }; Returns: string };
+      normalize_banners_atomic: {
+        Args: {
+          p_position: string;
+          p_prioritario?: string;
+          p_prioritario_depois?: boolean;
+        };
+        Returns: number;
+      };
       order_refund__liberavel_apos_espera: {
         Args: { p_refund_id: string };
         Returns: boolean;

@@ -985,6 +985,7 @@ export function PagamentoComCartao({
   onPagarComPix,
   onCobrancaEmDuvida,
   onCartaoEmCurso,
+  onCartaoNoAr,
   cartaoEncerrado = null,
   onCartaoEncerradoPelaConsulta,
   onVerMeusPedidos,
@@ -1027,6 +1028,11 @@ export function PagamentoComCartao({
   // O pai lê a vaga do pedido e devolve `cartaoEncerrado` quando ela foi
   // solta DEPOIS deste aviso.
   onCartaoEmCurso?: (cartao: CartaoEmCurso | null) => void;
+  // Caça "voltar do navegador" (27/11/2026): `true` enquanto um envio do
+  // cartão espera a resposta do banco; `false` quando ela chega (qualquer
+  // uma) ou quando esta tela desmonta. O pai segura o Voltar enquanto for
+  // `true` — sair desmontaria esta tela e a resposta seria descartada.
+  onCartaoNoAr?: (noAr: boolean) => void;
   cartaoEncerrado?: CartaoEmCurso | null;
   // Confirmação do cartão sem fim (03/10/2026): a consulta sem cobrança
   // provou a vaga DESTA tentativa solta — o pai grava a mesma marca do C6
@@ -1069,6 +1075,7 @@ export function PagamentoComCartao({
   const onFormaDesligadaRef = useRef(onFormaDesligada);
   const onCobrancaEmDuvidaRef = useRef(onCobrancaEmDuvida);
   const onCartaoEmCursoRef = useRef(onCartaoEmCurso);
+  const onCartaoNoArRef = useRef(onCartaoNoAr);
   const onCartaoEncerradoPelaConsultaRef = useRef(
     onCartaoEncerradoPelaConsulta,
   );
@@ -1077,6 +1084,7 @@ export function PagamentoComCartao({
     onFormaDesligadaRef.current = onFormaDesligada;
     onCobrancaEmDuvidaRef.current = onCobrancaEmDuvida;
     onCartaoEmCursoRef.current = onCartaoEmCurso;
+    onCartaoNoArRef.current = onCartaoNoAr;
     onCartaoEncerradoPelaConsultaRef.current = onCartaoEncerradoPelaConsulta;
   });
   const montadoRef = useRef(false);
@@ -1109,6 +1117,17 @@ export function PagamentoComCartao({
     pedidoMortoNoServidor &&
     (etapa.tipo === "formulario" || etapa.tipo === "recusado");
   const [enviosEmCurso, setEnviosEmCurso] = useState(0);
+
+  // Cobrança no ar, avisada ao pai (ver `onCartaoNoAr`). O contador já sobe no
+  // início do envio e desce no `finally` (resposta, recusa ou erro); a
+  // limpeza deste efeito cobre o desmonte com o envio ainda no ar, quando o
+  // `finally` não mexe mais no contador.
+  const cartaoNoAr = enviosEmCurso > 0;
+  useEffect(() => {
+    if (!cartaoNoAr) return;
+    onCartaoNoArRef.current?.(true);
+    return () => onCartaoNoArRef.current?.(false);
+  }, [cartaoNoAr]);
 
   // Redesenho (16/10/2026): o aviso que mora ACIMA do formulário com o Brick
   // montado. É o lugar de tudo que antes subia ao pai e derrubava o Brick: a

@@ -158,7 +158,16 @@ Deno.test("reorderBanners usa a RPC atômica e não persiste normalização em c
     "não encontrou o corpo de reorderBanners",
   );
   const corpo = hook.slice(inicio, fim);
-  assert(corpo.includes('"reorder_banners_atomic"'));
-  assert(!corpo.includes("swap_banner_order"));
-  assert(!/\.update\(\s*\{\s*order:\s*b\.order\s*\}\s*\)/.test(corpo));
+  // Desde a 20261651000000 a troca passa por trocarAOrdemNoBanco: move_banner_atomic
+  // (o vizinho achado no banco) e, em loja sem ela, esta RPC atômica.
+  assert(corpo.includes("trocarAOrdemNoBanco("));
+  const i = hook.indexOf("async function trocarAOrdemNoBanco(");
+  assert(i >= 0, "não encontrou trocarAOrdemNoBanco");
+  const troca = hook.slice(i, hook.indexOf("\n}\n", i));
+  assert(troca.includes('"move_banner_atomic"'));
+  assert(troca.includes('"reorder_banners_atomic"'));
+  for (const trecho of [corpo, troca]) {
+    assert(!trecho.includes("swap_banner_order"));
+    assert(!/\.update\(\s*\{\s*order:\s*b\.order\s*\}\s*\)/.test(trecho));
+  }
 });

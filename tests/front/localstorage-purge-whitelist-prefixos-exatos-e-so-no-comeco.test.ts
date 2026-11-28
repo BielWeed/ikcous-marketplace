@@ -35,6 +35,7 @@ describe("lista branca do localStorage — prefixos exatos", () => {
     ["admin_pdv_venda_draf~", "admin_pdv_venda_draft"],
     ["ikcous-chave-do-pedido~convidado", "ikcous-chave-do-pedido:"],
     ["ikcous:cpf-pendente-cadastr~", "ikcous:cpf-pendente-cadastro"],
+    ["ikcous-chave-da-devolucao~p1:5000", "ikcous-chave-da-devolucao:"],
   ])(
     "a chave vizinha %s (prefixo %s com o fim trocado) é apagada",
     (vizinha) => {
@@ -63,6 +64,8 @@ describe("lista branca do sessionStorage — prefixos exatos", () => {
     ["ikcous:checkout-pedido-pendente~conta-1"],
     ["ikcous-rascunho-do-checkout-v~"],
     ["ikcous-pedido-sem-resposta-v~"],
+    ["fin-lancamento-tentativas-em-abert~"],
+    ["ikcous:rascunho-da-devolucao~conta-1:p1"],
   ])("a chave vizinha %s (fim do prefixo trocado) é apagada", (vizinha) => {
     expect(chaveDeSessaoSobreviveAPurga(vizinha)).toBe(false);
   });

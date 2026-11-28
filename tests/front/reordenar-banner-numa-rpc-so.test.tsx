@@ -184,6 +184,8 @@ describe("reordenar banner numa RPC só", () => {
   });
 
   it("normalização registra error resolvido sem anunciar sucesso", async () => {
+    // Loja sem a RPC de arrumar (20261651000000): o caminho antigo, banner a banner.
+    h.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202" } });
     h.linhas = [
       { id: "banner-a", order: 7 },
       { id: "banner-b", order: 7 },

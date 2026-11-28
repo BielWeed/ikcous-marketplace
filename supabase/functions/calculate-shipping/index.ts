@@ -946,9 +946,13 @@ async function cotarUmaVez(
         throw new Error('Falha ao obter configuração da loja')
     }
 
-    // Falha fechado: sem CEP de origem, a função não calcula nada.
+    // Falha fechado: sem CEP de origem, a função não calcula nada. Recusa com
+    // `codigo` próprio (27/11/2026), não `throw`: o `throw` caía no `catch` de
+    // topo e virava 500 "Tente novamente" — a tela oferecia "Tentar de novo"
+    // para uma recusa que só a lojista desfaz (preencher o endereço em "Minha
+    // loja"). 409: o pedido está certo, é o estado da loja que não permite.
     const erroDeConfiguracao = validarOrigemEFrete(storeConfig.origin_cep)
-    if (erroDeConfiguracao) throw new Error(erroDeConfiguracao)
+    if (erroDeConfiguracao) return respostaJson({ error: erroDeConfiguracao, codigo: 'loja_sem_cep_de_origem' }, 409)
 
     const originCep = storeConfig.origin_cep.replace(/\D/g, '')
     const enabledMethods = metodosDaLoja(storeConfig)

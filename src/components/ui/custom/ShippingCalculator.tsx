@@ -107,15 +107,27 @@ const FRASE_FORA_DA_AREA = "Esta loja entrega apenas na região dela.";
 // consulta com o mesmo carrinho devolve a mesma recusa.
 const FRASE_CARRINHO_INVALIDO =
   "Seu carrinho mudou. Volte ao carrinho e confira os itens.";
-// Recusas DEFINITIVAS para aquele CEP (ou carrinho) — "fora da área", "CEP não
-// encontrado" (r57-c) e "carrinho inválido": repetir a consulta devolve a
-// mesma resposta, gasta o limite de consultas de frete da loja e suja o
-// histórico de cotações da lojista. Sem o botão; trocar o endereço recota
-// sozinho (efeito de `cepDestino`) e mexer no carrinho também.
+// A loja ainda não preencheu o endereço (sem CEP de origem — edge 409
+// `loja_sem_cep_de_origem`): só a lojista desfaz. As MESMAS frases do topo do
+// checkout (`FRASE_LOJA_SEM_FRETE*` em CheckoutView), para a calculadora logo
+// abaixo não contradizer o aviso com um "Tente novamente".
+const CODIGO_LOJA_SEM_CEP_DE_ORIGEM = "loja_sem_cep_de_origem";
+const FRASE_LOJA_SEM_FRETE =
+  "Esta loja ainda não calcula o frete pelo app. Fale com a loja.";
+const FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO =
+  "Esta loja ainda não calcula o frete pelo app e não cadastrou um contato aqui. Procure a loja pelos canais em que você a conheceu.";
+// Recusas DEFINITIVAS para aquele CEP (ou carrinho, ou loja) — "fora da área",
+// "CEP não encontrado" (r57-c), "carrinho inválido" e "loja sem CEP de
+// origem": repetir a consulta devolve a mesma resposta, gasta o limite de
+// consultas de frete da loja e suja o histórico de cotações da lojista. Sem o
+// botão; trocar o endereço recota sozinho (efeito de `cepDestino`) e mexer no
+// carrinho também.
 const FRASES_DEFINITIVAS = new Set<string>([
   FRASE_FORA_DA_AREA,
   MENSAGEM_CEP_NAO_ENCONTRADO,
   FRASE_CARRINHO_INVALIDO,
+  FRASE_LOJA_SEM_FRETE,
+  FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO,
 ]);
 // Recusas do servidor que têm frase própria (escolhida pelo `codigo`, nunca
 // pelo texto vindo de fora).
@@ -446,6 +458,17 @@ export function ShippingCalculator({
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<ShippingOption[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // "Loja sem frete" com ou sem contato depende do WhatsApp da loja, que pode
+  // chegar DEPOIS do 409 (config ainda carregando, ou a lojista cadastra ao
+  // vivo): a frase é escolhida ao desenhar, como no topo do checkout — nunca
+  // a guardada no momento do erro, que contradiria o aviso de cima.
+  const erroExibido =
+    error === FRASE_LOJA_SEM_FRETE ||
+    error === FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO
+      ? temWhatsappDaLoja
+        ? FRASE_LOJA_SEM_FRETE
+        : FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO
+      : error;
   // Aviso de cotação incompleta/parcial: aparece com "Tentar de novo" MAS não
   // é `error` — as opções que vieram (a retirada, por exemplo) seguem
   // escolhíveis e o status continua "pronto".
@@ -782,8 +805,15 @@ export function ShippingCalculator({
       const codigo = await codigoDoErroDeEdgeFunction(err);
       if (meuId !== reqRef.current) return;
       console.error("Error calculating shipping:", err);
+      const fraseDaLojaSemCep =
+        codigo === CODIGO_LOJA_SEM_CEP_DE_ORIGEM
+          ? temWhatsappDaLoja
+            ? FRASE_LOJA_SEM_FRETE
+            : FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO
+          : undefined;
       setError(
-        (codigo ? FRASE_POR_CODIGO_DA_EDGE.get(codigo) : undefined) ??
+        fraseDaLojaSemCep ??
+          (codigo ? FRASE_POR_CODIGO_DA_EDGE.get(codigo) : undefined) ??
           mensagemAmigavelErroEdgeFunction(err, {
             mensagensSeguras: [
               MENSAGEM_SEM_CONEXAO_FRETE,
@@ -1612,7 +1642,7 @@ export function ShippingCalculator({
                   — só a frase; o botão fica fora do que é anunciado. */}
               <div role="alert" className="flex items-start gap-1.5">
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
-                <span>{error ?? aviso}</span>
+                <span>{erroExibido ?? aviso}</span>
               </div>
               {!(error && FRASES_DEFINITIVAS.has(error)) && (
                 <button

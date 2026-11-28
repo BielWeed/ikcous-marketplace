@@ -363,6 +363,21 @@ describe("a folha de devolução sobrevive à aba recarregada", () => {
     expect(radio("defeito")?.checked).toBe(true);
   });
 
+  it("rascunho com a hora no FUTURO (relógio do aparelho voltou, ou valor adulterado) não reabre e é apagado", async () => {
+    await preencherAteAFoto();
+    const [chave] = chavesDoRascunho();
+    const adiantado = JSON.parse(sessionStorage.getItem(chave) ?? "{}");
+    // Uma hora à frente: idade negativa, dentro da validade se só o teto
+    // fosse conferido.
+    adiantado.salvoEm = Date.now() + 60 * 60_000;
+    sessionStorage.setItem(chave, JSON.stringify(adiantado));
+
+    await recarregarAAba();
+
+    expect(folha()).toBeNull();
+    expect(chavesDoRascunho()).toHaveLength(0);
+  });
+
   it("rascunho ilegível no armazenamento não quebra a tela nem reabre a folha", async () => {
     sessionStorage.setItem(
       "ikcous:rascunho-da-devolucao:u-1:o-1",

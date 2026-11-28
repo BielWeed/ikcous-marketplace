@@ -1,4 +1,5 @@
 import { RodapeDasPoliticas } from "@/components/politicas/RodapeDasPoliticas";
+import { AvisoDePedidoAguardandoPagamentoDaConta } from "@/components/ui/custom/AvisoDePedidoAguardandoPagamentoDaConta";
 import { BannerCarousel } from "@/components/ui/custom/BannerCarousel";
 import { CategoryFilter } from "@/components/ui/custom/CategoryFilter";
 import { useStore } from "@/contexts/StoreContext";
@@ -68,7 +69,7 @@ interface HomeViewProps {
   favorites: string[];
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, id?: string) => void;
   searchQuery: string;
   onAddToCart?: (
     product: Product,
@@ -85,6 +86,13 @@ interface HomeViewProps {
   sortBy: SortOption;
   onSortByChange: (sort: SortOption) => void;
   onHeaderDockChange?: (isDocked: boolean) => void;
+  /** A cliente logada (vinda do App): sem ela, nada do aviso de pagamento. */
+  userId?: string;
+  /**
+   * O Início é a tela atual. Ele fica montado escondido depois da primeira
+   * visita; escondido, o aviso de pagamento não lê e relê ao voltar.
+   */
+  isActive?: boolean;
 }
 
 export const HomeView = React.memo(function HomeView({
@@ -104,6 +112,8 @@ export const HomeView = React.memo(function HomeView({
   sortBy: sortByPedido,
   onSortByChange,
   onHeaderDockChange,
+  userId,
+  isActive = true,
 }: HomeViewProps) {
   // Valor que não é uma ordenação de hoje (ex.: o antigo "sold", de quando
   // existia "Mais Vendidos") cai em Relevância, em vez de ordenar por nada.
@@ -557,6 +567,15 @@ export const HomeView = React.memo(function HomeView({
           h2 — sem h1 nenhum na página, o leitor de tela nunca anuncia o
           nome da loja como título do documento. sr-only: zero pixel muda. */}
       <h1 className="sr-only">{nomeDaLoja}</h1>
+      {/* O Pix que ficou para trás (27/11/2026): o app instalado reabre no
+          Início, e o pedido esperando pagamento não aparecia em lugar
+          nenhum. Só para a cliente logada, lido do banco e sob demanda. */}
+      <AvisoDePedidoAguardandoPagamentoDaConta
+        userId={userId}
+        onNavigate={onNavigate}
+        ativo={isActive}
+        className="mx-3 mb-2 mt-3 sm:mx-4 lg:mx-0"
+      />
       {/* Top Banners - Full Width */}
       {!termoDaBusca &&
         (!bannersLoaded && topBanners.length === 0 ? (

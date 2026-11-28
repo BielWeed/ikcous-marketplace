@@ -67,6 +67,7 @@ import {
 } from "@/components/ui/alert-dialog";
 // Sub-components
 import { AddressList } from "@/components/ui/custom/AddressList";
+import { AvisoDePedidoAguardandoPagamentoDaConta } from "@/components/ui/custom/AvisoDePedidoAguardandoPagamentoDaConta";
 import { CarrinhoSalvoNaoLido } from "@/components/ui/custom/CarrinhoSalvoNaoLido";
 import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
 import { CartItemsList } from "@/components/ui/custom/CartItemsList";
@@ -1213,6 +1214,16 @@ function ConteudoDoCarrinho({
               }}
               className="flex w-full flex-1 flex-col"
             >
+              {/* O carrinho foi esvaziado na criação do pedido: o Pix que
+                  ficou esperando é lembrado aqui também. */}
+              {cart.length === 0 && (
+                <AvisoDePedidoAguardandoPagamentoDaConta
+                  userId={user?.id}
+                  onNavigate={onNavigate}
+                  ativo={isActive}
+                  className="mx-4 mt-4 min-[380px]:mx-5 md:mx-auto md:w-full md:max-w-md"
+                />
+              )}
               {cart.length === 0 ? (
                 <div
                   data-carrinho-vazio

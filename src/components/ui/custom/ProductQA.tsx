@@ -172,9 +172,19 @@ export function ProductQA({
 
   const handleNavigateToAuth = () => {
     // `requested` + `id` fazem o App (destinoPosLogin) devolver a pessoa ao
-    // PRODUTO depois de entrar, em vez de largá-la no Perfil.
+    // PRODUTO depois de entrar, em vez de largá-la no Perfil. `from` e
+    // `haEntradaAntes` são os mesmos que o App grava em todo login que ele
+    // abre (handleNavigate): sem eles, a troca da entrada de login não sabia
+    // que a tela de trás era o produto, e o Voltar depois de entrar ia ao
+    // Início em vez de voltar de onde a pessoa chegou ao produto.
     globalThis.history.pushState(
-      { view: "auth", requested: "product-detail", id: productId },
+      {
+        view: "auth",
+        requested: "product-detail",
+        id: productId,
+        from: "product-detail",
+        haEntradaAntes: Boolean(globalThis.history.state?.from),
+      },
       "",
       "/auth",
     );

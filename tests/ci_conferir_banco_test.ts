@@ -923,6 +923,137 @@ Deno.test("206a/206b — rol fechado, um statement so de catalogo, md5 do pre-vo
   );
 });
 
+// 207 (27/11/2026): o lote da 20261651000000 (a ordem dos banners muda numa trava so). Rol fechado de 5 linhas, o mesmo na 207a
+// e na 207b, so catalogo; a 207a espera as duas RPCs NOVAS com o corpo desta e a 207b, ausentes ou com o corpo desta. Os md5
+// saem do PRE-VOO da propria migration e sao RECALCULADOS do arquivo; as duas conferem a reorder_banners_atomic da 1381.
+Deno.test("207a/207b — rol fechado, um statement so de catalogo, md5 do pre-voo da 20261651000000 recalculado do arquivo, menu, rpc-ci, release e lote no canais", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { createHash } = require("node:crypto");
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A207 = "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado";
+  const B207 = "207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente";
+  const NOME = "20261651000000_a_ordem_dos_banners_muda_numa_trava_so.sql";
+  const migration = (
+    await Deno.readTextFile(`${MIGRATIONS_DIR}/${NOME}`)
+  ).replace(/\r/g, "");
+  const par =
+    /v_h_normaliza text := '([0-9a-f]{32})';\s+v_h_move text := '([0-9a-f]{32})';/.exec(
+      migration,
+    );
+  assert(par, "o pre-voo declara os md5 das duas funcoes novas");
+  const [, normaliza, move] = par;
+  // O corpo entre o delimitador de dolar do UM CREATE OR REPLACE de cada funcao do arquivo.
+  const corpo = (sql: string, nome: string) => {
+    const marca = `CREATE OR REPLACE FUNCTION public.${nome}(`;
+    assertEquals(sql.split(marca).length - 1, 1, "uma definicao so");
+    const i = sql.indexOf(marca);
+    const m = /\bAS (\$\w*\$)/.exec(sql.slice(i));
+    assert(m, "sem delimitador");
+    const a = i + m.index + m[0].length;
+    return sql.slice(a, sql.indexOf(m[1], a));
+  };
+  const md5 = (s: string) =>
+    createHash("md5").update(s).digest("hex") as string;
+  assertEquals(md5(corpo(migration, "normalize_banners_atomic")), normaliza);
+  assertEquals(md5(corpo(migration, "move_banner_atomic")), move);
+  const itens = [
+    "normalize_banners_atomic: corpo exato (md5), arruma a pagina inteira sob a trava da pagina",
+    "move_banner_atomic: corpo exato (md5), acha o vizinho dentro do banco sob a mesma trava",
+    "normalize_banners_atomic e move_banner_atomic: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE so de authenticated e service_role",
+    "reorder_banners_atomic: corpo da 20261381000000 (md5), a troca antiga segue para o app em cache",
+    "banners e is_admin_atual: as colunas id, position e order e a trava de admin de agora existem",
+  ];
+  for (const consulta of [A207, B207]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(!/FROM\s+public\./i.test(limpo), `${consulta}: le so catalogo`);
+    assertStringIncludes(menu, `- ${consulta}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+    // As duas conferem a reorder_banners_atomic que o app velho em cache chama (corpo da 1381).
+    assertStringIncludes(sql, "= '8530188cb2fd69a7d3bf24add96eb339'");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A207}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B207}.sql`),
+  );
+  // A 207a aceita SO o corpo desta; a 207b, ausente OU o desta (reaplicacao idempotente).
+  for (const h of [normaliza, move]) {
+    assertStringIncludes(sqlA, `n = 1 AND h = '${h}'`);
+    assert(!sqlA.includes(`n = 0 OR (n = 1 AND h = '${h}')`));
+    assertStringIncludes(sqlB, `n = 0 OR (n = 1 AND h = '${h}')`);
+  }
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/a-ordem-dos-banners-muda-numa-trava-so-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A207,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261651000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B207);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 207a: ${chave} nao se aplica`);
+  const ordem = canais.provasDeObjetos.map(
+    (p: { consulta: string }) => p.consulta,
+  );
+  const a86 = "86a-conferir-ex-admin-no-resto-do-painel-aplicado";
+  assert(
+    ordem.indexOf(a86) >= 0 && ordem.indexOf(a86) < ordem.indexOf(A207),
+    "o lote da 207a vem depois do da 86a (a 1381, a reorder_banners_atomic do ar)",
+  );
+});
+
 // 129: medicao ANTES; nao autoriza apply nem registra uma prova de pos-aplicacao.
 const CONSULTAS_129 = [
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
@@ -17274,6 +17405,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
     // 20261650000000: a categoria so com produto excluido pode sair.
     "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
+    // 20261651000000: a ordem dos banners muda numa trava so.
+    "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado",
     // 20261652000000: a loja nova confirma a entrega e o pagamento.
     "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
   ];

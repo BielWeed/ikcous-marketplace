@@ -526,6 +526,55 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261651000000: a ordem dos banners muda numa trava so. DUAS RPCs NOVAS: normalize_banners_atomic e move_banner_atomic tomam a trava da
+  // pagina antes das linhas e checam o admin de agora; a primeira renumera na ordem da tela, a segunda acha o vizinho dentro do banco. Os
+  // marcadores sao as decisoes que, tiradas, voltam o defeito. O corpo exato (md5), os atributos e a ACL sao da consulta 207a; o
+  // comportamento, da prova viva a-ordem-dos-banners-muda-numa-trava-so-viva.cjs.
+  "20261651000000_a_ordem_dos_banners_muda_numa_trava_so.sql": [
+    {
+      funcao: "normalize_banners_atomic",
+      esperado: [
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto:
+            "PERFORM pg_advisory_xact_lock(hashtextextended('ikcous.banners.ordem:' || p_position, 0));",
+          vezes: 1,
+        },
+        {
+          texto:
+            'PERFORM 1 FROM public.banners WHERE "position" = p_position ORDER BY id FOR UPDATE;',
+          vezes: 1,
+        },
+        {
+          texto:
+            "CASE WHEN id = p_prioritario THEN CASE WHEN p_prioritario_depois THEN 1 ELSE -1 END ELSE 0 END ASC,",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "move_banner_atomic",
+      esperado: [
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto:
+            "PERFORM pg_advisory_xact_lock(hashtextextended('ikcous.banners.ordem:' || p_position, 0));",
+          vezes: 1,
+        },
+        {
+          texto:
+            'PERFORM 1 FROM public.banners WHERE "position" = p_position ORDER BY id FOR UPDATE;',
+          vezes: 1,
+        },
+        { texto: "RAISE EXCEPTION 'Banner não encontrado.';", vezes: 1 },
+        {
+          texto:
+            'WHERE "position" = p_position AND "order" < v_ordem ORDER BY "order" DESC LIMIT 1;',
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261645000000: o aviso do vale-troca diz que a loja combina. UMA funcao (a do gatilho tr_devolucao_avisa_o_cliente), so a
   // frase do ramo vale muda; o resto do corpo e' o da 20261241000000 (o aviso do reembolso em processamento segue uma vez). O corpo
   // exato (md5), os atributos e a ACL sao da consulta 205a; o comportamento, da prova viva.

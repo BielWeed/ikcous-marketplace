@@ -835,6 +835,22 @@
       "porque": "Gestao de categorias do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL e troca o nome nos produtos, nos links de banner e na regra de devolucao numa transacao so (migration 20261237000000); o visitante nao a executa."
     },
     {
+      "funcao": "public.normalize_banners_atomic(p_position text, p_prioritario uuid, p_prioritario_depois boolean)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Ordem dos banners do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL e arruma a pagina sob a trava da pagina (migration 20261651000000); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.move_banner_atomic(p_position text, p_banner_id uuid, p_direcao text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Subir/descer banner no painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL e acha o vizinho dentro do banco sob a trava da pagina (migration 20261651000000); o visitante nao a executa."
+    },
+    {
       "funcao": "public.reorder_banners_atomic(p_position text, p_banner_id_1 uuid, p_banner_id_2 uuid)",
       "executa": ["authenticated"],
       "tipo": "volatil",
