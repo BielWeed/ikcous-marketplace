@@ -88,6 +88,8 @@
  * aplicar-migrations.yml prova a cada run; o T1 (P3) mede na loja real.
  */
 
+import { Buffer } from "node:buffer";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -376,6 +378,86 @@ export function arquivosDoRepo(pasta = PASTA_MIGRATIONS) {
     arquivo: path.basename(caminho),
     corpo: fs.readFileSync(caminho, "utf8"),
   }));
+}
+
+const RAIZ_DO_REPO = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
+const PASTA_NO_COMMIT = "supabase/migrations";
+const RE_SHA_DO_COMMIT = /^[0-9a-f]{40}$/;
+const RE_OBJETO = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+/** O git deste repositório (bytes; `entrada` vira o stdin). */
+function gitDoRepo(args, entrada) {
+  return execFileSync("git", ["-C", RAIZ_DO_REPO, ...args], {
+    input: entrada,
+    maxBuffer: 256 * 1024 * 1024,
+    stdio: [entrada === undefined ? "ignore" : "pipe", "pipe", "ignore"],
+    windowsHide: true,
+  });
+}
+
+/**
+ * Os arquivos da fila como estão no COMMIT `sha` (lote 573), pela MESMA régua
+ * de listarMigrations (só a raiz de supabase/migrations, 13 ou 14 dígitos,
+ * .sql, ordem de texto) — nunca da árvore de trabalho: um arquivo solto ou
+ * editado na pasta não entra num banco de loja. Um `ls-tree` e um
+ * `cat-file --batch` (uma chamada para as ~290). Qualquer coisa fora do
+ * formato é erro: nunca uma fila pela metade.
+ *
+ * git(args, entrada?) → bytes (o teste passa um dublê).
+ */
+export function arquivosDoCommit(sha, { git = gitDoRepo } = {}) {
+  if (typeof sha !== "string" || !RE_SHA_DO_COMMIT.test(sha))
+    throw new Error("arquivosDoCommit: SHA fora do formato (40 hex).");
+  const lista = Buffer.from(
+    git(["ls-tree", "-z", sha, "--", `${PASTA_NO_COMMIT}/`]),
+  ).toString("utf8");
+  const daFila = [];
+  for (const registro of lista.split("\0")) {
+    if (registro === "") continue;
+    const tab = registro.indexOf("\t");
+    const [, tipo, objeto] = registro.slice(0, Math.max(tab, 0)).split(" ");
+    const caminho = registro.slice(tab + 1);
+    if (tab < 0 || !caminho.startsWith(`${PASTA_NO_COMMIT}/`))
+      throw new Error("arquivosDoCommit: ls-tree fora do formato.");
+    const nome = caminho.slice(PASTA_NO_COMMIT.length + 1);
+    if (
+      tipo !== "blob" ||
+      nome.includes("/") ||
+      !/^\d{13,14}_/.test(nome) ||
+      !nome.endsWith(".sql")
+    )
+      continue;
+    if (!RE_OBJETO.test(objeto ?? ""))
+      throw new Error("arquivosDoCommit: ls-tree fora do formato.");
+    daFila.push({ nome, objeto });
+  }
+  daFila.sort((a, b) => (a.nome < b.nome ? -1 : a.nome > b.nome ? 1 : 0));
+  if (daFila.length === 0) return [];
+  const saida = Buffer.from(
+    git(["cat-file", "--batch"], `${daFila.map((a) => a.objeto).join("\n")}\n`),
+  );
+  let pos = 0;
+  return daFila.map(({ nome, objeto }) => {
+    const fim = saida.indexOf(0x0a, pos);
+    const [obj, tipo, tamanho] =
+      fim < 0 ? [] : saida.toString("utf8", pos, fim).split(" ");
+    const inicio = fim + 1;
+    const n = /^\d{1,10}$/.test(tamanho ?? "") ? Number(tamanho) : -1;
+    if (
+      obj !== objeto ||
+      tipo !== "blob" ||
+      n < 0 ||
+      saida[inicio + n] !== 0x0a
+    )
+      throw new Error(
+        `arquivosDoCommit: ${nome} não foi lido do commit ${sha}.`,
+      );
+    pos = inicio + n + 1;
+    return { arquivo: nome, corpo: saida.toString("utf8", inicio, inicio + n) };
+  });
 }
 
 // ─── T7: o envelope ─────────────────────────────────────────────────────────

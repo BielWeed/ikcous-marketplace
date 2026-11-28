@@ -2189,6 +2189,92 @@ Deno.test("conferir (lote 566): fila com migration nova = item banco NÃO dizend
   assert(!b2.detalhe.includes("não está concluída"), b2.detalhe);
 });
 
+// ─── banco só do commit aprovado da release (lote 573) ──────────────────────
+
+/** Tudo que o Supabase viu desde `n` (fetch inclusive: nada de renovação). */
+const chamadasDesde = (amb, n) => amb.api.chamadas.slice(n);
+
+Deno.test("banco (lote 573): ATUALIZAR com o HEAD fora do topo da release = NÃO, nenhuma chamada ao Supabase, a migration nova não vai e o SIM fica; diz o checkout do topo", async () => {
+  const amb = await ateFicha();
+  // um checkout de outra branch, com uma migration que a release não juntou
+  amb.deps.git = gitFalso({ head: OUTRO_SHA });
+  amb.deps.arquivos = () => [...MIGRATIONS, MIGRATION_NOVA];
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "não é o topo");
+  assertStringIncludes(r.mensagem, TOPO);
+  assertStringIncludes(r.mensagem, "Nada foi enviado ao banco");
+  assertEquals(chamadasDesde(amb, n), []);
+  assertEquals(envelopesDo(amb.api.banco).length, 2);
+  assertEquals(await vereditoNoEstado(amb, "banco"), "SIM");
+  // de volta ao topo, a mesma loja recebe a nova e fecha SIM
+  amb.deps.git = gitFalso();
+  const r2 = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r2.veredito, "SIM", r2.mensagem);
+  assertEquals(envelopesDo(amb.api.banco).length, 3);
+});
+
+Deno.test("banco (lote 573): instalação DO ZERO com o HEAD fora do topo = NÃO, nenhuma chamada ao Supabase e nada do banco no estado", async () => {
+  const amb = await ambiente({ git: gitFalso({ head: OUTRO_SHA }) });
+  await conectar(amb);
+  assertEquals(
+    (await executarPasso(pedido("criar-projeto"), amb.deps)).veredito,
+    "SIM",
+  );
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "não é o topo");
+  assertEquals(chamadasDesde(amb, n), []);
+  assertEquals(envelopesDo(amb.api.banco).length, 0);
+  assertEquals(await vereditoNoEstado(amb, "banco"), undefined);
+});
+
+Deno.test("banco (lote 573): topo do ramo da release que não se lê = NÃO sem chamada ao Supabase, e o SIM fica", async () => {
+  const amb = await ateFicha();
+  const git = gitFalso();
+  git.topoDoRamo = async () => {
+    throw new Error("sem rede");
+  };
+  amb.deps.git = git;
+  amb.deps.arquivos = () => [...MIGRATIONS, MIGRATION_NOVA];
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "Nada foi enviado ao banco");
+  assertEquals(chamadasDesde(amb, n), []);
+  assertEquals(await vereditoNoEstado(amb, "banco"), "SIM");
+});
+
+Deno.test("banco (lote 573): as migrations vêm do COMMIT aprovado (o topo), e o que só existe na árvore não vai", async () => {
+  const amb = await ateFicha();
+  const pedidos = [];
+  // a árvore de trabalho tem uma migration solta; o commit aprovado, não
+  amb.deps.arquivos = (sha) => {
+    pedidos.push(sha);
+    return sha === TOPO ? [...MIGRATIONS] : [...MIGRATIONS, MIGRATION_NOVA];
+  };
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assert(pedidos.length > 0 && pedidos.every((s) => s === TOPO), `${pedidos}`);
+  assertEquals(envelopesDo(amb.api.banco).length, 2, "a solta não foi");
+});
+
+Deno.test("banco (lote 573): as migrations do commit que não se leem (git falha) = NÃO sem chamada ao Supabase, e o SIM fica", async () => {
+  const amb = await ateFicha();
+  amb.deps.arquivos = () => {
+    throw new Error("git cat-file falhou");
+  };
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, TOPO);
+  assertStringIncludes(r.mensagem, "Nada foi enviado ao banco");
+  assertEquals(chamadasDesde(amb, n), []);
+  assertEquals(await vereditoNoEstado(amb, "banco"), "SIM");
+});
+
 // ─── C3: o slug que não cabe no cadastro para no abrir ──────────────────────
 
 /** Os passos de loja (todos menos autorizar e os que não existem mais). */
@@ -2544,7 +2630,10 @@ Deno.test("functions (lote 566): sem o download do código (dependência ausente
 });
 
 Deno.test("functions: HEAD diferente do topo da release = NÃO com a recusa do B2 repassada e 0 chamadas ao Supabase", async () => {
-  const amb = await ateFicha({ git: gitFalso({ head: OUTRO_SHA }) });
+  // a loja montada no topo (o banco também exige o commit aprovado, lote
+  // 573); o checkout muda de branch só antes do functions
+  const amb = await ateFicha();
+  amb.deps.git = gitFalso({ head: OUTRO_SHA });
   const n = amb.api.chamadas.length;
   const r = await executarPasso(pedido("functions"), amb.deps);
   assertEquals(r.veredito, "NÃO");
