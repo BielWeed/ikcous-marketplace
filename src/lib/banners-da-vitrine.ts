@@ -186,11 +186,15 @@ function gravarNoCofre(items: Banner[]): void {
  * `cedo`: pedido do boot -- a foto do topo só é antecipada nas condições de
  * `preCarregarFotoNoBoot`. Sem `cedo` (a tela pedindo) o pré-carregamento é
  * incondicional, como sempre foi.
+ *
+ * `nova`: releitura depois de uma mutação local que o banco pode ter gravado
+ * diferente (a seta do painel). Não pega carona na consulta em voo: ela começou
+ * ANTES da mutação e, ao terminar, devolveria o cache local em vez do banco.
  */
 export function pedirBanners(
-  opcoes: { cedo?: boolean } = {},
+  opcoes: { cedo?: boolean; nova?: boolean } = {},
 ): Promise<Banner[]> {
-  if (consultaEmVoo) return consultaEmVoo;
+  if (consultaEmVoo && !opcoes.nova) return consultaEmVoo;
   const geracao = geracaoDasMutacoes;
   const consulta: Promise<Banner[]> = (async () => {
     console.log("[Banners] Fetching banners...");
