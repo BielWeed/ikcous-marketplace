@@ -153,7 +153,9 @@ describe("P32: alinhamento e resumo alcançável no computador", () => {
         // 27/11/2026: rodapé "Comprou sem entrar na conta?" na conta COM pedidos
         // (parágrafo novo, centrado, max-w-[300px], mt-6); nenhuma classe que já
         // existia mudou — só esse literal entrou.
-        "4b16aa4e4b8e823a2ba66242da7a173c8fb67d3b5edd56363a59d4b206cc020e",
+        // 28/11/2026 (1.5.246): entrou só o cartão do pedido aguardando pagamento
+        // no carrinho vazio; nenhuma classe antiga mudou.
+        "ad9e500d8b280cd116471c8dba8be7c1cbd3c33dc8edf54c581e3817c2039e24",
       ],
       [
         caminhos.checkout,
