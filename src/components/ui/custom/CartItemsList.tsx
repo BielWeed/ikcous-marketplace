@@ -155,7 +155,7 @@ const CartItemCard = memo(function CartItemCard({
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-start justify-between gap-2">
-            <h2 className="line-clamp-2 min-w-0 flex-1 text-[15px] font-semibold leading-snug text-foreground">
+            <h2 className="line-clamp-2 min-w-0 flex-1 break-words text-[15px] font-semibold leading-snug text-foreground">
               {item.product.name}
             </h2>
             <button

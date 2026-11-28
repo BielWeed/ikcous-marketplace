@@ -155,6 +155,19 @@ describe("fonte grande: o resumo do checkout deixa conferir o nome do produto", 
   });
 });
 
+describe("carrinho: nome longo sem espaço não some pela direita", () => {
+  it("o título do item quebra a palavra comprida, como no card e no checkout", async () => {
+    const nome = "ConjuntoMoletomInfantilUnicórnioRosaGlitter";
+    await montarLista([{ product: produto({ name: nome }), quantity: 1 }]);
+    const titulo = Array.from(hospedeiro.querySelectorAll("h2")).find(
+      (h) => h.textContent === nome,
+    );
+    expect(titulo).toBeDefined();
+    expect(titulo!.className).toContain("line-clamp-2");
+    expect(titulo!.className).toContain("break-words");
+  });
+});
+
 describe("fonte grande: o aviso de estoque do carrinho não é cortado", () => {
   it("'Máximo disponível: N' pode quebrar de linha", async () => {
     await montarLista([{ product: produto({ stock: 5 }), quantity: 5 }]);

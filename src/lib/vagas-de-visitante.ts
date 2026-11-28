@@ -76,6 +76,9 @@ export function tempoSegurandoEstoque(
   const idade = agora - criadoEmMs(pedido.createdAt);
   if (!Number.isFinite(idade) || idade < 0) return null;
   const horas = Math.floor(idade / HORA_MS);
+  // O cartão diz "há {tempo}": "há 0 horas" ao lado de "agora mesmo" parecia
+  // defeito; antes da primeira hora completa, "menos de 1 hora".
+  if (horas === 0) return "menos de 1 hora";
   if (horas < 24) return horas === 1 ? "1 hora" : `${horas} horas`;
   const dias = Math.floor(horas / 24);
   return dias === 1 ? "1 dia" : `${dias} dias`;
