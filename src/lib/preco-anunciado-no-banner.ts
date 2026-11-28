@@ -41,7 +41,12 @@ const PECA_DEPOIS_DE_CADA = /^[^\S\r\n]+(?:um|uma|pe[cç]a|unidade|item)\b/i;
 const PALAVRA_DEPOIS = /^\s*[a-zà-úç\d]/i;
 
 function precoUnitarioDepois(depois: string): boolean {
-  if (DEPOIS_DE_POR_UNIDADE.test(depois)) return true;
+  // A mesma regra para "por unidade" e "cada": só é preço da peça quando
+  // nada mais vem depois (só pontuação), senão o combo fica fora como na base.
+  const porUnidade = DEPOIS_DE_POR_UNIDADE.exec(depois);
+  if (porUnidade) {
+    return !PALAVRA_DEPOIS.test(depois.slice(porUnidade[0].length));
+  }
   const cada = DEPOIS_DE_CADA.exec(depois);
   if (!cada) return false;
   let resto = depois.slice(cada[0].length);
