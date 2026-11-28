@@ -9,7 +9,15 @@
 // `toast` dublado chamavam o `onClick` direto e não viam isso.
 import { act, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { Toaster } from "@/components/ui/sonner";
 import { useRascunhoDeTexto } from "@/hooks/useRascunhoDeTexto";
@@ -94,6 +102,13 @@ const botao = (rotulo: string) =>
     ),
   ].find((b) => b.textContent?.trim() === rotulo);
 
+// O aviso de rascunho ainda na tela (o Sonner tira o nó só depois da animação
+// de saída; até lá ele fica com `data-removed`).
+const avisoDoRascunhoNaTela = () =>
+  [...document.querySelectorAll("[data-sonner-toast]")].some((aviso) =>
+    aviso.textContent?.includes("Rascunho não salvo encontrado"),
+  );
+
 async function tocar(rotulo: string) {
   const alvo = botao(rotulo);
   expect(alvo).toBeDefined();
@@ -118,6 +133,17 @@ describe("aviso de rascunho de texto no Sonner real", () => {
     expect(localStorage.getItem(CHAVE)).toBeNull();
     expect(hospedeiro.querySelector("[data-texto]")?.textContent).toBe(
       "Texto salvo",
+    );
+    // E o aviso fecha: sem o `toast.dismiss`, ele ficaria eterno na tela.
+    // Cada volta espera DENTRO do act, onde o React aplica a saída do aviso.
+    await vi.waitFor(
+      async () => {
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 50));
+        });
+        expect(avisoDoRascunhoNaTela()).toBe(false);
+      },
+      { interval: 1 },
     );
   });
 

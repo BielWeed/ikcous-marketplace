@@ -153,6 +153,13 @@ describe("AdminProductFormView — Descartar o rascunho antigo no Sonner real", 
       ),
     ].find((b) => b.textContent?.trim() === rotulo);
 
+  // O aviso de rascunho ainda na tela (o Sonner tira o nó só depois da
+  // animação de saída; até lá ele fica com `data-removed`).
+  const avisoDoRascunhoNaTela = () =>
+    [...document.querySelectorAll("[data-sonner-toast]")].some((aviso) =>
+      aviso.textContent?.includes("Rascunho não salvo encontrado"),
+    );
+
   it("o aviso não fecha por gesto (arrastar mataria o salvamento automático)", async () => {
     await abrirProduto();
     const aviso = document.querySelector("[data-sonner-toast]");
@@ -171,6 +178,12 @@ describe("AdminProductFormView — Descartar o rascunho antigo no Sonner real", 
     await passar(100);
 
     expect(armazem.has(CHAVE)).toBe(false);
+    // E o aviso fecha: sem o `toast.dismiss`, ele ficaria eterno na tela.
+    // Cada volta passa o relógio DENTRO do act, onde o React aplica a saída.
+    await vi.waitFor(async () => {
+      await passar(50);
+      expect(avisoDoRascunhoNaTela()).toBe(false);
+    });
   });
 
   it("controle: tocar Restaurar põe o rascunho no formulário", async () => {
