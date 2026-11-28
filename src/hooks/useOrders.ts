@@ -4700,11 +4700,6 @@ export function useOrders(
             pedidosCanceladosLocalmenteRef.current.set(orderId, Date.now());
             fetchPedidosCancelados().catch(() => {});
           }
-          // "Já estava cancelado": nada mudou agora, e quem cancelou antes já
-          // deu o aviso dele. A ficha não manda "Cancelado" à cliente de novo.
-          if (resposta.jaEstava) {
-            return { gravadoNoBancoEm: null, jaEstava: true as const };
-          }
           // A resposta da edge não traz `updated_at`: o carimbo do aviso à
           // cliente sai de uma leitura curta do banco (só a ficha do painel
           // avisa, e só sem `silent`). Falhou, pendurou ou o pedido já não
@@ -4713,7 +4708,14 @@ export function useOrders(
             isAdmin && !silent
               ? await avancoGravouNoBanco(orderId, "cancelled")
               : null;
-          return { gravadoNoBancoEm: conferido?.gravadoNoBancoEm ?? null };
+          const gravadoNoBancoEm = conferido?.gravadoNoBancoEm ?? null;
+          // "Já estava cancelado" segue o MESMO caminho e a ficha avisa a
+          // cliente do mesmo jeito: pode ser a 1ª tentativa desta lojista que
+          // gravou e perdeu a resposta (nenhum aviso saiu). `jaEstava` só
+          // informa; nunca cala o aviso.
+          return resposta.jaEstava
+            ? { gravadoNoBancoEm, jaEstava: true as const }
+            : { gravadoNoBancoEm };
         }
 
         // L-9 front (08/09/2026): a lojista está com a ficha aberta

@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 //
-// Lote 528: a lojista cancela pela ficha um pedido online que JÁ ESTAVA
-// cancelado (outro aparelho, a própria cliente). A edge responde `cancelado`
-// com `jaEstava` e nada muda no banco agora; quem cancelou antes já deu o
-// aviso dele. Antes a ficha mandava de novo "Seu pedido agora está:
-// Cancelado" à cliente, carimbado com o relógio do aparelho. Agora
-// `updateOrderStatus` diz `jaEstava` e a ficha não manda o push. O controle
-// prova que o cancelamento de verdade continua avisando, com a hora do banco.
+// Lote 528: a lojista cancela pela ficha um pedido online que a edge diz que
+// JÁ ESTAVA cancelado (`jaEstava`). Não dá para supor que alguém já avisou a
+// cliente: a 1ª tentativa desta mesma lojista pode ter gravado o
+// cancelamento e perdido a resposta (prazo de 30 s, rede caiu na volta) — o
+// hook lança e nenhum push sai; o 2º toque recebe `jaEstava`. Calar o aviso
+// aí deixaria a cliente sem saber nunca. Um push repetido só substitui o
+// anterior na bandeja (mesma `tag`), então o lado seguro é avisar: a ficha
+// manda "Cancelado", com a hora do banco quando vier. O controle prova o
+// cancelamento novo.
 //
 // Harness de admin-orders-cancelar-pela-edge.test.tsx (o módulo
 // `@/hooks/useOrders` real, só `useOrders` trocado), com o pedido tendo conta
@@ -116,7 +118,7 @@ class ObservadorStub {
   disconnect() {}
 }
 
-describe("AdminOrdersView — cancelar o que já estava cancelado não avisa a cliente de novo", () => {
+describe("AdminOrdersView — cancelar o que já estava cancelado ainda avisa a cliente", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -187,9 +189,9 @@ describe("AdminOrdersView — cancelar o que já estava cancelado não avisa a c
     });
   }
 
-  it("a edge diz que já estava cancelado: a ficha vira cancelada e NENHUM push sai para a cliente", async () => {
+  it("a edge diz que já estava cancelado: a ficha vira cancelada e o push SAI para a cliente, com a hora do banco", async () => {
     updateOrderStatus.mockResolvedValue({
-      gravadoNoBancoEm: null,
+      gravadoNoBancoEm: "2026-11-27T12:34:56Z",
       jaEstava: true,
     });
     await renderizarComPedidoSelecionado();
@@ -198,7 +200,31 @@ describe("AdminOrdersView — cancelar o que já estava cancelado não avisa a c
 
     expect(updateOrderStatus).toHaveBeenCalledTimes(1);
     expect(botaoCancelarDaFicha()).toBeFalsy();
-    expect(avisarOClienteDoStatus).not.toHaveBeenCalled();
+    expect(avisarOClienteDoStatus).toHaveBeenCalledTimes(1);
+    expect(avisarOClienteDoStatus).toHaveBeenCalledWith(
+      pedidoOnline.id,
+      "cancelled",
+      expect.objectContaining({ userId: "cliente-com-conta" }),
+      "2026-11-27T12:34:56Z",
+    );
+  });
+
+  it("borda: já estava cancelado e a hora não veio — o push sai mesmo assim (relógio local, como antes)", async () => {
+    updateOrderStatus.mockResolvedValue({
+      gravadoNoBancoEm: null,
+      jaEstava: true,
+    });
+    await renderizarComPedidoSelecionado();
+
+    await clicarCancelar();
+
+    expect(avisarOClienteDoStatus).toHaveBeenCalledTimes(1);
+    expect(avisarOClienteDoStatus).toHaveBeenCalledWith(
+      pedidoOnline.id,
+      "cancelled",
+      expect.objectContaining({ userId: "cliente-com-conta" }),
+      null,
+    );
   });
 
   it("controle: cancelamento de verdade avisa a cliente, com a hora que o banco gravou", async () => {

@@ -1960,9 +1960,6 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // Hora em que o BANCO gravou a mudança (devolvida por `updateOrderStatus`):
     // é o carimbo de ordem do aviso à cliente, não o relógio deste aparelho.
     let gravadoNoBancoEm: string | null = null;
-    // A edge respondeu "já estava cancelado": nada mudou agora, e quem
-    // cancelou antes já deu o aviso dele. A cliente não recebe outro push.
-    let jaEstava = false;
     // A RPC VEM PRIMEIRO (PEDIDO-090, #87).
     //
     // Até aqui o push saía ANTES da gravação. Se a RPC falhasse — 401, sessão
@@ -1983,7 +1980,6 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       guardadoNaFila = resultado === "guardado-na-fila";
       if (typeof resultado === "object" && resultado !== null) {
         gravadoNoBancoEm = resultado.gravadoNoBancoEm;
-        jaEstava = "jaEstava" in resultado && resultado.jaEstava === true;
       }
       haptic.success();
 
@@ -2096,9 +2092,6 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     setAvisoDoStatus(
       `Pedido #${numeroDoPedido(orderId)} agora está ${rotuloDoStatus(newStatus, alvo?.retiradaNaLoja)}.`,
     );
-
-    // Já estava cancelado: nada a avisar (nem o "cliente não foi avisado").
-    if (jaEstava) return;
 
     if (!alvo) {
       toast.warning("Status atualizado, mas o cliente não foi avisado", {

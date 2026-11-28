@@ -302,7 +302,10 @@ describe("Hora do banco no aviso: os caminhos em que a resposta não traz a linh
       expect(r.valor).toEqual({ gravadoNoBancoEm: null });
     });
 
-    it("já estava cancelado: diz isso a quem chamou (a ficha não avisa a cliente de novo) e nem lê a hora", async () => {
+    it("já estava cancelado: devolve a hora do banco como no cancelamento novo (a ficha ainda avisa a cliente) e diz que já estava", async () => {
+      // A 1ª tentativa pode ter gravado sem resposta (prazo de 30 s, rede
+      // caiu na volta) e sem aviso nenhum: a 2ª é a que recebe `jaEstava`,
+      // e é ela que tem de avisar a cliente, com a hora do banco.
       statusNoBanco = "cancelled";
       respostaDaEdge = async () => ({
         data: { cancelamento: "cancelado", jaEstava: true },
@@ -312,8 +315,11 @@ describe("Hora do banco no aviso: os caminhos em que a resposta não traz a linh
       const r = await mudar(ID_ONLINE, "cancelled");
 
       expect(r.erro).toBeNull();
-      expect(r.valor).toEqual({ gravadoNoBancoEm: null, jaEstava: true });
-      expect(colunasLidas).toEqual([]);
+      expect(r.valor).toEqual({
+        gravadoNoBancoEm: HORA_DO_BANCO,
+        jaEstava: true,
+      });
+      expect(colunasLidas.some((c) => c.includes("updated_at"))).toBe(true);
       expect(toast.success).toHaveBeenCalledWith(
         "Este pedido já estava cancelado.",
       );
