@@ -1,4 +1,4 @@
-import { trocasJaGravadasNoBanco } from "./troca-de-valor-da-variacao";
+import { opcoesNovasCorrespondentes } from "./troca-de-valor-da-variacao";
 
 /**
  * Editar um produto manda SÓ o que a lojista mudou.
@@ -132,13 +132,16 @@ export function variacoesAposConflito<
 >(tela: V[], abertura: V[], banco: V[], saldoHerdavel?: number): V[] {
   const antesPorId = new Map(abertura.map((v) => [v.id, v]));
   const hojePorId = new Map(banco.map((v) => [v.id, v]));
-  // Troca de valor que o salvar anterior já gravou (ver
-  // `trocasJaGravadasNoBanco`): a linha da tela é a antiga, que o banco
-  // guardou desligada com o valor de abertura. Ela deixa de ser edição — o
-  // que ela digitou foi para a opção nova, que entra pelo banco.
-  const jaTrocadas = new Set(
-    trocasJaGravadasNoBanco(tela, abertura, banco).map((t) => t.idAntigo),
-  );
+  // Se a troca já existe, o preço digitado pertence à opção nova, não à
+  // antiga desligada. Do GG já gravado, conserva id, estoque e demais campos.
+  const novasPorIdAntigo = opcoesNovasCorrespondentes(tela, abertura, banco);
+  const precosDigitados = new Map<string, V>();
+  for (const v of tela) {
+    const nova = novasPorIdAntigo.get(v.id);
+    if (nova && (nova.priceOverride ?? null) !== (v.priceOverride ?? null)) {
+      precosDigitados.set(nova.id, v);
+    }
+  }
   const mescladas = tela.flatMap((v): V[] => {
     if (v.id.startsWith("temp-")) {
       return estoqueFoiHerdado(v) && saldoHerdavel !== undefined
@@ -158,7 +161,7 @@ export function variacoesAposConflito<
       ...(hoje.stock !== undefined ? { stock: hoje.stock } : {}),
     } as V;
     if (!antes) return [comEstoqueAtual];
-    const daTela = jaTrocadas.has(v.id) ? antes : v;
+    const daTela = novasPorIdAntigo.has(v.id) ? antes : v;
     return [
       {
         ...comEstoqueAtual,
@@ -187,7 +190,13 @@ export function variacoesAposConflito<
   });
   // Não ressuscita a que ela excluiu aqui: só acrescenta a que nunca viu.
   const idsConhecidos = new Set([...tela, ...abertura].map((v) => v.id));
-  return [...mescladas, ...banco.filter((v) => !idsConhecidos.has(v.id))];
+  const novas = banco
+    .filter((v) => !idsConhecidos.has(v.id))
+    .map((v) => {
+      const digitada = precosDigitados.get(v.id);
+      return digitada ? { ...v, priceOverride: digitada.priceOverride } : v;
+    });
+  return [...mescladas, ...novas];
 }
 
 /** Um preço próprio da grade que mudou na tela E no banco, cada um para um lado. */
@@ -202,8 +211,8 @@ export interface PrecoDaGradeEmConflito {
  * valor NOVO do banco: ela mexeu no preço da variação, e outro aparelho também
  * (para um valor diferente do dela). A junção não muda — campo editado fica —,
  * mas o segundo salvar não pode gravar por cima sem ela ver: a tela lista
- * estes na confirmação. Mesmas exclusões da junção (nova, apagada no banco,
- * não lida na abertura, troca de valor já gravada). R$ 0 não é "sem preço".
+ * estes na confirmação. Se o banco já tem a opção nova de uma troca, o preço
+ * em conflito é o dela (não o da antiga). R$ 0 não é "sem preço".
  */
 export function precosDaGradeEmConflito(
   tela: VariacaoComparavel[],
@@ -212,14 +221,17 @@ export function precosDaGradeEmConflito(
 ): PrecoDaGradeEmConflito[] {
   const antesPorId = new Map(abertura.map((v) => [v.id, v]));
   const hojePorId = new Map(banco.map((v) => [v.id, v]));
-  const jaTrocadas = new Set(
-    trocasJaGravadasNoBanco(tela, abertura, banco).map((t) => t.idAntigo),
-  );
+  const novasPorIdAntigo = opcoesNovasCorrespondentes(tela, abertura, banco);
   return tela.flatMap((v): PrecoDaGradeEmConflito[] => {
+    const digitado = v.priceOverride ?? null;
+    const nova = novasPorIdAntigo.get(v.id);
+    if (nova) {
+      const atual = nova.priceOverride ?? null;
+      return atual === digitado ? [] : [{ id: nova.id, atual }];
+    }
     const antes = antesPorId.get(v.id);
     const hoje = hojePorId.get(v.id);
-    if (!antes || !hoje || jaTrocadas.has(v.id)) return [];
-    const digitado = v.priceOverride ?? null;
+    if (!antes || !hoje) return [];
     const deAbertura = antes.priceOverride ?? null;
     const atual = hoje.priceOverride ?? null;
     return digitado !== deAbertura && atual !== deAbertura && atual !== digitado

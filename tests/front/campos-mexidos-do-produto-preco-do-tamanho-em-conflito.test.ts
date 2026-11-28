@@ -126,6 +126,31 @@ describe("precosDaGradeEmConflito", () => {
     expect(precosDaGradeEmConflito(tela, abertura, banco)).toEqual([]);
   });
 
+  it.each([true, false])(
+    "preço zero na troca para GG diverge do automático do banco, com M guardado: %s",
+    (guardada) => {
+      const tela = [tamanho({ value: "GG", priceOverride: 0 })];
+      const abertura = [tamanho()];
+      const gg = tamanho({
+        id: "v-gg",
+        value: "GG",
+        priceOverride: null,
+        stockIncrement: 2,
+        sku: "GG-DO-BANCO",
+      });
+      const m = tamanho({ active: false, stockIncrement: 0 });
+      const banco = guardada ? [m, gg] : [gg];
+
+      expect(precosDaGradeEmConflito(tela, abertura, banco)).toEqual([
+        { id: "v-gg", atual: null },
+      ]);
+      expect(variacoesAposConflito(tela, abertura, banco)).toEqual([
+        ...(guardada ? [m] : []),
+        { ...gg, priceOverride: 0 },
+      ]);
+    },
+  );
+
   it("vários tamanhos: só os que mudaram nos dois lados, na ordem da tela", () => {
     const tela = [
       tamanho({ id: "v-g", value: "G", priceOverride: 50 }),
