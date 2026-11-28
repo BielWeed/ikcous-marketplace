@@ -1,3 +1,5 @@
+import { trocasJaGravadasNoBanco } from "./troca-de-valor-da-variacao";
+
 /**
  * Editar um produto manda SÓ o que a lojista mudou.
  *
@@ -130,6 +132,13 @@ export function variacoesAposConflito<
 >(tela: V[], abertura: V[], banco: V[], saldoHerdavel?: number): V[] {
   const antesPorId = new Map(abertura.map((v) => [v.id, v]));
   const hojePorId = new Map(banco.map((v) => [v.id, v]));
+  // Troca de valor que o salvar anterior já gravou (ver
+  // `trocasJaGravadasNoBanco`): a linha da tela é a antiga, que o banco
+  // guardou desligada com o valor de abertura. Ela deixa de ser edição — o
+  // que ela digitou foi para a opção nova, que entra pelo banco.
+  const jaTrocadas = new Set(
+    trocasJaGravadasNoBanco(tela, abertura, banco).map((t) => t.idAntigo),
+  );
   const mescladas = tela.flatMap((v): V[] => {
     if (v.id.startsWith("temp-")) {
       return estoqueFoiHerdado(v) && saldoHerdavel !== undefined
@@ -149,26 +158,30 @@ export function variacoesAposConflito<
       ...(hoje.stock !== undefined ? { stock: hoje.stock } : {}),
     } as V;
     if (!antes) return [comEstoqueAtual];
+    const daTela = jaTrocadas.has(v.id) ? antes : v;
     return [
       {
         ...comEstoqueAtual,
-        name: v.name === antes.name ? hoje.name : v.name,
-        value: v.value === antes.value ? hoje.value : v.value,
+        name: daTela.name === antes.name ? hoje.name : daTela.name,
+        value: daTela.value === antes.value ? hoje.value : daTela.value,
         sku:
-          vazioViraNulo(v.sku) === vazioViraNulo(antes.sku) ? hoje.sku : v.sku,
+          vazioViraNulo(daTela.sku) === vazioViraNulo(antes.sku)
+            ? hoje.sku
+            : daTela.sku,
         codigoBarras:
-          vazioViraNulo(v.codigoBarras) === vazioViraNulo(antes.codigoBarras)
+          vazioViraNulo(daTela.codigoBarras) ===
+          vazioViraNulo(antes.codigoBarras)
             ? hoje.codigoBarras
-            : v.codigoBarras,
+            : daTela.codigoBarras,
         priceOverride:
-          (v.priceOverride ?? null) === (antes.priceOverride ?? null)
+          (daTela.priceOverride ?? null) === (antes.priceOverride ?? null)
             ? hoje.priceOverride
-            : v.priceOverride,
-        active: v.active === antes.active ? hoje.active : v.active,
+            : daTela.priceOverride,
+        active: daTela.active === antes.active ? hoje.active : daTela.active,
         imageUrl:
-          vazioViraNulo(v.imageUrl) === vazioViraNulo(antes.imageUrl)
+          vazioViraNulo(daTela.imageUrl) === vazioViraNulo(antes.imageUrl)
             ? hoje.imageUrl
-            : v.imageUrl,
+            : daTela.imageUrl,
       },
     ];
   });
