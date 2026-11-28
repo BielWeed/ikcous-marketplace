@@ -207,6 +207,24 @@ describe("precoAnunciadoVelho — o texto bate com o preço de agora?", () => {
     ).toBeNull();
   });
 
+  it.each(["cada", "a unidade", "por unidade"])(
+    "compra múltipla com preço %s avisa só se o preço unitário divergir",
+    (unidade) => {
+      const texto = `Compre 2 blusas a R$ 70 ${unidade}`;
+      expect(precoAnunciadoVelho([texto], vestido(90))).toEqual({
+        tipo: "preco",
+        citado: 70,
+        atual: 90,
+        aPartirDe: false,
+      });
+      expect(precoAnunciadoVelho([texto], vestido(70))).toBeNull();
+    },
+  );
+
+  it("preço total de duas peças não é comparado ao preço unitário", () => {
+    expect(precoAnunciadoVelho(["Leve 2 por R$ 150"], vestido(90))).toBeNull();
+  });
+
   it("o preço do produto no mesmo texto do combo continua sendo conferido", () => {
     expect(
       precoAnunciadoVelho(["Por R$ 70,00 · Leve 2 por R$ 150"], vestido(100)),

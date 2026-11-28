@@ -25,8 +25,10 @@ const PERCENTUAL_OFF = /(\d[\d,]*)\s*%\s*OFF\b/gi;
  * só tira o valor que é dos outros: "com desconto R$ 79,90", "frete grátis
  * R$ 70" e "leve 1 vestido R$ 70" citam o preço do produto e são conferidos.
  */
+const ANTES_DE_COMBO = /\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}$/i;
+const DEPOIS_DE_PRECO_UNITARIO = /^\s+(?:cada|(?:a|por)\s+unidade)\b/i;
 const ANTES_DE_VALOR_DE_FORA =
-  /(?:\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}|\bacima\s+de\s*|\bdesconto\s+de\s*|\bcupom(?:\sde\sdesconto)?(?:\sde)?\s*[:\-–]?\s*|\bfrete(?:\sfixo)?(?:\sde)?\s*[:\-–]?\s*)$/i;
+  /(?:\bacima\s+de\s*|\bdesconto\s+de\s*|\bcupom(?:\sde\sdesconto)?(?:\sde)?\s*[:\-–]?\s*|\bfrete(?:\sfixo)?(?:\sde)?\s*[:\-–]?\s*)$/i;
 const DEPOIS_DE_VALOR_DE_FORA = /^\s*(?:OFF\b|de\s+desconto\b)/i;
 
 /**
@@ -62,16 +64,24 @@ export function valoresCitados(texto: string | null | undefined): {
   const antes = (achado: RegExpExecArray) => texto.slice(0, achado.index);
   for (const achado of texto.matchAll(REAIS)) {
     const depois = texto.slice(achado.index + achado[0].length);
+    const trechoAntes = antes(achado);
     if (
-      ANTES_DE_VALOR_DE_FORA.test(antes(achado)) ||
-      DEPOIS_DE_VALOR_DE_FORA.test(depois)
+      ANTES_DE_VALOR_DE_FORA.test(trechoAntes) ||
+      DEPOIS_DE_VALOR_DE_FORA.test(depois) ||
+      (ANTES_DE_COMBO.test(trechoAntes) &&
+        !DEPOIS_DE_PRECO_UNITARIO.test(depois))
     ) {
       continue;
     }
     centavos.push(centavosDe(achado[1]));
   }
   for (const achado of texto.matchAll(PERCENTUAL_OFF)) {
-    if (ANTES_DE_VALOR_DE_FORA.test(antes(achado))) continue;
+    const trechoAntes = antes(achado);
+    if (
+      ANTES_DE_VALOR_DE_FORA.test(trechoAntes) ||
+      ANTES_DE_COMBO.test(trechoAntes)
+    )
+      continue;
     const percentual = Number(achado[1].replace(",", "."));
     if (Number.isFinite(percentual)) percentuais.push(percentual);
   }
