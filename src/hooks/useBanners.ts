@@ -51,6 +51,10 @@ const TEXTO_SEM_RESPOSTA_AO_ADICIONAR = `${SEM_RESPOSTA_DO_BANNER} o banner foi 
 const TEXTO_SEM_RESPOSTA_AO_EDITAR = `${SEM_RESPOSTA_DO_BANNER} a mudança foi salva. ${CONFIRA_A_LISTA}`;
 const TEXTO_SEM_RESPOSTA_AO_REORDENAR = `${SEM_RESPOSTA_DO_BANNER} a nova ordem foi salva. ${CONFIRA_A_LISTA}`;
 const TEXTO_SEM_RESPOSTA_AO_EXCLUIR = `${SEM_RESPOSTA_DO_BANNER} o banner foi excluído. ${CONFIRA_A_LISTA}`;
+// O banner sumiu do banco entre a leitura da tela e a gravação (editar ou
+// trocar a ordem): mesma frase nos dois caminhos.
+const TEXTO_BANNER_EXCLUIDO_EM_OUTRO_APARELHO =
+  "Este banner foi excluído em outro aparelho ou você não tem mais acesso a ele.";
 // A resposta do INSERT se perdeu (erro sem código): o banco pode ter gravado.
 const TEXTO_QUEDA_AO_ADICIONAR =
   "A conexão caiu e não sabemos se o banner foi salvo. Conferimos a lista.";
@@ -829,9 +833,7 @@ export function useBanners(adminMode = false) {
         error instanceof Error &&
         error.name === "BannerIndisponivel"
       ) {
-        toast.error(
-          "Este banner foi excluído em outro aparelho ou você não tem mais acesso a ele.",
-        );
+        toast.error(TEXTO_BANNER_EXCLUIDO_EM_OUTRO_APARELHO);
         await fetchBanners(false, true);
       } else {
         toast.error(
@@ -932,7 +934,18 @@ export function useBanners(adminMode = false) {
     } catch (error) {
       applyLocalBanners(previousBanners);
       console.error("Error reordering banners:", error);
-      if (!aoFicarSemResposta(error)) toast.error("Erro ao reordenar banners.");
+      // Sem resposta: o aviso e a releitura já saíram por `aoFicarSemResposta`.
+      if (aoFicarSemResposta(error)) return;
+      // A RPC recusa com "Banner não encontrado." quando outro aparelho excluiu
+      // um dos dois: o retrato desfeito ainda o mostra, então a lista é relida
+      // do banco para ele sair da tela e do cofre local.
+      const mensagem = (error as { message?: unknown } | null)?.message;
+      toast.error(
+        typeof mensagem === "string" && mensagem.includes("não encontrado")
+          ? TEXTO_BANNER_EXCLUIDO_EM_OUTRO_APARELHO
+          : "Erro ao reordenar banners.",
+      );
+      void fetchBanners(false, true);
     }
   };
 
