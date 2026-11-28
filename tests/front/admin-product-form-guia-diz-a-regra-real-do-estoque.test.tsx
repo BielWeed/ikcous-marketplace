@@ -196,6 +196,28 @@ describe("AdminProductFormView — guia diz a regra real do estoque de variaçã
     expect(texto).toMatch(/trav/i); // "trava"/"travado"/"travar"
   });
 
+  it("o guia de variações aponta para a grade (não ensina a combinar à mão) e usa o nome real do campo de preço", async () => {
+    await montar();
+
+    await act(async () => {
+      clicarObrigatorio("Ajuda / Guia de Variações");
+    });
+
+    const texto = textoDaTela();
+    // O caminho da tela de hoje: "+ Grade" e o segundo atributo dentro dela
+    // (entre aspas: o botão da página não conta, só o guia que aponta para ele).
+    expect(texto).toContain('"+ Grade"');
+    expect(texto).toContain('"+ Adicionar outro atributo"');
+    // O campo como a lojista o vê, com o "Auto" explicado.
+    expect(texto).toContain('"Preço desta variação"');
+    expect(texto).toContain('"Auto"');
+    // Nada do caminho antigo: combinar à mão no valor e os nomes que a tela
+    // não mostra.
+    expect(texto).not.toMatch(/Rosa P/);
+    expect(texto).not.toContain("Atributo (Nome e Valor)");
+    expect(texto).not.toMatch(/preço substituto/i);
+  });
+
   it("a ajuda geral (modal) NÃO promete que o SKU do produto é único na loja", async () => {
     await montar();
 

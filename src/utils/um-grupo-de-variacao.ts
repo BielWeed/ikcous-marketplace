@@ -138,3 +138,28 @@ export function travaDeUmGrupoSo(
 
   return { bloqueia, grupoEmUso, renomeiaGrupoInteiro };
 }
+
+/**
+ * O que a tela diz ANTES, no lugar do botão que acrescenta outro atributo,
+ * quando o produto já usa um tipo: acrescentar o segundo seria recusado pela
+ * trava acima só depois de a lojista montar o atributo inteiro. O caminho que
+ * funciona é excluir as opções e gerar a grade de novo com tudo junto. A opção
+ * já vendida não sai (o banco recusa apagar), e aí o caminho é um produto novo
+ * — só se fala disso quando alguma opção já está salva (`algumaJaSalva`).
+ */
+export function explicacaoDeOutroTipoDeVariacao(
+  grupoEmUso: string,
+  algumaJaSalva: boolean,
+): string {
+  const grupo = grupoEmUso.trim();
+  const composto = quantosAtributos(grupo) > 1;
+  const minusculo = grupo.toLocaleLowerCase("pt-BR");
+  const outro = minusculo === "tamanho" ? "cor" : "tamanho";
+  const caminho = composto
+    ? "Para variar em mais uma coisa, exclua as opções da lista de variações e gere a grade de novo com tudo junto."
+    : `Para vender ${minusculo} e ${outro} juntos, exclua as opções da lista de variações e gere a grade de novo com os dois.`;
+  const vendida = algumaJaSalva
+    ? " Opção que já foi vendida não pode ser excluída: nesse caso, crie um produto novo."
+    : "";
+  return `Este produto já varia por "${grupo}", e cada produto usa um tipo de variação só. ${caminho}${vendida}`;
+}

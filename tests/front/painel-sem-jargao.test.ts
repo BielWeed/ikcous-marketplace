@@ -233,12 +233,14 @@ describe("modo ATUALIZAR_TETOS", () => {
 });
 
 describe("painel sem jargão (teto que só desce)", () => {
+  // Varre o disco, como o grafico-enxuto que passou de 5 s no CI lento (28/11, run 46121436423).
   it("a varredura acha arquivos (controle positivo)", () => {
     const { varridos, medido } = medirJargao();
     expect(varridos).toBeGreaterThan(50);
     expect(Object.keys(medido).length).toBeGreaterThan(0);
-  });
+  }, 30_000);
 
+  // Varre o disco, como o grafico-enxuto que passou de 5 s no CI lento (28/11, run 46121436423).
   it("a contagem de cada arquivo é igual ao teto", () => {
     const { medido } = medirJargao();
     if (process.env.ATUALIZAR_TETOS === "1") {
@@ -257,7 +259,7 @@ describe("painel sem jargão (teto que só desce)", () => {
       folgas,
       "Menos jargão que o teto: baixe o teto (ATUALIZAR_TETOS=1 npx vitest run tests/front/painel-sem-jargao.test.ts).",
     ).toEqual([]);
-  });
+  }, 30_000);
 
   it("o teto está em ordem de caminho e não tem número inválido", () => {
     const chaves = Object.keys(lerTeto());
