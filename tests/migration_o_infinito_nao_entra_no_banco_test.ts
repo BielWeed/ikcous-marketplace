@@ -92,6 +92,11 @@ const SUCESSORAS = [
     consulta:
       "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
   },
+  // 20261652000000: a loja nova confirma a entrega e o pagamento.
+  {
+    versao: "20261652000000",
+    consulta: "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

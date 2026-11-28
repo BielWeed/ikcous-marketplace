@@ -592,6 +592,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
     // 20261650000000: a categoria so com produto excluido pode sair.
     "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
+    // 20261652000000: a loja nova confirma a entrega e o pagamento.
+    "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

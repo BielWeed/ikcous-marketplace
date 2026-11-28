@@ -89,6 +89,14 @@ interface LojaProntaEEstoqueBaixoProps {
   readonly onNavigate: (view: View, id?: string) => void;
   /** Tenta buscar `stats` de novo (Início em estado "não sei"). */
   readonly onTentarDeNovo: () => void;
+  /**
+   * "Está certo" de um passo que só espera a lojista confirmar o que veio de
+   * fábrica (`PassoDaLoja.aConfirmar`). Devolve se gravou. Ausente = o cartão
+   * só oferece "Mudar".
+   */
+  readonly onConfirmar?: (
+    chave: Extract<ChaveDosSeisPassos, "recebe" | "entrega">,
+  ) => Promise<boolean>;
 }
 
 /** Ícone de cada passo — a função pura não conhece React. */
@@ -131,6 +139,7 @@ export function LojaProntaEEstoqueBaixo({
   onNavigate,
   onTentarDeNovo,
   somenteBoasVindas = false,
+  onConfirmar,
 }: LojaProntaEEstoqueBaixoProps) {
   const abrirPasso = (passo: PassoDaLoja) =>
     passo.chave === "recebe"
@@ -138,6 +147,47 @@ export function LojaProntaEEstoqueBaixo({
       : onNavigate(passo.destino);
   const idDaLista = useId();
   const [listaAberta, setListaAberta] = useState(false);
+  // O passo cuja confirmação está indo ao banco: "Está certo" fica travado até
+  // a resposta (dois toques não mandam duas gravações).
+  const [confirmando, setConfirmando] = useState<ChaveDosSeisPassos | null>(
+    null,
+  );
+  const confirmar = async (passo: PassoDaLoja) => {
+    if (!onConfirmar || confirmando) return;
+    if (passo.chave !== "recebe" && passo.chave !== "entrega") return;
+    setConfirmando(passo.chave);
+    try {
+      await onConfirmar(passo.chave);
+    } finally {
+      setConfirmando(null);
+    }
+  };
+  /** O que vale hoje + "Está certo" e "Mudar" (o mesmo destino do passo). */
+  const confirmacaoDoPasso = (passo: PassoDaLoja) => (
+    <div className="space-y-2">
+      <p className="text-sm leading-relaxed text-zinc-300">
+        {passo.aConfirmar}
+      </p>
+      {onConfirmar ? (
+        <button
+          type="button"
+          onClick={() => void confirmar(passo)}
+          disabled={confirmando !== null}
+          className={BOTAO_INICIO}
+        >
+          <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
+          Está certo
+        </button>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => abrirPasso(passo)}
+        className="min-h-11 font-semibold text-admin-gold underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-admin-gold"
+      >
+        Mudar
+      </button>
+    </div>
+  );
 
   // `typeof … === "number"` + `Number.isFinite`, nunca `??`/`||`: "não sei"
   // (stats nulo, ou inventoryAlerts que não veio como número) tem de virar
@@ -247,7 +297,14 @@ export function LojaProntaEEstoqueBaixo({
         {lojaPronta ? (
           <p className="text-sm text-zinc-400">Cadastro completo</p>
         ) : null}
-        {proximo && !conferindo ? (
+        {proximo && !conferindo && proximo.aConfirmar ? (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-white">
+              Próximo passo: {proximo.rotuloPendente}
+            </p>
+            {confirmacaoDoPasso(proximo)}
+          </div>
+        ) : proximo && !conferindo ? (
           <>
             <button
               type="button"
@@ -355,6 +412,16 @@ export function LojaProntaEEstoqueBaixo({
                         aria-hidden="true"
                       />
                     </span>
+                  ) : passo.aConfirmar ? (
+                    <div className="space-y-2 py-3">
+                      <span className="flex items-center gap-3">
+                        <TileDoInicio icone={Icone} tom="atencao" />
+                        <span className="min-w-0 flex-1 text-sm font-semibold text-white">
+                          {passo.rotuloPendente}
+                        </span>
+                      </span>
+                      <div className="pl-12">{confirmacaoDoPasso(passo)}</div>
+                    </div>
                   ) : (
                     <button
                       type="button"

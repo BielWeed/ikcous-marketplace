@@ -1531,6 +1531,12 @@ async function main() {
         "20261643000000_as_listas_dos_ajustes_nao_somem_entre_aparelhos.sql",
         "public.upsert_store_config(jsonb)",
       ],
+      // A 1652 (a loja nova confirma a entrega e o pagamento) troca so o corpo de upsert_store_config (sucede a 1643) e poe duas
+      // colunas em store_config; a 17a nao le nenhuma das duas. O rollback dela devolve o corpo da 1643 e tira as colunas.
+      [
+        "20261652000000_a_loja_nova_confirma_entrega_e_pagamento.sql",
+        "public.upsert_store_config(jsonb)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

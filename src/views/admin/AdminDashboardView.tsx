@@ -89,6 +89,7 @@ function SecaoLojaProntaEEstoqueBaixo({
     configIndisponivel,
     refresh,
     fetchProducts,
+    updateConfig,
   } = useStore();
   // Leitura que FALHOU não é loja vazia. Sem cópia no aparelho, a lista de
   // produtos fica [] e a configuração fica a de fábrica: lidas como estão, o
@@ -129,6 +130,16 @@ function SecaoLojaProntaEEstoqueBaixo({
       onNavigate={onNavigate}
       onTentarDeNovo={onTentarDeNovo}
       somenteBoasVindas={somenteBoasVindas}
+      // "Está certo" do que veio de fábrica (20261652000000): grava a confirmação
+      // pela mesma porta das telas de Frete e Pagamentos; o passo vira feito com a
+      // config que o updateConfig devolve.
+      onConfirmar={(chave) =>
+        updateConfig(
+          chave === "entrega"
+            ? { entregaConfirmada: true }
+            : { pagamentoConfirmado: true },
+        )
+      }
     />
   );
 

@@ -198,6 +198,10 @@ const NOMES = [
   // upsert_store_config sucede o corpo da 310 (a CADEIA 99 -> 39 -> 44 -> 310 -> 1643: o `hashVigente` da 1643 e o `hashDesta` da 310) e
   // salvar_politica_de_devolucao sucede o da 99 (99 -> 1643). O rollback da 310 e o da 99 recusam com o corpo novo no ar: ela cai antes.
   "20261643000000_as_listas_dos_ajustes_nao_somem_entre_aparelhos.sql",
+  // A loja nova confirma a entrega e o pagamento (27/11/2026): upsert_store_config sucede o corpo da 1643 (a CADEIA 99 -> 39 -> 44 ->
+  // 310 -> 1643 -> 1652: o `hashVigente` da 1652 e o `hashDesta` da 1643). O rollback da 1643 recusa com o corpo novo no ar: ela cai
+  // antes (e o rollback dela tira tambem as duas colunas de confirmacao de store_config).
+  "20261652000000_a_loja_nova_confirma_entrega_e_pagamento.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
