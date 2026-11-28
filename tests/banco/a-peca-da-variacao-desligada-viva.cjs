@@ -1094,6 +1094,13 @@ async function main() {
       "use rodar-isolado.cjs: nunca mutar o banco base",
     );
     await D.connect();
+    // A 20261657000000 (o produto todo desligado) sucede os dois corpos desta: esta prova mede o corpo e o comportamento da
+    // 20261653000000, entao a tira antes. O banco e' o clone proprio do rodar-isolado.cjs: desfazer e gravar aqui nao toca outra prova.
+    await C.query("BEGIN");
+    await require("./o-produto-todo-desligado-posterior.cjs").desfazerProdutoTodoDesligadoNaTransacao(
+      C,
+    );
+    await C.query("COMMIT");
     assert.equal(
       await hashDevolver(),
       HASH_DEVOLVER_DESTA,
