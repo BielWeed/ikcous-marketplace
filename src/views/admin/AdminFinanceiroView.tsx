@@ -349,7 +349,10 @@ export function AdminFinanceiroView({
   const aoSalvar = useCallback(
     (mensagem: string, tom: "sucesso" | "informacao" = "sucesso") => {
       invalidar();
-      if (tom === "informacao") toast.info(mensagem);
+      // "Informação" aqui é sempre "confira antes de tentar de novo" (já estava
+      // registrado, achado no histórico, a lista foi relida): 15 s, para não
+      // sumir antes de a lojista ler e repetir uma gravação de dinheiro.
+      if (tom === "informacao") toast.info(mensagem, { duration: 15_000 });
       else toast.success(mensagem);
       // A resposta pertence à folha que iniciou a escrita, mesmo que outra
       // já tenha aberto. Atualizar os dados não deve apagar o formulário novo.

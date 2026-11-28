@@ -177,17 +177,31 @@ describe("mensagemDaFalhaDaVenda (função pura, C3.4)", () => {
     });
   });
 
-  it("23505 vira 'chave já usada por outro pedido', não uma frase de rede", () => {
+  it("23505 diz que a venda não entrou e qual é a saída, sem jargão de 'chave'", () => {
     expect(
       mensagemDaFalhaDaVenda({
         code: "23505",
         message: "duplicate key value violates unique constraint",
       }),
     ).toEqual({
-      mensagem: "Esta chave de venda já foi usada por outro pedido.",
+      mensagem:
+        "Esta venda não foi registrada. Toque em Começar uma venda nova e registre de novo.",
       podeTentarDeNovo: false,
       precisaEntrarDeNovo: false,
     });
+  });
+
+  it("23505 depois de uma resposta perdida não afirma que a venda não entrou", () => {
+    const falha = mensagemDaFalhaDaVenda(
+      {
+        code: "23505",
+        message: "duplicate key value violates unique constraint",
+      },
+      true,
+    );
+    expect(falha.mensagem).not.toContain("não foi registrada");
+    expect(falha.mensagem).toContain("Pedidos");
+    expect(falha.podeTentarDeNovo).toBe(false);
   });
 
   it("PGRST202 diz que o balcão não está liberado neste servidor", () => {
@@ -1038,7 +1052,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     await avancar(400);
 
     expect(hospedeiro.textContent).toContain(
-      "Esta chave de venda já foi usada por outro pedido.",
+      "Esta venda não foi registrada. Toque em Começar uma venda nova e registre de novo.",
     );
     const botaoRegistrar = localizarBotaoPorTexto(
       hospedeiro,

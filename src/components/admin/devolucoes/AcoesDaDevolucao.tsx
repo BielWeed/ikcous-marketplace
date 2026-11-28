@@ -594,6 +594,25 @@ export function AcoesDaDevolucao({
                     : "Gerar código de postagem"}
                 </button>
               )}
+              {/* A recusa fica aqui até a próxima tentativa: o toast some
+                  enquanto a lojista confere o carrinho do Melhor Envio. */}
+              {ficha.avisoDaEtiqueta && (
+                <div
+                  role="alert"
+                  data-testid="aviso-da-etiqueta-reversa"
+                  className="space-y-1"
+                >
+                  <p className="flex items-start gap-2 text-xs font-bold leading-relaxed text-red-300">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                    {ficha.avisoDaEtiqueta.titulo}
+                  </p>
+                  {ficha.avisoDaEtiqueta.detalhe && (
+                    <p className="break-words pl-5 text-[11px] leading-relaxed text-zinc-400">
+                      Detalhe do Melhor Envio: {ficha.avisoDaEtiqueta.detalhe}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

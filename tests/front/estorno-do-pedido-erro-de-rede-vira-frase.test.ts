@@ -123,6 +123,36 @@ describe("useEstornosDoPedido — erro de rede vira frase em português", () => 
     expect(dito).not.toMatch(/Failed to fetch|TypeError/);
   });
 
+  it("devolver: a conexão CAI sem resposta (forma real do postgrest-js) — não manda 'tente de novo', manda conferir a lista relida", async () => {
+    respostaSolicitar = {
+      data: null,
+      error: { message: "TypeError: Load failed", code: "" },
+    };
+    const atual = await montarSonda();
+    const { supabase } = await import("@/lib/supabase");
+    const leiturasAntes = vi
+      .mocked(supabase.rpc)
+      .mock.calls.filter(
+        ([nome]) => nome === "pedido_reembolsos_e_saldo",
+      ).length;
+
+    await act(async () => {
+      await atual().solicitarEstorno({ amount: 50, motivo: "" });
+    });
+
+    expect(toastMock.error).not.toHaveBeenCalled();
+    expect(toastMock.warning).toHaveBeenCalledWith(
+      `Devolução do pedido #${numeroDoPedido("pedido-1")}: a conexão caiu antes da resposta. A devolução pode ter sido registrada: confira a lista abaixo antes de tocar de novo.`,
+      { duration: 15_000 },
+    );
+    expect(
+      vi
+        .mocked(supabase.rpc)
+        .mock.calls.filter(([nome]) => nome === "pedido_reembolsos_e_saldo")
+        .length,
+    ).toBeGreaterThan(leiturasAntes);
+  });
+
   it("devolver: a frase em português da própria RPC passa como veio (não é trocada por genérica)", async () => {
     respostaSolicitar = {
       data: null,

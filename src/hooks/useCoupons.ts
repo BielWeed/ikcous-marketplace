@@ -10,6 +10,7 @@ import {
   PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
+  ehConexaoCaiuSemResposta,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
@@ -39,6 +40,13 @@ interface ControleDoDesconto {
 const PRAZO_DA_GRAVACAO_DO_CUPOM_MS = 15_000;
 const MENSAGEM_GRAVACAO_SEM_RESPOSTA =
   "Sem resposta da rede. Confira se a mudança no cupom apareceu antes de tentar de novo.";
+
+const MENSAGEM_CRIACAO_SEM_CONFIRMACAO =
+  "A conexão caiu e não deu para confirmar se o cupom foi criado. Veja se ele já aparece na lista antes de salvar de novo.";
+
+/** Mesmo código no banco: o índice único é por `upper(code)` (20261411000000). */
+const mesmoCodigo = (a: string, b: string) =>
+  a.toUpperCase() === b.toUpperCase();
 
 function aguardarGravacaoDoCupom<T>(requisicao: PromiseLike<T>): Promise<T> {
   return aguardarComPrazo(
@@ -195,8 +203,10 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
 
   // `silencioso`: a releitura DEPOIS de salvar/apagar não liga o `loading`,
   // que esmaece e trava a lista inteira (o 2º toque em seguida se perdia).
-  const fetchCoupons = useCallback(
-    async (silencioso = false, avisarErro = true) => {
+  // Devolve a lista desta rodada (ou `null`) para quem precisa conferir o banco
+  // depois de uma gravação incerta; para fora sai `fetchCoupons`, sem retorno.
+  const lerCupons = useCallback(
+    async (silencioso = false, avisarErro = true): Promise<Coupon[] | null> => {
       const rodada = ++rodadaRef.current;
       const geracao = lerGeracaoDosCachesDeAdmin();
       try {
@@ -217,7 +227,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
           rodada !== rodadaRef.current ||
           geracao !== lerGeracaoDosCachesDeAdmin()
         )
-          return;
+          return null;
 
         if (error) throw error;
 
@@ -229,18 +239,27 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
         setCachedCouponsData(formattedCoupons);
         setCoupons(formattedCoupons);
         setErroDaListagem(null);
+        return formattedCoupons;
       } catch (error) {
-        if (rodada !== rodadaRef.current) return;
+        if (rodada !== rodadaRef.current) return null;
         console.error("Error fetching coupons:", error);
         setErroDaListagem(
           "Não conseguimos carregar os cupons agora. Seus cupons não sumiram.",
         );
         if (avisarErro) toast.error("Não foi possível carregar os cupons.");
+        return null;
       } finally {
         if (rodada === rodadaRef.current) setLoading(false);
       }
     },
     [],
+  );
+
+  const fetchCoupons = useCallback(
+    async (silencioso = false, avisarErro = true): Promise<void> => {
+      await lerCupons(silencioso, avisarErro);
+    },
+    [lerCupons],
   );
 
   useEffect(() => {
@@ -296,6 +315,11 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       toast.error("Permissão negada");
       return null;
     }
+    // O código já estava na lista antes desta gravação? Então achá-lo depois
+    // de uma queda não prova que ESTA gravação o criou.
+    const jaExistiaAntes = coupons.some((c) =>
+      mesmoCodigo(c.code, coupon.code),
+    );
     try {
       const { data, error } = await aguardarGravacaoDoCupom(
         supabase
@@ -333,6 +357,27 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       if (ehConsultaSemResposta(error)) {
         toast.error(MENSAGEM_GRAVACAO_SEM_RESPOSTA);
         void fetchCoupons(true, false);
+      } else if (ehConexaoCaiuSemResposta(error)) {
+        // A conexão caiu antes da resposta: o banco pode ter criado. A lista
+        // relida decide a frase; "Erro ao criar" levava a lojista a trocar o
+        // código e salvar de novo — dois cupons ativos.
+        const lista = await lerCupons(true, false);
+        const criado =
+          !jaExistiaAntes &&
+          lista?.some((c) => mesmoCodigo(c.code, coupon.code));
+        if (criado) {
+          // O formulário não chega ao 2º passo (a lista do exclusivo): avisa.
+          const semClientes =
+            coupon.alcance === "exclusivo"
+              ? " Ninguém consegue usar este cupom até a lista de clientes ser salva: abra-o pela lista e salve os clientes."
+              : "";
+          toast.info(
+            `A conexão caiu, mas o cupom ${coupon.code} foi criado e já aparece na lista de cupons. Não salve de novo: para mudar algo, abra-o pela lista.${semClientes}`,
+            { duration: 15_000 },
+          );
+        } else {
+          toast.warning(MENSAGEM_CRIACAO_SEM_CONFIRMACAO, { duration: 15_000 });
+        }
       } else {
         toast.error(mensagemDeErroDoCupom(error, "Erro ao criar cupom"));
       }
