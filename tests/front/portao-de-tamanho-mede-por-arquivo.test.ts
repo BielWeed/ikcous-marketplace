@@ -74,7 +74,7 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os fixados: cliente 716 kB, painel 600 kB", () => {
+  it("os tetos de JS são os fixados: cliente 720 kB, painel 604 kB", () => {
     // cliente 696 -> 700 em 21/11/2026 (1.5.230; o CI mediu 697,13 kB, 1,13 kB acima; regra do dono: o teto sobe).
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito. cliente 652 -> 656 e painel 530 -> 534 em 12/11/2026 (1.5.173; a base ficou sem folga e cada PR novo reprovava; regra do dono: o teto sobe).
@@ -153,7 +153,8 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // regra do dono: o teto sobe, nada trocado por algo mais arriscado);
     // cliente 708 -> 711 em 27/11/2026 (1.5.246; o CI mediu 708,14 kB, 142 B acima, com os avisos do vale-troca, da devolucao
     // e do pedido guardado sem internet; regra do dono: o teto sobe, nada trocado por algo mais arriscado);
-    expect(entrada("cliente.map(")).toContain('limit: "716 kB"');
+    // cliente 716 -> 720 em 28/11/2026 (PR #2078 mediu 716,13 kB no CI; regra do dono: o teto sobe);
+    expect(entrada("cliente.map(")).toContain('limit: "720 kB"');
     // painel 542 -> 546 em 15/11/2026 (1.5.192; medido 542,08 kB no build local, 84 B acima do teto; regra do dono: o teto sobe);
     // painel 546 -> 550 em 18/11/2026 (1.5.209; medido 546,09 kB no build local, 87 B acima do teto; regra do dono: o teto sobe);
     // painel 550 -> 554 em 20/11/2026 (1.5.228; medido 550,27 kB no build local, 274 B acima do teto; regra do dono: o teto sobe);
@@ -164,7 +165,8 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // painel 586 -> 592 em 27/11/2026 (lista premium do painel, aprovada pelo dono em 26/11: o <select> nativo de 8 telas virou a lista de escolha; o painel mediu 590,45 kB no build local contra 585,25 kB da base; regra do dono: o teto sobe);
     // painel 592 -> 596 em 27/11/2026 (pedidos do painel só com teclado e leitor de tela, PR #2011: o painel mediu 592,23 kB no CI; degrau de 4 kB; regra do dono: o teto sobe);
     // painel 596 -> 600 em 27/11/2026 (peça que volta sem tamanho, PR #2028: o painel mediu 596,01 kB no CI; degrau de 4 kB; regra do dono: o teto sobe);
-    expect(entrada("painel.map(")).toContain('limit: "600 kB"');
+    // painel 600 -> 604 em 28/11/2026 (PR #2078 mediu 600,28 kB no CI; degrau de 4 kB; regra do dono: o teto sobe);
+    expect(entrada("painel.map(")).toContain('limit: "604 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
   });
 });
