@@ -27,10 +27,12 @@ import {
 } from "./visualDoInicio";
 
 /**
- * "Loja que ainda não vendeu". Mês e hoje zerados não bastam: no dia 1 o mês
- * volta a zero para loja antiga. Conta como já vendeu quem tem receita no mês
- * anterior ou em algum dos últimos 14 dias (no dia 1 a série cobre o fim do
- * mês passado).
+ * "Sem venda nas janelas que o painel lê". Mês e hoje zerados não bastam: no
+ * dia 1 o mês volta a zero para loja antiga. Conta como venda a receita dos
+ * mesmos dias do mês anterior (do dia 1 até o mesmo dia e hora de hoje,
+ * migration 20261398000000) ou de algum dos últimos 14 dias. Loja PARADA, com
+ * venda só antes dessas janelas, cai aqui também: o painel não traz histórico,
+ * então quem usa isto fala de um jeito que vale para loja nova e para parada.
  */
 export function lojaSemVendasAinda(painel: PainelInicio | null): boolean {
   return (
@@ -247,14 +249,14 @@ export function ParaFazer({
                     {preparoSoNoCartaoDeCima
                       ? "Nada mais para resolver"
                       : semPedidosAinda
-                        ? "Sem pedidos por enquanto"
+                        ? "Sem pedidos novos por enquanto"
                         : "Tudo em dia"}
                   </p>
                   <p className="mt-0.5 text-sm text-zinc-400">
                     {preparoSoNoCartaoDeCima
                       ? "Falta só preparar os pedidos, no cartão acima."
                       : semPedidosAinda
-                        ? "Quando chegar o primeiro pedido, ele aparece aqui."
+                        ? "Quando chegar um pedido, ele aparece aqui."
                         : "Nenhuma pendência para resolver."}
                   </p>
                 </div>

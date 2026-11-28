@@ -66,6 +66,11 @@ export function NumerosDoMes({
     margem != null &&
     margem < 0 &&
     Number(dia.slice(8, 10)) <= ULTIMO_DIA_DA_MARGEM_EM_FORMACAO;
+  // Margem quase cheia quase sempre é produto vendido sem custo cadastrado (conta R$ 0). O Financeiro sabe disso pelo
+  // `fin_dre`; o `painel_inicio` não traz o sinal, então o aviso aparece pela margem que a tela mostra (arredondada,
+  // como no texto): de 95% para cima, ao lado dela, sem depender do "Como é calculado" aberto.
+  const margemQuaseCheia =
+    margem != null && !margemEmFormacao && Math.round(margem) >= 95;
   // Sem venda no mês o banco devolve valor médio 0: "não houve venda" não é
   // "vendeu a R$ 0,00".
   const ticketMedio = mes?.pedidos === 0 ? null : mes?.ticketMedio;
@@ -126,6 +131,11 @@ export function NumerosDoMes({
                 {margemEmFormacao
                   ? "Margem estimada em formação até meados do mês"
                   : `Margem estimada ${formatarPercentual(margem, 0)}`}
+              </p>
+            ) : null}
+            {margemQuaseCheia ? (
+              <p className="mt-0.5 text-sm text-zinc-400">
+                Sem custo cadastrado, usa R$ 0 de custo.
               </p>
             ) : null}
           </div>

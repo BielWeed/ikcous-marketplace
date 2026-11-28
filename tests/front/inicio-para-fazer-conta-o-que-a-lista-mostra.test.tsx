@@ -102,15 +102,15 @@ describe("Para fazer com o preparo em destaque no cartão de cima", () => {
     expect(texto()).not.toContain("2 pendências");
   });
 
-  it("loja sem venda paga ainda, mas com pedido para preparar: não diz 'Sem pedidos por enquanto'", () => {
+  it("loja sem venda paga ainda, mas com pedido para preparar: não diz 'Sem pedidos novos por enquanto'", () => {
     // Pedido para pagar na entrega espera preparo e ainda não é venda paga.
     const novo = comPreparar(1, {
       hoje: { ...PAINEL.hoje, pedidos: 0, receita: 0 },
       mes: { ...PAINEL.mes, pedidos: 0, receita: 0, receitaMesAnterior: 0 },
     });
     montar(novo, true);
-    expect(texto()).not.toContain("Sem pedidos por enquanto");
-    expect(texto()).not.toContain("Quando chegar o primeiro pedido");
+    expect(texto()).not.toContain("Sem pedidos novos por enquanto");
+    expect(texto()).not.toContain("Quando chegar um pedido");
     expect(texto()).toContain("Nada mais para resolver");
   });
 

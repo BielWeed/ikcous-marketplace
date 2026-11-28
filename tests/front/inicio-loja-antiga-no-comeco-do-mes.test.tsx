@@ -6,6 +6,12 @@
 // por enquanto" para uma loja que vende há anos. O sinal de histórico que já
 // vem no mesmo objeto: a receita do mês anterior e a série dos últimos 14 dias
 // (no dia 1, a série ainda cobre o fim do mês passado).
+//
+// Só que a "receita do mês anterior" é a dos MESMOS dias do mês passado
+// (migration 20261398000000: do dia 1 até o mesmo dia e hora de hoje), não o
+// mês inteiro. Loja que vendeu em 20/11 e abre o painel em 05/12 recebe o
+// mesmo painel de uma loja nova; por isso o "Para fazer" usa um texto que vale
+// para as duas ("Sem pedidos novos por enquanto"), sem falar em "primeiro".
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -143,7 +149,7 @@ describe("Início: loja antiga no começo do mês", () => {
     await esperarAte(
       () =>
         texto(hospedeiro).includes("Tudo em dia") ||
-        texto(hospedeiro).includes("Sem pedidos por enquanto"),
+        texto(hospedeiro).includes("Sem pedidos"),
     );
   }
 
@@ -196,6 +202,22 @@ describe("Início: loja antiga no começo do mês", () => {
       hospedeiro.querySelector('section[aria-label="Boas-vindas"]'),
     ).not.toBeNull();
     expect(texto(hospedeiro)).toContain("Próximo passo da sua loja");
-    expect(texto(hospedeiro)).toContain("Sem pedidos por enquanto");
+    expect(texto(hospedeiro)).toContain("Sem pedidos novos por enquanto");
+  });
+
+  it("loja parada (última venda fora das janelas do painel) não lê 'quando chegar o primeiro pedido'", async () => {
+    // Hoje 05/12, última venda 20/11: a série cobre 22/11 a 05/12 (zerada) e a
+    // receita do mês anterior cobre só 01/11 até 05/11 na mesma hora (zerada).
+    // O banco devolve exatamente o painel de uma loja que nunca vendeu.
+    const serie = Array.from({ length: 14 }, (_, i) => {
+      const data = new Date(Date.UTC(2026, 10, 22 + i));
+      return { dia: data.toISOString().slice(0, 10), receita: 0 };
+    });
+    await montarComPainel({ ...PAINEL_DIA_1, serie_14d: serie });
+    expect(texto(hospedeiro)).not.toContain("primeiro pedido");
+    expect(texto(hospedeiro)).toContain("Sem pedidos novos por enquanto");
+    expect(texto(hospedeiro)).toContain(
+      "Quando chegar um pedido, ele aparece aqui.",
+    );
   });
 });

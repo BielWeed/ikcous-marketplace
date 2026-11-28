@@ -209,11 +209,11 @@ describe("Para fazer no primeiro dia da loja", () => {
     };
     montar(<ParaFazer painel={novo} carregando={false} onNavigate={vi.fn()} />);
     expect(texto(tela)).not.toContain("Tudo em dia");
-    expect(texto(tela)).toContain("Sem pedidos por enquanto");
+    expect(texto(tela)).toContain("Sem pedidos novos por enquanto");
     // A linha de baixo também não pode soar como "tudo resolvido" ao lado de
-    // "Complete sua loja": ela fala do primeiro pedido, não de pendência.
+    // "Complete sua loja": ela fala do próximo pedido, não de pendência.
     expect(texto(tela)).not.toContain("Nenhuma pendência para resolver");
-    expect(texto(tela)).toContain("Quando chegar o primeiro pedido");
+    expect(texto(tela)).toContain("Quando chegar um pedido");
   });
 });
 
