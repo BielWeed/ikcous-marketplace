@@ -81,7 +81,7 @@ import {
   useValoresOcultos,
 } from "@/hooks/useFinanceiro";
 import {
-  diaDaAberturaDoCaixa,
+  diaDoCaixaAbertoLido,
   hojeEmSaoPaulo,
   intervaloDoPeriodo,
   rotuloDoPeriodo,
@@ -542,9 +542,7 @@ export function AdminFinanceiroView({
             categorias={listaDeCategorias}
             inicial={folha.inicial}
             aviso={contas.erro ?? categorias.erro}
-            diaDoCaixaAberto={diaDaAberturaDoCaixa(
-              caixa.dados?.sessao?.abertoEm,
-            )}
+            diaDoCaixaAberto={diaDoCaixaAbertoLido(caixa)}
             aoMudarEnviando={aoMudarEnviando}
             aoFechar={pedirParaFechar}
             aoSalvar={aoSalvar}

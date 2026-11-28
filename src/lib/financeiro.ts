@@ -289,6 +289,23 @@ export function diaDaAberturaDoCaixa(
   return hojeEmSaoPaulo(instante);
 }
 
+/**
+ * O dia do caixa aberto que a folha de lançamento pode usar no aviso da conferência:
+ * só de uma leitura EM DIA. Relendo (o valor na tela pode ser de antes) ou com erro (o
+ * valor de antes ficou) o caixa pode ter fechado em outro aparelho: sem caixa aberto
+ * conhecido, a folha não avisa.
+ */
+export function diaDoCaixaAbertoLido(consulta: {
+  readonly dados: {
+    readonly sessao: { readonly abertoEm: string } | null;
+  } | null;
+  readonly carregando: boolean;
+  readonly erro: string | null;
+}): DataIso | null {
+  if (consulta.carregando || consulta.erro) return null;
+  return diaDaAberturaDoCaixa(consulta.dados?.sessao?.abertoEm);
+}
+
 function paraDataUtc(iso: DataIso): Date {
   const casamento = DATA_ISO.exec(iso);
   if (!casamento) return new Date(Number.NaN);

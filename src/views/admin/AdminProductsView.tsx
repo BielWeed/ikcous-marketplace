@@ -61,6 +61,7 @@ import {
   MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA,
   ehConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import { precoCobradoNaLista } from "@/lib/preco-cobrado-na-lista";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
@@ -2842,11 +2843,8 @@ function MenuDoProduto({
           <div className="min-w-0">
             <p className="break-words text-sm font-bold">{product.name}</p>
             <p className="mt-1 text-xs text-zinc-400">
-              R${" "}
-              {product.price.toLocaleString("pt-BR", {
-                minimumFractionDigits: 2,
-              })}{" "}
-              · {statusDoProdutoNoPainel(product)} · {product.stock} em estoque
+              {precoCobradoNaLista(product)} ·{" "}
+              {statusDoProdutoNoPainel(product)} · {product.stock} em estoque
             </p>
           </div>
         </div>
@@ -3064,14 +3062,13 @@ const AdminProductCard = memo(function AdminProductCard({
         : ((precoMedio - product.costPrice) / product.costPrice) * 100;
 
     const custoSuspeito = hasCost && product.costPrice <= 0.1;
-    const precoFormatado = product.price.toLocaleString("pt-BR", {
-      minimumFractionDigits: 2,
-    });
+    const precoNaLista = precoCobradoNaLista(product);
     // O resumo é uma grade de 3 colunas e o teto de preço é R$ 9.999.999,99:
     // de R$ 100.000,00 para cima, "R$ …" numa linha só passa da coluna e cai em
     // cima do Estoque. Aí o preço pode quebrar (dinheiro não se corta) e a
-    // letra fica no menor tamanho; até R$ 99.999,99 nada muda.
-    const precoLongo = precoFormatado.length > 9;
+    // letra fica no menor tamanho; até R$ 99.999,99 nada muda. A faixa
+    // ("R$ 69,90 – R$ 89,90") é sempre mais longa que isso e também quebra.
+    const precoLongo = precoNaLista.length > "R$ 99.999,99".length;
     return (
       <motion.div
         layout
@@ -3145,7 +3142,7 @@ const AdminProductCard = memo(function AdminProductCard({
                     : "whitespace-nowrap min-[360px]:text-base min-[400px]:text-lg",
                 )}
               >
-                R$ {precoFormatado}
+                {precoNaLista}
               </p>
             </div>
             <div className="min-w-0">
@@ -3367,10 +3364,7 @@ const AdminProductCard = memo(function AdminProductCard({
         <div className="flex min-w-0 flex-1 flex-col px-2.5 pb-2.5">
           <div className="mt-auto pt-3">
             <p className="break-words text-xl font-bold tabular-nums">
-              R${" "}
-              {product.price.toLocaleString("pt-BR", {
-                minimumFractionDigits: 2,
-              })}
+              {precoCobradoNaLista(product)}
             </p>
             <div
               className={cn(

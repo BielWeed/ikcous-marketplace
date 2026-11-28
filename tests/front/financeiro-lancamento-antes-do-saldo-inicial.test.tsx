@@ -141,12 +141,16 @@ describe("Financeiro — lançamento antes do saldo inicial da conta", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
-  async function abrir(lista: ContaFinanceira[]) {
+  async function abrir(
+    lista: ContaFinanceira[],
+    diaDoCaixaAberto: string | null = null,
+  ) {
     await act(async () => {
       raiz.render(
         <NovoLancamentoFolha
           autorId="dona-da-loja"
           hoje={HOJE}
+          diaDoCaixaAberto={diaDoCaixaAberto}
           contas={lista}
           categorias={CATEGORIAS}
           aoFechar={vi.fn()}
@@ -264,7 +268,8 @@ describe("Financeiro — lançamento antes do saldo inicial da conta", () => {
   });
 
   it("convive com o aviso da conferência do caixa: dois avisos, cada um com a sua frase", async () => {
-    await abrir(contas(SALDO_INICIAL_DO_BANCO, "2026-09-20"));
+    // O aviso da conferência só existe com caixa aberto conhecido (aqui, aberto hoje).
+    await abrir(contas(SALDO_INICIAL_DO_BANCO, "2026-09-20"), HOJE);
     await escolher("fin-lanc-conta", CONTA_CAIXA_DA_LOJA);
     await mudarData("fin-lanc-realizacao", "2026-09-10");
 

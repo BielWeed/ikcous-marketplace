@@ -1136,6 +1136,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente",
   "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
   "214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente",
+  "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
+  "216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente",
   "217a-conferir-a-loja-que-saiu-pausa-o-pedido-novo-aplicado",
   "217b-antes-a-loja-que-saiu-pausa-o-pedido-novo-base-vigente",
 ]);

@@ -170,9 +170,12 @@ describe("Financeiro — Novo lançamento", () => {
     raiz = createRoot(hospedeiro);
     await act(async () => {
       raiz.render(
+        // Caixa aberto HOJE: o aviso da conferência só existe com caixa aberto conhecido
+        // (sem caixa aberto não avisa: financeiro-aviso-do-caixa-aberto-de-dia-anterior).
         <NovoLancamentoFolha
           autorId="dona-da-loja"
           hoje={HOJE}
+          diaDoCaixaAberto={HOJE}
           contas={CONTAS}
           categorias={CATEGORIAS}
           aoFechar={vi.fn()}
