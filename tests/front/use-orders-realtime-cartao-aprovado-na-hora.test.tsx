@@ -300,6 +300,31 @@ describe("useOrders — cartão aprovado na hora: o pedido novo avisa pago, não
     expect(avisosDoPainel()).toEqual(["pagamento"]);
   });
 
+  // Borda do prazo: aos 5 minutos EXATOS a lembrança ainda vale (vence só
+  // depois deles — o teste do prazo vencido usa 5 min + 1 ms).
+  it("na borda do prazo: o PIX pago exatamente 5 minutos depois ainda avisa como pago", async () => {
+    await montarComFiltro("delivered");
+    lerPedidoDoInsert.mockResolvedValue({
+      data: linha("p-novo", "aguardando", "pending"),
+      error: null,
+    });
+    await act(async () => {
+      await evento!({
+        eventType: "INSERT",
+        new: linha("p-novo", "aguardando", "pending"),
+      });
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+    });
+    await emitirUpdate(
+      linha("p-novo", "pago", "pending", "2026-11-28T10:05:00Z"),
+    );
+
+    expect(avisosDoPainel()).toEqual(["pagamento"]);
+  });
+
   // Eventos fora de ordem: a versão MAIS VELHA que chega atrasada não volta a
   // lembrança para trás — senão o passo seguinte, que não muda o status,
   // anunciaria de novo a mudança que já foi avisada.
