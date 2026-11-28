@@ -275,6 +275,9 @@ export function AddressForm({
   // de entrega decide para onde a loja entrega, nunca onde o cliente mora.
   const { isLoaded } = useStore();
   const [loading, setLoading] = useState(false);
+  // Trava síncrona: dois toques no mesmo instante passam antes de `loading`
+  // desabilitar o botão (mesma ideia do ReviewForm).
+  const salvandoRef = useRef(false);
 
   const nomePadrao = nomeDaConta?.trim() ?? "";
 
@@ -640,6 +643,8 @@ export function AddressForm({
   }, [referenciaAberta, form]);
 
   const handleSubmit = async (values: AddressFormValues) => {
+    if (salvandoRef.current) return;
+    salvandoRef.current = true;
     setLoading(true);
     try {
       const complemento = textoSemControlesDeDirecao(values.complement ?? "");
@@ -699,6 +704,7 @@ export function AddressForm({
     } catch (error) {
       console.error("Submit error:", error);
     } finally {
+      salvandoRef.current = false;
       setLoading(false);
     }
   };

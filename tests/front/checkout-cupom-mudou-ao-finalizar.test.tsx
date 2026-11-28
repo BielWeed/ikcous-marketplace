@@ -14,7 +14,10 @@
 //   3. desconto igual (controle): o motivo foi outro (preço) — fica a frase e
 //      a saída de sempre;
 //   4. conferência sem resposta: também fica a frase de sempre;
-//   5. cupom intacto (controle): o pedido fecha sem conferência extra.
+//   5. cupom intacto (controle): o pedido fecha sem conferência extra;
+//   6. algo mexeu no cupom com a releitura em voo (a revalidação o tirou, ou
+//      a convidada entrou na conta): a resposta atrasada não decide nada —
+//      fica a frase de sempre e o cupom não volta à tela.
 // Harness de checkout-cupom-em-conferencia-trava-o-finalizar.test.tsx.
 import type { CartItem, Product, ShippingOption } from "@/types";
 import { act } from "react";
@@ -88,9 +91,22 @@ vi.mock("@/hooks/useAddresses", () => ({
     }),
 }));
 
-const { mockUser } = vi.hoisted(() => ({ mockUser: { id: "user-1" } }));
+// Referência ESTÁVEL de `user`, trocável entre renders (mesmo molde de
+// checkout-cupom-em-conferencia-trava-o-finalizar): o caso "convidada entra na
+// conta com a releitura em voo" muda `quemEstaLogado`.
+const { mockUser, quemEstaLogado } = vi.hoisted(() => {
+  const mockUser = { id: "user-1" };
+  return {
+    mockUser,
+    quemEstaLogado: { user: mockUser as { id: string } | null },
+  };
+});
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: mockUser, profile: null, loading: false }),
+  useAuth: () => ({
+    user: quemEstaLogado.user,
+    profile: null,
+    loading: false,
+  }),
 }));
 
 vi.mock("@/hooks/useCart", async () => {
@@ -241,6 +257,24 @@ function responderAConferencia(r: RespostaDoCupom) {
   });
 }
 
+/** Responde a conferência MAIS NOVA (a que entrou depois da releitura). */
+function responderAConferenciaMaisNova(r: RespostaDoCupom) {
+  const responder = respostasPendentes.pop();
+  if (!responder) throw new Error("nenhuma conferência de cupom pendente");
+  return act(async () => {
+    responder(r);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+/** Os `aria-label` das linhas de desconto do resumo ("Desconto de R$ …"). */
+function linhasDeDesconto(): string[] {
+  return [...document.body.querySelectorAll('[aria-label^="Desconto de"]')].map(
+    (el) => el.getAttribute("aria-label") ?? "",
+  );
+}
+
 function painelDaRecusa(): HTMLElement | null {
   return (
     (document.body
@@ -254,14 +288,17 @@ describe("CheckoutView — o cupom mudou enquanto a cliente finalizava", () => {
   let hospedeiro: HTMLDivElement;
   let slotDoHeader: HTMLDivElement;
 
-  const montar = async () => {
-    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+  const montar = async (subtotal = 80, semRemontar = false) => {
+    const { CheckoutView, CheckoutViewDaConta } = await import(
+      "@/views/customer/CheckoutView"
+    );
+    const Tela = semRemontar ? CheckoutViewDaConta : CheckoutView;
     return (
-      <CheckoutView
+      <Tela
         cart={CART}
-        subtotal={80}
+        subtotal={subtotal}
         shipping={0}
-        total={80}
+        total={subtotal}
         onNavigate={onNavigate}
         onSetBackOverride={onSetBackOverride}
       />
@@ -278,10 +315,10 @@ describe("CheckoutView — o cupom mudou enquanto a cliente finalizava", () => {
   };
 
   /** Abre com o CUPOM10 do rascunho já conferido em R$ 10,00 (total R$ 70,00). */
-  const abrirComCupomConferido = async () => {
+  const abrirComCupomConferido = async (semRemontar = false) => {
     semearRascunhoComCupom("CUPOM10");
     await act(async () => {
-      raiz.render(await montar());
+      raiz.render(await montar(80, semRemontar));
     });
     await esperar(420);
     await act(async () => {
@@ -292,6 +329,38 @@ describe("CheckoutView — o cupom mudou enquanto a cliente finalizava", () => {
       digitar("checkout-tel", "34999999999");
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
+    // A convidada não tem endereço salvo: digita um na cidade da loja
+    // (CEP de origem 38500-000; endereço inventado). A busca do CEP responde
+    // com o mesmo endereço, sem rede.
+    if (!quemEstaLogado.user) {
+      const endereco = {
+        cep: "38500-100",
+        logradouro: "Rua Inventada",
+        bairro: "Centro",
+        localidade: "Cidade Inventada",
+        uf: "MG",
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>(
+          async () => new Response(JSON.stringify(endereco), { status: 200 }),
+        ),
+      );
+      for (const [id, valor] of [
+        ["guest-cep", "38500-100"],
+        ["guest-street", "Rua Inventada"],
+        ["guest-number", "10"],
+        ["guest-neighborhood", "Centro"],
+        ["guest-city", "Cidade Inventada"],
+        ["guest-state", "MG"],
+      ] as const) {
+        await act(async () => {
+          digitar(id, valor);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+      }
+      await esperar(420);
+    }
     await responderAConferencia({ valid: true, discount: 10 });
     expect(localizarBotaoFinalizar()!.disabled).toBe(false);
   };
@@ -313,6 +382,7 @@ describe("CheckoutView — o cupom mudou enquanto a cliente finalizava", () => {
     onSetBackOverride.mockClear();
     toastError.mockReset();
     respostasPendentes = [];
+    quemEstaLogado.user = mockUser;
     mockValidateCoupon.mockReset();
     mockValidateCoupon.mockImplementation(
       () =>
@@ -416,6 +486,15 @@ describe("CheckoutView — o cupom mudou enquanto a cliente finalizava", () => {
       "O cupom CUPOM10 mudou enquanto você finalizava e não vale mais",
     );
     expect(painel?.textContent).not.toContain("Atualize o carrinho");
+    // Antes de ela tocar em "Tirar o cupom", a tela não mexe no total sozinha:
+    // o desconto conferido continua (R$ 10,00, total R$ 70,00) — nada de linha
+    // de desconto zerada nem de total cheio sem a escolha dela.
+    expect(document.body.textContent).toMatch(/R\$\s70,00/);
+    expect(linhasDeDesconto().length).toBeGreaterThan(0);
+    for (const linha of linhasDeDesconto()) {
+      expect(linha).toMatch(/R\$\s10,00/);
+      expect(linha).not.toMatch(/R\$\s0,00/);
+    }
     const botao = painel?.querySelector("[data-acao]") as HTMLButtonElement;
     expect(botao.getAttribute("data-acao")).toBe("remover_cupom");
 
@@ -467,6 +546,72 @@ describe("CheckoutView — o cupom mudou enquanto a cliente finalizava", () => {
     expect(
       painel?.querySelector("[data-acao]")?.getAttribute("data-acao"),
     ).toBe("reconferir_carrinho");
+  });
+
+  it("a revalidação TIRA o cupom com a releitura em voo: a resposta atrasada não diz que o cupom mudou nem o põe de volta", async () => {
+    await abrirComCupomConferido();
+    createOrder.mockRejectedValueOnce(RECUSA_DOS_VALORES);
+
+    await tocarEmFinalizar();
+    expect(mockValidateCoupon).toHaveBeenCalledTimes(2);
+
+    // O carrinho muda com a releitura pendente: a revalidação de sempre roda
+    // e a loja diz que o cupom não vale mais — ele sai da tela.
+    await act(async () => {
+      raiz.render(await montar(90));
+    });
+    await esperar(50);
+    expect(mockValidateCoupon).toHaveBeenCalledTimes(3);
+    expect(mockValidateCoupon).toHaveBeenLastCalledWith("CUPOM10", 90);
+    await responderAConferenciaMaisNova({
+      valid: false,
+      discount: 0,
+      message: "Cupom expirado.",
+    });
+    expect(linhasDeDesconto()).toEqual([]);
+
+    // Só agora a releitura da recusa responde, com um desconto novo.
+    await responderAConferencia({ valid: true, discount: 5 });
+
+    const painel = painelDaRecusa();
+    expect(painel?.textContent ?? "").not.toContain("O cupom CUPOM10 mudou");
+    expect(painel?.textContent).toContain(RECUSA_DOS_VALORES.message);
+    const ultimoToast = String(toastError.mock.calls.at(-1)?.[0] ?? "");
+    expect(ultimoToast).not.toContain("O cupom CUPOM10 mudou");
+    // O cupom tirado não volta: nenhuma linha de desconto, total cheio.
+    expect(linhasDeDesconto()).toEqual([]);
+    expect(document.body.textContent).not.toMatch(/R\$\s85,00/);
+  });
+
+  it("a convidada entra na conta com a releitura em voo (mesma instância da tela): a resposta atrasada não diz que o cupom mudou nem troca o desconto", async () => {
+    // Na tela real a troca de conta remonta a instância; aqui ela atravessa
+    // (CheckoutViewDaConta), e quem barra a resposta é a conferência da conta.
+    // Convidada → conta não tira o cupom: a conferência dele segue a mesma.
+    quemEstaLogado.user = null;
+    await abrirComCupomConferido(true);
+    createOrder.mockRejectedValueOnce(RECUSA_DOS_VALORES);
+
+    await tocarEmFinalizar();
+    expect(mockValidateCoupon).toHaveBeenCalledTimes(2);
+
+    quemEstaLogado.user = mockUser;
+    await act(async () => {
+      raiz.render(await montar(80, true));
+    });
+    await esperar(50);
+
+    // A releitura (feita para a convidada) responde com um desconto novo.
+    await responderAConferencia({ valid: true, discount: 5 });
+
+    const painel = painelDaRecusa();
+    expect(painel?.textContent ?? "").not.toContain("O cupom CUPOM10 mudou");
+    const ultimoToast = String(toastError.mock.calls.at(-1)?.[0] ?? "");
+    expect(ultimoToast).not.toContain("O cupom CUPOM10 mudou");
+    // O desconto da convidada não vira o da conta: nada de R$ 5,00 na tela.
+    for (const linha of linhasDeDesconto()) {
+      expect(linha).not.toMatch(/R\$\s5,00/);
+    }
+    expect(document.body.textContent).not.toMatch(/R\$\s75,00/);
   });
 
   it("controle — cupom intacto: o pedido fecha sem nenhuma releitura extra do cupom", async () => {

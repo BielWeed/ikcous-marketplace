@@ -14,6 +14,7 @@
 // `globalThis.fetch` e `process.env` substituídos — nunca rede de verdade.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { PRAZO_MS } from "@/hospedagem/compartilhamento";
 import { SELECT_CONFIGURACAO_PUBLICA } from "@/hospedagem/porteiro";
 import middleware from "../../middleware";
 
@@ -144,7 +145,11 @@ const HTML_DO_BUILD = `<!DOCTYPE html>
 type RespostaProdutos =
   | { readonly tipo: "lista"; readonly linhas: readonly unknown[] }
   | { readonly tipo: "status"; readonly status: number }
-  | { readonly tipo: "lanca" };
+  | { readonly tipo: "lanca" }
+  // Banco lento: a leitura nunca responde, nem quando o sinal aborta (o pior
+  // transporte possível). `sinais` guarda o sinal recebido, para o teste ver
+  // se o middleware cancelou a leitura ao estourar o prazo.
+  | { readonly tipo: "pendura"; readonly sinais: (AbortSignal | undefined)[] };
 
 type RespostaDocumento =
   | { readonly tipo: "ok" }
@@ -217,6 +222,10 @@ function criarFetchDeLojas(
     }
     if (url.pathname === "/rest/v1/vw_produtos_public") {
       if (loja.produtos.tipo === "lanca") throw new Error("rede caiu");
+      if (loja.produtos.tipo === "pendura") {
+        loja.produtos.sinais.push(init?.signal ?? undefined);
+        return new Promise<Response>(() => {});
+      }
       if (loja.produtos.tipo === "status")
         return json({ erro: "x" }, loja.produtos.status);
       return json(loja.produtos.linhas);
@@ -224,6 +233,10 @@ function criarFetchDeLojas(
     if (url.pathname === "/rest/v1/product_variants") {
       const variacoes = loja.variacoes ?? { tipo: "lista", linhas: [] };
       if (variacoes.tipo === "lanca") throw new Error("rede caiu");
+      if (variacoes.tipo === "pendura") {
+        variacoes.sinais.push(init?.signal ?? undefined);
+        return new Promise<Response>(() => {});
+      }
       if (variacoes.tipo === "status")
         return json({ erro: "x" }, variacoes.status);
       return json(variacoes.linhas);
@@ -1407,4 +1420,228 @@ describe("middleware — prévia do link: preço de vitrine (menor preço das va
       expect(titulo).toBe("Camiseta Lisa - R$ 50,00 | Loja Vitrine");
     },
   );
+});
+
+// Banco da loja lento (27/11/2026): as leituras do produto e das variações não
+// tinham prazo, e o robô do WhatsApp desistia antes da resposta — o link ia
+// sem quadrinho nenhum. Agora as duas têm o MESMO prazo do Worker da
+// Cloudflare (`PRAZO_MS` de `compartilhamento.ts`) e, estourado, o robô recebe
+// a prévia da própria loja, igual ao erro rápido.
+describe("middleware — prévia do link com o banco da loja lento", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const produtoComPreco = {
+    nome: "Bolsa Trançada",
+    descricao: "desc",
+    preco_venda: 50,
+    imagem_url: "https://cdn.exemplo.com/b.jpg",
+    imagem_urls: [],
+  };
+
+  // Gira o laço de eventos de verdade (sem andar o relógio falso) até `ate()`
+  // ou um teto de voltas: ler corpo de `Response` é E/S real, não microtarefa.
+  async function drenar(ate: () => boolean) {
+    for (let volta = 0; volta < 500 && !ate(); volta++)
+      await new Promise((pronto) => setImmediate(pronto));
+  }
+
+  // Dispara o middleware com o relógio falso (só `setTimeout`) e diz se a
+  // resposta já tinha saído 1 ms antes do prazo e no prazo. O relógio só anda
+  // depois que a leitura pendurada começou: é dali que o prazo conta.
+  async function previaComRelogio(
+    chave: string,
+    loja: Omit<LojaDuble, "host" | "nome" | "origem">,
+    sinais: readonly (AbortSignal | undefined)[],
+  ) {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const host = `loja-lenta-${chave}.exemplo`;
+    const espiao = vi.spyOn(console, "error").mockImplementation(() => {});
+    let resposta: Response | undefined;
+    const fetchDuble = criarFetchDeLojas(
+      [
+        {
+          host,
+          nome: "Loja Lenta",
+          origem: origemDe(`lenta${chave}`),
+          ...loja,
+        },
+      ],
+      [],
+    );
+    // Sem `await` aqui: sem prazo, a promessa nunca termina e o teste tem de
+    // falhar pela asserção, não pelo tempo-limite do Vitest.
+    void comProcessEnv(ENV_FROTA, () =>
+      comFetch(fetchDuble, () => middleware(robo(host))),
+    ).then((r) => {
+      resposta = r;
+    });
+    const saiu = () => resposta !== undefined;
+    await drenar(() => sinais.length > 0);
+    await vi.advanceTimersByTimeAsync(PRAZO_MS - 1);
+    await drenar(saiu);
+    const antesDoPrazo = resposta;
+    await vi.advanceTimersByTimeAsync(1);
+    await drenar(saiu);
+    const noPrazo = resposta;
+    vi.useRealTimers();
+    espiao.mockRestore();
+    return { antesDoPrazo, noPrazo };
+  }
+
+  it("leitura do produto que nunca responde -> no prazo do Worker o robô recebe a prévia da loja, e a leitura é cancelada", async () => {
+    const sinais: (AbortSignal | undefined)[] = [];
+    const { antesDoPrazo, noPrazo } = await previaComRelogio(
+      "produto",
+      { produtos: { tipo: "pendura", sinais } },
+      sinais,
+    );
+    expect(antesDoPrazo).toBeUndefined();
+    expect(noPrazo).toBeDefined();
+    expect(noPrazo?.status).toBe(200);
+    expect(noPrazo?.headers.get("x-ikcous-og")).toBe("sem-produto");
+    const html = (await noPrazo?.text()) ?? "";
+    expect(html).toContain("<title>Loja Lenta</title>");
+    expect(html).toContain('<meta property="og:title" content="Loja Lenta" />');
+    expect(html).not.toMatch(/R\$/);
+    expect(html).not.toContain(MARCA_DO_BUILD);
+    expect(sinais).toHaveLength(1);
+    expect(sinais[0]?.aborted).toBe(true);
+  });
+
+  it("variações que nunca respondem -> no prazo a prévia do produto sai com o preço-base (como no Worker)", async () => {
+    const sinais: (AbortSignal | undefined)[] = [];
+    const { antesDoPrazo, noPrazo } = await previaComRelogio(
+      "variacoes",
+      {
+        produtos: { tipo: "lista", linhas: [produtoComPreco] },
+        variacoes: { tipo: "pendura", sinais },
+      },
+      sinais,
+    );
+    expect(antesDoPrazo).toBeUndefined();
+    expect(noPrazo?.headers.get("x-ikcous-og")).toBe("produto");
+    expect(await noPrazo?.text()).toContain(
+      'og:title" content="Bolsa Trançada - R$ 50,00 | Loja Lenta"',
+    );
+    expect(sinais[0]?.aborted).toBe(true);
+  });
+});
+
+// O título da prévia segue o selo da página do produto (`ProductView`,
+// "Esgotado" quando o estoque da peça é zero): produto esgotado não anuncia
+// preço no quadrinho do WhatsApp.
+describe("middleware — prévia do link: esgotado e título sem preço", () => {
+  const variacao = (extra: Record<string, unknown>) => ({
+    name: "Tamanho",
+    active: true,
+    stock_increment: 5,
+    price_override: null,
+    ...extra,
+  });
+
+  async function tituloDe(
+    chave: string,
+    produto: Record<string, unknown>,
+    variacoes: RespostaProdutos = { tipo: "lista", linhas: [] },
+  ) {
+    const host = `loja-estoque-${chave}.exemplo`;
+    const espiao = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const resp = await comProcessEnv(ENV_FROTA, () =>
+        comFetch(
+          criarFetchDeLojas(
+            [
+              {
+                host,
+                nome: "Loja Estoque",
+                origem: origemDe(`est${chave}`),
+                produtos: {
+                  tipo: "lista",
+                  linhas: [
+                    {
+                      nome: "Saia Midi",
+                      descricao: "desc",
+                      preco_venda: 80,
+                      imagem_url: "https://cdn.exemplo.com/s.jpg",
+                      imagem_urls: [],
+                      ...produto,
+                    },
+                  ],
+                },
+                variacoes,
+              },
+            ],
+            [],
+          ),
+          () => middleware(robo(host)),
+        ),
+      );
+      expect(resp.headers.get("x-ikcous-og")).toBe("produto");
+      const html = await resp.text();
+      return html.match(/<meta property="og:title" content="([^"]*)" \/>/)?.[1];
+    } finally {
+      espiao.mockRestore();
+    }
+  }
+
+  it('estoque 0 e sem variações -> "Esgotado" no lugar do preço', async () => {
+    expect(await tituloDe("zero", { estoque: 0 })).toBe(
+      "Saia Midi - Esgotado | Loja Estoque",
+    );
+  });
+
+  it('estoque 0 e todas as variações ligadas zeradas -> "Esgotado"', async () => {
+    const titulo = await tituloDe(
+      "varzero",
+      { estoque: 0 },
+      {
+        tipo: "lista",
+        linhas: [
+          variacao({ stock_increment: 0, price_override: 70 }),
+          variacao({ stock_increment: 0 }),
+          variacao({ stock_increment: 9, active: false }),
+        ],
+      },
+    );
+    expect(titulo).toBe("Saia Midi - Esgotado | Loja Estoque");
+  });
+
+  it("com estoque -> o preço, como antes", async () => {
+    expect(await tituloDe("cinco", { estoque: 5 })).toBe(
+      "Saia Midi - R$ 80,00 | Loja Estoque",
+    );
+  });
+
+  it("uma variação ligada com estoque -> a página vende, então a prévia mostra o preço", async () => {
+    const titulo = await tituloDe(
+      "umacom",
+      { estoque: 0 },
+      {
+        tipo: "lista",
+        linhas: [
+          variacao({ stock_increment: 0, price_override: 70 }),
+          variacao({ stock_increment: 2 }),
+        ],
+      },
+    );
+    expect(titulo).toBe("Saia Midi - R$ 80,00 | Loja Estoque");
+  });
+
+  it("leitura das variações falhou -> não dá para saber se esgotou: o preço, como antes", async () => {
+    expect(
+      await tituloDe(
+        "varfalha",
+        { estoque: 0 },
+        { tipo: "status", status: 500 },
+      ),
+    ).toBe("Saia Midi - R$ 80,00 | Loja Estoque");
+  });
+
+  it("sem preço -> o título não fica com espaço duplo antes da barra", async () => {
+    expect(await tituloDe("sempreco", { estoque: 5, preco_venda: 0 })).toBe(
+      "Saia Midi | Loja Estoque",
+    );
+  });
 });

@@ -592,6 +592,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
     // 20261650000000: a categoria so com produto excluido pode sair.
     "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
+    // 20261651000000: a ordem dos banners muda numa trava so.
+    "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado",
     // 20261653000000: a peca da variacao desligada espera a lojista.
     "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
   ];

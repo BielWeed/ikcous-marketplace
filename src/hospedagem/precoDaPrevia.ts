@@ -49,3 +49,28 @@ export function precoDaPrevia(precoBase: number, linhas: unknown): number {
   return precoDeVitrine({ price: precoBase, originalPrice: null, variants })
     .preco;
 }
+
+/**
+ * A peça está esgotada para a prévia? A MESMA conta da página do produto
+ * (`ProductView`, selo "Esgotado" quando o estoque é <= 0): com variação ligada,
+ * o estoque é a soma das ligadas (`mapProductFromDB`); sem nenhuma ligada, é o
+ * `estoque` do produto. Variações desconhecidas (consulta que falhou) ou
+ * `estoque` ausente/não numérico = não afirma esgotado: a prévia mostra o preço,
+ * como antes, em vez de anunciar "Esgotado" sem prova.
+ */
+export function esgotadoNaPrevia(
+  estoqueBase: unknown,
+  linhas: unknown,
+): boolean {
+  if (!Array.isArray(linhas)) return false;
+  const ligadas = linhas
+    .filter(ehRegistro)
+    .map(variacaoDaLinha)
+    .filter((v) => v.active);
+  if (ligadas.length > 0)
+    return ligadas.reduce((soma, v) => soma + v.stockIncrement, 0) <= 0;
+  if (estoqueBase === null || estoqueBase === undefined || estoqueBase === "")
+    return false;
+  const estoque = Number(estoqueBase);
+  return Number.isFinite(estoque) && estoque <= 0;
+}

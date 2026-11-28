@@ -92,6 +92,11 @@ const SUCESSORAS = [
     consulta:
       "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
   },
+  // 20261651000000: a ordem dos banners muda numa trava so.
+  {
+    versao: "20261651000000",
+    consulta: "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado",
+  },
   // 20261653000000: a peca da variacao desligada espera a lojista (devolver_estoque e admin_devolucao_concluir).
   {
     versao: "20261653000000",

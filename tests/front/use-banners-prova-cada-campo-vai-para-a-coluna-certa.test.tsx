@@ -420,6 +420,8 @@ describe("useBanners (real): cada campo vai para a coluna certa", () => {
 
   it("arrumar as posições: só regrava a linha que MUDOU de lugar (lista já certa não grava nada)", async () => {
     await montar();
+    // Loja sem a RPC de arrumar (20261651000000): o caminho antigo, banner a banner.
+    h.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202" } });
     h.consultarOrdem.mockResolvedValueOnce({
       data: [
         { id: "a", order: 1 },
@@ -450,6 +452,8 @@ describe("useBanners (real): cada campo vai para a coluna certa", () => {
 
   it("arrumar as posições: o banner que a lojista acabou de salvar fica ANTES do empate, a menos que tenha DESCIDO", async () => {
     await montar();
+    // Loja sem a RPC de arrumar (20261651000000): o caminho antigo, banner a banner.
+    h.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202" } });
     const empate = () => ({
       data: [
         { id: "a", order: 2 },
