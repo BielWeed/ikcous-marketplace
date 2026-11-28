@@ -2095,7 +2095,8 @@ const envelopesDo = (banco) =>
     (q) => q.startsWith("BEGIN;\n") && q !== ddlDoLedger(),
   );
 const vereditoNoEstado = async (amb, passo) =>
-  JSON.parse(await lerArquivoDeEstado(amb.pasta)).passos[passo]?.veredito;
+  Reflect.get(JSON.parse(await lerArquivoDeEstado(amb.pasta)).passos, passo)
+    ?.veredito;
 /** O lojas.json com a loja nova JÁ no cadastro da frota (o ref é o dela). */
 const LOJAS_COM_A_NOVA_CADASTRADA = () => ({
   lojas: {
