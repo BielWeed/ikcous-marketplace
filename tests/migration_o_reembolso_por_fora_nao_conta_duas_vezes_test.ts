@@ -235,7 +235,10 @@ Deno.test("1664: as funções vigentes mantém os cabeçalhos e o rollback resta
 Deno.test("1664: as fichas a/b, verificações e o CI registram todos os objetos", () => {
   const conf = require("../scripts/publicacao/conferir-banco.cjs");
   const db = require("../scripts/db-apply.cjs");
-  const verifica = db.VERIFICACOES[nome];
+  const verifica =
+    db.VERIFICACOES[
+      "20261664000000_o_reembolso_por_fora_nao_conta_duas_vezes.sql"
+    ];
   assert.equal(verifica.length, anteriores.length + novas.length);
   for (const v of verifica) {
     const d = definicao(sql, v.funcao);
