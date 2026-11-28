@@ -263,6 +263,19 @@ describe("mensagemAmigavelErroPedido — as causas do create_marketplace_order_v
     );
   });
 
+  // PostgREST 13+ separou o token VENCIDO (PGRST303) do inválido (PGRST301).
+  // Também falha na autenticação, antes de invocar a função: mesma frase.
+  it("PGRST303 (JWT vencido, PostgREST 13+): também não chega a invocar a função — 'tente novamente', nunca a ressalva de duplicidade", () => {
+    expect(
+      mensagemAmigavelErroPedido({
+        code: "PGRST303",
+        message: "JWT expired",
+      }),
+    ).toBe(
+      "Não foi possível criar seu pedido agora. Tente novamente em instantes.",
+    );
+  });
+
   // ANOTADO 2 da revisão de A2-fix3 (22/08/2026): a guarda `&& textoOriginal`
   // no ramo P0001 não tinha teste nenhum cobrindo o caso em que ela decide
   // algo — RAISE EXCEPTION sem texto (ou com texto vazio) é raro, mas se

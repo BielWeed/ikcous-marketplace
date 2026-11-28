@@ -209,6 +209,18 @@ describe("useFornecedores", () => {
     );
   });
 
+  it("token vencido (PGRST303, PostgREST 13+) diz o mesmo que o PGRST301: entrar de novo", async () => {
+    banco.fila.push({
+      data: null,
+      error: { code: "PGRST303", message: "JWT expired" },
+    });
+    await montar();
+    expect(api.fornecedores).toBeNull();
+    expect(api.erro).toBe(
+      "Só o administrador da loja mexe nos fornecedores. Entre de novo com a conta de administrador.",
+    );
+  });
+
   it("tabela ausente (migration não aplicada nesta loja) diz isso com clareza", async () => {
     banco.fila.push({
       data: null,
