@@ -2146,12 +2146,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 },
               },
               // O aviso fica até a decisão: não some em 10 s (o que deixava o
-              // rascunho sem dono e o salvamento automático o sobrescrevia) e
-              // não fecha por gesto — só Restaurar ou Descartar.
+              // rascunho sem dono e o salvamento automático o sobrescrevia).
+              // NÃO é `dismissible: false`: no Sonner 2.0.8 isso desliga o
+              // botão Descartar (o `cancel` sai sem chamar o onClick) e o aviso
+              // ficava eterno. Fechar arrastando é "decido depois": o rascunho
+              // antigo segue guardado e protegido até ela sair da tela.
               duration: Number.POSITIVE_INFINITY,
-              ...(pendente
-                ? { id: ID_DO_AVISO_DA_GRADE_PENDENTE }
-                : { id: ID_DA_OFERTA_DE_RASCUNHO_ANTIGO, dismissible: false }),
+              id: pendente
+                ? ID_DO_AVISO_DA_GRADE_PENDENTE
+                : ID_DA_OFERTA_DE_RASCUNHO_ANTIGO,
             });
           } else {
             // Draft matches database state, clean it up

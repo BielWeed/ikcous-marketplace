@@ -263,7 +263,7 @@ describe("Política de devolução — rascunho do texto sobrevive à aba descar
     expect(ofertaDeRascunho()).toBeDefined();
   });
 
-  it("controle: escondida desde o começo, o aviso não aparece", async () => {
+  it("depois de Restaurar e seguir digitando, sair e voltar à aba não pergunta de novo nem trava o rascunho", async () => {
     localStorage.setItem(
       chave("admin-1"),
       JSON.stringify({
@@ -272,7 +272,38 @@ describe("Política de devolução — rascunho do texto sobrevive à aba descar
         salvoEm: Date.now(),
       }),
     );
+    await montar();
+    await act(async () => ofertaDeRascunho()?.[1].action.onClick());
+    expect(campo().value).toBe("Rascunho guardado");
+    await digitar("Rascunho guardado e mais um trecho");
+
+    await montar(false);
+    await montar(true);
+    // Uma pergunta só: a do rascunho antigo, já respondida.
+    expect(
+      toast.info.mock.calls.filter(([t]) =>
+        String(t).includes("Rascunho não salvo"),
+      ),
+    ).toHaveLength(1);
+    await ocultarAAba();
+    const guardado = JSON.parse(localStorage.getItem(chave("admin-1")) ?? "{}");
+    expect(guardado.texto).toBe("Rascunho guardado e mais um trecho");
+  });
+
+  it("escondida desde o começo (grupo fechado): sem aviso, e esconder a aba NÃO apaga o rascunho", async () => {
+    const rascunho = JSON.stringify({
+      texto: "Rascunho guardado",
+      base: "Política salva",
+      salvoEm: Date.now(),
+    });
+    localStorage.setItem(chave("admin-1"), rascunho);
     await montar(false);
     expect(ofertaDeRascunho()).toBeUndefined();
+    // Ela bloqueia a tela sem ter visto o aviso: o rascunho é dela, fica.
+    await ocultarAAba();
+    expect(localStorage.getItem(chave("admin-1"))).toBe(rascunho);
+    // Abriu o grupo: agora o aviso aparece.
+    await montar(true);
+    expect(ofertaDeRascunho()).toBeDefined();
   });
 });

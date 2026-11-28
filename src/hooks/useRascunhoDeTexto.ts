@@ -8,9 +8,13 @@
 //   O aviso fica até ela decidir (Restaurar ou Descartar) e, enquanto espera,
 //   nada grava por cima do rascunho antigo — mesmo cuidado do rascunho do
 //   produto. Sair da tela sem decidir tira o aviso e o rascunho fica. Tela
-//   montada mas escondida (a aba Ajustes por baixo de Pedidos, `ativo`
-//   falso) também tira o aviso, sem dar o rascunho por decidido: ao voltar,
-//   o aviso volta.
+//   montada mas escondida (a aba Ajustes por baixo de Pedidos, ou o grupo
+//   fechado: `ativo` falso) não mostra o aviso, mas a pendência vem do
+//   APARELHO e não da tela: esconder a aba do navegador sem ter visto o aviso
+//   não apaga o rascunho. Ao ficar à vista, o aviso aparece. Fechar o aviso
+//   arrastando é "decido depois": a pendência fica até a próxima abertura.
+//   O aviso NÃO é `dismissible: false`: no Sonner 2.0.8 isso desliga o botão
+//   "Descartar" (o `cancel` sai sem chamar o onClick).
 // - O salvo pode mudar com o aviso aberto (o tempo real traz o que outro
 //   aparelho gravou). "Restaurar" confere de novo: se mudou e ela ainda não
 //   foi avisada, o aviso fica aberto com o recado e só o segundo toque troca.
@@ -62,21 +66,33 @@ export function useRascunhoDeTexto({
   // Há rascunho antigo esperando a decisão dela (o aviso pode estar fora da
   // tela enquanto ela está em outra aba: continua esperando).
   const ofertaPendenteRef = useRef(false);
+  // A conta (chave) cujo rascunho antigo já se resolveu nesta montagem: não
+  // havia, era igual à tela, ou ela decidiu. Esconder e mostrar a tela depois
+  // disso não reabre a pergunta sobre um rascunho que já é o texto da tela.
+  const resolvidoRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Escondida: a pendência (se houver) segue de pé até ela voltar.
-    if (!chave || !pronto || !ativo) return;
+    if (!chave || !pronto) return;
+    if (resolvidoRef.current === chave) return;
     ofertaPendenteRef.current = false;
     const lido = lerRascunhoDeTexto(chave);
-    if (!lido) return;
-    if (lido.texto === atual.current.texto) {
-      apagarRascunhoDeTexto(chave);
+    const resolveu = () => {
+      ofertaPendenteRef.current = false;
+      resolvidoRef.current = chave;
+    };
+    if (!lido) {
+      resolveu();
       return;
     }
+    if (lido.texto === atual.current.texto) {
+      apagarRascunhoDeTexto(chave);
+      resolveu();
+      return;
+    }
+    // A pendência vem do aparelho: vale mesmo com a tela escondida.
     ofertaPendenteRef.current = true;
-    const decidiu = () => {
-      ofertaPendenteRef.current = false;
-    };
+    if (!ativo) return;
+    const decidiu = resolveu;
     const mudouDepois = () => lido.base !== atual.current.salvo;
     const oferecer = (avisouQueMudou: boolean) => {
       toast.info("Rascunho não salvo encontrado", {
@@ -106,9 +122,8 @@ export function useRascunhoDeTexto({
             toast.info("Rascunho descartado.");
           },
         },
-        // Fica até a decisão: sumir sozinho deixaria o rascunho sem dono.
+        // Não some sozinho: sumir deixaria o rascunho sem dono.
         duration: Number.POSITIVE_INFINITY,
-        dismissible: false,
       });
     };
     oferecer(mudouDepois());
@@ -144,6 +159,7 @@ export function useRascunhoDeTexto({
   const apagarRascunho = useCallback(() => {
     if (!chave) return;
     apagarRascunhoDeTexto(chave);
+    resolvidoRef.current = chave;
     if (ofertaPendenteRef.current) {
       ofertaPendenteRef.current = false;
       toast.dismiss(idDoAviso);

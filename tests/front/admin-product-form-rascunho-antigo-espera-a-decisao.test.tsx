@@ -205,12 +205,14 @@ describe("AdminProductFormView — rascunho antigo espera a decisão", () => {
     });
   }
 
-  it("o aviso fica até ela decidir: sem tempo, sem deslizar para fechar, com id para ser retirado", async () => {
+  it("o aviso fica até ela decidir: sem tempo, com id para ser retirado", async () => {
     await abrirProduto();
 
     const opcoes = opcoesDoAviso();
     expect(opcoes.duration).toBe(Number.POSITIVE_INFINITY);
-    expect(opcoes.dismissible).toBe(false);
+    // NÃO `dismissible: false`: no Sonner 2.0.8 isso desliga o Descartar
+    // (admin-product-form-descartar-rascunho-no-sonner-real.test.tsx).
+    expect(opcoes.dismissible).not.toBe(false);
     expect(typeof opcoes.id).toBe("string");
     expect(opcoes.action).toBeDefined();
     expect(opcoes.cancel).toBeDefined();
