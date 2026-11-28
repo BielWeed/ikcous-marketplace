@@ -32,6 +32,8 @@ const h = vi.hoisted(() => ({
   pendurarProxima: false,
   soltar: null as null | (() => void),
   rpc: vi.fn(),
+  // Resposta do UPDATE de `updateBanner` (`.update().eq().select("id")`).
+  gravar: vi.fn(),
   toastError: vi.fn(),
   toastWarning: vi.fn(),
 }));
@@ -55,6 +57,7 @@ vi.mock("@/lib/supabase", () => ({
           },
         }),
       }),
+      update: () => ({ eq: () => ({ select: h.gravar }) }),
     }),
     rpc: h.rpc,
   },
@@ -144,6 +147,7 @@ describe("seta do banner relê a ordem gravada no banco", () => {
     h.pendurarProxima = false;
     h.soltar = null;
     h.rpc.mockReset();
+    h.gravar.mockReset();
     h.toastError.mockReset();
     h.toastWarning.mockReset();
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -225,5 +229,59 @@ describe("seta do banner relê a ordem gravada no banco", () => {
 
     expect(h.toastWarning).toHaveBeenCalledTimes(1);
     expect(hospedeiro.textContent).toBe("a,c,b");
+  });
+
+  // Salvar no editor (`updateBanner`) também desfaz a mudança otimista e relê
+  // em dois caminhos: a mesma carona devolvia o retrato desfeito.
+  it("salvar banner excluído em outro aparelho: a lista relida sai do banco, sem ele", async () => {
+    const { ler, hospedeiro } = await montarPainel();
+    await leituraDeFundoPendurada(ler);
+
+    // O UPDATE não acha a linha (outro aparelho excluiu o "b").
+    h.gravar.mockImplementationOnce(async () => {
+      h.linhas = [banner("a", 1), banner("c", 2)];
+      return { data: [], error: null };
+    });
+    await act(async () => {
+      // A releitura é esperada dentro de `updateBanner`: sem carona, ela não
+      // fica presa à leitura antiga.
+      void ler()
+        .updateBanner("b", { title: "novo" })
+        .catch(() => {});
+    });
+
+    expect(h.toastError).toHaveBeenCalledWith(
+      "Este banner foi excluído em outro aparelho ou você não tem mais acesso a ele.",
+    );
+    expect(hospedeiro.textContent).toBe("a,c");
+
+    await act(async () => h.soltar?.());
+    expect(hospedeiro.textContent).toBe("a,c");
+  });
+
+  it("salvar com a ordem não confirmada: a lista relida é a do banco", async () => {
+    const { ler, hospedeiro } = await montarPainel();
+    await leituraDeFundoPendurada(ler);
+
+    // O UPDATE grava; arrumar a página falha. No banco a ordem ficou c, a, b.
+    h.gravar.mockResolvedValueOnce({ data: [{ id: "c" }], error: null });
+    h.rpc.mockImplementationOnce(async () => {
+      h.linhas = [banner("c", 1), banner("a", 2), banner("b", 3)];
+      return { data: null, error: { code: "P0001", message: "falhou" } };
+    });
+    let falha: unknown;
+    await act(async () => {
+      await ler()
+        .updateBanner("c", { order: 1 })
+        .catch((erro: unknown) => {
+          falha = erro;
+        });
+    });
+
+    expect((falha as Error | undefined)?.name).toBe("BannerOrdemNaoSalva");
+    expect(hospedeiro.textContent).toBe("c,a,b");
+
+    await act(async () => h.soltar?.());
+    expect(hospedeiro.textContent).toBe("c,a,b");
   });
 });

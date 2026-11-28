@@ -376,9 +376,10 @@ export function useBanners(adminMode = false) {
     };
   }, []);
 
-  // `doBanco`: releitura depois que a seta do painel mexeu na lista local e o
-  // banco pode ter gravado outra ordem. Sai como consulta nova, sem carona na
-  // que já estava em voo (começou antes da troca e devolveria o cache local).
+  // `doBanco`: releitura depois que a seta ou o editor do painel desfez uma
+  // mudança otimista e o banco pode ter gravado outra coisa. Sai como consulta
+  // nova, sem carona na que já estava em voo (começou antes da mudança e
+  // devolveria o cache local).
   const fetchBanners = useCallback(
     async (_onlyActive = false, forceRefresh = false, doBanco = false) => {
       const geracao = geracaoDasMutacoesDeBanners();
@@ -898,7 +899,8 @@ export function useBanners(adminMode = false) {
           { cause: error },
         );
         falhaDaOrdem.name = "BannerOrdemNaoSalva";
-        void fetchBanners(false, true);
+        // Sem carona: a leitura em voo devolveria o retrato desfeito.
+        void fetchBanners(false, true, true);
         throw falhaDaOrdem;
       }
       applyLocalBanners(previousBanners);
@@ -909,7 +911,7 @@ export function useBanners(adminMode = false) {
         error.name === "BannerIndisponivel"
       ) {
         toast.error(TEXTO_BANNER_EXCLUIDO_EM_OUTRO_APARELHO);
-        await fetchBanners(false, true);
+        await fetchBanners(false, true, true);
       } else {
         toast.error(
           mensagemDeErroDeSessaoDoPainel(error) ?? "Erro ao atualizar banner.",
