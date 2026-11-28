@@ -4703,12 +4703,17 @@ export function useOrders(
           // A resposta da edge não traz `updated_at`: o carimbo do aviso à
           // cliente sai de uma leitura curta do banco (só a ficha do painel
           // avisa, e só sem `silent`). Falhou, pendurou ou o pedido já não
-          // está cancelado: `null`, e o aviso cai no relógio local como antes.
-          const conferido =
+          // está cancelado: `null`, e o aviso cai no relógio local (com o
+          // piso de `avisarOClienteDoStatus`). A leitura NÃO é esperada aqui:
+          // o cancelamento já está provado e a ficha não pode ficar em
+          // "Processando" por até 5 s com o toast de sucesso já na tela. A
+          // hora segue como promessa (nunca rejeita); só o aviso a espera.
+          const gravadoNoBancoEm: Promise<string | null> | null =
             isAdmin && !silent
-              ? await avancoGravouNoBanco(orderId, "cancelled")
+              ? avancoGravouNoBanco(orderId, "cancelled").then(
+                  (conferido) => conferido?.gravadoNoBancoEm ?? null,
+                )
               : null;
-          const gravadoNoBancoEm = conferido?.gravadoNoBancoEm ?? null;
           // "Já estava cancelado" segue o MESMO caminho e a ficha avisa a
           // cliente do mesmo jeito: pode ser a 1ª tentativa desta lojista que
           // gravou e perdeu a resposta (nenhum aviso saiu). `jaEstava` só

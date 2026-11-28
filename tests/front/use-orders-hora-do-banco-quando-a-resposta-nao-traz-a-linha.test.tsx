@@ -141,6 +141,13 @@ async function mudar(
   return desfecho;
 }
 
+/** O retorno com a hora do banco JÁ entregue. No cancelamento pela edge ela
+ *  vem como promessa (lote 553: a ficha não espera a leitura; só o aviso). */
+async function comAHoraEntregue(valor: unknown): Promise<unknown> {
+  const v = valor as { gravadoNoBancoEm?: unknown };
+  return { ...v, gravadoNoBancoEm: await v.gravadoNoBancoEm };
+}
+
 describe("Hora do banco no aviso: os caminhos em que a resposta não traz a linha", () => {
   let host: HTMLDivElement;
   let raiz: Root;
@@ -246,7 +253,9 @@ describe("Hora do banco no aviso: os caminhos em que a resposta não traz a linh
           body: expect.objectContaining({ metodo: "cancelar" }),
         }),
       );
-      expect(r.valor).toEqual({ gravadoNoBancoEm: HORA_DO_BANCO });
+      expect(await comAHoraEntregue(r.valor)).toEqual({
+        gravadoNoBancoEm: HORA_DO_BANCO,
+      });
       expect(colunasLidas.some((c) => c.includes("updated_at"))).toBe(true);
     });
 
@@ -263,7 +272,9 @@ describe("Hora do banco no aviso: os caminhos em que a resposta não traz a linh
       const r = await mudar(ID_ONLINE, "cancelled");
 
       expect(r.erro).toBeNull();
-      expect(r.valor).toEqual({ gravadoNoBancoEm: null });
+      expect(await comAHoraEntregue(r.valor)).toEqual({
+        gravadoNoBancoEm: null,
+      });
       expect(toast.success).toHaveBeenCalledWith("Pedido cancelado.");
       expect(toast.error).not.toHaveBeenCalled();
     });
@@ -278,7 +289,9 @@ describe("Hora do banco no aviso: os caminhos em que a resposta não traz a linh
       const r = await mudar(ID_ONLINE, "cancelled");
 
       expect(r.erro).toBeNull();
-      expect(r.valor).toEqual({ gravadoNoBancoEm: null });
+      expect(await comAHoraEntregue(r.valor)).toEqual({
+        gravadoNoBancoEm: null,
+      });
       expect(toast.error).not.toHaveBeenCalled();
     });
 
@@ -294,7 +307,9 @@ describe("Hora do banco no aviso: os caminhos em que a resposta não traz a linh
       const r = await mudar(ID_ONLINE, "cancelled");
 
       expect(r.erro).toBeNull();
-      expect(r.valor).toEqual({ gravadoNoBancoEm: null });
+      expect(await comAHoraEntregue(r.valor)).toEqual({
+        gravadoNoBancoEm: null,
+      });
       expect(toast.error).not.toHaveBeenCalled();
     });
 
@@ -308,7 +323,9 @@ describe("Hora do banco no aviso: os caminhos em que a resposta não traz a linh
       const r = await mudar(ID_ONLINE, "cancelled");
 
       expect(r.erro).toBeNull();
-      expect(r.valor).toEqual({ gravadoNoBancoEm: null });
+      expect(await comAHoraEntregue(r.valor)).toEqual({
+        gravadoNoBancoEm: null,
+      });
     });
 
     it("já estava cancelado: devolve a hora do banco como no cancelamento novo (a ficha ainda avisa a cliente) e diz que já estava", async () => {
@@ -324,7 +341,7 @@ describe("Hora do banco no aviso: os caminhos em que a resposta não traz a linh
       const r = await mudar(ID_ONLINE, "cancelled");
 
       expect(r.erro).toBeNull();
-      expect(r.valor).toEqual({
+      expect(await comAHoraEntregue(r.valor)).toEqual({
         gravadoNoBancoEm: HORA_DO_BANCO,
         jaEstava: true,
       });
