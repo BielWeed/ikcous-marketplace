@@ -1,3 +1,4 @@
+import { AvisoDeCaixaFechado } from "@/components/admin/pdv/AvisoDeCaixaFechado";
 import {
   Dialog,
   DialogContent,
@@ -6,8 +7,9 @@ import {
 } from "@/components/ui/dialog";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { momentoDoPagamentoNaMao } from "@/lib/forma-de-pagamento";
+import type { SituacaoDoCaixa } from "@/types/financeiro";
 import { Check } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const FOCO =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300";
@@ -68,14 +70,31 @@ export function ConfirmarRecebimento({
   total,
   disabled,
   retiradaNaLoja,
+  consultarCaixa,
   aoConfirmar,
 }: Readonly<{
   total: number;
   disabled?: boolean;
   retiradaNaLoja?: boolean | null;
+  consultarCaixa?: () => Promise<SituacaoDoCaixa>;
   aoConfirmar: () => Promise<void>;
 }>) {
   const [aberto, setAberto] = useState(false);
+  const [caixaFechado, setCaixaFechado] = useState(false);
+  useEffect(() => {
+    if (!aberto || !consultarCaixa) return;
+    let valendo = true;
+    consultarCaixa().then(
+      (situacao) => {
+        if (valendo) setCaixaFechado(situacao === "fechado");
+      },
+      () => {}, // Como no balcão: sem certeza, não avisa nem bloqueia.
+    );
+    return () => {
+      valendo = false;
+      setCaixaFechado(false);
+    };
+  }, [aberto, consultarCaixa]);
   // O Voltar do aparelho fecha só a pergunta: a ficha do pedido fica.
   useVoltarFechaAFolha(aberto, () => setAberto(false));
   const emVoo = useRef(false);
@@ -105,6 +124,9 @@ export function ConfirmarRecebimento({
         aria-describedby={undefined}
       >
         <DialogTitle>Registrar recebimento</DialogTitle>
+        {aberto && consultarCaixa && caixaFechado && (
+          <AvisoDeCaixaFechado desabilitado={Boolean(disabled)} />
+        )}
         <PerguntaDoRecebimento
           total={total}
           disabled={disabled}

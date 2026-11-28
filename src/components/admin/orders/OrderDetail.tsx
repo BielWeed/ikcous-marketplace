@@ -71,6 +71,7 @@ import {
   rotuloDaVariacao,
   rotuloDaVariacaoGuardada,
 } from "@/lib/rotulo-da-variacao";
+import { consultarSituacaoDoCaixa } from "@/lib/situacao-do-caixa";
 import { supabase } from "@/lib/supabase";
 import { telefoneDaLojaParaExibicao } from "@/lib/telefone-br";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
@@ -1377,6 +1378,11 @@ function OrderFinanceCard({
               total={order.total}
               disabled={registrandoPagamento}
               retiradaNaLoja={order.retiradaNaLoja}
+              consultarCaixa={
+                order.paymentMethod === "cash"
+                  ? consultarSituacaoDoCaixa
+                  : undefined
+              }
               aoConfirmar={() => onRegistrarPagamento(order.id, true)}
             />
           )}
