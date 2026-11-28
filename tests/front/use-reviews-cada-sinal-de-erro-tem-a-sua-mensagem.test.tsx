@@ -206,6 +206,14 @@ describe("addReview — cada sinal de erro escolhe a frase certa sozinho", () =>
     expect(await mensagemNaTela()).toBe(ENTRE_DE_NOVO);
   });
 
+  it("código PGRST303 (token vencido no PostgREST 13+) SEM texto de token: manda entrar de novo", async () => {
+    h.singleOk = { data: null, error: { code: "PGRST303", message: "x" } };
+
+    expect(await chamarAddReview()).toBeNull();
+
+    expect(await mensagemNaTela()).toBe(ENTRE_DE_NOVO);
+  });
+
   it("texto 'JWT expired' SEM código: manda entrar de novo", async () => {
     h.singleOk = { data: null, error: { message: "JWT expired" } };
 

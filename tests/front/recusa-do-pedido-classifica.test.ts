@@ -263,7 +263,7 @@ describe("classificarRecusaDoPedido", () => {
   // achado que BLOQUEOU a primeira versao: sem eles, o painel dizia "confira se o
   // pedido apareceu" enquanto o toast, do lado, dizia "tente novamente" -- duas
   // instrucoes opostas para a MESMA falha, na MESMA tela.
-  it.each(["PGRST202", "PGRST301", "PGRST302"])(
+  it.each(["PGRST202", "PGRST301", "PGRST302", "PGRST303"])(
     "%s prova que a chamada nem chegou ao banco -> tentar de novo, igual ao toast",
     (code) => {
       const r = classificarRecusaDoPedido({ code, message: "qualquer" });

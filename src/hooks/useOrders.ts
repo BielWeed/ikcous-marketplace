@@ -1392,9 +1392,10 @@ export function escolherRecargaDeReconexao(deps: {
  *     escreve o texto já em português — usa-se o texto real em vez da
  *     frase genérica.
  *   - "PGRST202" (PostgREST: função não existe no cache de schema),
- *     "PGRST301" (JWT inválido ou expirado) e "PGRST302" (papel anônimo
- *     desabilitado, sem sessão): nenhum tem formato SQLSTATE (8 caracteres,
- *     prefixo do PostgREST) — são código do PostgREST, e os três acontecem
+ *     "PGRST301" (JWT inválido), "PGRST302" (papel anônimo desabilitado,
+ *     sem sessão) e "PGRST303" (JWT vencido — o PostgREST 13+ separou do
+ *     301): nenhum tem formato SQLSTATE (8 caracteres, prefixo do
+ *     PostgREST) — são código do PostgREST, e os quatro acontecem
  *     na fase de autenticação, ANTES de qualquer requisição chegar ao
  *     Postgres (confirmado na doc oficial:
  *     docs.postgrest.org/en/v12/references/errors.html) — a chamada nunca
@@ -1416,6 +1417,7 @@ const CODIGOS_POSTGREST_REVERTIDO_COMPROVADO = new Set([
   "PGRST202",
   "PGRST301",
   "PGRST302",
+  "PGRST303",
 ]);
 
 export const mensagemAmigavelErroPedido = (error: unknown): string => {
