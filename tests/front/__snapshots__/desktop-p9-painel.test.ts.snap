@@ -26,6 +26,7 @@ exports[`P9 — painel no computador > src/components/admin/categorias/Gerenciar
   "{BOTAO_NEUTRO}",
   ""space-y-2"",
   ""text-sm font-bold text-red-200"",
+  ""text-sm text-zinc-400"",
   ""flex flex-wrap gap-2"",
   "{BOTAO_PERIGO}",
   "{BOTAO_NEUTRO}",

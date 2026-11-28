@@ -767,6 +767,162 @@ Deno.test("205a/205b — rol fechado, um statement so de catalogo, md5 do pre-vo
   );
 });
 
+// 206 (27/11/2026): o lote da 20261650000000 (a categoria so com produto excluido pode sair). Rol fechado de 3 linhas, o mesmo na
+// 206a e na 206b, so catalogo; a 206a espera o corpo desta e a 206b o vigente (o da 20261237000000) ou o desta. Os md5 saem do
+// PRE-VOO da propria migration e sao RECALCULADOS dos arquivos (o desta e o da 1237, que o rollback devolve byte a byte); a
+// consulta da antecessora (38a) aceita o desta como sucessora.
+Deno.test("206a/206b — rol fechado, um statement so de catalogo, md5 do pre-voo da 20261650000000 recalculado dos arquivos, menu, rpc-ci, release e lote no canais", async () => {
+  const {
+    contarStatements,
+    listarConsultas,
+    ROL_FECHADO_POR_CONSULTA,
+    veredictoDaConsulta,
+  } = require(SCRIPT);
+  const { createHash } = require("node:crypto");
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const menu = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const A206 =
+    "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado";
+  const B206 =
+    "206b-antes-a-categoria-so-com-produto-excluido-pode-sair-base-vigente";
+  const NOME =
+    "20261650000000_a_categoria_so_com_produto_excluido_pode_sair.sql";
+  const migration = await Deno.readTextFile(`${MIGRATIONS_DIR}/${NOME}`);
+  const rollback = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/rollback-manual-${NOME}`,
+  );
+  const m1237 = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261237000000_a_lojista_renomeia_e_apaga_categoria_sem_deixar_produto_orfao.sql`,
+  );
+  const par = /NOT IN \('([0-9a-f]{32})', '([0-9a-f]{32})'\)/.exec(migration);
+  assert(par, "o pre-voo cita (vigente, desta)");
+  const [, vigente, desta] = par;
+  // O corpo entre o delimitador de dolar do UM CREATE OR REPLACE de apagar_categoria_vazia do arquivo.
+  const corpo = (sql: string) => {
+    const marca = "CREATE OR REPLACE FUNCTION public.apagar_categoria_vazia(";
+    assertEquals(sql.split(marca).length - 1, 1, "uma definicao so");
+    const i = sql.indexOf(marca);
+    const m = /\bAS (\$\w*\$)/.exec(sql.slice(i));
+    assert(m, "sem delimitador");
+    const a = i + m.index + m[0].length;
+    return sql.slice(a, sql.indexOf(m[1], a)).replace(/\r/g, "");
+  };
+  const md5 = (s: string) =>
+    createHash("md5").update(s).digest("hex") as string;
+  assertEquals(md5(corpo(migration)), desta, "o md5 desta e' o do arquivo");
+  assertEquals(md5(corpo(m1237)), vigente, "o vigente e' o da 1237");
+  assertEquals(
+    corpo(rollback),
+    corpo(m1237),
+    "o rollback e' o corpo da 1237 byte a byte",
+  );
+  // So a recusa por produto (e a frase do suporte) muda.
+  assert(!corpo(migration).includes("suporte"));
+  assertStringIncludes(
+    corpo(migration),
+    "IF v_produtos - v_excluidos > 0 THEN",
+  );
+  const itens = [
+    "apagar_categoria_vazia: corpo exato (md5), a categoria so com produto excluido pode sair",
+    "apagar_categoria_vazia: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno jsonb, search_path=public, EXECUTE so de authenticated e service_role",
+    "categoria__usos: corpo da 20261237000000 (md5), conta os produtos com os excluidos a parte",
+  ];
+  for (const consulta of [A206, B206]) {
+    assert(
+      listarConsultas().includes(consulta),
+      `falta a consulta ${consulta}`,
+    );
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${consulta}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*WITH\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assert(
+      !/FROM\s+public\.(categorias|produtos|banners|politica_devolucao)\b/i.test(
+        limpo,
+      ),
+      `${consulta}: le so catalogo`,
+    );
+    assertStringIncludes(menu, `- ${consulta}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${consulta}.sql"`).length - 1,
+      2,
+    );
+    assert(CONSULTAS_DE_ROL_FECHADO.has(consulta));
+    assertEquals(
+      new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(consulta),
+      itens,
+    );
+    const linhas = itens.map((item) => ({
+      item,
+      esperado: "sim",
+      vivo: "sim",
+      ok: true,
+    }));
+    const veredicto = (resposta: unknown[]) =>
+      veredictoDaConsulta({
+        consulta,
+        ref: "aaaaaaaaaaaaaaaaaaaa",
+        linhas: resposta,
+      });
+    assertStringIncludes(
+      veredicto(linhas),
+      "ok_false=0 ok_nao_booleano=0 rol=ok",
+    );
+    assertStringIncludes(veredicto(linhas.slice(1)), "rol=invalido");
+  }
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${A206}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${B206}.sql`),
+  );
+  // A 206a aceita SO o corpo desta; a 206b, o vigente OU o desta (reaplicacao idempotente).
+  assertStringIncludes(sqlA, `= '${desta}'`);
+  assert(!sqlA.includes(vigente), "a 206a nao pode aceitar o corpo vigente");
+  assertStringIncludes(sqlB, `IN ('${vigente}', '${desta}')`);
+  // A consulta da antecessora aceita o corpo desta como SUCESSORA: senao reprova em toda loja depois do apply.
+  const a38 = sqlSemComentarios(
+    await Deno.readTextFile(
+      `${CONSULTAS_DIR}/38a-conferir-gestao-de-categorias-aplicado.sql`,
+    ),
+  ).replace(/\s+/g, " ");
+  assertStringIncludes(
+    a38,
+    `CASE WHEN x.m IN ('${vigente}', '${desta}') THEN '${vigente}' ELSE x.m END FROM portas x WHERE x.proname = 'apagar_categoria_vazia'`,
+  );
+  assertStringIncludes(
+    rpc,
+    "run: node tests/banco/rodar-isolado.cjs tests/banco/a-categoria-so-com-produto-excluido-pode-sair-viva.cjs",
+  );
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const lote = canais.provasDeObjetos.filter(
+    (p: { consulta: string }) => p.consulta === A206,
+  );
+  assertEquals(lote.length, 1);
+  assertEquals(lote[0].versoes, ["20261650000000"]);
+  assertEquals(lote[0].ausenciaConfirmadaPor, B206);
+  for (const chave of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
+    assert(!(chave in lote[0]), `lote da 206a: ${chave} nao se aplica`);
+  const ordem = canais.provasDeObjetos.map(
+    (p: { consulta: string }) => p.consulta,
+  );
+  const a38lote = "38a-conferir-gestao-de-categorias-aplicado";
+  assert(
+    ordem.indexOf(a38lote) >= 0 && ordem.indexOf(a38lote) < ordem.indexOf(A206),
+    "o lote da 206a vem depois do da 38a",
+  );
+});
+
 // 129: medicao ANTES; nao autoriza apply nem registra uma prova de pos-aplicacao.
 const CONSULTAS_129 = [
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
@@ -17110,6 +17266,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "203a-conferir-as-listas-dos-ajustes-nao-somem-entre-aparelhos-aplicado",
     // 20261645000000: o aviso do vale-troca diz que a loja combina.
     "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
+    // 20261650000000: a categoria so com produto excluido pode sair.
+    "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

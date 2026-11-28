@@ -372,6 +372,8 @@ on:
       - "scripts/publicacao/consultas/203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente.sql"
       - "scripts/publicacao/consultas/205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado.sql"
       - "scripts/publicacao/consultas/205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente.sql"
+      - "scripts/publicacao/consultas/206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado.sql"
+      - "scripts/publicacao/consultas/206b-antes-a-categoria-so-com-produto-excluido-pode-sair-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -718,6 +720,8 @@ on:
       - "scripts/publicacao/consultas/203b-antes-as-listas-dos-ajustes-nao-somem-entre-aparelhos-base-vigente.sql"
       - "scripts/publicacao/consultas/205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado.sql"
       - "scripts/publicacao/consultas/205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente.sql"
+      - "scripts/publicacao/consultas/206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado.sql"
+      - "scripts/publicacao/consultas/206b-antes-a-categoria-so-com-produto-excluido-pode-sair-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1551,6 +1555,12 @@ jobs:
       - name: Prova viva do aviso do vale-troca que diz que a loja combina (20261645000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-aviso-do-vale-troca-diz-que-a-loja-combina-viva.cjs
+      # Migration 20261650000000 (a categoria so com produto excluido pode sair): apagar_categoria_vazia troca SO a recusa por produto (o excluido nao segura).
+      # Controle com o corpo da 20261237000000 (recusa), so excluidos apaga e o nome escrito no produto excluido fica, o relatorio por categoria igual
+      # antes e depois, 1 vivo + excluidos recusa, banner e regra recusam, mutante vermelho, reaplicar 2x e CRLF, rollback byte a byte, pre-voo e 206a/206b/38a. CLONE proprio.
+      - name: Prova viva da categoria so com produto excluido que pode sair (20261650000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-categoria-so-com-produto-excluido-pode-sair-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais
