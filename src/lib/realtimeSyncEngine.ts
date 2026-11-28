@@ -227,6 +227,15 @@ export const TABLE_CONFIGS: TableConfig[] = [
       formasPagamentoEntrega: formasPagamentoNaEntregaValidas(
         raw.formas_pagamento_entrega,
       ),
+      // Loja pronta (20261652000000): coluna vazia = a loja nova ainda não
+      // confirmou; com data = confirmou. Sem a coluna (banco atrasado) o campo
+      // nem aparece, e o StoreContext lê ausência como confirmado.
+      ...(raw.entrega_confirmada_em !== undefined && {
+        entregaConfirmada: raw.entrega_confirmada_em !== null,
+      }),
+      ...(raw.pagamento_confirmado_em !== undefined && {
+        pagamentoConfirmado: raw.pagamento_confirmado_em !== null,
+      }),
     }),
   },
   // CUPONS NÃO ENTRAM AQUI (caça 4, A1): a gaveta `coupons` do cofre nunca foi

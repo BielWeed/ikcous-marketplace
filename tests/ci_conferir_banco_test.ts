@@ -3609,6 +3609,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "2f772ffd1370359ba6c64540b71c35b2",
           versao: "20261643000000",
         },
+        // 27/11/2026 (lote 208): a loja nova confirma a entrega e o pagamento (a cadeia 99 -> 39 -> 44 -> 1310 -> 1643 -> 1652).
+        {
+          fn: "upsert_store_config",
+          h: "3c62896ca905200f1a931ac6ccfed297",
+          versao: "20261652000000",
+        },
       ]);
       for (const s of sucessoras8e)
         assert(final.has(s.fn), `${s.fn}: sucessora de função fora das 61`);
@@ -4950,7 +4956,7 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
         get_product_recommendations: "20261399800000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261280000000",
-        upsert_store_config: "20261643000000",
+        upsert_store_config: "20261652000000",
       });
     },
   );
@@ -17401,6 +17407,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado",
     // 20261651000000: a ordem dos banners muda numa trava so.
     "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado",
+    // 20261652000000: a loja nova confirma a entrega e o pagamento.
+    "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

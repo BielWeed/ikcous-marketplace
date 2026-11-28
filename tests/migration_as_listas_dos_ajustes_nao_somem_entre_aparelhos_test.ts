@@ -274,25 +274,30 @@ Deno.test("20261643: as consultas antecessoras aceitam o corpo novo como sucesso
     c8e,
     `('salvar_politica_de_devolucao', '${H_PO}', '20261643000000')`,
   );
-  // A 9a espera o corpo MAIS NOVO (o desta) e mostra o da 1244 e o da 1310 ainda no ar como ele.
+  // A 9a espera o corpo MAIS NOVO — desde a 20261652000000 (a loja nova confirma a entrega e o pagamento), o DELA — e mostra
+  // o da 1244, o da 1310 e o desta ainda no ar como ele.
   const c9a = c("9a-conferir-60-a-66-aplicado");
-  assertStringIncludes(c9a, `('upsert_store_config', '${H_UP}')`);
   assertStringIncludes(
     c9a,
-    `AND (c.h = '391e8e1064400df5aea579f3472b203c' OR c.h = 'aa4ed730ac6ad3d3c2644b4285ff39a9')
-              THEN '${H_UP}'`,
+    "('upsert_store_config', '3c62896ca905200f1a931ac6ccfed297')",
+  );
+  assertStringIncludes(
+    c9a,
+    `AND (c.h = '391e8e1064400df5aea579f3472b203c' OR c.h = 'aa4ed730ac6ad3d3c2644b4285ff39a9'
+                        OR c.h = '${H_UP}')
+              THEN '3c62896ca905200f1a931ac6ccfed297'`,
   );
   assertStringIncludes(
     c("40a-conferir-identidade-legal-da-loja-aplicado"),
-    `'aa4ed730ac6ad3d3c2644b4285ff39a9', '${H_UP}')`,
+    `'aa4ed730ac6ad3d3c2644b4285ff39a9', '${H_UP}', '3c62896ca905200f1a931ac6ccfed297')`,
   );
   assertStringIncludes(
     c("47a-conferir-a-loja-escolhe-como-entrega-aplicado"),
-    `f.m IN ('aa4ed730ac6ad3d3c2644b4285ff39a9', '${H_UP}')`,
+    `f.m IN ('aa4ed730ac6ad3d3c2644b4285ff39a9', '${H_UP}', '3c62896ca905200f1a931ac6ccfed297')`,
   );
   assertStringIncludes(
     c("60a-conferir-estilo-card-frete-aplicado"),
-    `WHEN m = '${H_UP}' THEN 'aa4ed730ac6ad3d3c2644b4285ff39a9'`,
+    `WHEN m IN ('${H_UP}', '3c62896ca905200f1a931ac6ccfed297') THEN 'aa4ed730ac6ad3d3c2644b4285ff39a9'`,
   );
 });
 
