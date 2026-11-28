@@ -19,12 +19,12 @@ import { chaveDaLinha } from "@/lib/escolhas-do-item";
 import type { PromessaDeCanal } from "@/lib/estrategias-de-frete";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { pagamentoOnlineLigado } from "@/lib/flags";
-import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
   ehModalidadeDaLoja,
   ehRetiradaNaLoja,
   pagamentoIncompativelComFrete,
 } from "@/lib/guarda-de-frete";
+import { formasNaEntregaOferecidas } from "@/lib/loja-se-preparando";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
@@ -68,6 +68,7 @@ import {
 // Sub-components
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { AvisoDePedidoAguardandoPagamentoDaConta } from "@/components/ui/custom/AvisoDePedidoAguardandoPagamentoDaConta";
+import { AvisoLojaSePreparando } from "@/components/ui/custom/AvisoLojaSePreparando";
 import { CarrinhoSalvoNaoLido } from "@/components/ui/custom/CarrinhoSalvoNaoLido";
 import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
 import { CartItemsList } from "@/components/ui/custom/CartItemsList";
@@ -304,9 +305,9 @@ function ConteudoDoCarrinho({
   onAddToCart?: (product: Product, quantity?: number) => void;
 }) {
   const { config } = useStore();
-  const [primeiraFormaNaEntrega] = formasPagamentoNaEntregaValidas(
-    config.formasPagamentoEntrega,
-  );
+  // 20261655000000: a loja nova que ainda não confirmou o pagamento na entrega
+  // não o oferece (a lista vem vazia, como a da loja que só vende pelo app).
+  const [primeiraFormaNaEntrega] = formasNaEntregaOferecidas(config);
   // Nenhuma forma na entrega/retirada: a loja só recebe pelo app (exige conta).
   const soPeloApp = primeiraFormaNaEntrega === undefined;
   const { getFreeShippingEligibleProducts } = useProducts();
@@ -1266,6 +1267,9 @@ function ConteudoDoCarrinho({
                 <div className="mx-auto flex w-full max-w-7xl flex-col items-stretch gap-6 px-4 pb-6 pt-1 min-[380px]:px-5 lg:flex-row lg:items-start lg:gap-8 lg:px-8 lg:py-6 2xl:max-w-[1440px]">
                   {/* Coluna Esquerda: Itens, Frete Grátis e Checkout Convidado */}
                   <div className="w-full min-w-0 flex-1 space-y-6">
+                    {/* 20261655000000: a loja nova que ainda não tem como
+                        receber pedido nenhum avisa no TOPO, antes do checkout. */}
+                    <AvisoLojaSePreparando cart={cart} />
                     <CartItemsList
                       cart={cart}
                       removingId={removingId}
@@ -1372,9 +1376,9 @@ function ConteudoDoCarrinho({
                             role="alert"
                             className="rounded-xl border border-border bg-muted p-3 text-sm text-foreground"
                           >
-                            Esta forma de entrega exige pagamento pelo app, que
-                            a loja pausou no momento. Escolha entrega local ou
-                            retirada, se disponíveis, ou fale com a loja.
+                            Esta entrega precisa de pagamento pelo app, que esta
+                            loja não oferece agora. Escolha outra entrega ou
+                            fale com a loja.
                           </p>
                         )}
                         {/* SELETOR DE ENDEREÇO EM FOLHA (22/09, relato da
@@ -1774,12 +1778,20 @@ function ConteudoDoCarrinho({
                       tests/front/cart-view-promessas-que-a-loja-nao-cumpre.test.tsx.
                     */}
                     <div className="space-y-3 border-t border-border pt-4">
-                      <div className="flex items-center gap-3 text-muted-foreground">
-                        <ShieldCheck className="size-4 flex-shrink-0" />
-                        <span className="text-[13px] leading-tight">
-                          Ambiente de pagamento 100% seguro
-                        </span>
-                      </div>
+                      {/* Só o que a loja cumpre: com pagamento pelo app, quem
+                          processa é o Mercado Pago; só na entrega, a cliente
+                          paga direto à loja. Sem nenhum dos dois (loja se
+                          preparando), nada a prometer. */}
+                      {(onlineLigado || !soPeloApp) && (
+                        <div className="flex items-center gap-3 text-muted-foreground">
+                          <ShieldCheck className="size-4 flex-shrink-0" />
+                          <span className="text-[13px] leading-tight">
+                            {onlineLigado
+                              ? "Pagamento pelo app processado pelo Mercado Pago."
+                              : "Você paga na entrega, direto para a loja."}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

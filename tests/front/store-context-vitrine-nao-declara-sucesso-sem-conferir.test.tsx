@@ -805,6 +805,10 @@ describe("StoreContext.updateConfig — não declara sucesso sem conferir o reto
       // banco (que carimba a data), por isso a fixture manda `true`.
       entregaConfirmada: true,
       pagamentoConfirmado: true,
+      // 20261655000000: o que a loja oferece agora, derivado das datas acima.
+      // Só leitura: o updateConfig NÃO os manda (a comparação abaixo cobra).
+      entregaLocalLiberada: true,
+      pagamentoNaEntregaLiberado: true,
     };
 
     await act(async () => {

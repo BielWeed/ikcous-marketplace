@@ -353,6 +353,43 @@ describe("AdminProductFormView — bordas da troca de valor de uma opção vendi
     expect(document.getElementById("titulo-da-variacao")).toBeNull();
   });
 
+  it("3d. o Religar de um aviso antigo não fecha OUTRA variação aberta depois (nem perde o que ela digitou)", async () => {
+    await montar(GRADE_DEPOIS_DA_TROCA);
+
+    await editar("GG");
+    await digitarCampo("variant-value", "M");
+    await clicar("Salvar variação");
+    const [aviso] = errosCom("guardado desligado");
+    const acao = (
+      aviso?.[1] as { action?: { label: string; onClick: () => void } }
+    )?.action;
+    expect(acao?.label).toBe("Religar");
+
+    // Dentro dos 10 s do aviso: fecha esta janela e abre a do P.
+    await clicar("Cancelar");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600));
+    });
+    await editar("P");
+    await digitarCampo("variant-value", "PP");
+
+    await act(async () => {
+      acao?.onClick();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600));
+    });
+
+    // O M guardado volta ligado (é o que o botão diz)...
+    expect(quantos("Desligar variação M")).toBe(1);
+    // ...e a janela do P segue aberta, com o que ela digitou.
+    expect(document.getElementById("titulo-da-variacao")).not.toBeNull();
+    expect(
+      (document.getElementById("variant-value") as HTMLInputElement | null)
+        ?.value,
+    ).toBe("PP");
+  });
+
   it("3c. BORDA: um M LIGADO continua travando com 'Essa combinação já existe.' (nunca duas opções M à venda)", async () => {
     await montar(GRADE_GRAVADA);
 

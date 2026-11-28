@@ -170,6 +170,17 @@ function filhosDaGrade(texto: string) {
   return filhos;
 }
 
+// Lote 571: o atalho "Etiqueta" do topo (botão novo, só enquanto falta a
+// etiqueta) e o alvo dele na lista de envio. Literais NOVOS, em string própria,
+// para a lista original de 180 continuar protegida pelo mesmo hash.
+const LITERAIS_DO_ATALHO_DA_ETIQUETA = new Set([
+  "flex min-h-11 w-full items-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-4 py-2 text-left text-sm font-semibold text-zinc-100 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60",
+  "size-4 shrink-0 text-amber-300",
+  "flex-1",
+  "text-xs font-normal text-zinc-400",
+  "scroll-mt-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60",
+]);
+
 function conferirPreservacao(texto: string) {
   // Este parágrafo condicional é novo: não existia na lista de 180 literais.
   // A lista original continua protegida pelo mesmo hash, sem mudar a base.
@@ -179,7 +190,9 @@ function conferirPreservacao(texto: string) {
     .filter(
       // A proteção do rótulo vencido só atua no papel, não na tela móvel.
       (literal) =>
-        literal !== "print:hidden" && literal !== classeDoAvisoDeRastreio,
+        literal !== "print:hidden" &&
+        literal !== classeDoAvisoDeRastreio &&
+        !LITERAIS_DO_ATALHO_DA_ETIQUETA.has(literal),
     )
     .map(classesDoCelular);
   expect(lista, "A quantidade de literais de className mudou").toHaveLength(
@@ -204,6 +217,7 @@ function conferirPreservacao(texto: string) {
   expect(
     caixas
       .flatMap((no) => (no ? literaisDeClasse(no.openingElement) : []))
+      .filter((literal) => !LITERAIS_DO_ATALHO_DA_ETIQUETA.has(literal))
       .map(classesDoCelular),
   ).toEqual(CLASSES_DAS_CAIXAS_NA_BASE);
 }
@@ -270,6 +284,8 @@ function conferirDistribuicao(
 async function conferirEstados(texto: string) {
   expect(filhosDaGrade(texto).map((no) => no.tagName.getText())).toEqual([
     "OrderHeader",
+    // Atalho "Etiqueta" (lote 571): ocupa a linha inteira em xl, como o topo.
+    "button",
     "OrderStepperPipeline",
     "OrderFinanceCard",
     "DevolucaoDoPedidoAdminCard",

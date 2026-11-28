@@ -93,7 +93,9 @@ const pedido: Order = {
   total: 100,
   paymentMethod: "online",
   paymentStatus: "pago",
-  status: "processing",
+  // Cancelado: o cartão abre inteiro. Em pedido em andamento ele fica
+  // recolhido numa linha (28/11/2026) e a leitura só aparece ao tocar.
+  status: "cancelled",
   createdAt: new Date(0).toISOString(),
   updatedAt: new Date(0).toISOString(),
   cancelledAfterShipping: false,

@@ -480,6 +480,11 @@ const POSTERIORES_A_97 = [
 // As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar
 // e preserva tabela e tentativas; sai antes das sucessoras da 99 e da própria 99.
 async function desfazerCaixaIntencaoNaTransacao(cliente) {
+  // A 20261654000000 (o caixa pertence ao dia em que abriu) sucede os corpos da 252 (e o da 246 e o da 99 no lançamento):
+  // sai ANTES dela (o rollback da 252 recusa com o corpo novo no ar; só se no ar).
+  await require("./o-caixa-pertence-ao-dia-posterior.cjs").desfazerCaixaDoDiaDaAberturaNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(
     "SELECT to_regprocedure('public.fin_caixa_fechar_sessao(uuid,numeric,text)') IS NOT NULL AS sim",
   );

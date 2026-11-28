@@ -8,6 +8,7 @@ import { CartaoDeAvisosDoAparelho } from "@/components/admin/inicio/CartaoDeAvis
 import { DataDeHoje } from "@/components/admin/inicio/DataDeHoje";
 import { DinheiroNasContas } from "@/components/admin/inicio/DinheiroNasContas";
 import { EstadoDaConexao } from "@/components/admin/inicio/EstadoDaConexao";
+import { FaixaLojaNaoAceitaPedidos } from "@/components/admin/inicio/FaixaLojaNaoAceitaPedidos";
 import { HojeNaLoja } from "@/components/admin/inicio/HojeNaLoja";
 import { NumerosDoMes } from "@/components/admin/inicio/NumerosDoMes";
 import {
@@ -394,6 +395,11 @@ export const AdminDashboardView = memo(function AdminDashboardView({
       </div>
 
       <div className="inicio-conteudo space-y-6 px-5 pt-6">
+        {/* 20261655000000: a loja nova que ainda não tem como receber pedido
+            nenhum diz isso no topo; o que destrava está na Loja pronta. */}
+        <LocalErrorBoundary>
+          <FaixaLojaNaoAceitaPedidos />
+        </LocalErrorBoundary>
         {erro && !carregando ? (
           <div
             role="alert"

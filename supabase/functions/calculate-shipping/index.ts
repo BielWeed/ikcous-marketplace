@@ -22,6 +22,7 @@ import {
     COLUNAS_DA_LOJA,
     conjuntoLigado,
     cotacaoDoCacheServe,
+    lerConfirmacaoDaEntregaDaLoja,
     lerCredenciais,
     lerEntregaPropriaDaLoja,
     lerEstrategiaNacionalDaLoja,
@@ -485,6 +486,49 @@ async function opcoesDaClienteLocal(
 ) {
     const opcoes: any[] = entrega.ativa ? [opcaoDeEntregaLocal(precoDaEntregaLocal, entrega, contratoCliente)] : []
     return comRetiradaAnexada(opcoes, await retiradaDaLoja(supabaseClient, enabledMethods, aceitaRetirada))
+}
+
+/**
+ * A LOJA NOVA SÓ ENTREGA NA CIDADE DEPOIS DE CONFIRMAR (28/11/2026, migration
+ * 20261655000000): o código e a frase da Entrega Local pendente. O app escolhe
+ * a frase pelo `codigo`, nunca pelo texto.
+ */
+export const CODIGO_LOJA_SE_PREPARANDO_PARA_ENTREGAR = 'loja_se_preparando_para_entregar'
+export const FRASE_LOJA_SE_PREPARANDO_PARA_ENTREGAR = 'Esta loja ainda está se preparando para entregar.'
+
+/**
+ * A resposta da cliente LOCAL. Com a Entrega Local ligada mas ainda NÃO
+ * confirmada pela lojista (`entrega_confirmada_em` NULL), ela não é oferecida
+ * (o pedido a recusaria: gatilho `tr_a_loja_so_entrega_o_confirmado`). Sobra a
+ * retirada, se houver, com `entregaLocalPendente` (a tela explica o porquê);
+ * sem nada, 409 com `codigo` próprio: nunca lista vazia em silêncio. Lê a
+ * confirmação SÓ aqui (cliente local com a entrega ligada): quem é de fora da
+ * cidade e o "Só retiro" não pagam a consulta.
+ */
+async function respostaDaClienteLocal(
+    supabaseClient: any,
+    enabledMethods: unknown,
+    precoDaEntregaLocal: number,
+    aceitaRetirada: boolean,
+    entrega: EntregaPropria,
+    contratoCliente: unknown,
+    comRevisao: (conteudo: Record<string, unknown>) => Record<string, unknown>,
+): Promise<Response> {
+    if (entrega.ativa) {
+        const confirmacao = await lerConfirmacaoDaEntregaDaLoja(supabaseClient)
+        if (!confirmacao.ok) throw new Error('Falha ao obter a confirmação da entrega da loja')
+        if (!confirmacao.confirmada) {
+            const opcoes = comRetiradaAnexada([], await retiradaDaLoja(supabaseClient, enabledMethods, aceitaRetirada))
+            if (opcoes.length === 0) {
+                return respostaJson({ error: FRASE_LOJA_SE_PREPARANDO_PARA_ENTREGAR, codigo: CODIGO_LOJA_SE_PREPARANDO_PARA_ENTREGAR }, 409)
+            }
+            return respostaJson(comRevisao({ options: opcoes, cotacaoIncompleta: false, entregaLocalPendente: true }))
+        }
+    }
+    return respostaJson(comRevisao({
+        options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, precoDaEntregaLocal, aceitaRetirada, entrega, contratoCliente),
+        cotacaoIncompleta: false,
+    }))
 }
 
 /**
@@ -1053,10 +1097,7 @@ async function cotarUmaVez(
                 cotacaoIncompleta: false,
             }))
         }
-        return respostaJson(comRevisao({
-            options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada, entrega, pedido.contratoCliente),
-            cotacaoIncompleta: false,
-        }))
+        return await respostaDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada, entrega, pedido.contratoCliente, comRevisao)
     }
 
     // Cliente LOCAL recebe SÓ a Entrega Local (e a retirada) — nunca frete
@@ -1073,10 +1114,7 @@ async function cotarUmaVez(
             }),
             'Failed to log local quote:',
         )
-        return respostaJson(comRevisao({
-            options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada, entrega, pedido.contratoCliente),
-            cotacaoIncompleta: false,
-        }))
+        return await respostaDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada, entrega, pedido.contratoCliente, comRevisao)
     }
 
     // Leitura que falhou não é produto sem cadastro: não inventa peso nem

@@ -90,6 +90,7 @@ import {
   MessageCircle,
   Plus,
   Printer,
+  Tag,
   Truck,
   X,
   XCircle,
@@ -2848,6 +2849,24 @@ export const OrderDetail = memo(function OrderDetail({
       "Conferindo os reembolsos feitos à mão. Já dá para imprimir em instantes.";
   }
 
+  // Etiqueta é o último bloco da ficha: no celular, despachar exigia rolar
+  // por pagamento, devolução, entrega e itens. O atalho do topo só aparece
+  // enquanto ainda falta a etiqueta de um envio em andamento, e leva o foco
+  // junto (quem usa teclado ou leitor de tela chega no mesmo lugar).
+  const envioRef = useRef<HTMLElement>(null);
+  const faltaEtiqueta =
+    tipoDeEntregaDoPedido(order) === "envio" &&
+    order.status !== "cancelled" &&
+    order.status !== "delivered" &&
+    !order.shippingLabelId &&
+    localTrackingCode === "";
+  const irParaAEtiqueta = () => {
+    const envio = envioRef.current;
+    if (!envio) return;
+    envio.scrollIntoView({ behavior: "smooth", block: "start" });
+    envio.focus({ preventScroll: true });
+  };
+
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
     const message = `Olá ${nomeOuReserva(nomeDaClienteNoPedido(order), "Cliente")}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
@@ -2894,6 +2913,23 @@ export const OrderDetail = memo(function OrderDetail({
           motivoDeNaoImprimir={motivoDeNaoImprimir}
           tituloRef={tituloDaFichaRef}
         />
+        {faltaEtiqueta && (
+          <button
+            type="button"
+            aria-label="Ir para a etiqueta de envio"
+            onClick={irParaAEtiqueta}
+            className="flex min-h-11 w-full items-center gap-2 rounded-2xl border border-admin-border bg-admin-raised px-4 py-2 text-left text-sm font-semibold text-zinc-100 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+          >
+            <Tag
+              aria-hidden="true"
+              className="size-4 shrink-0 text-amber-300"
+            />
+            <span className="flex-1">Etiqueta</span>
+            <span className="text-xs font-normal text-zinc-400">
+              ainda não gerada
+            </span>
+          </button>
+        )}
 
         <OrderStepperPipeline
           orderStatus={order.status}
@@ -2959,9 +2995,16 @@ export const OrderDetail = memo(function OrderDetail({
         {/* Envio em linhas simples, separadas por divisores: uma linha por
             assunto, e tocar abre/edita ali mesmo. */}
         <section
+          ref={envioRef}
+          // Destino do atalho "Etiqueta" (foco programático, fora do Tab).
+          tabIndex={-1}
           data-testid="envio-lista"
           aria-label="Envio e anotações"
-          className={cn(blocoDaFicha, "divide-y divide-admin-border")}
+          className={cn(
+            blocoDaFicha,
+            "divide-y divide-admin-border",
+            "scroll-mt-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60",
+          )}
         >
           {/* Emissão da etiqueta de envio dentro da ficha do pedido — migrou de
               Admin > Frete (busca/seleção global) para o pedido já aberto.

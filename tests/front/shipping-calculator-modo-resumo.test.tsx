@@ -276,7 +276,7 @@ describe("ShippingCalculator — modoResumo (checkout compacto)", () => {
     });
     await montar(true);
     expect(hospedeiro.textContent).toContain(
-      "Nenhuma opção de entrega para este endereço.",
+      "Esta loja ainda não entrega neste CEP. Confira se o CEP está certo.",
     );
     expect(botaoDe("Trocar")).toBeUndefined();
   });

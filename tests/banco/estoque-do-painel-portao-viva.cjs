@@ -1537,6 +1537,25 @@ async function main() {
         "20261652000000_a_loja_nova_confirma_entrega_e_pagamento.sql",
         "public.upsert_store_config(jsonb)",
       ],
+      // A 1654 (o caixa pertence ao dia em que abriu) troca so os corpos de fin_lancamento_salvar (sucede a 246), fin_lancamento_baixar
+      // (sucede a 99) e das duas RPCs do caixa da 252; a 17a nao le nenhuma das quatro. O rollback dela devolve as quatro de uma vez (a
+      // primeira entrada desfaz; as outras ja encontram o corpo anterior, e a conferencia do molde mede as quatro).
+      [
+        "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
+        "public.fin_caixa_fechar_sessao(uuid,numeric,text)",
+      ],
+      [
+        "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
+        "public.fin_caixa_movimentar_com_chave(uuid,uuid,text,numeric,text,uuid)",
+      ],
+      [
+        "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
+        "public.fin_lancamento_baixar(uuid,date,uuid)",
+      ],
+      [
+        "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
+        "public.fin_lancamento_salvar(jsonb)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
@@ -1557,6 +1576,11 @@ async function main() {
   // O molde (clone do rodar-isolado) traz a arvore INTEIRA: as posteriores ao lote 17 saem dele, na
   // ordem inversa, cada uma pelo rollback-manual (com preflight proprio). O clone e' descartavel.
   await usar(MOLDE, async (c) => {
+    // A 20261655000000 (a loja nova so vende o que confirmou) nao toca nas funcoes do lote 17, mas a vitrine dela le as duas
+    // colunas da 1652 e o rollback da 1652 as apaga: sai ANTES de todas (so se no ar), pelo rollback-manual dela.
+    await require("./a-loja-nova-so-vende-posterior.cjs").desfazerSoVendeOConfirmadoNaTransacao(
+      c,
+    );
     // A 20261399980000 (as listas do painel desempatam por id) e' a mais nova e redefine get_admin_products_paged: sai PRIMEIRO (so se no ar).
     await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
       c,

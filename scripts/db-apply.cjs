@@ -99,6 +99,47 @@ const MARCADORES_RETIRADA_PRONTA = [
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261654000000: o caixa pertence ao dia em que abriu. QUATRO funcoes; so a escolha da sessao (salvar e baixar: o pago entre o dia
+  // da abertura e hoje) e a data que a sessao grava (fechar e movimentar: o dia da abertura) mudam. As travas de admin seguem uma vez
+  // cada. O corpo exato (md5), os atributos e a ACL sao da consulta 210a; o comportamento, da prova viva.
+  "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql": [
+    {
+      funcao: "fin_lancamento_salvar",
+      esperado: [
+        { texto: "AND v_real >= public.fin__dia(s.aberto_em)", vezes: 1 },
+        { texto: "IF v_status = 'realizado' THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "ON CONFLICT (chave) DO NOTHING;", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_lancamento_baixar",
+      esperado: [
+        { texto: "AND v_data >= public.fin__dia(s.aberto_em)", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_caixa_fechar_sessao",
+      esperado: [
+        { texto: "v_dia := public.fin__dia(v_s.aberto_em);", vezes: 1 },
+        { texto: "'dinheiro', v_dia, v_dia, v_dia, 'ajuste_caixa'", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_caixa_movimentar_com_chave",
+      esperado: [
+        { texto: "v_dia := public.fin__dia(v_s.aberto_em);", vezes: 1 },
+        { texto: "'dinheiro', v_dia, v_dia, v_dia, p_tipo", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   // 20261387: a busca de pedido pelo numero nao vira busca de telefone (get_admin_orders_paged). Os dois gates de admin, a regra "so e telefone
   // o que parece telefone" (a variavel e a condicao nos DOIS blocos: contagem e pagina) e o pedido do numero primeiro ficam no corpo; o resto
   // e o da 20261199. A consulta 92a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
@@ -624,6 +665,37 @@ const VERIFICACOES = {
         { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
         { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
         { texto: "IF config_json ? 'vistos' THEN", vezes: 1 },
+      ],
+    },
+  ],
+  // 20261655000000: a loja nova so vende o que confirmou. DUAS funcoes: forma_de_pagamento_aceita (o corpo da 1174 com a recusa
+  // das formas NA ENTREGA enquanto pagamento_confirmado_em e NULL; o CASE de sempre segue uma vez) e a do gatilho novo de
+  // marketplace_orders (entrega na cidade sem entrega_confirmada_em recusa com P0001 e DETAIL proprio). O corpo exato (md5), os
+  // atributos, a ACL, o gatilho e a vitrine sao da consulta 211a; o comportamento, da prova viva.
+  "20261655000000_a_loja_nova_so_vende_o_que_confirmou.sql": [
+    {
+      funcao: "forma_de_pagamento_aceita",
+      esperado: [
+        {
+          texto:
+            "IF p_metodo IN ('pix', 'card', 'cash') AND v_config.pagamento_confirmado_em IS NULL THEN",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "a_loja_so_entrega_na_cidade_o_que_confirmou",
+      esperado: [
+        {
+          texto:
+            "IF EXISTS (SELECT 1 FROM public.store_config s WHERE s.id = 1 AND s.entrega_confirmada_em IS NULL) THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "USING ERRCODE = 'P0001', DETAIL = 'entrega_local_nao_confirmada';",
+          vezes: 1,
+        },
       ],
     },
   ],

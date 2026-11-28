@@ -3764,6 +3764,42 @@ const ROL_DA_209 = [
   "o destino da peca que espera: pecas_sem_tamanho e as RPCs da 20261642000000 no ar, com a forma e os corpos dela",
   "pecas_sem_tamanho_da_devolucao: corpo exato (md5), uma so, plpgsql SECURITY DEFINER STABLE, search_path=public, EXECUTE so de authenticated",
 ];
+// Lote 210 (20261654000000, o caixa pertence ao dia em que abriu: fin_lancamento_salvar, fin_lancamento_baixar, fin_caixa_fechar_sessao e
+// fin_caixa_movimentar_com_chave trocam so o corpo). A 210a e a 210b tem o MESMO rol de 13 linhas (controle e, para cada funcao, o md5,
+// os atributos e a ACL); a 210a espera os corpos desta e a 210b os vigentes de antes (20261246000000, 20261199000000 e 20261252000000).
+// So catalogo: nenhuma le lancamento, conta ou sessao de caixa.
+const ROL_DA_210 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_lancamento_salvar: corpo exato (md5)",
+  "fin_lancamento_salvar: assinatura e atributos conhecidos",
+  "fin_lancamento_salvar: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_lancamento_baixar: corpo exato (md5)",
+  "fin_lancamento_baixar: assinatura e atributos conhecidos",
+  "fin_lancamento_baixar: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_caixa_fechar_sessao: corpo exato (md5)",
+  "fin_caixa_fechar_sessao: assinatura e atributos conhecidos",
+  "fin_caixa_fechar_sessao: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_caixa_movimentar_com_chave: corpo exato (md5)",
+  "fin_caixa_movimentar_com_chave: assinatura e atributos conhecidos",
+  "fin_caixa_movimentar_com_chave: EXECUTE authenticated, sem PUBLIC ou anon",
+];
+// Lote 211 (20261655000000, a loja nova so vende o que confirmou: o corpo de forma_de_pagamento_aceita, a funcao e o gatilho da
+// entrega na cidade e dois booleanos no fim da vitrine). Somente catalogo: nenhuma le a ficha nem pedido (a trava das lojas que ja
+// venderam mora na propria migration). A 211a espera os corpos desta (md5), o gatilho e as 50 colunas; a 211b, o vigente (1174) ou o
+// desta, as colunas da 1652 e a vitrine de 48 (ou 50). Rol de 5 na 211a, de 4 na 211b.
+const ROL_DA_211A = [
+  "controle: funcoes de public visiveis a este papel",
+  "forma_de_pagamento_aceita: corpo exato (md5), pagar na entrega so com a confirmacao, atributos de sempre",
+  "a_loja_so_entrega_na_cidade_o_que_confirmou: corpo exato (md5), SECURITY DEFINER, EXECUTE so do dono",
+  "tr_a_loja_so_entrega_o_confirmado: ligado em marketplace_orders com a definicao exata",
+  "v_store_config: as 50 colunas (os dois booleanos no fim), security_invoker e leitura publica",
+];
+const ROL_DA_211B = [
+  "forma_de_pagamento_aceita: corpo da 20261174000000 ou desta (md5), atributos de sempre",
+  "store_config: entrega_confirmada_em e pagamento_confirmado_em da 20261652000000 (timestamptz, anulaveis, sem default)",
+  "v_store_config: as 48 colunas da 20261310000000 (ou as 50 desta), security_invoker",
+  "tr_a_loja_so_entrega_o_confirmado: ausente, ou o desta (reaplicacao)",
+];
 // Lote 212 (20261656000000, a visitante deixa o e-mail depois da compra: nascem informar_email_da_visitante, a porta da tela
 // "Pedido recebido!", e reivindicar_comprovante_da_visitante, a reserva do comprovante com o teto valendo tambem para pedido pago).
 // Somente catalogo: nenhuma le pedido nem contador e nenhuma chama funcao. A 212a espera as duas com o corpo desta (md5); a 212b, as
@@ -3778,6 +3814,10 @@ const ROL_DA_212 = [
 const ROL_FECHADO_POR_CONSULTA = {
   "212a-conferir-a-visitante-deixa-o-email-aplicado": ROL_DA_212,
   "212b-antes-a-visitante-deixa-o-email-ausente": ROL_DA_212,
+  "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado": ROL_DA_211A,
+  "211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente": ROL_DA_211B,
+  "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado": ROL_DA_210,
+  "210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente": ROL_DA_210,
   "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado":
     ROL_DA_209,
   "209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente":

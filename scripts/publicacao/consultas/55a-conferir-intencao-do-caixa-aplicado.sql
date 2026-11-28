@@ -47,9 +47,10 @@ WITH novas AS (
 ), itens(item, esperado, vivo) AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim', CASE WHEN COALESCE(((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace)), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'fin_caixa_fechar_sessao: corpo conhecido (md5)', 'sim', CASE WHEN COALESCE(((SELECT h = 'f10208ba223450fd25af3c9e11dca073' FROM novas WHERE proname = 'fin_caixa_fechar_sessao')), false) THEN 'sim' ELSE 'nao' END
+  -- A sucessora 20261654000000 (o caixa pertence ao dia em que abriu) tambem conta nas duas: ela mantem a intencao inteira.
+  SELECT 'fin_caixa_fechar_sessao: corpo conhecido (md5)', 'sim', CASE WHEN COALESCE(((SELECT h IN ('f10208ba223450fd25af3c9e11dca073', '3bc5c509d150fca3c5135361461dcc40') FROM novas WHERE proname = 'fin_caixa_fechar_sessao')), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'fin_caixa_movimentar_com_chave: corpo conhecido (md5)', 'sim', CASE WHEN COALESCE(((SELECT h = '134bd5b7c5872bf30041601725fc37ba' FROM novas WHERE proname = 'fin_caixa_movimentar_com_chave')), false) THEN 'sim' ELSE 'nao' END
+  SELECT 'fin_caixa_movimentar_com_chave: corpo conhecido (md5)', 'sim', CASE WHEN COALESCE(((SELECT h IN ('134bd5b7c5872bf30041601725fc37ba', 'f1b22fd85f7a4ae2200d37001c9e1ffb') FROM novas WHERE proname = 'fin_caixa_movimentar_com_chave')), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'rpcs novas do caixa: atributos e dependencias de sempre', 'sim', CASE WHEN COALESCE((
     (SELECT count(*) = 2 AND bool_and(atributos) FROM novas)

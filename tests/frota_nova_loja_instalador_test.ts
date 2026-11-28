@@ -1578,6 +1578,28 @@ Deno.test("lote 573: arquivosDoCommit recusa SHA fora do formato SEM chamar o gi
   assertThrows(() => arquivosDoCommit(SHA_FALSO, { git }));
 });
 
+Deno.test("lote 585: o ÚLTIMO blob do cat-file chega MENOR que o tamanho declarado (saída cortada) → erro, nunca corpo com o LF de fecho dentro", () => {
+  const inteiro = gitDoCommitFalso([
+    ["blob", "20260101000000_um.sql", OBJ(1), "SELECT 1;"],
+    ["blob", "20260102000000_dois.sql", OBJ(2), "SELECT 2;"],
+  ]);
+  // o cabeçalho declara 9 bytes ("SELECT 2;"), mas o corpo chega com 8 e o
+  // LF de fecho logo depois: o byte na posição declarada não existe
+  const git = (args: string[], entrada?: string) => {
+    const saida = inteiro(args, entrada);
+    if (args[0] !== "cat-file") return saida;
+    const cortada = new Uint8Array(saida.length - 1);
+    cortada.set(saida.subarray(0, saida.length - 2));
+    cortada[cortada.length - 1] = 0x0a;
+    return cortada;
+  };
+  assertThrows(
+    () => arquivosDoCommit(SHA_FALSO, { git }),
+    Error,
+    "20260102000000_dois.sql não foi lido",
+  );
+});
+
 Deno.test("lote 573 (repo real): as migrations do commit HEAD são byte a byte as da pasta (árvore limpa, eol=lf)", async () => {
   const saida = await new Deno.Command("git", {
     args: ["-C", RAIZ, "rev-parse", "HEAD"],

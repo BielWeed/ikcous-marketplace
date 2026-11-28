@@ -1126,6 +1126,10 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente",
   "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
   "209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente",
+  "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
+  "210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente",
+  "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
+  "211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente",
   "212a-conferir-a-visitante-deixa-o-email-aplicado",
   "212b-antes-a-visitante-deixa-o-email-ausente",
 ]);

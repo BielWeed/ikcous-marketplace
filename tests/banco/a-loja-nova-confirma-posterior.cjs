@@ -13,6 +13,11 @@ const HASH_UPSERT_DESTA = "3c62896ca905200f1a931ac6ccfed297";
 async function desfazerConfirmacaoDaLojaNovaNaTransacao(c) {
   if (process.env.CI_BANCO_EFEMERO !== "1")
     throw new Error("Exige banco efemero");
+  // A 20261655000000 (a loja nova so vende o que confirmou) le as duas colunas desta na vitrine: o rollback daqui so
+  // as apaga com ela fora do ar.
+  await require("./a-loja-nova-so-vende-posterior.cjs").desfazerSoVendeOConfirmadoNaTransacao(
+    c,
+  );
   const vivo = await c.query(
     "SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHERE oid = to_regprocedure('public.upsert_store_config(jsonb)')",
   );

@@ -447,6 +447,21 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 Balcão
               </span>
             )}
+            {/* Sem conta não há aviso automático de status: o canal é o
+                WhatsApp. A venda do balcão também não tem conta, mas ali não
+                há aviso a dar. */}
+            {!order.userId && order.canal !== "presencial" && (
+              <span
+                data-testid="selo-sem-conta"
+                className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold ${classeDoTexto("neutro")}`}
+              >
+                <span
+                  aria-hidden="true"
+                  className="size-1.5 shrink-0 rounded-full bg-current"
+                />
+                sem conta
+              </span>
+            )}
           </div>
           <p className="mt-1 text-xs tabular-nums text-zinc-400">
             #{numero}
@@ -747,7 +762,12 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                       : "Chamar o cliente no WhatsApp.",
                   Icone: IconeWhatsapp,
                   cor: "text-emerald-300",
-                  clicar: () => onWhatsApp(order),
+                  // Fecha a folha antes: a conversa abria com ela ainda
+                  // aberta por baixo, e na volta era preciso fechá-la à mão.
+                  clicar: () => {
+                    setPainel(null);
+                    onWhatsApp(order);
+                  },
                   disabled: !linkWhatsapp || isOffline,
                 },
                 ...(!semValorAPagar

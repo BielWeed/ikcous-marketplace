@@ -1204,6 +1204,14 @@ async function main() {
   } catch (erro) {
     falhar("INDETERMINADO", `Não conectei no banco efêmero: ${erro.message}`);
   }
+  // A 20261654000000 (o caixa pertence ao dia em que abriu) sucede os corpos da 252 (a data que a sessão grava): esta prova mede
+  // a 252 (hash, 55a/55b, reaplicação e o rollback dela, que recusa com um corpo posterior no ar). Ela sai PRIMEIRO, no clone
+  // exclusivo (rodar-isolado.cjs); não faz nada se não estiver no ar.
+  await cliente.query("BEGIN");
+  await require("./o-caixa-pertence-ao-dia-posterior.cjs").desfazerCaixaDoDiaDaAberturaNaTransacao(
+    cliente,
+  );
+  await cliente.query("COMMIT");
   console.log(`[caixa-intencao] alvo=${nomeAlvo}: ${alvo.descricao}`);
   const linhas = [`Alvo do instrumento: \`${nomeAlvo}\` — ${alvo.descricao}`];
   const falhas = [];

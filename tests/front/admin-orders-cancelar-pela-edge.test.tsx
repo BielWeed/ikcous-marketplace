@@ -207,6 +207,7 @@ describe("AdminOrdersView — cancelar pedido online pela edge (S1)", () => {
       undefined,
       false,
       "pending",
+      { avancoConfirmadoPorQuemChamou: true },
     );
     expect(contarRotulo("Pago")).toBeGreaterThan(pagosAntes);
     // Não cancelou: o botão de cancelar da ficha continua lá.

@@ -19,6 +19,7 @@ import {
 } from "@/lib/reembolso-em-duvida";
 import { formatCurrency } from "@/lib/utils";
 import type { Order } from "@/types";
+import { ChevronDown } from "lucide-react";
 
 interface EstornoCardProps {
   order: Order;
@@ -271,6 +272,19 @@ export function EstornoCard({
   const { confirmar, dialogo } = useConfirmarAcao({ alvoDoFoco: tituloRef });
   const [campoAberto, setCampoAberto] = useState(false);
   const [valorCampo, setValorCampo] = useState("");
+  // Pedido pago ainda em andamento: o cartão só diria "Cancele o pedido
+  // antes…", e no celular empurrava a etiqueta para longe. Fica recolhido
+  // numa linha (abre ao tocar). Com devolução no ar (linha ou valor
+  // reservado) ele nasce aberto: aí há o que ler.
+  const [aberto, setAberto] = useState(false);
+  // Com erro de leitura o cartão nunca recolhe: o aviso vermelho e o
+  // "Tentar de novo" ficam à vista (e `linhas` nem é confiável aí).
+  const recolhivel =
+    !erro &&
+    order.status !== "cancelled" &&
+    order.status !== "delivered" &&
+    linhas.length === 0 &&
+    reservadoPorFora <= 0;
   const inputValorRef = useRef<HTMLInputElement>(null);
 
   // Acessibilidade (ANOTADO do laudo 08/09): ao abrir o campo o foco vai
@@ -301,6 +315,43 @@ export function EstornoCard({
     );
   }
 
+  const titulo = recolhivel ? (
+    <button
+      type="button"
+      aria-expanded={aberto}
+      onClick={() => setAberto((atual) => !atual)}
+      className="flex min-h-11 w-full items-center gap-2 text-left"
+    >
+      <span className="flex-1">Devolução de dinheiro</span>
+      {!aberto && (
+        <span className="text-xs text-zinc-400">
+          só depois de cancelar o pedido
+        </span>
+      )}
+      <ChevronDown
+        aria-hidden="true"
+        className={`size-4 shrink-0 text-zinc-400 transition-transform ${aberto ? "rotate-180" : ""}`}
+      />
+    </button>
+  ) : (
+    "Devolução de dinheiro"
+  );
+
+  if (recolhivel && !aberto) {
+    return (
+      <div className="rounded-2xl border border-admin-border bg-admin-surface px-5 py-2 text-white">
+        <h3
+          ref={tituloRef}
+          tabIndex={-1}
+          className="text-sm font-medium text-zinc-200"
+        >
+          {titulo}
+        </h3>
+        {dialogo}
+      </div>
+    );
+  }
+
   // BLOQUEIA 2 do laudo 08/09: enquanto a primeira leitura do banco não
   // voltou (`pedido === null` no hook), `pago`/`devolvido`/`disponivel`
   // ainda são só os zeros de default — "ainda não sei" é diferente de "o
@@ -314,7 +365,7 @@ export function EstornoCard({
           tabIndex={-1}
           className="text-sm font-medium text-zinc-200"
         >
-          Devolução de dinheiro
+          {titulo}
         </h3>
         <p className="text-xs text-zinc-400">Carregando…</p>
         {dialogo}
@@ -385,7 +436,7 @@ export function EstornoCard({
         tabIndex={-1}
         className="text-sm font-medium text-zinc-200"
       >
-        Devolução de dinheiro
+        {titulo}
       </h3>
 
       <p className="text-xs font-bold text-zinc-400">

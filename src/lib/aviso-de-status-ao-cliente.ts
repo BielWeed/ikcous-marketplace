@@ -54,6 +54,10 @@ export async function avisarOClienteDoStatus(
    *  vir como promessa (o cancelamento pela edge lê a hora DEPOIS de
    *  devolver, para a ficha não esperar): o aviso espera por ela. */
   gravadoNoBancoEm?: string | null | PromiseLike<string | null>,
+  /** Chamado quando a resposta do envio mostra que a cliente não tem nenhum
+   *  aparelho inscrito (nunca ligou os avisos): não é falha, mas quem chamou
+   *  pode dizer à lojista que o aviso não chega e oferecer o WhatsApp. */
+  aoNaoTerAparelho?: () => void,
 ) {
   // Relógio local tirado AGORA (status já gravado), antes de qualquer espera.
   const agora = Date.now();
@@ -118,6 +122,11 @@ export async function avisarOClienteDoStatus(
       });
 
     if (erroDoInvoke) throw erroDoInvoke;
+
+    if (typeof envio?.enviados === "number" && envio.total === 0) {
+      aoNaoTerAparelho?.();
+      return;
+    }
 
     // `enviados` só existe na send-push depois da PUSH-010 (#80). O teste de
     // tipo é de propósito: contra a versão antiga da função, que respondia

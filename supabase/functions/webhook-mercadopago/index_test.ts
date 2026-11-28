@@ -8150,7 +8150,7 @@ Deno.test("C-P — ramo S5 (adoção perdeu a corrida) reserva a MESMA chave do 
   assertEquals(s5.pushes[0].url, `/admin-orders?id=${UUID_PEDIDO}`, "o aviso do ramo S5 também leva ao pedido");
 });
 
-Deno.test("C-P — aprovação NORMAL (vaga vazia adotada, ou já com a própria order) nunca chama a reserva", async () => {
+Deno.test("C-P — aprovação NORMAL (vaga vazia adotada, ou já com a própria order) nunca chama a reserva da cobrança duplicada (só a do 'Pedido pago', lote-582)", async () => {
   for (const vaga of [null, ID_ORDER_CARTAO_MP]) {
     ambienteDoWebhook();
     const registro = {
@@ -8170,7 +8170,14 @@ Deno.test("C-P — aprovação NORMAL (vaga vazia adotada, ou já com a própria
       enviarComprovante: async () => {},
     });
     assertEquals(resposta.status, 200, String(vaga));
-    assertEquals(registro.chamadasAviso.length, 0, String(vaga));
+    assertEquals(
+      registro.chamadasAviso.map((c) => `${c.nome}|${c.args.p_chave}`),
+      [
+        `reservar_aviso_ao_lojista|pedido_pago:${UUID_PEDIDO}`,
+        `confirmar_aviso_ao_lojista|pedido_pago:${UUID_PEDIDO}`,
+      ],
+      String(vaga),
+    );
   }
 });
 
@@ -9203,8 +9210,8 @@ Deno.test("r210-h - a PRIMEIRA confirmação ('pago_apos_expirar') avisa UMA vez
   );
 });
 
-Deno.test("r210-h - 'ja_pago' de pedido que NÃO é 'pago_apos_expirar' nunca toca a reserva do aviso nem avisa o lojista", async () => {
-  for (const payment_status of ["pago", "aguardando", "recusado", "estornado", "expirado"]) {
+Deno.test("r210-h - 'ja_pago' de pedido que NÃO é 'pago_apos_expirar' nem 'pago' nunca toca a reserva do aviso nem avisa o lojista", async () => {
+  for (const payment_status of ["aguardando", "recusado", "estornado", "expirado"]) {
     const r = await entregarJaPago({ ...pedidoPagoOnlineRecente(), payment_status }, "ja_pago", { entregues: () => 1 });
     assertEquals(r.pushes.length, 0, payment_status);
     assertEquals(r.chamadasRpc.filter((n) => n.endsWith("_aviso_ao_lojista")), [], payment_status);
@@ -9223,8 +9230,13 @@ const pedidoPagoOnlineRecente = () => ({
   canal: "online",
 });
 
+// lote-582: o "Pedido pago" da transição já CHEGOU (a chave `pedido_pago:<pedido>` está
+// 'enviado'): a reentrega não o repete.
+const CHAVE_PEDIDO_PAGO = `pedido_pago:${UUID_PEDIDO}`;
+const pedidoPagoJaAvisado = () => new Map([[CHAVE_PEDIDO_PAGO, { enviado: true }]]);
+
 Deno.test("r200-a - 'ja_pago' num pedido 'pago' online e recente com a reserva LIVRE reenvia o COMPROVANTE uma vez, sem push e sem aviso atrasado", async () => {
-  const r = await entregarJaPago(pedidoPagoOnlineRecente());
+  const r = await entregarJaPago(pedidoPagoOnlineRecente(), "ja_pago", { avisos: pedidoPagoJaAvisado() });
   assertEquals(r.resposta.status, 200);
   assertEquals((await r.resposta.json()).resultado, "ja_pago");
   assertEquals(r.comprovantes.length, 1);
@@ -9234,9 +9246,80 @@ Deno.test("r200-a - 'ja_pago' num pedido 'pago' online e recente com a reserva L
 });
 
 Deno.test("r200-a - 'ja_pago' num pedido 'pago' com o e-mail JÁ reservado/enviado não reenvia nada", async () => {
-  const r = await entregarJaPago({ ...pedidoPagoOnlineRecente(), confirmation_email_sent_at: "2026-11-12T10:00:00Z" });
+  const r = await entregarJaPago(
+    { ...pedidoPagoOnlineRecente(), confirmation_email_sent_at: "2026-11-12T10:00:00Z" },
+    "ja_pago",
+    { avisos: pedidoPagoJaAvisado() },
+  );
   assertEquals(r.resposta.status, 200);
   assertEquals([r.comprovantes.length, r.avisosAtrasados.length, r.pushes.length], [0, 0, 0]);
+});
+
+// lote-582: o buraco do "Pedido pago". A transição ('pago') mandava UM push; se
+// entregou a 0 (push service 5xx ou lento, VAPID falhou, inscrição trocada) só ia ao
+// log, e a reentrega 'ja_pago' não avisava de novo. Agora ela retoma pela MESMA chave.
+
+Deno.test("lote-582 - 'ja_pago' de 'pago' recente cujo push da transição NÃO chegou: a reentrega AVISA 'Pedido pago' e confirma a chave", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const r = await entregarJaPago(
+    { ...pedidoPagoOnlineRecente(), confirmation_email_sent_at: "2026-11-28T10:00:00Z" },
+    "ja_pago",
+    { avisos, entregues: () => 1 },
+  );
+  assertEquals(r.resposta.status, 200);
+  assertEquals((await r.resposta.json()).resultado, "ja_pago");
+  assertEquals(r.pushes.length, 1);
+  assertEquals((r.pushes[0] as { aviso: unknown }).aviso, {
+    title: "Pedido pago",
+    body: `${numeroDoPedidoEsperado(UUID_PEDIDO)} · R$ 149,90`,
+    url: `/admin-orders?id=${UUID_PEDIDO}`,
+  });
+  assertEquals(avisos.get(CHAVE_PEDIDO_PAGO), { enviado: true });
+  assertEquals(
+    r.chamadasRpc.filter((n) => n.endsWith("_aviso_ao_lojista")),
+    ["reservar_aviso_ao_lojista", "confirmar_aviso_ao_lojista"],
+  );
+  assertEquals([r.comprovantes.length, r.avisosAtrasados.length], [0, 0], "o e-mail já tinha saído");
+});
+
+Deno.test("lote-582 - a CADEIA no webhook: 1ª confirmação 'pago' entrega 0 -> reentregas 'ja_pago' tentam até chegar -> depois, silêncio", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const respostasDoPush = [0, 0, 1];
+  const transicao = await entregarJaPago(pedidoPagoOnlineRecente(), "pago", {
+    avisos,
+    entregues: () => respostasDoPush.shift() ?? 99,
+  });
+  assertEquals((await transicao.resposta.json()).resultado, "pago");
+  assertEquals(transicao.pushes.length, 1);
+  assertEquals(avisos.has(CHAVE_PEDIDO_PAGO), false, "entrega 0 tem de liberar a chave");
+  const feitas: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const r = await entregarJaPago(
+      { ...pedidoPagoOnlineRecente(), confirmation_email_sent_at: "2026-11-28T10:00:00Z" },
+      "ja_pago",
+      { avisos, entregues: () => respostasDoPush.shift() ?? 99 },
+    );
+    feitas.push(r.pushes.length);
+  }
+  assertEquals(feitas, [1, 1, 0, 0], "1 tentativa por reentrega até chegar; depois, silêncio");
+  assertEquals(avisos.get(CHAVE_PEDIDO_PAGO), { enviado: true });
+});
+
+Deno.test("lote-582 - a 1ª confirmação 'pago' ENTREGUE fecha a chave e a reentrega 'ja_pago' NÃO repete o push", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const transicao = await entregarJaPago(pedidoPagoOnlineRecente(), "pago", { avisos, entregues: () => 1 });
+  assertEquals(transicao.pushes.length, 1);
+  assertEquals(avisos.get(CHAVE_PEDIDO_PAGO), { enviado: true });
+  const reentrega = await entregarJaPago(pedidoPagoOnlineRecente(), "ja_pago", { avisos, entregues: () => 1 });
+  assertEquals(reentrega.pushes.length, 0);
+});
+
+Deno.test("lote-582 - 'ja_pago' de 'pago' ANTIGO (3 dias) ou sem paid_at não reavisa o lojista, nem toca a reserva", async () => {
+  for (const extras of [{ paid_at: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString() }, { paid_at: undefined }]) {
+    const r = await entregarJaPago({ ...pedidoPagoOnlineRecente(), ...extras }, "ja_pago", { entregues: () => 1 });
+    assertEquals(r.pushes.length, 0, String(extras.paid_at));
+    assertEquals(r.chamadasRpc.filter((n) => n.endsWith("_aviso_ao_lojista")), [], String(extras.paid_at));
+  }
 });
 
 Deno.test("r200-a - 'ja_pago' num pedido 'pago' ANTIGO, de balcão, ou sem os dados do pagamento (falha fechada) não manda e-mail", async () => {

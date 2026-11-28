@@ -215,6 +215,16 @@ const REGRAS: ReadonlyArray<{
     padrao: /^Entrega local não disponível para o CEP informado\.$/,
     acao: "trocar_entrega",
   },
+  // A LOJA NOVA SÓ ENTREGA NA CIDADE DEPOIS DE CONFIRMAR (28/11/2026 — migration
+  // 20261655000000): o gatilho BEFORE INSERT `tr_a_loja_so_entrega_o_confirmado`
+  // recusa o pedido NOVO com a entrega na cidade enquanto a lojista não confirma
+  // (DETAIL `entrega_local_nao_confirmada`). O RAISE vem antes de o pedido nascer.
+  // A saída é a mesma da entrega fora da faixa: escolher OUTRA entrega.
+  {
+    padrao:
+      /^Esta loja ainda está se preparando para entregar\. Escolha outra entrega ou fale com a loja\.$/,
+    acao: "trocar_entrega",
+  },
   // FRETE V2 (revisão A8, 03/09): as três recusas NOVAS do portão de entrega
   // da RPC emendada (20261081000000 — "pedido sem entrega falha fechado").
   // Sem regra, caíam em `conferir_antes` com o texto cru e a pessoa perdia o

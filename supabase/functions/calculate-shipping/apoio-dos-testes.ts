@@ -200,6 +200,12 @@ export function bancoFalso(opts: {
         erroDaEntrega?: string
         excecaoNaEntrega?: boolean
         semLinhaDaEntrega?: boolean
+        /**
+         * A leitura SEPARADA de `entrega_confirmada_em` (20261655000000) volta com
+         * este `code` do PostgREST: `42703`/`PGRST204` = banco antes da
+         * 20261652000000 (lido como confirmada); qualquer outro = falha.
+         */
+        erroDaConfirmacao?: string
     }
 } = {}) {
     const config = { ...CONFIG_BASE, ...(opts.config ?? {}) }
@@ -249,6 +255,9 @@ export function bancoFalso(opts: {
                     if (!("local_delivery_enabled" in config) && !("local_delivery_days" in config)) {
                         return { data: null, error: { code: "42703", message: "column store_config.local_delivery_enabled does not exist" } }
                     }
+                }
+                if (colunas.includes("entrega_confirmada_em") && falhas.erroDaConfirmacao) {
+                    return { data: null, error: { code: falhas.erroDaConfirmacao, message: "detalhe privado da consulta" } }
                 }
                 if (colunas.includes("store_address")) {
                     registro.leiturasDeEndereco += 1

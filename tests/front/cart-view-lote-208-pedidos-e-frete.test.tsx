@@ -241,7 +241,8 @@ describe("CartView — lote 208", () => {
       deliveryDays: 3,
       provider: "superfrete",
     };
-    const aviso = "Esta forma de entrega exige pagamento pelo app";
+    const aviso =
+      "Esta entrega precisa de pagamento pelo app, que esta loja não oferece agora. Escolha outra entrega ou fale com a loja.";
 
     await montar("cart");
     expect(texto()).not.toContain(aviso);

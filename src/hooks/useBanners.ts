@@ -904,7 +904,8 @@ export function useBanners(adminMode = false) {
         throw falhaDaOrdem;
       }
       applyLocalBanners(previousBanners);
-      if (aoFicarSemResposta(error)) {
+      // Sem carona: a leitura em voo devolveria o retrato desfeito.
+      if (aoFicarSemResposta(error, true)) {
         // Aviso e releitura já saíram: nada a acrescentar.
       } else if (
         error instanceof Error &&

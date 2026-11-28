@@ -51,10 +51,19 @@ const itemNoCarrinho: CartItem = {
   quantity: 1,
 };
 
+// A loja do teste: o que ela oferece agora (20261655000000) e o pagamento pelo app mudam por caso.
+const duble = vi.hoisted(() => ({
+  pagamentoOnline: false,
+  config: { shippingFee: 10, freeShippingMin: 0 } as Record<string, unknown>,
+}));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    config: { shippingFee: 10, freeShippingMin: 0 },
+    config: duble.config,
   }),
+}));
+vi.mock("@/lib/flags", async (original) => ({
+  ...(await original<typeof import("@/lib/flags")>()),
+  pagamentoOnlineLigado: () => duble.pagamentoOnline,
 }));
 
 vi.mock("@/hooks/useProducts", () => ({
@@ -127,6 +136,9 @@ describe("CartView — o carrinho não promete o que a loja não cumpre", () => 
       raiz.unmount();
     });
     hospedeiro.remove();
+    duble.pagamentoOnline = false;
+    duble.config = { shippingFee: 10, freeShippingMin: 0 };
+    vi.restoreAllMocks();
   });
 
   async function renderizarCarrinho() {
@@ -146,7 +158,57 @@ describe("CartView — o carrinho não promete o que a loja não cumpre", () => 
     // Sem esta prova, as duas asserções de ausência abaixo passariam mesmo com
     // a tela em branco.
     expect(texto).toContain("Finalizar Compra");
-    expect(texto).toContain("Ambiente de pagamento 100% seguro");
+    // Loja só com pagamento na entrega: quem recebe é a loja, na entrega.
+    expect(texto).toContain("Você paga na entrega, direto para a loja.");
+  });
+
+  it('não promete "ambiente 100% seguro": diz quem processa o pagamento de verdade', async () => {
+    expect(await renderizarCarrinho()).not.toContain("100% seguro");
+    duble.pagamentoOnline = true;
+    const comApp = await renderizarCarrinho();
+    expect(comApp).toContain(
+      "Pagamento pelo app processado pelo Mercado Pago.",
+    );
+    expect(comApp).not.toContain("Você paga na entrega");
+  });
+
+  it("loja nova sem como receber pedido (sem app e pagar na entrega pendente): avisa no topo e não promete pagamento", async () => {
+    duble.config = { ...duble.config, pagamentoNaEntregaLiberado: false };
+    const texto = await renderizarCarrinho();
+    expect(texto).toContain(
+      "Esta loja ainda está se preparando para receber pedidos pelo site.",
+    );
+    expect(texto).not.toContain("Você paga na entrega");
+    expect(texto).not.toContain("Pedir pelo WhatsApp");
+  });
+
+  it("com WhatsApp, o aviso oferece o pedido por lá com os itens do carrinho já escritos", async () => {
+    duble.config = {
+      ...duble.config,
+      pagamentoNaEntregaLiberado: false,
+      whatsappNumber: "(34) 99999-0000",
+    };
+    const abrir = vi.spyOn(globalThis, "open").mockImplementation(() => null);
+    await renderizarCarrinho();
+    const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Pedir pelo WhatsApp"),
+    );
+    expect(botao).toBeDefined();
+    act(() => {
+      botao?.click();
+    });
+    expect(abrir).toHaveBeenCalledTimes(1);
+    const url = String(abrir.mock.calls[0]?.[0]);
+    expect(url.startsWith("https://wa.me/5534999990000?text=")).toBe(true);
+    expect(decodeURIComponent(url.split("text=")[1] ?? "")).toContain(
+      "- 1x Blusa Teste",
+    );
+  });
+
+  it("com o pagamento pelo app ligado, a pendência do pagamento na entrega não trava a loja: sem aviso", async () => {
+    duble.pagamentoOnline = true;
+    duble.config = { ...duble.config, pagamentoNaEntregaLiberado: false };
+    expect(await renderizarCarrinho()).not.toContain("se preparando");
   });
 
   it("não promete envio expresso nem rastreio automático", async () => {

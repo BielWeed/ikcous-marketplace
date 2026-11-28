@@ -108,6 +108,21 @@ const SUCESSORAS = [
     consulta:
       "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
   },
+  // 20261654000000: o caixa pertence ao dia em que abriu.
+  {
+    versao: "20261654000000",
+    consulta: "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
+  },
+  // 20261655000000: a loja nova so vende o que confirmou.
+  {
+    versao: "20261655000000",
+    consulta: "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
+  },
+  // 20261656000000: a visitante deixa o e-mail depois da compra.
+  {
+    versao: "20261656000000",
+    consulta: "212a-conferir-a-visitante-deixa-o-email-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

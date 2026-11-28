@@ -765,6 +765,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-loja-nova-confirma-entrega-e-pagamento-viva.cjs",
     // 20261653000000: a peca da variacao desligada espera a lojista (devolver_estoque e admin_devolucao_concluir nao creditam variacao desligada; cantinho ou pai).
     "tests/banco/a-peca-da-variacao-desligada-viva.cjs",
+    // 20261654000000: o caixa pertence ao dia em que abriu (a data que a sessao grava e o pago entre o dia da abertura e hoje na gaveta).
+    "tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs",
+    // 20261655000000: a loja nova so vende o que confirmou (forma_de_pagamento_aceita, gatilho da entrega na cidade, booleanos na vitrine e a trava do apply).
+    "tests/banco/a-loja-nova-so-vende-o-que-confirmou-viva.cjs",
+    // 20261656000000: a visitante deixa o e-mail depois da compra (informar_email_da_visitante uma vez so, sob trava da linha; reivindicar_comprovante_da_visitante com o teto ate com pedido pago).
+    "tests/banco/a-visitante-deixa-o-email-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
     // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;

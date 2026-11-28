@@ -143,38 +143,41 @@ const MUTANTES = {
     de: CASE_CATEGORIA_SOBRA,
     para: "CASE WHEN v_dif > 0 THEN 'f2000000-0000-4000-8000-000000000031'::uuid",
   },
+  // Os trechos abaixo são os dos corpos da 20261654000000 (o caixa pertence ao
+  // dia em que abriu): a sessão aberta recebe o que foi pago entre o dia da
+  // abertura dela e hoje.
   "sem-desconto-do-gasto-em-dinheiro": {
     funcao: SALVAR,
     espera: ["C1"],
     verde: ["A1", "A2", "A3", "B1", "B2", "B3", "C2", "C3", "C4", "C5"],
-    de: "IF v_status = 'realizado' AND v_real = v_hoje THEN",
+    de: "IF v_status = 'realizado' THEN",
     para: "IF false THEN",
   },
   "sem-desconto-do-gasto-baixado-em-dinheiro": {
     funcao: BAIXAR,
     espera: ["C2"],
     verde: ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C3", "C4", "C5"],
-    de: "IF v_data = public.fin__hoje() THEN",
-    para: "IF false THEN",
+    de: "WHERE s.status = 'aberto' AND (s.conta_id = v_conta OR",
+    para: "WHERE false AND (s.conta_id = v_conta OR",
   },
-  // Os dois abaixo tiram SÓ o teste de DATA e deixam o resto da condição: o
-  // gasto de ontem passa a descontar da gaveta de hoje (esperado cai 20 sem
-  // ter saído dela, e contar 100 vira "Sobra de caixa" falsa). O `IF false`
-  // dos dois mutantes acima não os pega: ele só prova que o gasto de HOJE
-  // entra.
+  // Os dois abaixo tiram SÓ o limite do DIA DA ABERTURA e deixam o resto da
+  // condição: o gasto de ontem passa a descontar da gaveta aberta hoje
+  // (esperado cai 20 sem ter saído dela, e contar 100 vira "Sobra de caixa"
+  // falsa). O `false` dos dois mutantes acima não os pega: ele só prova que
+  // o gasto de HOJE entra.
   "gasto-de-ontem-desconta-da-gaveta": {
     funcao: SALVAR,
     espera: ["C4"],
     verde: ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3", "C5"],
-    de: "IF v_status = 'realizado' AND v_real = v_hoje THEN",
-    para: "IF v_status = 'realizado' THEN",
+    de: "\n       AND v_real >= public.fin__dia(s.aberto_em)",
+    para: "",
   },
   "baixa-de-ontem-desconta-da-gaveta": {
     funcao: BAIXAR,
     espera: ["C5"],
     verde: ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3", "C4"],
-    de: "IF v_data = public.fin__hoje() THEN",
-    para: "IF true THEN",
+    de: "\n     AND v_data >= public.fin__dia(s.aberto_em)",
+    para: "",
   },
 };
 

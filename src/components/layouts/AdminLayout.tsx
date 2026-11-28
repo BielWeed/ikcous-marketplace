@@ -229,6 +229,9 @@ export function AdminLayout({
     let ordersChannel: any = null;
     let questionsChannel: any = null;
     let encerrarAssinaturas = () => {};
+    // Saída dos canais anteriores ainda sem confirmação do servidor (ver
+    // `subscribe`). `null` = nada saindo.
+    let saidaEmCurso: Promise<unknown> | null = null;
     // Numero da rodada corrente. Sem ele, a rodada VELHA que termina por
     // ULTIMO vence — inclusive escrevendo o veredito velho (falhou) por
     // cima do veredito novo (deu certo). Mesmo padrao de
@@ -478,6 +481,19 @@ export function AdminLayout({
     // concorrencia deste arquivo; o atraso ate o proximo foco custa menos.
     const subscribe = () => {
       if (ordersChannel || questionsChannel) return; // already subscribed
+      // Voltou à aba antes de o servidor confirmar a saída dos canais de
+      // antes: `supabase.channel(nome)` devolveria o canal ANTIGO (o
+      // realtime-js devolve o que ainda está na lista com o mesmo nome) e o
+      // `.subscribe()` dele não faria nada (só entra canal fechado) — a
+      // bolinha ficava surda até a próxima volta. Espera a saída e assina.
+      if (saidaEmCurso) {
+        void saidaEmCurso.then(() => {
+          if (isMounted && document.visibilityState === "visible") {
+            subscribe();
+          }
+        });
+        return;
+      }
 
       // Callback de um canal removido não agenda nada na aba escondida.
       let assinaturasAtivas = true;
@@ -526,14 +542,24 @@ export function AdminLayout({
 
     const unsubscribe = () => {
       encerrarAssinaturas();
+      const saidas: unknown[] = [];
       if (ordersChannel) {
-        supabase.removeChannel(ordersChannel);
+        saidas.push(supabase.removeChannel(ordersChannel));
         ordersChannel = null;
       }
       if (questionsChannel) {
-        supabase.removeChannel(questionsChannel);
+        saidas.push(supabase.removeChannel(questionsChannel));
         questionsChannel = null;
       }
+      if (saidas.length === 0) return;
+      // `allSettled`: saída que falha ou expira também termina (o realtime-js
+      // fecha o canal no "timed out"); a espera nunca fica pendurada.
+      const estaSaida: Promise<unknown> = Promise.allSettled(saidas).then(
+        () => {
+          if (saidaEmCurso === estaSaida) saidaEmCurso = null;
+        },
+      );
+      saidaEmCurso = estaSaida;
     };
 
     const handleVisibility = () => {
