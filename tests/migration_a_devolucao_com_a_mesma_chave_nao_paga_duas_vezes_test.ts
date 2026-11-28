@@ -331,6 +331,7 @@ Deno.test("1640: publicacao — lote unico (200a/200b), rol fechado, consultas s
     "tests/banco/pagamentos-rpc-viva.cjs",
   ]) {
     const t = lerRepo(arq);
-    assert.ok(t.includes("DEVOLUCAO_COM_CHAVE,\n];"), arq);
+    // estava no fim; a 1651 (A_ORDEM_DOS_BANNERS) entrou depois dela
+    assert.ok(t.includes("  DEVOLUCAO_COM_CHAVE,\n"), arq);
   }
 });

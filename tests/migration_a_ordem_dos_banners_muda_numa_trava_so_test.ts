@@ -292,3 +292,29 @@ Deno.test("3651: a prova viva roda no job do dinheiro e tem linha no LEIA-ME; as
     assert.equal(linha[0].tipo, "volatil");
   }
 });
+
+Deno.test("3651: as RPCs usam is_admin_atual, entao as provas que desfazem a 97 as desfazem antes (fim de POSTERIORES_A_97)", () => {
+  const {
+    A_ORDEM_DOS_BANNERS,
+  } = require("./banco/a-ordem-dos-banners-posterior.cjs");
+  assert.equal(A_ORDEM_DOS_BANNERS.nome, nome);
+  assert.match(
+    A_ORDEM_DOS_BANNERS.noAr,
+    /move_banner_atomic\(text,uuid,text\)/,
+  );
+  for (const corpo of [sql]) {
+    assert.ok(/is_admin_atual\(\)/.test(corpo));
+  }
+  for (const arq of [
+    "tests/banco/admin-atual-viva.cjs",
+    "tests/banco/pagamentos-rpc-viva.cjs",
+  ]) {
+    const t = ler(arq);
+    assert.ok(t.includes("  A_ORDEM_DOS_BANNERS,\n];"), arq);
+    assert.ok(
+      t.includes('require("./a-ordem-dos-banners-posterior.cjs")'),
+      arq,
+    );
+  }
+  assert.ok(ler("tests/banco/LEIA-ME.md").includes("A_ORDEM_DOS_BANNERS"));
+});
