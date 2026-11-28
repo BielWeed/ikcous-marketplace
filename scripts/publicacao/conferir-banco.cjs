@@ -288,7 +288,7 @@ function listarConsultas(dir = CONSULTAS_DIR) {
 /**
  * Divide um texto SQL nos seus statements de NÍVEL SUPERIOR — um `;` dentro
  * de comentário de linha (`--`, terminado por `\n` OU `\r`), comentário de
- * bloco (`/* *​/`, aninhável), string simples (`'...'`, escapada por
+ * bloco (`/* *�/`, aninhável), string simples (`'...'`, escapada por
  * duplicação, ou `E'...'`/`e'...'` com escape de barra), identificador
  * entre aspas (`"..."`) ou string delimitada (`$tag$...$tag$`, tag Unicode
  * — `$é$` é uma tag válida — e nunca disparada no MEIO de um identificador,
@@ -3846,14 +3846,29 @@ const ROL_DA_219 = [
   "fin_lancamento_baixar: assinatura e atributos conhecidos",
   "fin_lancamento_baixar: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
-// Lote 220 (20261664000000, o reembolso por fora nao conta duas vezes: fin__movimentos troca so o corpo). A 220a e a 220b tem o MESMO
-// rol de 4 linhas (o do lote 100: controle, md5, atributos e ACL); a 220a espera o corpo desta e a 220b o da 20261391200000. So
-// catalogo: nenhuma le pedido, devolucao, estorno ou lancamento, e nenhuma chama a fin__movimentos.
+// 1664: mesma ficha fechada antes e depois, só catálogo. As funções novas devem estar ausentes antes.
 const ROL_DA_220 = [
   "controle: funcoes de public visiveis a este papel",
   "fin__movimentos: corpo exato (md5)",
-  "fin__movimentos: assinatura e atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public, uma so)",
-  "fin__movimentos: sem EXECUTE para PUBLIC, anon ou authenticated",
+  "fin__movimentos: assinatura, atributos e EXECUTE",
+  "pedido__saldo_a_estornar: corpo exato (md5)",
+  "pedido__saldo_a_estornar: assinatura, atributos e EXECUTE",
+  "admin_devolucao_reembolso_por_fora_apos_espera: corpo exato (md5)",
+  "admin_devolucao_reembolso_por_fora_apos_espera: assinatura, atributos e EXECUTE",
+  "pedido_reembolsos_e_saldo: corpo exato (md5)",
+  "pedido_reembolsos_e_saldo: assinatura, atributos e EXECUTE",
+  "get_admin_analytics_v2: corpo exato (md5)",
+  "get_admin_analytics_v2: assinatura, atributos e EXECUTE",
+  "order_refund__valor_coberto_por_fora: corpo exato (md5)",
+  "order_refund__valor_coberto_por_fora: assinatura, atributos e EXECUTE",
+  "order_refund__suspeitas_do_pedido: corpo exato (md5)",
+  "order_refund__suspeitas_do_pedido: assinatura, atributos e EXECUTE",
+  "admin_devolucao_confirmar_mesmo_dinheiro: corpo exato (md5)",
+  "admin_devolucao_confirmar_mesmo_dinheiro: assinatura, atributos e EXECUTE",
+  "admin_devolucao_confirmar_dois_reembolsos: corpo exato (md5)",
+  "admin_devolucao_confirmar_dois_reembolsos: assinatura, atributos e EXECUTE",
+  "1664: colunas, chaves e indices da conferencia",
+  "order_refund_prova: RLS e acesso fechado",
 ];
 // Lote 216 (20261660000000, o caixa de ontem aberto nao some do saldo: fin_conta_salvar, fin_caixa_movimentar_com_chave e
 // fin_lancamento_cancelar trocam so o corpo). A 216a e a 216b tem o MESMO rol de 10 linhas (controle e, para cada funcao, o md5, os

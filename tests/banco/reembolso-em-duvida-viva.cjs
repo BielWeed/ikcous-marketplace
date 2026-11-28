@@ -2068,6 +2068,9 @@ async function main() {
   await E.connect();
   let falhas = 0;
   try {
+    await require("./o-reembolso-por-fora-posterior.cjs").desfazerReembolsoPorForaNoClone(
+      C,
+    );
     for (const p of PROVAS) {
       try {
         await p.corpo();

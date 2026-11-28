@@ -1,8 +1,8 @@
 "use strict";
 
 /**
- * A 20261664000000 (o reembolso por fora nao conta duas vezes) redefine fin__movimentos em cima do corpo da 20261391200000 (o mesmo
- * corpo; so a regra "ja devolvi por fora" entra nos valores).
+ * A 1664 muda o extrato (1391200), o saldo e as portas de conferência (241) e o ranking (1659).
+ * As provas dos corpos anteriores a desfazem primeiro, só nos clones efêmeros.
  *
  * Toda prova viva que mede a 20261391200000 sobre a arvore ja migrada (o corpo exato, o rollback-manual dela, as consultas 100a/100b
  * no sentido "antes") tem de desfazer ANTES esta: o rollback-manual da 1391200 recusa (B1_BASELINE_DIVERGENT) com um corpo posterior
@@ -24,7 +24,7 @@ const ASSINATURA = "public.fin__movimentos(date,date)";
 // [hash da anterior (20261391200000), hash desta]
 const CORPOS = Object.freeze([
   "26473edd94ad6547d95de43433088304",
-  "04fc43fd9e3e7f4b44cb9e4c2a866ae3",
+  "17127ad84b6eb71e8cd1714d47855a68",
 ]);
 
 const hashVivo = `SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHERE oid = to_regprocedure('${ASSINATURA}')`;
@@ -60,7 +60,25 @@ async function desfazerReembolsoPorForaNaTransacao(cliente) {
   return true;
 }
 
+async function desfazerReembolsoPorForaNoClone(cliente) {
+  const db = (await cliente.query("SELECT current_database() AS nome")).rows[0]
+    .nome;
+  assert.ok(
+    db.startsWith("prova_"),
+    "use rodar-isolado.cjs: nunca mutar o banco base",
+  );
+  await cliente.query("BEGIN");
+  try {
+    await desfazerReembolsoPorForaNaTransacao(cliente);
+    await cliente.query("COMMIT");
+  } catch (erro) {
+    await cliente.query("ROLLBACK");
+    throw erro;
+  }
+}
+
 module.exports = {
+  desfazerReembolsoPorForaNoClone,
   O_REEMBOLSO_POR_FORA,
   desfazerReembolsoPorForaNaTransacao,
 };

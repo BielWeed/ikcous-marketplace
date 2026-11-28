@@ -92,6 +92,7 @@ interface EstornosDoPedido {
   /** = `reservado_por_fora` do servidor: linha já resolvida por fora que o
    * Mercado Pago ainda não respondeu (fica fora do saldo até ele responder). */
   reservadoPorFora: number;
+  possivelDobro: ReembolsosESaldo["possivel_dobro"];
   carregando: boolean;
   /** O pedido já foi lido pelo menos uma vez. Distingue "ainda não sei o
    * saldo" (primeira carga, `false`) de "o saldo é zero" (`true` com
@@ -574,6 +575,7 @@ export function useEstornosDoPedido(
     emDuvida: saldo?.em_duvida ?? 0,
     disponivel: saldo?.disponivel ?? 0,
     reservadoPorFora: saldo?.reservado_por_fora ?? 0,
+    possivelDobro: saldo?.possivel_dobro ?? [],
     carregando,
     pedidoCarregado: saldo !== null && fotoDoSaldo === fotoDoPedido,
     erro,

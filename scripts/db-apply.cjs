@@ -130,44 +130,93 @@ const VERIFICACOES = {
       ],
     },
   ],
-  // 20261664000000: o reembolso por fora nao conta duas vezes. fin__movimentos (sucessora da 20261391200000) ganha a regra "ja devolvi
-  // por fora" do ranking: a linha 'sistema' do MP depois de um reembolso de devolucao resolvido por fora conta so o resto, e a saida
-  // estornado fora do app desconta so o que a linha nao contou. Os marcadores da 1b (20261177000000) e os textos da 20261391200000
-  // seguem com a mesma contagem. O corpo exato (md5), os atributos e a ACL sao da consulta 220a; o comportamento, da prova viva.
+  // 1664: só o vínculo confirmado tira a sobreposição. A 220a confere os corpos e o esquema.
   "20261664000000_o_reembolso_por_fora_nao_conta_duas_vezes.sql": [
     {
       funcao: "fin__movimentos",
       esperado: [
         {
-          texto: "AND dvp.refund_id IS NULL AND dvp.reembolso_manual",
-          vezes: 1,
-        },
-        { texto: "AND sp.mp_chargeback_id IS NULL", vezes: 1 },
-        { texto: "AND sp.created_at >= pf.desde", vezes: 1 },
-        {
-          texto: "PARTITION BY sp.order_id ORDER BY sp.created_at, sp.id",
+          texto: "d.id = r.cobre_devolucao_id AND d.order_id = r.order_id",
           vezes: 1,
         },
         { texto: "(r.amount - COALESCE(jc.valor, 0))::numeric,", vezes: 1 },
-        { texto: "LEFT JOIN ja_coberto jc ON jc.id = r.id", vezes: 1 },
         { texto: "AND r.amount > COALESCE(jc.valor, 0)", vezes: 1 },
         {
           texto:
-            "- COALESCE((SELECT sum(jc.valor) FROM ja_coberto jc WHERE jc.order_id = v.id), 0) AS valor",
-          vezes: 1,
-        },
-        {
-          texto:
-            "(v.total - COALESCE(v.valor_estornado, 0) - COALESCE(dm.valor, 0))::numeric,",
-          vezes: 1,
-        },
-        {
-          texto:
-            "AND o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega', 'estornado')",
+            "(SELECT sum(jc.valor) FROM ja_coberto jc WHERE jc.order_id = v.id)",
           vezes: 1,
         },
         { texto: "upper(right(v.id::text, 6))", vezes: 4 },
         { texto: "upper(right(o.id::text, 6))", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "pedido__saldo_a_estornar",
+      esperado: [
+        {
+          texto: "+ public.order_refund__valor_coberto_por_fora(o.id)",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "pedido_reembolsos_e_saldo",
+      esperado: [
+        { texto: "'possivel_dobro'", vezes: 1 },
+        {
+          texto: "public.order_refund__suspeitas_do_pedido(p_order_id)",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_reembolso_por_fora_apos_espera",
+      esperado: [
+        {
+          texto:
+            "devolucao_id = COALESCE(pv.devolucao_id, EXCLUDED.devolucao_id)",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto: "- public.order_refund__valor_coberto_por_fora(so.id)",
+          vezes: 2,
+        },
+      ],
+    },
+    {
+      funcao: "order_refund__valor_coberto_por_fora",
+      esperado: [
+        { texto: "r.cobre_devolucao_id", vezes: 1 },
+        { texto: "LEAST(r.amount, d.valor_reembolso)", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "order_refund__suspeitas_do_pedido",
+      esperado: [
+        { texto: "r.concluido_em > pv.por_fora_liberado_em", vezes: 1 },
+        { texto: "r.created_at > d.registrado_em", vezes: 1 },
+        { texto: "r.dobro_conferido_em IS NULL", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_confirmar_mesmo_dinheiro",
+      esperado: [
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "SET cobre_devolucao_id = v_d.id", vezes: 1 },
+        { texto: "v_r.order_id IS DISTINCT FROM v_d.order_id", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_confirmar_dois_reembolsos",
+      esperado: [
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "SET dobro_conferido_em = now()", vezes: 1 },
+        { texto: "v_r.order_id IS DISTINCT FROM p_order_id", vezes: 1 },
       ],
     },
   ],
@@ -2546,7 +2595,7 @@ const VERIFICACOES = {
       ],
     },
   ],
-  // ⚠️ Corpo HISTÓRICO — não reaponte esta entrada. A
+  // ! Corpo HISTÓRICO — não reaponte esta entrada. A
   // 20260729000002_shipping_quote_validation_v23.sql, logo abaixo, reescreveu
   // a v22 como FACHADA PURA ("RETURN public.create_marketplace_order_v23(...)"
   // e mais nada). Os três marcadores daqui continuam CERTOS para o corpo que
@@ -2815,7 +2864,7 @@ const VERIFICACOES = {
       ],
     },
   ],
-  // ⚠️ Medido: o marcador "AND gateway_payment_id IS NOT NULL" desta entrada
+  // ! Medido: o marcador "AND gateway_payment_id IS NOT NULL" desta entrada
   // da AUSENTE contra o corpo VIVO — e isso NAO e' defeito, nao reaponte. A
   // 20260812000000, mais abaixo, REORDENOU o WHERE e subiu o mesmo predicado
   // para a primeira posicao (sem o "AND" na frente), sem perder a invariante;
@@ -3255,7 +3304,7 @@ const VERIFICACOES = {
     },
   ],
   "20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql": [
-    // ⚠️ Rodada 4 (redesenho subtrativo): reconsumir_uso_cupom DEIXA DE
+    // ! Rodada 4 (redesenho subtrativo): reconsumir_uso_cupom DEIXA DE
     // EXISTIR (DROP FUNCTION) e a coluna nova coupon_usage_returned entra
     // por ALTER TABLE. Nenhum dos dois e' verificavel por este mapa: DROP
     // nao tem "depois" para ler via pg_get_functiondef (a funcao some, e
@@ -3419,7 +3468,7 @@ const VERIFICACOES = {
       ],
     },
   ],
-  // ⚠️ 20260822000000_status_do_pedido_nunca_nulo.sql NAO tem entrada aqui, e
+  // ! 20260822000000_status_do_pedido_nunca_nulo.sql NAO tem entrada aqui, e
   // nao pode ter: este mapa so' sabe conferir marcador dentro de
   // pg_get_functiondef, e aquela migration e' ALTER TABLE — nao redefine
   // funcao nenhuma. O db-apply vai imprimir "sem verificacao registrada,

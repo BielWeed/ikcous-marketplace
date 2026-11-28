@@ -1692,11 +1692,8 @@ jobs:
       - name: Prova viva da despesa que nao entra no caixa fechado (20261663000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-despesa-nao-entra-no-caixa-fechado-viva.cjs
-      # Migration 20261664000000 (o reembolso por fora nao conta duas vezes): fin__movimentos conta a linha sistema do Mercado Pago nascida
-      # depois de um reembolso de devolucao resolvido por fora so no que ele ainda nao contou (a regra "ja devolvi por fora" do ranking), e a
-      # saida estornado fora do app desconta so o resto. Cenarios do defeito (Financeiro x ranking, pedido a pedido), controle com o corpo
-      # anterior, casos que nao mudam, mutantes, reaplicar 2x e CRLF, pre-voo, rollback byte a byte, consultas 220a/220b (e 100a como
-      # sucessora). CLONE proprio.
+      # Migration 20261664000000: A (linha nova do MP) e B (conclusao tardia da propria linha). Sem vinculo, duas saidas;
+      # com vinculo, um desconto; marcacao de dois encerra o aviso sem devolver saldo. ACL, catalogo e rollback. CLONE proprio.
       - name: Prova viva do reembolso por fora que nao conta duas vezes (20261664000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-reembolso-por-fora-nao-conta-duas-vezes-viva.cjs

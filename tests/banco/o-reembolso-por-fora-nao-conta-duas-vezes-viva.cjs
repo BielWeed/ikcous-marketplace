@@ -3,31 +3,9 @@
  * Arquivos SQL locais do repositorio, todos com nomes literais fechados; os indices vem de listas fechadas deste arquivo
  * (itens do cenario, cenarios), nunca de entrada de rede. */
 /**
- * PROVA VIVA da migration 20261664000000_o_reembolso_por_fora_nao_conta_duas_vezes.sql (public.fin__movimentos) contra o
- * Postgres EFEMERO com as migrations aplicadas do zero (rpc-ci, job do dinheiro, CLONE proprio pelo rodar-isolado.cjs). Nunca
- * banco de loja.
- *
- * O DEFEITO: o reembolso de devolucao resolvido POR FORA do app (admin_devolucao_reembolso_por_fora) e a linha 'sistema' que o
- * aviso do Mercado Pago grava depois para o MESMO dinheiro (registrar_estorno_externo_do_mp) saiam as duas no Financeiro: venda de
- * R$ 100, custo R$ 40, R$ 30 devolvidos = lucro bruto R$ 0 em vez de R$ 30, e o Financeiro discordava do ranking de lucro.
- *
- * O que prova:
- *  (R0) o CAMINHO REAL: devolucao concluida com a linha do app 'falhou', a lojista marca "resolvido por fora" pela RPC de verdade e
- *       o aviso do MP chega pela RPC de verdade. Corpo novo: R$ 100 sai uma vez; corpo anterior (o rollback): R$ 200 (o controle).
- *  (D1..D9) cenarios pedido a pedido em que o oraculo e' o ranking de lucro (get_admin_analytics_v2, a mesma regra "ja devolvi por
- *       fora"): o lucro bruto que o Financeiro (fin_dre) atribui ao pedido e' IGUAL a soma do ranking. Cada um diz quanto sai no
- *       extrato com o corpo novo e com o anterior; o anterior fica vermelho EXATAMENTE nos cenarios do defeito (D1, D7, D9).
- *       Nenhuma linha do extrato sai com valor zero ou negativo.
- *  (N)  o resto do extrato (pedidos sem reembolso por fora seguido de linha do MP) e' identico no corpo novo e no anterior.
- *  (M)  mutantes (sem o "depois da conclusao", sem a contestacao fora, sem o resto na saida estornado fora do app, linha cheia,
- *       sem a ordem de chegada, linha zerada que fica) derrubam a prova no cenario certo.
- *  (A)  reaplicar 2x e em CRLF, pre-voo que recusa sem escrever, rollback byte a byte (corpo da 20261391200000) que repetido recusa,
- *       o rollback da 20261391200000 recusa com esta no ar, dado que ja existia intacto, consultas 220a/220b nos dois sentidos, a
- *       100a positiva com esta (sucessora), os marcadores da 1b e o db-apply verificado no corpo vivo.
- * Tambem MEDE (sem afirmar: fora do escopo desta migration) o saldo a estornar do caminho real, para o relatorio.
- *
- * USO: CI_BANCO_EFEMERO=1 DATABASE_URL=postgres://postgres@127.0.0.1:<porta>/postgres \
- *        node tests/banco/rodar-isolado.cjs tests/banco/o-reembolso-por-fora-nao-conta-duas-vezes-viva.cjs
+ * 1664 no Postgres efêmero do CI, em clone próprio (rodar-isolado.cjs).
+ * Exercita os dois fluxos reais, a escolha explícita, o saldo, o extrato e o lucro,
+ * a recusa de papel/pedido errado, o catálogo, a reaplicação e o rollback.
  */
 
 const assert = require("node:assert/strict");
@@ -56,7 +34,7 @@ const corpoDe = (sql) =>
 const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
 const CORPO_NOVO = corpoDe(migration);
 const CORPO_ANTES = corpoDe(ler(`supabase/migrations/${NOME_ANTERIOR}`));
-const HASH_NOVO = "04fc43fd9e3e7f4b44cb9e4c2a866ae3";
+const HASH_NOVO = "17127ad84b6eb71e8cd1714d47855a68";
 const HASH_ANTES = "26473edd94ad6547d95de43433088304";
 const ASSINATURA = "public.fin__movimentos(date,date)";
 const C220A =
@@ -113,7 +91,7 @@ const CABECALHO_DA_FUNCAO = migration.match(
 const trocarCorpo = (c, corpo) => c.query(`${CABECALHO_DA_FUNCAO}${corpo}$$;`);
 const comoAdmin = (c) =>
   c.query("SELECT set_config('app.rpc.user_id', $1, true)", [ADMIN]);
-// Retrato dos dados: nada disso pode mudar ao aplicar ou desfazer (a migration so troca o corpo de uma funcao de leitura).
+// Retrato dos dados numa reaplicação: nenhum pedido, reembolso ou lançamento é reescrito.
 async function retrato(c) {
   return (
     await c.query(`SELECT md5(concat_ws('|',
@@ -314,16 +292,15 @@ async function rodar(c, { itens = ["v"], montar, jaEstornei = false }) {
   };
 }
 
-// Cada cenario: o que sai no extrato (centavos) com o corpo NOVO e com o ANTERIOR. `defeito` = o anterior discorda do ranking.
+// O extrato (centavos) sem vínculo preserva todas as saídas, assim como o corpo anterior.
 const CENARIOS = [
   {
-    nome: "(D1) resolvido por fora R$ 30 e o MP confirma os MESMOS R$ 30 depois: sai uma vez (lucro R$ 30, nao R$ 0)",
+    nome: "(D1) por fora R$ 30 e MP R$ 30: sem confirmação, duas saídas",
     montar: (c, ped) =>
       devolucao(c, ped, { reembolso: 30, via: "manual", linhaDoMp: true }),
-    novo: 3000,
+    novo: 6000,
     antes: 6000,
-    lucro: 3000,
-    defeito: true,
+    lucro: 0,
   },
   {
     nome: "(D2) dois reembolsos diferentes: devolucao de R$ 30 pelo app + R$ 70 pelo painel do MP: os dois saem",
@@ -369,16 +346,15 @@ const CENARIOS = [
     lucro: -4000,
   },
   {
-    nome: "(D7) por fora R$ 30 + DUAS linhas do MP de R$ 20 depois: as linhas consomem os R$ 30 em ordem e sobram R$ 10",
+    nome: "(D7) por fora R$ 30 + duas linhas do MP de R$ 20: nenhuma é abatida automaticamente",
     montar: async (c, ped) => {
       await devolucao(c, ped, { reembolso: 30, via: "manual" });
       await estorno(c, ped, 20, { por: "sistema", minutos: 5 });
       await estorno(c, ped, 20, { por: "sistema", minutos: 6 });
     },
-    novo: 4000,
+    novo: 7000,
     antes: 7000,
-    lucro: 2000,
-    defeito: true,
+    lucro: -1000,
   },
   {
     nome: "(D8) por fora R$ 30 + uma CONTESTACAO de R$ 30 (chargeback) depois: a contestacao nao e' o reembolso, as duas saem",
@@ -395,17 +371,47 @@ const CENARIOS = [
     lucro: 0,
   },
   {
-    nome: "(D9) DUAS devolucoes por fora (R$ 20 do vestido + R$ 10 da blusa) + o MP confirma R$ 30 depois: sai R$ 30",
+    nome: "(D9) duas devoluções manuais (R$ 20 + R$ 10) e linha do MP de R$ 30 sem vínculo: saem R$ 60",
     itens: ["v", "b"],
     montar: async (c, ped) => {
       await devolucao(c, ped, { item: 0, reembolso: 20, via: "manual" });
       await devolucao(c, ped, { item: 1, reembolso: 10, via: "manual" });
       await estorno(c, ped, 30, { por: "sistema", minutos: 5 });
     },
-    novo: 3000,
+    novo: 6000,
     antes: 6000,
-    lucro: 6000,
-    defeito: true,
+    lucro: 3000,
+  },
+  {
+    nome: "(D10) mesmo dinheiro confirmado: R$ 30 saem uma vez",
+    montar: async (c, ped) => {
+      const d = await devolucao(c, ped, { reembolso: 30 });
+      const r = await estorno(c, ped, 30, { por: "sistema", minutos: 5 });
+      await mesmo(c, d, r);
+    },
+    novo: 3000,
+    lucro: 3000,
+  },
+  {
+    nome: "(D11) mesmo dinheiro com valores distintos: a diferença não some",
+    montar: async (c, ped) => {
+      const d = await devolucao(c, ped, { reembolso: 20 });
+      const r = await estorno(c, ped, 30, { por: "sistema", minutos: 5 });
+      await mesmo(c, d, r);
+    },
+    novo: 3000,
+    lucro: 3000,
+  },
+  {
+    nome: "(D12) vínculo confirmado e estorno também registrado no pedido: não come o restante",
+    montar: async (c, ped) => {
+      const d = await devolucao(c, ped, { reembolso: 30 });
+      const r = await estorno(c, ped, 30, { por: "sistema", minutos: 5 });
+      await mesmo(c, d, r);
+    },
+    jaEstornei: true,
+    novo: 10000,
+    lucro: -4000,
   },
 ];
 
@@ -413,6 +419,7 @@ const CENARIOS = [
 async function desvios(c, qual) {
   const erros = [];
   for (const cen of CENARIOS) {
+    if (qual === "antes" && cen.antes === undefined) continue;
     const m = await isolado(c, () =>
       rodar(c, {
         itens: cen.itens,
@@ -429,43 +436,39 @@ async function desvios(c, qual) {
       erros.push(
         `${cen.nome}: ${m.saidas.zeradas} linha(s) de saida com valor <= 0 (${m.saidas.linhas.join(", ")})`,
       );
-    // O ranking nao depende do corpo do Financeiro: e' sempre a regra "ja devolvi por fora".
-    if (m.ranking !== cen.lucro)
+    if (
+      qual === "novo" &&
+      (m.ranking !== cen.lucro || m.financeiro !== cen.lucro)
+    ) {
       erros.push(
-        `${cen.nome}: o ranking soma ${m.ranking}, esperado ${cen.lucro}`,
+        `${cen.nome}: ranking ${m.ranking}, Financeiro ${m.financeiro}, esperado ${cen.lucro}`,
       );
-    const casa = m.financeiro === m.ranking;
-    if (qual === "novo" && !casa)
-      erros.push(
-        `${cen.nome}: o Financeiro diz ${m.financeiro} e o ranking ${m.ranking}`,
-      );
-    if (qual === "antes" && casa === Boolean(cen.defeito))
-      erros.push(
-        `${cen.nome}: no corpo anterior o Financeiro (${m.financeiro}) ${casa ? "casa" : "nao casa"} com o ranking (${m.ranking})`,
-      );
+    }
   }
   return erros;
 }
 
 // ---------------------------------------------------------------- (R0) o caminho real, pelas RPCs de verdade
-async function caminhoReal(c) {
-  const ped = (
-    await c.query(
-      `INSERT INTO public.marketplace_orders
+async function caminhoReal(c, pedidoExistente, valor = 100) {
+  const ped =
+    pedidoExistente ??
+    (
+      await c.query(
+        `INSERT INTO public.marketplace_orders
          (user_id, customer_name, customer_data, total, subtotal, status, canal, payment_method, payment_status,
           paid_at, created_at, valor_estornado)
        VALUES ($1, 'Cliente 1664', '{}'::jsonb, 300, 300, 'delivered', 'online', 'online', 'pago',
                now() - interval '3 days', now() - interval '3 days', 0)
        RETURNING id`,
-      [CLIENTE],
-    )
-  ).rows[0].id;
+        [CLIENTE],
+      )
+    ).rows[0].id;
   // O reembolso da devolucao pelo app falhou (a linha ligada fica 'falhou').
   const linhaDoApp = (
     await c.query(
       `INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status, tentativas, ultimo_erro)
-       VALUES ($1, 100, 'fixture 1664 R0', 'lojista', 'falhou', 1, 'recusado pelo MP') RETURNING id`,
-      [ped],
+       VALUES ($1, $2, 'fixture 1664 R0', 'lojista', 'falhou', 1, 'recusado pelo MP') RETURNING id`,
+      [ped, valor],
     )
   ).rows[0].id;
   const dev = crypto.randomUUID();
@@ -474,13 +477,14 @@ async function caminhoReal(c) {
        modalidade, metodo_retorno, status, valor_itens, valor_frete_ida, valor_reembolso, refund_id, reembolso_manual,
        prazo_ate, politica, concluida_em)
      VALUES ($1, $2, $3, $4, 'arrependimento', 'desisti', 'reembolso', 'reembolso', 'local', 'entrega_na_loja', 'concluida',
-       100, 0, 100, $5, false, current_date + 7, '{}'::jsonb, now())`,
+       $6, 0, $6, $5, false, current_date + 7, '{}'::jsonb, now())`,
     [
       dev,
       `P1664-R0-${crypto.randomUUID().slice(0, 8)}`,
       ped,
       CLIENTE,
       linhaDoApp,
+      valor,
     ],
   );
   // A lojista devolve os R$ 100 no painel do MP e marca "resolvido por fora do app" (a RPC de verdade, como admin logada).
@@ -501,11 +505,17 @@ async function caminhoReal(c) {
     await c.query("RESET ROLE");
   }
   assert.equal(porFora.resultado, "combinado", JSON.stringify(porFora));
+  // now() é fixo na transação do teste; a ação por fora precede a linha do MP.
+  await c.query(
+    "UPDATE public.devolucao_eventos SET created_at = now() - interval '1 minute' WHERE devolucao_id = $1",
+    [dev],
+  );
+  const codigoMp = `MP-A-1664-${crypto.randomUUID().slice(0, 8)}`;
   // O aviso do MP chega (a RPC de verdade, que o webhook chama com a service_role): ela grava a linha 'sistema' do MESMO dinheiro.
   const aviso = (
     await c.query(
-      "SELECT public.registrar_estorno_externo_do_mp($1, 'MP-R0-1664', 100, 'approved', 'partially_refunded') AS r",
-      [ped],
+      "SELECT public.registrar_estorno_externo_do_mp($1, $2, $3, 'approved', 'partially_refunded') AS r",
+      [ped, codigoMp, valor],
     )
   ).rows[0].r;
   assert.equal(aviso.resultado, "inserido", JSON.stringify(aviso));
@@ -514,7 +524,226 @@ async function caminhoReal(c) {
     (await c.query("SELECT public.pedido__saldo_a_estornar($1) AS s", [ped]))
       .rows[0].s,
   );
-  return { ped, saldo };
+  const refund = (
+    await c.query(
+      "SELECT id FROM public.order_refunds WHERE order_id = $1 AND mp_refund_id = $2",
+      [ped, codigoMp],
+    )
+  ).rows[0].id;
+  return { ped, dev, refund, saldo };
+}
+
+// As decisões não deslocam dinheiro no MP: só conciliam a leitura do pedido e do extrato.
+async function comoPapel(c, papel, pessoa, acao) {
+  const claims = {
+    role: papel,
+    ...(pessoa ? { sub: pessoa } : {}),
+    app_metadata: pessoa === ADMIN ? { role: "admin" } : {},
+  };
+  await c.query(
+    "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
+    [pessoa ?? "", JSON.stringify(claims)],
+  );
+  await c.query(
+    papel === "anon" ? "SET LOCAL ROLE anon" : "SET LOCAL ROLE authenticated",
+  );
+  // Se a ação for recusada, o ROLLBACK TO SAVEPOINT também restaura o papel.
+  const r = await acao();
+  await c.query("RESET ROLE");
+  return r;
+}
+
+const lerSaldo = async (c, ped) =>
+  (await c.query("SELECT public.pedido_reembolsos_e_saldo($1) AS r", [ped]))
+    .rows[0].r;
+const mesmo = (c, dev, refund) =>
+  comoPapel(c, "authenticated", ADMIN, () =>
+    c.query("SELECT public.admin_devolucao_confirmar_mesmo_dinheiro($1, $2)", [
+      dev,
+      refund,
+    ]),
+  );
+const dois = (c, ped, refund) =>
+  comoPapel(c, "authenticated", ADMIN, () =>
+    c.query("SELECT public.admin_devolucao_confirmar_dois_reembolsos($1, $2)", [
+      ped,
+      refund,
+    ]),
+  );
+
+async function estadoDoPedido(c, ped, saiu, avisos) {
+  const saldo = await lerSaldo(c, ped);
+  assert.equal(Number(saldo.disponivel), 300 - saiu);
+  assert.equal(
+    Number(
+      (await c.query("SELECT public.pedido__saldo_a_estornar($1) AS v", [ped]))
+        .rows[0].v,
+    ),
+    300 - saiu,
+  );
+  assert.equal((await saidas(c, ped)).soma, saiu * 100);
+  assert.deepEqual(
+    saldo.possivel_dobro.map(({ caminho }) => caminho).sort(),
+    avisos,
+  );
+  return saldo.possivel_dobro;
+}
+
+async function pendentePorFora(c, ped, { antiga = false, antes = false } = {}) {
+  const refund = (
+    await c.query(
+      `INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status, created_at)
+       VALUES ($1, 100, 'fixture 1664 B', 'lojista', 'em_processamento', now() - interval '8 days')
+       RETURNING id`,
+      [ped],
+    )
+  ).rows[0].id;
+  const dev = (
+    await c.query(
+      `INSERT INTO public.devolucoes (protocolo, order_id, user_id, tipo, motivo, resolucao_desejada, resolucao_final,
+          modalidade, metodo_retorno, status, valor_itens, valor_frete_ida, valor_reembolso, refund_id, reembolso_manual,
+          prazo_ate, politica, concluida_em)
+       VALUES ($1, $2, $3, 'arrependimento', 'desisti', 'reembolso', 'reembolso', 'local', 'entrega_na_loja', 'concluida',
+          100, 0, 100, $4, false, current_date + 7, '{}'::jsonb, now() - interval '2 days') RETURNING id`,
+      [`P1664-B-${crypto.randomUUID().slice(0, 8)}`, ped, CLIENTE, refund],
+    )
+  ).rows[0].id;
+  const r = await comoPapel(c, "authenticated", ADMIN, () =>
+    c.query(
+      "SELECT public.admin_devolucao_reembolso_por_fora_apos_espera($1, $2, 'DEVOLVI POR FORA') AS r",
+      [dev, refund],
+    ),
+  );
+  assert.equal(r.rows[0].r.resultado, "combinado");
+  const prova = (
+    await c.query(
+      "SELECT devolucao_id FROM public.order_refund_prova WHERE refund_id = $1",
+      [refund],
+    )
+  ).rows[0];
+  assert.equal(
+    prova.devolucao_id,
+    dev,
+    "a ação real preserva a ligação da devolução",
+  );
+  // now() é fixo dentro da transação de teste. Reproduz a ordem das duas transações reais.
+  await c.query(
+    `UPDATE public.order_refund_prova SET por_fora_liberado_em = now() - interval '1 hour',
+      substituida_por_manual_em = now() - interval '1 hour', devolucao_id = CASE WHEN $2 THEN NULL ELSE devolucao_id END
+      WHERE refund_id = $1`,
+    [refund, antiga],
+  );
+  await c.query("SELECT public.concluir_estorno($1, $2, 'approved', NULL)", [
+    refund,
+    `MP-B-1664-${crypto.randomUUID().slice(0, 8)}`,
+  ]);
+  if (antes) {
+    await c.query(
+      "UPDATE public.order_refunds SET concluido_em = now() - interval '2 hours' WHERE id = $1",
+      [refund],
+    );
+  }
+  return { dev, refund };
+}
+
+async function pedidoDaConferencia(c) {
+  return (
+    await c.query(
+      `INSERT INTO public.marketplace_orders (user_id, customer_name, customer_data, total, subtotal, status,
+            canal, payment_method, payment_status, paid_at, created_at)
+       VALUES ($1, 'Ficticio 1664 B', '{}'::jsonb, 300, 300, 'delivered', 'online', 'online', 'pago',
+            now() - interval '3 days', now() - interval '3 days') RETURNING id`,
+      [CLIENTE],
+    )
+  ).rows[0].id;
+}
+
+async function provasDaConferencia(c) {
+  await isolado(c, async () => {
+    const { ped, dev, refund } = await caminhoReal(c);
+    const [aviso] = await estadoDoPedido(c, ped, 200, ["A"]);
+    assert.equal(aviso.refund_id, refund);
+    assert.deepEqual(
+      aviso.candidatos.map(({ id }) => id),
+      [dev],
+    );
+    await mesmo(c, dev, refund);
+    await estadoDoPedido(c, ped, 100, []);
+    await recusa(c, rollback, /CONFERENCIA_DE_REEMBOLSO_NAO_SE_APAGA/);
+  });
+  await isolado(c, async () => {
+    const ped = await pedidoDaConferencia(c);
+    const b = await pendentePorFora(c, ped);
+    const a = await caminhoReal(c, ped, 50);
+    await estadoDoPedido(c, ped, 300, ["A", "B"]);
+    await mesmo(c, b.dev, b.refund);
+    await estadoDoPedido(c, ped, 200, ["A"]);
+    await mesmo(c, a.dev, a.refund);
+    await estadoDoPedido(c, ped, 150, []);
+  });
+  await isolado(c, async () => {
+    const a = await caminhoReal(c);
+    const b = await caminhoReal(c);
+    await assert.rejects(() => isolado(c, () => mesmo(c, b.dev, a.refund)), {
+      code: "22023",
+    });
+    for (const [papel, pessoa] of [
+      ["authenticated", CLIENTE],
+      ["anon", null],
+    ]) {
+      await assert.rejects(
+        () =>
+          isolado(c, () =>
+            comoPapel(c, papel, pessoa, () =>
+              c.query(
+                "SELECT public.admin_devolucao_confirmar_mesmo_dinheiro($1, $2)",
+                [a.dev, a.refund],
+              ),
+            ),
+          ),
+        { code: "42501" },
+      );
+    }
+    await comoAdmin(c);
+    await estadoDoPedido(c, a.ped, 200, ["A"]);
+  });
+  await isolado(c, async () => {
+    const ped = await pedidoDaConferencia(c);
+    const { dev, refund } = await pendentePorFora(c, ped);
+    const [aviso] = await estadoDoPedido(c, ped, 200, ["B"]);
+    assert.equal(aviso.refund_id, refund);
+    assert.deepEqual(
+      aviso.candidatos.map(({ id }) => id),
+      [dev],
+    );
+    await mesmo(c, dev, refund);
+    await mesmo(c, dev, refund);
+    await estadoDoPedido(c, ped, 100, []);
+  });
+  await isolado(c, async () => {
+    const ped = await pedidoDaConferencia(c);
+    const { refund } = await pendentePorFora(c, ped);
+    await dois(c, ped, refund);
+    await dois(c, ped, refund);
+    await estadoDoPedido(c, ped, 200, []);
+  });
+  await isolado(c, async () => {
+    const ped = await pedidoDaConferencia(c);
+    await pendentePorFora(c, ped, { antes: true });
+    await estadoDoPedido(c, ped, 200, []);
+  });
+  await isolado(c, async () => {
+    const ped = await pedidoDaConferencia(c);
+    const { refund } = await pendentePorFora(c, ped, { antiga: true });
+    const [aviso] = await estadoDoPedido(c, ped, 200, ["B"]);
+    assert.deepEqual(
+      aviso.candidatos,
+      [],
+      "histórico sem vínculo só aparece no pedido",
+    );
+    await dois(c, ped, refund);
+    await estadoDoPedido(c, ped, 200, []);
+  });
 }
 
 // ---------------------------------------------------------------- prova
@@ -573,81 +802,39 @@ async function main() {
       `  PASSOU (N) ${extratoNovo.length} linhas do extrato que ja existiam iguais nos dois corpos`,
     );
 
-    // ---- (R0) o caminho real. ----
-    const r0 = await isolado(c, async () => {
-      const { ped, saldo } = await caminhoReal(c);
-      const novo = await saidas(c, ped);
-      const anterior = await isolado(c, async () => {
-        await c.query(rollback);
-        return saidas(c, ped);
-      });
-      return { novo, anterior, saldo };
-    });
-    assert.deepEqual(
-      r0.novo.linhas,
-      ["devolucao:10000"],
-      `R0: o extrato devia mostrar so o reembolso por fora (${r0.novo.linhas.join(", ")})`,
-    );
-    assert.equal(
-      r0.anterior.soma,
-      20000,
-      `CONTROLE R0: o corpo anterior devia contar R$ 200 (${r0.anterior.linhas.join(", ")})`,
-    );
+    await provasDaConferencia(c);
     console.log(
-      `  PASSOU (R0) caminho real (falhou -> resolvido por fora -> aviso do MP): sai R$ 100 uma vez; o corpo anterior mostrava ${r0.anterior.linhas.join(" + ")}`,
-    );
-    console.log(
-      `  MEDIDO (fora do escopo) pedido__saldo_a_estornar no R0: ${r0.saldo} (pedido de 300 com 100 devolvidos uma vez)`,
+      "  PASSOU as conferências A e B, os dois valores e os pedidos/papéis recusados",
     );
 
-    // ---- (D) Financeiro x ranking, pedido a pedido. Vendas que ja existiam saem da conta do ranking (so nesta transacao). ----
+    // As vendas que já existiam não entram no oráculo de lucro por pedido (só neste clone/transação).
     await c.query("SET LOCAL session_replication_role = replica");
     await c.query("UPDATE public.marketplace_orders SET status = 'cancelled'");
     await c.query("SET LOCAL session_replication_role = origin");
     const verde = await desvios(c, "novo");
     assert.deepEqual(verde, [], verde.join("\n"));
-    console.log(
-      `  PASSOU (D1..D9) ${CENARIOS.length} cenarios: o Financeiro casa com o ranking e o extrato sai certo, sem linha zerada`,
-    );
-
-    // CONTROLE: o corpo anterior (o rollback) fica vermelho exatamente nos cenarios do defeito.
     const controle = await isolado(c, async () => {
       await c.query(rollback);
       return desvios(c, "antes");
     });
     assert.deepEqual(controle, [], controle.join("\n"));
     console.log(
-      `  PASSOU controle: o corpo anterior conta duas vezes em ${CENARIOS.filter(
-        (x) => x.defeito,
-      )
-        .map((x) => x.nome.slice(0, 4))
-        .join(", ")} e so neles`,
+      "  PASSOU extrato e ranking (padrão, vínculo, diferença e resto) e controle anterior",
     );
 
-    // ---- (M) Mutantes: cada um derruba a prova (no cenario que ele estraga). ----
     const mutantes = [
       [
-        "sem o 'depois da conclusao' (a linha do MP de antes vira o mesmo dinheiro)",
-        "(D3)",
-        (s) => s.replace("\n       AND sp.created_at >= pf.desde", ""),
-      ],
-      [
-        "sem tirar a contestacao",
-        "(D8)",
-        (s) => s.replace("\n       AND sp.mp_chargeback_id IS NULL", ""),
-      ],
-      [
-        "a saida estornado fora do app desconta o reembolso por fora inteiro",
-        "(D6)",
+        "abatimento sem uma confirmação",
+        "(D1)",
         (s) =>
           s.replace(
-            "\n               - COALESCE((SELECT sum(jc.valor) FROM ja_coberto jc WHERE jc.order_id = v.id), 0) AS valor",
-            " AS valor",
+            "d.id = r.cobre_devolucao_id AND d.order_id = r.order_id",
+            "d.order_id = r.order_id",
           ),
       ],
       [
-        "a linha do MP sai cheia",
-        "(D1)",
+        "o estorno confirmado sai cheio",
+        "(D10)",
         (s) =>
           s.replace(
             "(r.amount - COALESCE(jc.valor, 0))::numeric,",
@@ -655,35 +842,36 @@ async function main() {
           ),
       ],
       [
-        "sem a ordem de chegada (cada linha consome o reembolso por fora inteiro)",
-        "(D7)",
+        "o estorno externo perde o restante",
+        "(D12)",
         (s) =>
           s.replace(
-            "pf.valor - COALESCE(sum(sp.amount) OVER (\n             PARTITION BY sp.order_id ORDER BY sp.created_at, sp.id\n             ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)",
-            "pf.valor",
+            " - COALESCE((SELECT sum(jc.valor) FROM ja_coberto jc WHERE jc.order_id = v.id), 0)",
+            "",
           ),
       ],
       [
-        "a linha zerada fica no extrato",
-        "(D1)",
+        "a linha zerada permanece no extrato",
+        "(D10)",
         (s) => s.replace("\n       AND r.amount > COALESCE(jc.valor, 0)", ""),
       ],
     ];
     for (const [nome, cenarioAlvo, mutar] of mutantes) {
       const corpo = mutar(CORPO_NOVO);
-      assert.notEqual(corpo, CORPO_NOVO, `o mutante "${nome}" nao mudou nada`);
+      assert.notEqual(
+        corpo,
+        CORPO_NOVO,
+        `o mutante "${nome}" não mudou o código`,
+      );
       const erros = await isolado(c, async () => {
         await trocarCorpo(c, corpo);
         return desvios(c, "novo");
       });
       assert.ok(
         erros.some((e) => e.startsWith(cenarioAlvo)),
-        `o mutante "${nome}" devia reprovar ${cenarioAlvo}; reprovou: ${erros.join(" | ") || "nada"}`,
+        `o mutante "${nome}" devia reprovar ${cenarioAlvo}: ${erros.join(" | ")}`,
       );
     }
-    console.log(
-      `  PASSOU ${mutantes.length} mutantes reprovam no cenario certo`,
-    );
 
     // ---- (A) Reaplicar 2x e CRLF, rollback byte a byte, segundo rollback recusa, o da 1391200 recusa com esta no ar. ----
     await isolado(c, async () => {
@@ -780,17 +968,17 @@ async function main() {
     };
     const MD5 = "fin__movimentos: corpo exato (md5)";
     assert.deepEqual(await consulta(C220A), []);
-    assert.deepEqual(await consulta(C220B), [MD5]);
+    assert.ok((await consulta(C220B)).includes(MD5));
     assert.deepEqual(await consulta(C100A), [], "a 100a reprova a sucessora");
     assert.deepEqual(await consulta(C100B), [MD5]);
     await isolado(c, async () => {
       await c.query(rollback);
       assert.deepEqual(await consulta(C220B), []);
-      assert.deepEqual(await consulta(C220A), [MD5]);
+      assert.ok((await consulta(C220A)).includes(MD5));
       assert.deepEqual(await consulta(C100A), []);
       // Corpo estranho: nem a 220a, nem a 220b, nem a 100a o aceitam.
       await trocarCorpo(c, CORPO_NOVO.replace("'Pedido #'", "'Pedido nº'"));
-      assert.deepEqual(await consulta(C220A), [MD5]);
+      assert.ok((await consulta(C220A)).includes(MD5));
       assert.deepEqual(await consulta(C220B), [MD5]);
       assert.deepEqual(await consulta(C100A), [MD5]);
     });
@@ -808,19 +996,21 @@ async function main() {
       VERIFICACOES,
       avaliarChecagem,
     } = require("../../scripts/db-apply.cjs");
-    const def = (
-      await c.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
-        ASSINATURA,
-      ])
-    ).rows[0].d;
     for (const nome of [NOME, NOME_ANTERIOR]) {
-      const lista = [VERIFICACOES[nome]].flat();
-      for (const checagem of lista)
+      for (const checagem of [VERIFICACOES[nome]].flat()) {
+        const rows = (
+          await c.query(
+            "SELECT pg_get_functiondef(p.oid) AS d FROM pg_proc p WHERE p.proname = $1 AND p.pronamespace = 'public'::regnamespace",
+            [checagem.funcao],
+          )
+        ).rows;
+        assert.equal(rows.length, 1, checagem.funcao);
         assert.equal(
-          avaliarChecagem(def, checagem).situacao,
+          avaliarChecagem(rows[0].d, checagem).situacao,
           "verificada",
           `db-apply ${nome}: ${checagem.funcao}`,
         );
+      }
     }
     console.log(
       "  PASSOU consultas 220a/220b nos dois sentidos, 100a aceita a sucessora, 1b e db-apply (1664 e 1391200) no corpo vivo",

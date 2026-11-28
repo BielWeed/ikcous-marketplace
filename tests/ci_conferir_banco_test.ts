@@ -4027,6 +4027,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           versao: "20261659000000",
         },
         {
+          fn: "get_admin_analytics_v2",
+          h: "3853f60efad86f22deb368ed791d76cb",
+          versao: "20261664000000",
+        },
+        {
           fn: "get_admin_customers_paged",
           h: "d6c092c3e0d8069891af795147d65e9e",
           versao: "20261230000000",
@@ -4165,6 +4170,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "pedido__saldo_a_estornar",
           h: "99741b4cdbf1e8d8340f80440e6da094",
           versao: "20261241000000",
+        },
+        {
+          fn: "pedido__saldo_a_estornar",
+          h: "7f0c83c80b5f26df9cbc19e92384453d",
+          versao: "20261664000000",
         },
         // 15/10/2026: desfazer o recebimento recusa pedido com devolução (sucede o corpo da 97).
         {

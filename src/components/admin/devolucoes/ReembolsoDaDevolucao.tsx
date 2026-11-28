@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { AvisoDeReembolsoEmDobro } from "@/components/admin/AvisoDeReembolsoEmDobro";
+
 import {
   corpoDoErroDaEdge,
   formatarReais,
@@ -17,6 +19,7 @@ import {
   AVISO_DE_DOBRO,
   BOTAO_POR_FORA_APOS_ESPERA,
   type LinhaDoSaldo,
+  type PossivelReembolsoEmDobro,
   RPC_DO_REEMBOLSO_R1,
   TEXTO_CONFIRMANDO,
   TEXTO_JA_POR_FORA,
@@ -150,22 +153,27 @@ export function ReembolsoDaDevolucao({
   aoMudar,
 }: Readonly<{ detalhe: DevolucaoDetalhe; aoMudar: () => void }>) {
   const { id, order_id, refund_id } = detalhe;
+  const concluidaComReembolso =
+    detalhe.status === "concluida" && detalhe.resolucao_final === "reembolso";
+  const porForaRegistrado = concluidaComReembolso && detalhe.reembolso_manual;
   const ativo =
-    detalhe.status === "concluida" &&
-    detalhe.resolucao_final === "reembolso" &&
-    !detalhe.reembolso_manual &&
-    refund_id !== null;
+    concluidaComReembolso && !detalhe.reembolso_manual && refund_id !== null;
 
   const [linha, setLinha] = useState<LinhaDoSaldo | null>(null);
+  const [conferencia, setConferencia] = useState<{
+    id: string;
+    avisos: PossivelReembolsoEmDobro[];
+  } | null>(null);
   const [erro, setErro] = useState(false);
   const [emVoo, setEmVoo] = useState(false);
   const emVooRef = useRef(false);
   const rodadaRef = useRef(0);
 
   const carregar = useCallback(async () => {
-    if (!ativo) return;
+    if (!ativo && !porForaRegistrado) return;
     const rodada = ++rodadaRef.current;
     let desta: LinhaDoSaldo | null = null;
+    let avisos: PossivelReembolsoEmDobro[] | null = null;
     try {
       const { data, error } = await aguardarComPrazo(
         Promise.resolve(
@@ -177,9 +185,13 @@ export function ReembolsoDaDevolucao({
         () => erroDeConsultaSemResposta(),
       );
       if (!error) {
-        desta =
-          lerReembolsosESaldo(data)?.linhas.find((l) => l.id === refund_id) ??
-          null;
+        const saldo = lerReembolsosESaldo(data);
+        desta = saldo?.linhas.find((l) => l.id === refund_id) ?? null;
+        avisos =
+          saldo?.possivel_dobro.flatMap((aviso) => {
+            const candidatos = aviso.candidatos.filter((d) => d.id === id);
+            return candidatos.length ? [{ ...aviso, candidatos }] : [];
+          }) ?? null;
       }
     } catch {
       // Sem leitura: erro honesto abaixo.
@@ -187,13 +199,29 @@ export function ReembolsoDaDevolucao({
     if (rodada !== rodadaRef.current) return;
     setLinha(desta);
     setErro(desta === null);
-  }, [ativo, order_id, refund_id]);
+    setConferencia(avisos === null ? null : { id, avisos });
+  }, [ativo, id, order_id, porForaRegistrado, refund_id]);
 
   // Relê sempre que a ficha relê (objeto `detalhe` novo).
   useEffect(() => {
     void carregar();
   }, [carregar, detalhe]);
 
+  if (porForaRegistrado) {
+    return conferencia?.id === id
+      ? conferencia.avisos.map((aviso) => (
+          <AvisoDeReembolsoEmDobro
+            key={aviso.refund_id}
+            aviso={aviso}
+            pedidoId={order_id}
+            aoMudar={() => {
+              void carregar();
+              aoMudar();
+            }}
+          />
+        ))
+      : null;
+  }
   if (!ativo) return null;
 
   async function executar(passo: () => Promise<unknown>): Promise<boolean> {

@@ -30,7 +30,7 @@ WITH fn AS (
          'de8648a7783c12f1be7abd7986c8a2fc',
          -- A 20261399995000 (o lucro do ranking casa com o Financeiro) sucede esta e so troca a conta do lucro (pedido a pedido, com o dinheiro devolvido):
          -- aceita os dois corpos EXATOS; normaliza ao esperado historico do rol (a 147a distingue).
-         COALESCE((SELECT CASE WHEN f.m IN ('de8648a7783c12f1be7abd7986c8a2fc', '4f8fb94f6cb0018e10d0ef71541f1cbf', '1624212a7096b6f49a80370b30191a15') THEN 'de8648a7783c12f1be7abd7986c8a2fc' ELSE f.m END FROM fn f), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m IN ('de8648a7783c12f1be7abd7986c8a2fc', '4f8fb94f6cb0018e10d0ef71541f1cbf', '1624212a7096b6f49a80370b30191a15', '3853f60efad86f22deb368ed791d76cb') THEN 'de8648a7783c12f1be7abd7986c8a2fc' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)',
          'atributos de sempre',

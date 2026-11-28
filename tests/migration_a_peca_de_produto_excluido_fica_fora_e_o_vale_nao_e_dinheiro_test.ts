@@ -150,7 +150,7 @@ Deno.test("20261659: sem transacao propria, texto LF, lock_timeout de 5 s e stat
   assertEquals(r.recusado, false, `motivos: ${(r.motivos || []).join("; ")}`);
 });
 
-Deno.test("20261659: os corpos de partida ainda sao os vigentes (1657, 1657, 642, 3995) e esta e' a ultima que redefine os quatro", () => {
+Deno.test("20261659: predecessoras dos quatro corpos e sucessora conhecida do ranking", () => {
   assertEquals(md5(corpo(devAnt, "$devolver$")), H_DEV_657);
   assertEquals(md5(corpo(conclAnt, "$$")), H_CONCL_657);
   assertEquals(md5(corpo(resAnt, "$resolver$")), H_RES_642);
@@ -180,6 +180,12 @@ Deno.test("20261659: os corpos de partida ainda sao os vigentes (1657, 1657, 642
     ],
   ] as const) {
     const f = fontes(re);
+    if (antecessora === NOME_3995) {
+      const sucessora =
+        "20261664000000_o_reembolso_por_fora_nao_conta_duas_vezes.sql";
+      assertEquals(f.at(-1), sucessora);
+      f.pop();
+    }
     assertEquals(f.at(-1), NOME, `${re}: outra redefine depois desta`);
     assertEquals(f.at(-2), antecessora, `${re}: a antecessora`);
   }

@@ -1622,21 +1622,31 @@ export type Database = {
       };
       order_refund_prova: {
         Row: {
+          devolucao_id: string | null;
           por_fora_liberado_em: string | null;
           refund_id: string;
           substituida_por_manual_em: string | null;
         };
         Insert: {
+          devolucao_id?: string | null;
           por_fora_liberado_em?: string | null;
           refund_id: string;
           substituida_por_manual_em?: string | null;
         };
         Update: {
+          devolucao_id?: string | null;
           por_fora_liberado_em?: string | null;
           refund_id?: string;
           substituida_por_manual_em?: string | null;
         };
         Relationships: [
+          {
+            foreignKeyName: "order_refund_prova_devolucao_id_fkey";
+            columns: ["devolucao_id"];
+            isOneToOne: false;
+            referencedRelation: "devolucoes";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "order_refund_prova_refund_id_fkey";
             columns: ["refund_id"];
@@ -1650,9 +1660,11 @@ export type Database = {
         Row: {
           amount: number;
           chave_da_solicitacao: string | null;
+          cobre_devolucao_id: string | null;
           concluido_em: string | null;
           created_at: string;
           criada_sob_autorizacao: boolean | null;
+          dobro_conferido_em: string | null;
           id: string;
           motivo: string | null;
           mp_chargeback_case_id: string | null;
@@ -1672,9 +1684,11 @@ export type Database = {
         Insert: {
           amount: number;
           chave_da_solicitacao?: string | null;
+          cobre_devolucao_id?: string | null;
           concluido_em?: string | null;
           created_at?: string;
           criada_sob_autorizacao?: boolean | null;
+          dobro_conferido_em?: string | null;
           id?: string;
           motivo?: string | null;
           mp_chargeback_case_id?: string | null;
@@ -1694,9 +1708,11 @@ export type Database = {
         Update: {
           amount?: number;
           chave_da_solicitacao?: string | null;
+          cobre_devolucao_id?: string | null;
           concluido_em?: string | null;
           created_at?: string;
           criada_sob_autorizacao?: boolean | null;
+          dobro_conferido_em?: string | null;
           id?: string;
           motivo?: string | null;
           mp_chargeback_case_id?: string | null;
@@ -1714,6 +1730,13 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "order_refunds_cobre_devolucao_id_fkey";
+            columns: ["cobre_devolucao_id"];
+            isOneToOne: true;
+            referencedRelation: "devolucoes";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "order_refunds_order_id_fkey";
             columns: ["order_id"];
@@ -3310,6 +3333,14 @@ export type Database = {
           p_resolucao: string;
           p_valor_reembolso?: number | null;
         };
+        Returns: Json;
+      };
+      admin_devolucao_confirmar_dois_reembolsos: {
+        Args: { p_order_id: string; p_refund_id: string };
+        Returns: Json;
+      };
+      admin_devolucao_confirmar_mesmo_dinheiro: {
+        Args: { p_devolucao_id: string; p_refund_id: string };
         Returns: Json;
       };
       admin_devolucao_decidir: {

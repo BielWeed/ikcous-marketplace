@@ -43,6 +43,6 @@ WITH alvo(nome, assinatura, lingua, retorna_conjunto, retorno, argumentos, padro
            AND (SELECT md5(replace(prosrc, chr(13), '')) FROM pg_proc
                  WHERE oid = to_regprocedure('public.order_refund__pode_ter_saido(uuid)')) = 'bdbb28b3d91588c8b10283d57bfb73d6'
            AND (SELECT md5(replace(prosrc, chr(13), '')) FROM pg_proc
-                 WHERE oid = to_regprocedure('public.pedido__saldo_a_estornar(uuid)')) = '99741b4cdbf1e8d8340f80440e6da094'), false) THEN 'sim' ELSE 'nao' END
+                 WHERE oid = to_regprocedure('public.pedido__saldo_a_estornar(uuid)')) IN ('99741b4cdbf1e8d8340f80440e6da094', '7f0c83c80b5f26df9cbc19e92384453d')), false) THEN 'sim' ELSE 'nao' END
 )
 SELECT item, esperado, vivo, vivo = esperado AS ok FROM itens ORDER BY ok, item;

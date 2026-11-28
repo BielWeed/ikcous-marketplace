@@ -1265,6 +1265,9 @@ async function main() {
       "use rodar-isolado.cjs: nunca mutar o banco base",
     );
     await D.connect();
+    await require("./o-reembolso-por-fora-posterior.cjs").desfazerReembolsoPorForaNoClone(
+      C,
+    );
     assert.equal(
       await corpoVivo(),
       HASH_FN,
