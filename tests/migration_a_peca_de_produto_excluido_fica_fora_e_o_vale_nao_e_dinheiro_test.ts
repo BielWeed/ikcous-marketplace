@@ -180,6 +180,15 @@ Deno.test("20261659: os corpos de partida ainda sao os vigentes (1657, 1657, 642
     ],
   ] as const) {
     const f = fontes(re);
+    // A 20261662000000 (o reembolso que saiu, e o frete de ida so quando foi devolvido) sucede esta SO em get_admin_analytics_v2: ali a
+    // ultima e' ela e esta vem logo antes (a 215a aceita o corpo dela como sucessora; a 218a confere qual).
+    if (re.source.includes("get_admin_analytics_v2")) {
+      assertEquals(
+        f.pop(),
+        "20261662000000_o_frete_de_ida_so_sai_do_lucro_quando_foi_devolvido.sql",
+        `${re}: a sucessora conhecida`,
+      );
+    }
     assertEquals(f.at(-1), NOME, `${re}: outra redefine depois desta`);
     assertEquals(f.at(-2), antecessora, `${re}: a antecessora`);
   }
@@ -432,7 +441,8 @@ Deno.test("20261659: os md5 do pre-voo, do pos-voo, do rollback, das consultas e
       `'${h}'`,
       ficha,
     );
-  // A 17a (o estoque do painel) confere o analytics por sha256 (LF e CRLF) e aceita o corpo desta logo depois do da 3995.
+  // A 17a (o estoque do painel) confere o analytics por sha256 (LF e CRLF) e aceita o corpo desta logo depois do da 3995
+  // (sem o parentese de fechamento: a 20261662000000 acrescenta o corpo dela depois do desta; a lista cresce no fim).
   const sha = (s: string) => createHash("sha256").update(s).digest("hex");
   const anaC = corpo(anaNovo, "$$");
   const ana3995C = corpo(anaAnt, "$$");
@@ -440,7 +450,7 @@ Deno.test("20261659: os md5 do pre-voo, do pos-voo, do rollback, das consultas e
     lerTexto(
       "scripts/publicacao/consultas/17a-conferir-estoque-do-painel-aplicado.sql",
     ),
-    `'${sha(ana3995C.replace(/\n/g, "\r\n"))}',\n                                            '${sha(anaC)}',\n                                            '${sha(anaC.replace(/\n/g, "\r\n"))}')`,
+    `'${sha(ana3995C.replace(/\n/g, "\r\n"))}',\n                                            '${sha(anaC)}',\n                                            '${sha(anaC.replace(/\n/g, "\r\n"))}'`,
   );
 });
 

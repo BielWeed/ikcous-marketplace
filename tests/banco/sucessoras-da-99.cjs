@@ -223,6 +223,10 @@ const NOMES = [
   // fin_caixa_movimentar_com_chave (da 252, sucedida pela 1654) nao e das 42, mas entra porque o rollback-manual dela desfaz as tres de
   // uma vez. O rollback da 3999300, o da 1654 e o da 99 recusam com o corpo novo no ar: ela cai antes.
   "20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql",
+  // O frete de ida so sai do lucro quando foi devolvido (28/11/2026): UMA funcao. get_admin_analytics_v2 sucede o corpo da 1659 (a CADEIA
+  // ... -> 3995 -> 1659 -> 1662: o `hashVigente` da 1662 e o `hashDesta` da 1659). O rollback da 1659 recusa com o corpo novo no ar: ela
+  // cai antes.
+  "20261662000000_o_frete_de_ida_so_sai_do_lucro_quando_foi_devolvido.sql",
   // A despesa nao entra no caixa fechado (28/11/2026): UMA migration, DUAS funcoes. fin_lancamento_salvar sucede o corpo da 1654 (a
   // CADEIA 99 -> 246 -> 1654 -> 1663: o `hashVigente` da 1663 e o `hashDesta` da 1654) e fin_lancamento_baixar tambem (99 -> 1654 ->
   // 1663). So a leitura da sessao aberta passa a travar a linha (FOR SHARE). O rollback da 1654 recusa com o corpo novo no ar: ela cai

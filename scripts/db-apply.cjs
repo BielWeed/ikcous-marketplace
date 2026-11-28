@@ -826,6 +826,33 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261662000000: o lucro do ranking so desconta o reembolso que saiu, e o frete de ida so quando foi devolvido. UMA funcao:
+  // get_admin_analytics_v2 (corpo da 20261659000000), nas DUAS copias (ranking e grafico do dia): o reembolso pendente/falho/recusado vale 0
+  // (so a linha ligada 'concluido' ou a devolucao manual contam), o residual so desconta as linhas 'sistema' da devolucao manual, e o frete
+  // de ida so sai ate o que o reembolso pagou alem das pecas. Os marcadores sao essas decisoes (tiradas, volta o defeito). O corpo exato (md5)
+  // e da consulta 218a e do pos-voo; o comportamento, da prova viva o-frete-de-ida-so-sai-do-lucro-viva.cjs.
+  "20261662000000_o_frete_de_ida_so_sai_do_lucro_quando_foi_devolvido.sql": [
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto:
+            "THEN GREATEST(0, dv.valor_reembolso - LEAST(COALESCE(dv.valor_frete_ida, 0), GREATEST(dv.valor_reembolso - x.vv - x.va, 0)))",
+          vezes: 2,
+        },
+        {
+          texto:
+            "OR EXISTS (SELECT 1 FROM public.order_refunds rq WHERE rq.id = dv.refund_id AND rq.status = 'concluido'))",
+          vezes: 2,
+        },
+        {
+          texto: "AND dvp.refund_id IS NULL AND dvp.reembolso_manual) g",
+          vezes: 2,
+        },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   // 20261659000000: a peca de produto EXCLUIDO fica fora do estoque, e o vale-troca nao e dinheiro no ranking de lucro. QUATRO funcoes:
   // devolver_estoque e admin_devolucao_concluir (corpos da 20261657000000) ganham UM bloco cada (o produto do item ou o pai da variacao
   // com deleted_at preenchido: a peca nao volta ao estoque nem ao cantinho; a conclusao a conta em fora_do_estoque e mantem o carimbo);

@@ -1242,6 +1242,13 @@ async function main() {
       "use rodar-isolado.cjs: nunca mutar o banco base",
     );
     await D.connect();
+    // A 20261662000000 (o frete de ida so sai do lucro quando foi devolvido) sucede o analytics desta: esta prova mede o corpo e o
+    // comportamento da 20261659000000 (o rollback desta inclusive), entao a tira antes, gravando no clone proprio do rodar-isolado.cjs.
+    await C.query("BEGIN");
+    await require("./o-frete-de-ida-so-sai-do-lucro-posterior.cjs").desfazerFreteDeIdaNaTransacao(
+      C,
+    );
+    await C.query("COMMIT");
     // Os md5 pinados no modulo posterior sao os dos corpos que os arquivos carregam.
     assert.equal(md5(corpoDe(DEVOLVER, "$devolver$")), HASH_DEVOLVER_DESTA);
     assert.equal(md5(corpoDe(CONCLUIR, "$$")), HASH_CONCLUIR_DESTA);

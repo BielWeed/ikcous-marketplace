@@ -63,6 +63,8 @@
 -- o custo do dia por item; decidido em 15/10/2026) (o rol e os rotulos do rol nao mudam).
 -- JA DECIDIDO PARA `get_admin_analytics_v2` (28/11/2026): a 20261659000000 (o vale-troca nao e dinheiro no ranking de lucro) o
 -- redefine depois da 3995, so trocando o pm do vale para 0 nas duas copias do CTE devs. A mesma linha aceita tambem o corpo dela (LF e CRLF).
+-- JA DECIDIDO PARA `get_admin_analytics_v2` (28/11/2026): a 20261662000000 (o frete de ida so sai do lucro quando foi devolvido) o
+-- redefine depois da 1659, so trocando o dinheiro devolvido (o reembolso que nao saiu = 0, o frete de ida so quando foi devolvido) nas duas copias. A mesma linha aceita tambem o corpo dela (LF e CRLF).
 -- JA DECIDIDO PARA `get_admin_products_paged` (23/10/2026): a 20261381000000 (o ex-admin perde o acesso
 -- na hora no resto do painel) o redefine depois deste lote, so trocando a guarda. A linha
 -- `get_admin_products_paged: corpo e o da 20261213000000` aceita o corpo da 13 OU o da 81 (LF e CRLF;
@@ -166,7 +168,9 @@ WITH alvo(nome, assinatura) AS (
                                             '866ef44f6ff4a24616f882d9e1333404ef41bc78e27de11f81dec3bdaf19e1d6',
                                             'ed6af8986eb7ca460e3a93f3b378acb3443dea937338bc953a8db336caf76166',
                                             'e61d755806655b86aebbff2bd8664a47f50ca7cf7f0669a09a1eb14b7ea17489',
-                                            '31cc554c6a122cbcba10936fcf4e64325b8582ba982e07b9cfb67a153a60a4b2')
+                                            '31cc554c6a122cbcba10936fcf4e64325b8582ba982e07b9cfb67a153a60a4b2',
+                                            'fe89f7111db1a45f6a9fde5040d0d7337bd5cbc49dc0ad57248ebc8b3d397bd8',
+                                            'fb4bc4da20082c0b1e3e3d687789bb59d8fec517750f6fa508fa459a325fae96')
                                THEN '297e4f2919cfdd3c2a3f66ebaa7109ced7e9602b435f67f07087a1da259558dc'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'get_admin_analytics_v2'), 'AUSENTE')

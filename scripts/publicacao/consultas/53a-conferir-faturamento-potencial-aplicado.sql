@@ -3,6 +3,8 @@
 -- Não prova comportamento; tests/banco/faturamento-potencial-viva.cjs o mede no clone.
 -- SUCESSORA: a 20261659000000 (o vale-troca nao e dinheiro no ranking de lucro) troca so o pm do vale nas duas copias do CTE devs;
 -- o corpo dela conta como o desta (a 215a confere qual).
+-- SUCESSORA: a 20261662000000 (o frete de ida so sai do lucro quando foi devolvido) troca so o dinheiro devolvido (o reembolso que nao saiu vale 0, o frete de ida so quando foi devolvido) nas duas
+-- copias do CTE devs; o corpo dela conta como o desta (a 218a confere qual).
 WITH fn AS (
   SELECT p.oid,
          md5(replace(p.prosrc, chr(13), '')) AS m,
@@ -30,7 +32,7 @@ WITH fn AS (
   SELECT 'get_admin_analytics_v2: corpo e o da 20261250000000, com o faturamento potencial (md5)',
          '5746d8a1df216ca4a5569901c45a2a07',
          -- A 251 preserva totalRevenue e sucede a 250, e a 20261399970000 (o ranking de lucro desconta a devolucao) sucede a 251, e a 20261399994000 (o item "Nao veio" fica com a cliente) sucede a 3997; so estes corpos exatos passam.
-         COALESCE((SELECT CASE WHEN f.m IN ('5746d8a1df216ca4a5569901c45a2a07', '060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088', 'de8648a7783c12f1be7abd7986c8a2fc', '4f8fb94f6cb0018e10d0ef71541f1cbf', '1624212a7096b6f49a80370b30191a15')
+         COALESCE((SELECT CASE WHEN f.m IN ('5746d8a1df216ca4a5569901c45a2a07', '060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088', 'de8648a7783c12f1be7abd7986c8a2fc', '4f8fb94f6cb0018e10d0ef71541f1cbf', '1624212a7096b6f49a80370b30191a15', 'b6cb9b487fdc4b603ce9313b46184897')
                                THEN '5746d8a1df216ca4a5569901c45a2a07' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)',

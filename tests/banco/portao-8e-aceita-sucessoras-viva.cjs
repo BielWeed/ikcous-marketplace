@@ -151,6 +151,12 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // do que as consultas 216a/216b, 128a e 210a fazem com ela em tests/banco/o-caixa-de-ontem-aberto-nao-some-do-saldo-viva.cjs, e a 8e ja traz os
     // dois pares; `noEstado` a desfaz antes (o-caixa-pertence-ao-dia-posterior.cjs chama o-caixa-de-ontem-aberto-posterior.cjs primeiro).
     s.nome !== "20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql" &&
+    // A 20261662000000 (o frete de ida so sai do lucro quando foi devolvido) e a DECIMA PRIMEIRA sucessora de get_admin_analytics_v2
+    // (... -> 3995 -> 1659 -> 1662). Tem a PROVA PROPRIA do que a 8e, a 17a, a 35a, a 45a, a 48a, a 53a, a 54a, a 135a, a 146a, a 147a e a
+    // 215a fazem com ela (as fichas dizem o mesmo com ela e com o corpo da 1659) em tests/banco/o-frete-de-ida-so-sai-do-lucro-viva.cjs;
+    // `noEstado` a desfaz antes (a cadeia do lucro: a-peca-de-produto-excluido-posterior.cjs chama o-frete-de-ida-so-sai-do-lucro-posterior.cjs).
+    s.nome !==
+      "20261662000000_o_frete_de_ida_so_sai_do_lucro_quando_foi_devolvido.sql" &&
     // A 20261663000000 (a despesa nao entra no caixa fechado) e a TERCEIRA sucessora de fin_lancamento_salvar (99 -> 246 -> 1654 -> 1663) e a
     // SEGUNDA de fin_lancamento_baixar (99 -> 1654 -> 1663). Tem a PROVA PROPRIA do que as consultas 219a/219b, 210a e 49a fazem com ela em
     // tests/banco/a-despesa-nao-entra-no-caixa-fechado-viva.cjs, e a 8e ja traz os dois pares; `noEstado` a desfaz antes

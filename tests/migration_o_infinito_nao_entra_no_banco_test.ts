@@ -146,6 +146,12 @@ const SUCESSORAS = [
     consulta:
       "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
   },
+  // 20261662000000: o lucro do ranking so desconta o reembolso que saiu, e o frete de ida so quando foi devolvido (get_admin_analytics_v2).
+  {
+    versao: "20261662000000",
+    consulta:
+      "218a-conferir-o-frete-de-ida-so-sai-do-lucro-quando-foi-devolvido-aplicado",
+  },
   // 20261663000000: a despesa nao entra no caixa fechado (fin_lancamento_salvar e fin_lancamento_baixar).
   {
     versao: "20261663000000",

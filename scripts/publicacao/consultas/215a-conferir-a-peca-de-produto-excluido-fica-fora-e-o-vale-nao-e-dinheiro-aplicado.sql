@@ -6,6 +6,8 @@
 -- os atributos e a ACL de sempre; e as colunas que a regra nova le. NAO le nenhuma linha de pedido, devolucao, produto nem peca e
 -- NAO chama funcao nenhuma. Tudo true = aplicado; qualquer false = PARE e leia a linha. Depois do rollback-manual as linhas dos corpos
 -- reprovam (voltam os da 20261657000000, da 20261642000000 e da 20261399995000).
+-- SUCESSORA: a 20261662000000 (o frete de ida so sai do lucro quando foi devolvido) troca so o dinheiro devolvido (o reembolso que nao saiu vale 0, o frete de ida so quando foi devolvido) nas duas copias do
+-- CTE devs de get_admin_analytics_v2; o corpo dela conta como o desta (a 218a confere qual).
 WITH fn AS (
   SELECT p.proname::text AS nome, md5(replace(p.prosrc, chr(13), '')) AS h, p.oid,
          p.prosecdef AND p.proconfig = ARRAY['search_path=public']::text[]
@@ -62,8 +64,8 @@ WITH fn AS (
          COALESCE((SELECT h FROM fn WHERE nome = 'resolver_peca_sem_tamanho' LIMIT 1) = '115378a67cd4f89b73129aeec4c46a7f', false)
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo esperado (md5)', '1624212a7096b6f49a80370b30191a15',
-         COALESCE((SELECT h FROM fn WHERE nome = 'get_admin_analytics_v2' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'get_admin_analytics_v2' LIMIT 1) = '1624212a7096b6f49a80370b30191a15', false)
+         COALESCE((SELECT CASE WHEN h = 'b6cb9b487fdc4b603ce9313b46184897' THEN '1624212a7096b6f49a80370b30191a15' ELSE h END FROM fn WHERE nome = 'get_admin_analytics_v2' LIMIT 1), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'get_admin_analytics_v2' LIMIT 1) IN ('1624212a7096b6f49a80370b30191a15', 'b6cb9b487fdc4b603ce9313b46184897'), false)
   UNION ALL
   SELECT 'as quatro funcoes: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, assinatura e EXECUTE de sempre',
          'sim',

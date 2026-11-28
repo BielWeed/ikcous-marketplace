@@ -120,6 +120,8 @@ Deno.test("20261245 — a 42 era vigente; posteriores são lista fechada, e o re
     "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
     // 20261659000000: o vale-troca nao e dinheiro no ranking de lucro (sucede a 3995; esta na cadeia de sucessoras-da-99.cjs).
     "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
+    // 20261662000000: o reembolso que saiu e o frete de ida so quando foi devolvido (sucede a 1659; esta na cadeia de sucessoras-da-99.cjs).
+    "20261662000000_o_frete_de_ida_so_sai_do_lucro_quando_foi_devolvido.sql",
   ]);
   const sucessoras = require("./banco/sucessoras-da-99.cjs");
   sucessoras.conferirLista();
