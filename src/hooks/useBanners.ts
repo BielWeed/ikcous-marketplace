@@ -251,7 +251,9 @@ function produtoDoDestino(link: Banner["link"]): string | undefined {
     if (!destino) return;
     const origem = window.location.origin;
     const url = new URL(destino, origem);
-    if (url.origin !== origem || url.pathname !== "/product-detail") return;
+    // Mesma leitura do roteador (App.tsx): sem barra final e sem maiúsculas.
+    const caminho = url.pathname.toLowerCase().replace(/\/$/, "");
+    if (url.origin !== origem || caminho !== "/product-detail") return;
     const id = url.searchParams.get("id");
     if (id && ID_DE_PRODUTO.test(id)) return id.toLowerCase();
   } catch {

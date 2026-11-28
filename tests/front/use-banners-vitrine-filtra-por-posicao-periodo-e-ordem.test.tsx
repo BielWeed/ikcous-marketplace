@@ -121,6 +121,13 @@ describe("destinos de produto da vitrine", () => {
         banner("pausado", { link: link(pausado) }),
         banner("pausado-repetido", { link: link(pausado) }),
         banner("excluido", { link: link(excluido) }),
+        // O roteador aceita barra final e maiúsculas: o filtro também.
+        banner("pausado-barra", {
+          link: `/product-detail/?id=${pausado}`,
+        }),
+        banner("pausado-maiusculo", {
+          link: `/Product-Detail?id=${pausado}`,
+        }),
         banner("esgotado", { link: link(esgotado) }),
         banner("categoria", { link: "/?category=Bolsas" }),
         banner("externo", { link: `https://externo.invalid${link(pausado)}` }),
