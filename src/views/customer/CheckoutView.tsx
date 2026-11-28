@@ -30,6 +30,7 @@ import {
   type DadosDoFormularioDeEndereco,
 } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
+import { AvisoDePedidoAguardandoPagamentoDaConta } from "@/components/ui/custom/AvisoDePedidoAguardandoPagamentoDaConta";
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { CarrinhoSalvoNaoLido } from "@/components/ui/custom/CarrinhoSalvoNaoLido";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
@@ -5701,7 +5702,8 @@ export function CheckoutViewDaConta({
     // A chave desta compra: mesma impressão digital (mesma retentativa,
     // mesmo F5) devolve a MESMA chave — é o que faz o servidor devolver o
     // pedido original em vez de criar um gêmeo. Impressão nova (mudou
-    // carrinho, frete, cupom ou endereço) gira chave nova.
+    // carrinho, opção de frete, cupom ou endereço) gira chave nova; o preço
+    // recotado da MESMA opção não (lote 569, ver chave-do-pedido.ts).
     orderData.idempotencyKey = gerenteDaChaveDe(contaEsperada).chavePara(
       impressaoDaCompra({
         // A impressão enxerga a CHAVE da linha (as duas escolhas), não só o
@@ -7270,6 +7272,13 @@ export function CheckoutViewDaConta({
           />
         ) : (
           <>
+            {/* O carrinho foi esvaziado na criação do pedido: quem volta ao
+                checkout com o Pix ainda esperando vê o pedido aqui também,
+                como no Início e no carrinho vazio. */}
+            <AvisoDePedidoAguardandoPagamentoDaConta
+              userId={user?.id}
+              onNavigate={onNavigate}
+            />
             <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
               Seu carrinho está vazio
             </h1>
