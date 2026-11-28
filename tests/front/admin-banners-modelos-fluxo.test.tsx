@@ -307,6 +307,8 @@ describe("novo editor de banners prontos", () => {
         buttonText: "Comprar",
         badgeText: "NOVO",
       }),
+      // O id do banner novo nasce no aparelho e vai junto.
+      { idDoFormulario: expect.any(String) },
     );
     expect(deleteStorageFile).not.toHaveBeenCalled();
   });
@@ -341,6 +343,8 @@ describe("novo editor de banners prontos", () => {
         imageUrl: "https://loja.test/ia.webp",
         templateType: "default",
       }),
+      // O id do banner novo nasce no aparelho e vai junto.
+      { idDoFormulario: expect.any(String) },
     );
   });
   async function enviarFoto() {
@@ -369,6 +373,8 @@ describe("novo editor de banners prontos", () => {
         productId: "produto-1",
         link: "/product-detail?id=produto-1",
       }),
+      // O id do banner novo nasce no aparelho e vai junto.
+      { idDoFormulario: expect.any(String) },
     );
     expect(deleteStorageFile).not.toHaveBeenCalled();
   });
@@ -382,6 +388,8 @@ describe("novo editor de banners prontos", () => {
     await clicar("Salvar Banner");
     expect(addBanner).toHaveBeenCalledWith(
       expect.objectContaining({ imageUrl: "https://loja.test/produto.webp" }),
+      // O id do banner novo nasce no aparelho e vai junto.
+      { idDoFormulario: expect.any(String) },
     );
     expect(deleteStorageFile).toHaveBeenCalledTimes(1);
   });
@@ -412,6 +420,8 @@ describe("novo editor de banners prontos", () => {
         await clicar("Salvar Banner");
         expect(addBanner).toHaveBeenCalledWith(
           expect.objectContaining({ productId: "p-20" }),
+          // O id do banner novo nasce no aparelho e vai junto.
+          { idDoFormulario: expect.any(String) },
         );
       }
     },

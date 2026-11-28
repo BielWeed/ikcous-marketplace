@@ -65,11 +65,13 @@ import {
   PRAZO_DA_EDGE_DE_ENVIO_DE_PUSH_MS,
   PRAZO_DA_GRAVACAO_DO_ENVIO_DE_PUSH_MS,
   aguardarComPrazo,
+  ehGravacaoIncerta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { supabase } from "@/lib/supabase";
 import { normalizeText } from "@/lib/utils";
+import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type { View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import {
@@ -533,6 +535,11 @@ export const AdminPushView = memo(function AdminPushView({
   // confere. O segundo toque no enviar, com o mesmo texto, segue: quem insiste
   // sabe o que faz (o aviso é de apoio, a leitura do texto é heurística).
   const textoJaAvisadoDeCupom = useRef<string | null>(null);
+  // Id do aviso avulso no sino (cliente específica sem aparelho), gerado no
+  // aparelho e o MESMO em toda nova tentativa do mesmo texto para a mesma
+  // cliente: se a conexão cai depois de o banco gravar, repetir bate na chave
+  // primária (23505 `notificacoes_pkey`) em vez de pôr um segundo aviso igual.
+  const idDoAvisoAvulso = useRef<{ chave: string; id: string } | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
   // O quarto contador (achado do revisor sobre o commit 6e406b4, em
   // 20/08/2026): nascia em `useState(0)` e o `if (!error) setSubCount(...)`
@@ -1274,6 +1281,18 @@ export const AdminPushView = memo(function AdminPushView({
         // para todo mundo, e os demais segmentos não têm um destinatário
         // único para gravar — por isso o comportamento deles não muda.
         if (targetUserId) {
+          const chaveDoAviso = JSON.stringify([
+            targetUserId,
+            notification.title,
+            notification.body,
+            notification.url,
+            segment,
+          ]);
+          const idDoAviso =
+            idDoAvisoAvulso.current?.chave === chaveDoAviso
+              ? idDoAvisoAvulso.current.id
+              : gerarUuidV4();
+          idDoAvisoAvulso.current = { chave: chaveDoAviso, id: idDoAviso };
           try {
             // Conserto 4 (revisão sobre o commit 8292d27, 20/08/2026): o
             // cliente do Supabase NÃO lança exceção quando o Postgrest
@@ -1283,6 +1302,7 @@ export const AdminPushView = memo(function AdminPushView({
             // e limpava o formulário mesmo sem ter gravado nada.
             const { error: inAppInsertError } = await gravarComPrazo(
               supabase.from("notificacoes").insert({
+                id: idDoAviso,
                 titulo: notification.title,
                 mensagem: notification.body,
                 tipo: "aviso",
@@ -1290,7 +1310,14 @@ export const AdminPushView = memo(function AdminPushView({
                 dados: { segment, action_url: notification.url },
               }),
             );
-            if (inAppInsertError) throw inAppInsertError;
+            // 23505 na chave primária: a tentativa anterior já gravou ESTE
+            // aviso (a resposta é que se perdeu na queda).
+            const jaGravado =
+              inAppInsertError?.code === "23505" &&
+              inAppInsertError.message?.includes('"notificacoes_pkey"');
+            if (inAppInsertError && !jaGravado) throw inAppInsertError;
+            // Registrado: o próximo envio, mesmo de texto igual, é aviso novo.
+            idDoAvisoAvulso.current = null;
             toast.error("Este cliente não tem aparelho inscrito para push", {
               description:
                 "A mensagem foi registrada como aviso dentro do app — ele vai ver na próxima vez que abrir a loja.",
@@ -1301,7 +1328,9 @@ export const AdminPushView = memo(function AdminPushView({
             toast.error(
               inAppErr instanceof PrazoEsgotado
                 ? "Sem resposta da rede. O aviso pode ter sido registrado: confira o histórico antes de repetir."
-                : "Não foi possível registrar o aviso para este cliente",
+                : ehGravacaoIncerta(inAppErr)
+                  ? "A conexão caiu e não sabemos se o aviso foi registrado. Pode enviar de novo: se ele já entrou, não se repete."
+                  : "Não foi possível registrar o aviso para este cliente",
             );
           }
         } else {

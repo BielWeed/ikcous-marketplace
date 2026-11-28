@@ -28,6 +28,7 @@ import { marcaDe, nomesDasCopias } from "@/lib/piramide-da-foto-nomes";
 import {
   aguardarComPrazo,
   ehConsultaSemResposta,
+  ehGravacaoIncerta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
@@ -54,6 +55,12 @@ const TEXTO_SEM_RESPOSTA_AO_EXCLUIR = `${SEM_RESPOSTA_DO_BANNER} o banner foi ex
 // trocar a ordem): mesma frase nos dois caminhos.
 const TEXTO_BANNER_EXCLUIDO_EM_OUTRO_APARELHO =
   "Este banner foi excluído em outro aparelho ou você não tem mais acesso a ele.";
+// A resposta do INSERT se perdeu (erro sem código): o banco pode ter gravado.
+const TEXTO_QUEDA_AO_ADICIONAR =
+  "A conexão caiu e não sabemos se o banner foi salvo. Conferimos a lista.";
+// A repetição provou que o banner existe (chave primária), mas a leitura dele
+// não voltou: a lista relida mostra como ficou.
+const TEXTO_JA_SALVO_SEM_LEITURA = `O banner já estava salvo. ${CONFIRA_A_LISTA}`;
 
 // FILA DA ORDEM NO BANCO. Arrumar as posições (`normalizeBannersOrder`) LÊ a
 // ordem e depois grava cada posição numa gravação separada; a troca de dois
@@ -512,18 +519,26 @@ export function useBanners(adminMode = false) {
     }
   };
 
-  const addBanner = async (banner: Omit<Banner, "id">) => {
+  // `idDoFormulario`: id gerado no aparelho quando o editor abriu em modo
+  // novo, o MESMO em toda nova tentativa. Se a conexão cai depois de o banco
+  // gravar, a repetição bate na chave primária (23505 `banners_pkey`) em vez
+  // de criar uma cópia que todas as clientes veriam. Mesmo molde do produto.
+  const addBanner = async (
+    banner: Omit<Banner, "id">,
+    { idDoFormulario }: { idDoFormulario?: string } = {},
+  ) => {
     if (!isAdmin)
       throw new Error(
         "Acesso negado: Apenas administradores podem adicionar banners.",
       );
     try {
-      const { data, error } = await aguardarComPrazo(
+      let { data, error } = await aguardarComPrazo(
         Promise.resolve(
           supabase
             .from("banners")
             .insert([
               {
+                ...(idDoFormulario ? { id: idDoFormulario } : {}),
                 image_url: banner.imageUrl,
                 ...(banner.desktopImageUrl !== undefined
                   ? { desktop_image_url: banner.desktopImageUrl || null }
@@ -557,7 +572,36 @@ export function useBanners(adminMode = false) {
         () => erroDeConsultaSemResposta(TEXTO_SEM_RESPOSTA_AO_ADICIONAR),
       );
 
+      let recuperadoAposConflito = false;
+      if (
+        idDoFormulario &&
+        error?.code === "23505" &&
+        error.message?.includes('"banners_pkey"')
+      ) {
+        // A tentativa anterior gravou e a resposta é que se perdeu. Só leia a
+        // linha: regravar poderia desfazer o que está no ar.
+        const relido = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("banners")
+              .select("*")
+              .eq("id", idDoFormulario)
+              .maybeSingle(),
+          ),
+          PRAZO_DA_GRAVACAO_DO_BANNER_MS,
+          () => erroDeConsultaSemResposta(TEXTO_JA_SALVO_SEM_LEITURA),
+        );
+        if (relido.error || !relido.data) {
+          throw erroDeConsultaSemResposta(TEXTO_JA_SALVO_SEM_LEITURA);
+        }
+        data = relido.data;
+        error = null;
+        recuperadoAposConflito = true;
+      }
+
       if (error) throw error;
+      if (!data)
+        throw erroDeConsultaSemResposta(TEXTO_SEM_RESPOSTA_AO_ADICIONAR);
 
       const newBanner: Banner = {
         id: data.id,
@@ -588,9 +632,10 @@ export function useBanners(adminMode = false) {
         showTextOverlay: data.show_text_overlay ?? true,
       };
 
+      // A lista relida depois da queda pode já trazer o banner recuperado.
       const updatedBanners = normalizeLocalBannersOrder(
         data.position as "home_top" | "home_middle" | "home_bottom",
-        [...banners, newBanner],
+        [...banners.filter((b) => b.id !== newBanner.id), newBanner],
         data.id,
       );
       // Criar um banner não prova que a leitura funciona: o aviso de leitura
@@ -603,16 +648,28 @@ export function useBanners(adminMode = false) {
         data.id,
       ).catch(() => {});
 
-      toast.success("Banner adicionado com sucesso!");
-      return data;
+      toast.success(
+        recuperadoAposConflito
+          ? "O banner já estava salvo."
+          : "Banner adicionado com sucesso!",
+      );
+      // `bannerGravado`: o que o banco guardou. Na recuperação pode diferir do
+      // que esta tentativa mandou (a lojista mexeu depois da queda).
+      return { ...data, recuperadoAposConflito, bannerGravado: newBanner };
     } catch (error) {
       console.error("Error adding banner:", error);
-      if (!aoFicarSemResposta(error))
+      if (aoFicarSemResposta(error)) throw error;
+      const sessao = mensagemDeErroDeSessaoDoPainel(error);
+      if (!sessao && ehGravacaoIncerta(error)) {
+        toast.warning(TEXTO_QUEDA_AO_ADICIONAR, { duration: 12_000 });
+        void fetchBanners(false, true);
+      } else {
         toast.error(
-          mensagemDeErroDeSessaoDoPainel(error)
+          sessao
             ? "Sua sessão expirou ou esta conta não tem permissão para salvar o banner. Se os dados do banner ainda estiverem na tela, copie o que digitou antes de sair da conta. Entre de novo e tente salvar o banner outra vez."
             : "Erro ao adicionar banner.",
         );
+      }
       throw error;
     }
   };

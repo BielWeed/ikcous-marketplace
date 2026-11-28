@@ -225,9 +225,18 @@ describe("AdminBannersView — imagem após falha ao salvar", () => {
         await esperarMicrotarefas();
       });
       expect(addBanner).toHaveBeenCalledTimes(1);
-      expect(toastError).toHaveBeenCalledWith(
-        "Erro ao salvar as configurações do banner.",
-      );
+      // Sem resposta o banner pode ter sido salvo: quem avisa é o hook ("não
+      // sabemos se o banner foi salvo") e a tela não afirma erro. A recusa
+      // definitiva continua dizendo que não salvou.
+      if (deveApagar) {
+        expect(toastError).toHaveBeenCalledWith(
+          "Erro ao salvar as configurações do banner.",
+        );
+      } else {
+        expect(toastError).not.toHaveBeenCalledWith(
+          "Erro ao salvar as configurações do banner.",
+        );
+      }
       const cancelar = localizarBotaoPorTexto(hospedeiro, "Cancelar");
       expect(cancelar).toBeDefined();
       await act(async () => {
