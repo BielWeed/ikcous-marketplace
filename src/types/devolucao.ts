@@ -285,6 +285,12 @@ export interface ResultadoConclusao {
    * em loja sem a migration: vale 0.
    */
   sem_tamanho: number;
+  /**
+   * Peças de produto EXCLUÍDO (o produto do item ou o pai da variação): voltaram
+   * para a loja, mas não para o estoque nem para a espera do tamanho
+   * (20261659000000). Ausente em loja sem a migration: vale 0.
+   */
+  fora_do_estoque: number;
 }
 
 /**

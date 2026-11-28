@@ -1,6 +1,8 @@
 -- 147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado: DEPOIS da 20261399995000. SO LEITURA, catalogo, rol fechado de 4 linhas.
 -- Corpo exato (md5 sem CR), assinatura/atributos e ACL iguais aos pre/pos-voos.
 -- Comportamento e fail-closed provados por tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs no CI.
+-- SUCESSORA: a 20261659000000 (o vale-troca nao e dinheiro no ranking de lucro) troca so o pm do vale nas duas copias do CTE devs;
+-- o corpo dela conta como o desta (a 215a confere qual).
 WITH fn AS (
   SELECT p.oid,
          md5(replace(p.prosrc, chr(13), '')) AS m,
@@ -26,7 +28,7 @@ WITH fn AS (
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo exato (md5)',
          '4f8fb94f6cb0018e10d0ef71541f1cbf',
-         COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m = '1624212a7096b6f49a80370b30191a15' THEN '4f8fb94f6cb0018e10d0ef71541f1cbf' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)',
          'atributos de sempre',

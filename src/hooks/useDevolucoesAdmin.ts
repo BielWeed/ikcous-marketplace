@@ -6,6 +6,7 @@ import {
   corpoDoErroDaEdge,
   formatarDia,
   formatarReais,
+  fraseDasPecasDeProdutoExcluido,
   lerDevolucaoDetalhe,
   lerListaAdmin,
   lerRespostaEtiquetaReversa,
@@ -56,6 +57,13 @@ const TEXTO_SEM_RESPOSTA_DA_ACAO =
   "Sem resposta da rede. Confira na ficha se a mudança apareceu antes de tentar de novo.";
 const TEXTO_SEM_RESPOSTA_DA_CONCLUSAO =
   "Sem resposta da rede. Confira na ficha se a devolução foi concluída e se o reembolso aparece antes de tentar de novo.";
+/**
+ * Dois aparelhos concluindo a mesma devolução (decisão do sócio, 28/11/2026):
+ * o segundo é recusado pelo banco. A tela relê a ficha e, se ela já está
+ * concluída, diz isso no lugar da frase crua da recusa — sem depender dela.
+ */
+export const TEXTO_CONCLUIDA_EM_OUTRO_APARELHO =
+  "Essa devolução já foi concluída em outro aparelho";
 
 /** Aviso fixo da ficha quando a geração do código de postagem é recusada. */
 export interface AvisoDaEtiquetaReversa {
@@ -428,6 +436,8 @@ export function useDevolucaoAdmin(
   const idRef = useRef(id);
   const aoMudarRef = useRef(aoMudar);
   const rodadaRef = useRef(0);
+  /** A ficha da ÚLTIMA leitura que valeu (a que foi para a tela); `null` antes de ler. */
+  const ultimaLidaRef = useRef<DevolucaoDetalhe | null>(null);
 
   useEffect(() => {
     idRef.current = id;
@@ -457,6 +467,7 @@ export function useDevolucaoAdmin(
         setErro(true);
         return;
       }
+      ultimaLidaRef.current = lida;
       setDetalhe(lida);
       setErro(false);
       const assinadas = await assinarFotos(lida.fotos);
@@ -544,13 +555,21 @@ export function useDevolucaoAdmin(
     }
   }, [carregar]);
 
-  /** Envelope comum: trava, RPC, aviso, releitura. */
+  /**
+   * Envelope comum: trava, RPC, aviso, releitura.
+   *
+   * `explicarRecusa` (opcional): na recusa do banco, a ficha é relida ANTES do
+   * aviso e a função recebe o que essa releitura trouxe (`null` se ela não
+   * chegou). Se devolver uma frase, ela substitui a do erro e a lista/sino são
+   * avisados (a devolução mudou de situação noutro lugar).
+   */
   const executar = useCallback(
     async <T>(
       qual: AcaoEmVoo,
       chamada: () => PromiseLike<{ data: unknown; error: unknown }>,
       ler: (data: unknown) => T | null,
       textoDoPrazo: string = TEXTO_SEM_RESPOSTA_DA_ACAO,
+      explicarRecusa?: (relida: DevolucaoDetalhe | null) => string | null,
     ): Promise<T | null> => {
       if (emVooRef.current) return null;
       emVooRef.current = true;
@@ -565,6 +584,20 @@ export function useDevolucaoAdmin(
         // quanto o prazo — a RPC pode ter gravado: segue o ramo do `catch`.
         if (ehConexaoCaiuSemResposta(error)) throw error;
         if (error) {
+          if (explicarRecusa) {
+            // Só vale a leitura feita DEPOIS da recusa: a da tela pode ser velha.
+            ultimaLidaRef.current = null;
+            await relerFicha();
+            const explicacao = explicarRecusa(ultimaLidaRef.current);
+            if (explicacao) {
+              toast.info(explicacao);
+              aoMudarRef.current?.();
+              pedirRecontagemDoSino();
+              return null;
+            }
+            toast.error(reaisComVirgula(mensagemDoErro(error, ERRO_GENERICO)));
+            return null;
+          }
           // O servidor escreve valores crus ("R$ 120.00"): vira real brasileiro.
           toast.error(reaisComVirgula(mensagemDoErro(error, ERRO_GENERICO)));
           await relerFicha();
@@ -833,15 +866,27 @@ export function useDevolucaoAdmin(
           }),
         lerResultadoConclusao,
         TEXTO_SEM_RESPOSTA_DA_CONCLUSAO,
+        // Recusa com a devolução já concluída: outro aparelho concluiu antes.
+        // Não depende do texto do erro — só da situação relida.
+        (relida) =>
+          relida?.status === "concluida"
+            ? TEXTO_CONCLUIDA_EM_OUTRO_APARELHO
+            : null,
       );
       if (!r) return null;
 
-      // A peça sem tamanho (20261642000000) não está à venda: conta à parte.
+      // A peça sem tamanho (20261642000000) e a de produto excluído
+      // (20261659000000) não estão à venda: cada uma conta à parte.
       const estoque =
         (r.reestocados > 0
           ? ` ${r.reestocados} ${r.reestocados === 1 ? "unidade voltou" : "unidades voltaram"} ao estoque.`
           : "") +
-        (r.sem_tamanho > 0 ? ` ${fraseDasPecasSemTamanho(r.sem_tamanho)}` : "");
+        (r.sem_tamanho > 0
+          ? ` ${fraseDasPecasSemTamanho(r.sem_tamanho)}`
+          : "") +
+        (r.fora_do_estoque > 0
+          ? ` ${fraseDasPecasDeProdutoExcluido(r.fora_do_estoque)}`
+          : "");
       const valor = formatarReais(r.valor_reembolso ?? 0);
 
       if (r.refund_id) {

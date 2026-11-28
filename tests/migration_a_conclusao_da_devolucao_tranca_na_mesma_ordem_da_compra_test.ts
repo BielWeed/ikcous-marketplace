@@ -203,30 +203,36 @@ Deno.test("395200: a vigente e' a ultima redefinicao de admin_devolucao_concluir
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
-  // A 20261642000000 (a peca que volta sem tamanho) e' a sucessora desta, a 20261653000000 (a peca da variacao desligada) a dela, e a
-  // 20261657000000 (o produto todo desligado) a da 1653: o rollback de cada uma devolve o corpo da anterior byte a byte.
+  // A 20261642000000 (a peca que volta sem tamanho) e' a sucessora desta, a 20261653000000 (a peca da variacao desligada) a dela, a
+  // 20261657000000 (o produto todo desligado) a da 1653 e a 20261659000000 (a peca de produto excluido) a da 1657: o rollback de cada
+  // uma devolve o corpo da anterior byte a byte.
   assert.equal(
     fontes.at(-1),
-    "20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql",
+    "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
     "outra migration redefine admin_devolucao_concluir depois das sucessoras",
   );
   assert.equal(
     fontes.at(-2),
-    "20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql",
+    "20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql",
     "outra migration redefine admin_devolucao_concluir entre as sucessoras",
   );
   assert.equal(
     fontes.at(-3),
-    "20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql",
+    "20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql",
     "outra migration redefine admin_devolucao_concluir entre as sucessoras",
   );
   assert.equal(
     fontes.at(-4),
+    "20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql",
+    "outra migration redefine admin_devolucao_concluir entre as sucessoras",
+  );
+  assert.equal(
+    fontes.at(-5),
     nome,
     "outra migration redefine admin_devolucao_concluir entre esta e a sucessora",
   );
   assert.equal(
-    fontes.at(-5),
+    fontes.at(-6),
     "20261343000000_o_reembolso_manual_respeita_a_reserva.sql",
   );
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");

@@ -33,6 +33,8 @@
 -- negativa depois do rollback, um negativo por linha). LIMITES: nao prova o COMPORTAMENTO (isso e' de
 -- tests/banco/reembolso-em-duvida-viva.cjs). Evidencia LOCAL nao prova a IKCOUS nem a Savy: so o run desta consulta
 -- contra o ref de cada loja.
+-- SUCESSORA: a 20261659000000 (a peca de produto excluido fica fora do estoque) mantem os corpos e so acrescenta o bloco do produto
+-- excluido; os corpos dela contam como os desta (a 215a confere qual).
 WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
   VALUES ('pode', 'public.order_refund__pode_ter_saido(uuid)', 'sql', 's', 'bdbb28b3d91588c8b10283d57bfb73d6'),
          ('espera', 'public.order_refund__liberavel_apos_espera(uuid)', 'sql', 's', 'cb37f24646fda24e1a51c8f01983e083'),
@@ -54,7 +56,7 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
          -- peca da variacao desligada) e' a sucessora da 642 e tambem (so acrescenta o bloco da variacao desligada no reestoque); a
          -- 20261657000000 (o produto todo desligado) e' a sucessora da 1653 e tambem (so acrescenta o sub-bloco do produto todo desligado).
          -- A 20261645000000 (o aviso do vale-troca diz que a loja combina) sucede o aviso da 241 trocando so a frase do vale.
-         CASE WHEN t.chave = 'concluir' AND md5(replace(p.prosrc, chr(13), '')) IN ('ea651d52157521c0fe7ffccc948b4b1a', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e', 'b55bf2488a1d5165afddaa4d103d3e18')
+         CASE WHEN t.chave = 'concluir' AND md5(replace(p.prosrc, chr(13), '')) IN ('ea651d52157521c0fe7ffccc948b4b1a', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e', 'b55bf2488a1d5165afddaa4d103d3e18', '9ec7a021b965b7abdc77bc4b2b900c35')
            THEN t.hash_desta
            WHEN t.chave = 'avisa' AND md5(replace(p.prosrc, chr(13), '')) = '68792e520aa47e6e62330718430d82a8'
            THEN t.hash_desta ELSE md5(replace(p.prosrc, chr(13), '')) END AS m,

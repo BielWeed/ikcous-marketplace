@@ -5,6 +5,9 @@
 -- SUCESSORA: a 20261653000000 (a peca da variacao desligada espera a lojista) mantem o ramo da peca sem tamanho e so acrescenta o bloco
 -- da variacao desligada antes dele; os corpos dela contam como os desta nas linhas do md5 (a 209a confere qual). A 20261657000000 (o
 -- produto todo desligado nao volta a venda) sucede a 20261653000000 e tambem mantem o ramo; os corpos dela contam igual (a 213a confere).
+-- da variacao desligada antes dele; os corpos dela contam como os desta nas linhas do md5 (a 209a confere qual).
+-- SUCESSORA: a 20261659000000 (a peca de produto excluido fica fora do estoque) mantem os corpos e so acrescenta o bloco do produto
+-- excluido; os corpos dela contam como os desta (a 215a confere qual).
 WITH fn AS (
   SELECT p.proname::text AS nome, md5(replace(p.prosrc, chr(13), '')) AS h, p.oid
     FROM pg_catalog.pg_proc p
@@ -34,20 +37,20 @@ WITH fn AS (
    WHERE to_regclass('public.pecas_sem_tamanho') IS NOT NULL
 ), itens(item, esperado, vivo, ok) AS (
   SELECT 'devolver_estoque: corpo exato (md5)', '80b1a90baf10d1b4c59484772e4864c4',
-         COALESCE((SELECT CASE WHEN h IN ('2913f3178498938d0a79e3b47a1084d1', 'c98a1d49d63e0174f4bdd95dcffc54f4') THEN '80b1a90baf10d1b4c59484772e4864c4' ELSE h END FROM fn WHERE nome = 'devolver_estoque'), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque') IN ('80b1a90baf10d1b4c59484772e4864c4', '2913f3178498938d0a79e3b47a1084d1', 'c98a1d49d63e0174f4bdd95dcffc54f4'), false)
+         COALESCE((SELECT CASE WHEN h IN ('2913f3178498938d0a79e3b47a1084d1', 'c98a1d49d63e0174f4bdd95dcffc54f4', 'e42582a472fd79ba987c11f161ad9a7a') THEN '80b1a90baf10d1b4c59484772e4864c4' ELSE h END FROM fn WHERE nome = 'devolver_estoque'), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque') IN ('80b1a90baf10d1b4c59484772e4864c4', '2913f3178498938d0a79e3b47a1084d1', 'c98a1d49d63e0174f4bdd95dcffc54f4', 'e42582a472fd79ba987c11f161ad9a7a'), false)
   UNION ALL
   SELECT 'admin_devolucao_concluir: corpo exato (md5)', '1a548896acb8248f1b1771d765c92fcb',
-         COALESCE((SELECT CASE WHEN h IN ('d146dc7aefb07a0bf580ed7265d9453e', 'b55bf2488a1d5165afddaa4d103d3e18') THEN '1a548896acb8248f1b1771d765c92fcb' ELSE h END FROM fn WHERE nome = 'admin_devolucao_concluir'), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir') IN ('1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e', 'b55bf2488a1d5165afddaa4d103d3e18'), false)
+         COALESCE((SELECT CASE WHEN h IN ('d146dc7aefb07a0bf580ed7265d9453e', 'b55bf2488a1d5165afddaa4d103d3e18', '9ec7a021b965b7abdc77bc4b2b900c35') THEN '1a548896acb8248f1b1771d765c92fcb' ELSE h END FROM fn WHERE nome = 'admin_devolucao_concluir'), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir') IN ('1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e', 'b55bf2488a1d5165afddaa4d103d3e18', '9ec7a021b965b7abdc77bc4b2b900c35'), false)
   UNION ALL
   SELECT 'pecas_sem_tamanho_pendentes: corpo exato (md5)', 'd6a9047fe26305d0c1446c284033245d',
          COALESCE((SELECT h FROM fn WHERE nome = 'pecas_sem_tamanho_pendentes'), 'AUSENTE'),
          COALESCE((SELECT h FROM fn WHERE nome = 'pecas_sem_tamanho_pendentes') = 'd6a9047fe26305d0c1446c284033245d', false)
   UNION ALL
   SELECT 'resolver_peca_sem_tamanho: corpo exato (md5)', 'cac3d04d9be77c7d4004003bb70561c5',
-         COALESCE((SELECT h FROM fn WHERE nome = 'resolver_peca_sem_tamanho'), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'resolver_peca_sem_tamanho') = 'cac3d04d9be77c7d4004003bb70561c5', false)
+         COALESCE((SELECT CASE WHEN h = '115378a67cd4f89b73129aeec4c46a7f' THEN 'cac3d04d9be77c7d4004003bb70561c5' ELSE h END FROM fn WHERE nome = 'resolver_peca_sem_tamanho'), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'resolver_peca_sem_tamanho') IN ('cac3d04d9be77c7d4004003bb70561c5', '115378a67cd4f89b73129aeec4c46a7f'), false)
   UNION ALL
   SELECT 'as duas RPCs novas: uma so cada, SECURITY DEFINER, search_path=public e EXECUTE so do authenticated (nem PUBLIC, anon ou service_role)', 'sim',
          CASE WHEN novas.certas THEN 'sim' ELSE 'nao' END,
