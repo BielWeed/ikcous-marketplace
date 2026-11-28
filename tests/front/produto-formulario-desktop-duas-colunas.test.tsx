@@ -385,6 +385,13 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "w-full rounded-xl border border-emerald-500/20 bg-zinc-950 py-3 pl-11 pr-4 text-base font-black tabular-nums text-emerald-500 shadow-inner transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/10 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg",
   "ml-1 mt-1 block text-[11px] font-bold text-red-500",
   "ml-1 mt-1 block text-[11px] font-bold text-emerald-500",
+  // Lote 607: aviso novo das variações presas no preço antigo (elemento novo;
+  // o resto do bloco segue congelado).
+  "ml-1 mt-1 space-y-1.5",
+  "block text-[11px] font-bold leading-tight text-amber-400",
+  "block text-[11px] font-bold leading-tight text-zinc-400",
+  "min-h-11 max-w-full rounded-xl border border-admin-border bg-admin-raised px-3 py-2 text-left text-[11px] font-bold text-white",
+  "border-emerald-500/30 text-emerald-400",
   "produto-campo space-y-1 max-[480px]:col-span-2",
   "ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500",
   "group relative",
@@ -571,7 +578,7 @@ const CLASSES_CELULAR_DO_BLOCO_BASE = [
   "produto-prever flex min-h-11 min-w-11 items-center justify-center rounded-full border border-solid border-admin-border-strong bg-admin-surface px-4 text-sm font-bold",
 ];
 const SHA256_CLASSES_CELULAR_BASE =
-  "da11a2d85ed73db366793a93fda1f24e3de6a6f7db44ec45b44c5dfd39c605c8";
+  "5d25f8ceec26f41eb7636566883ad28dc52e3fd0c08252740db8fe3404809072";
 const TOKENS_LG_DA_BASE = [
   "lg:grid-cols-12",
   "lg:col-span-8",
