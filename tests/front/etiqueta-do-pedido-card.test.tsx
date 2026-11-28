@@ -868,7 +868,8 @@ describe("EtiquetaDoPedidoCard", () => {
       shipping_label_url: "https://imprimir.teste/antiga",
       tracking_code,
     });
-    await abrirCard();
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(undefined, { onTrackingAtualizado });
     expect(linkDaEtiqueta()).toBe("https://imprimir.teste/antiga");
 
     pedidoState.data = pedido({
@@ -893,6 +894,11 @@ describe("EtiquetaDoPedidoCard", () => {
 
     expect(linkDaEtiqueta()).toBe("https://imprimir.teste/nova");
     expect(hospedeiro.textContent).toContain(tracking_code);
+    // A ficha pode estar com um código mais velho: recebe o salvo mesmo sem aviso.
+    expect(onTrackingAtualizado).toHaveBeenCalledExactlyOnceWith(
+      "11111111-1111-1111-1111-111111111111",
+      tracking_code,
+    );
     expect(toast.info).not.toHaveBeenCalled();
   });
 

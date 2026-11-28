@@ -820,8 +820,10 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
             return;
           }
           const codigoSalvo = pedidoRelido.tracking_code ?? "";
-          if (codigoSalvo === (pedido?.tracking_code ?? "")) return;
+          // A ficha pode ainda mostrar um código mais velho que o do cartão:
+          // repassa sempre o salvo; o aviso só sai se mudou o que a lojista via.
           onTrackingAtualizado?.(orderIdDoClique, codigoSalvo);
+          if (codigoSalvo === (pedido?.tracking_code ?? "")) return;
           toast.info(
             "O rastreio foi alterado em outro aparelho. Mostrando o que está salvo agora.",
           );
