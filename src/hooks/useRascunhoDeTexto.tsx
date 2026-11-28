@@ -22,13 +22,16 @@ import { CLASSES_DO_BOTAO_CANCELAR_DO_AVISO } from "@/components/ui/classes-do-a
 //   foi avisada, o aviso fica aberto com o recado e só o segundo toque troca.
 // - Quem chama apaga o rascunho ao SALVAR com sucesso (`apagarRascunho`).
 //   Desmontar a tela NÃO apaga nem grava: o "Descartar e Sair" do aviso de
-//   saída apaga em App.tsx (`descartarRascunhoDeTexto`).
+//   saída apaga em App.tsx (`descartarRascunhoDeTexto`) — menos o rascunho
+//   que ainda espera a decisão dela: esta tela o marca no aparelho
+//   (`marcarRascunhoDeTextoEsperandoDecisao`) e o descarte o deixa guardado.
 import {
   type NomeDoRascunhoDeTexto,
   apagarRascunhoDeTexto,
   chaveDoRascunhoDeTexto,
   gravarRascunhoDeTexto,
   lerRascunhoDeTexto,
+  marcarRascunhoDeTextoEsperandoDecisao,
 } from "@/lib/rascunho-de-texto";
 import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -77,9 +80,11 @@ export function useRascunhoDeTexto({
     if (!chave || !pronto) return;
     if (resolvidoRef.current === chave) return;
     ofertaPendenteRef.current = false;
+    marcarRascunhoDeTextoEsperandoDecisao(chave, false);
     const lido = lerRascunhoDeTexto(chave);
     const resolveu = () => {
       ofertaPendenteRef.current = false;
+      marcarRascunhoDeTextoEsperandoDecisao(chave, false);
       resolvidoRef.current = chave;
     };
     if (!lido) {
@@ -93,6 +98,7 @@ export function useRascunhoDeTexto({
     }
     // A pendência vem do aparelho: vale mesmo com a tela escondida.
     ofertaPendenteRef.current = true;
+    marcarRascunhoDeTextoEsperandoDecisao(chave, true);
     if (!ativo) return;
     const decidiu = resolveu;
     const mudouDepois = () => lido.base !== atual.current.salvo;
@@ -148,6 +154,13 @@ export function useRascunhoDeTexto({
     };
   }, [chave, pronto, ativo, idDoAviso]);
 
+  // A tela saiu (ou trocou de conta): a espera era desta montagem; a próxima
+  // a refaz a partir do aparelho.
+  useEffect(() => {
+    if (!chave) return;
+    return () => marcarRascunhoDeTextoEsperandoDecisao(chave, false);
+  }, [chave]);
+
   useEffect(() => {
     if (!chave) return;
     const guardar = () => {
@@ -174,6 +187,7 @@ export function useRascunhoDeTexto({
     if (!chave) return;
     apagarRascunhoDeTexto(chave);
     resolvidoRef.current = chave;
+    marcarRascunhoDeTextoEsperandoDecisao(chave, false);
     if (ofertaPendenteRef.current) {
       ofertaPendenteRef.current = false;
       toast.dismiss(idDoAviso);
