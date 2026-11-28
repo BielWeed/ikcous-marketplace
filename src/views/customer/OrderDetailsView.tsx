@@ -2433,6 +2433,7 @@ export function OrderDetailsView({
           elegibilidade={devolucaoDoProduto.elegibilidade}
           rotulosDosItens={rotulosPorLinhaDoPedido}
           pedidoComDesconto={order.discount > 0}
+          freteDoPedido={order.shipping}
           orderId={orderId}
           userId={contaDona.id}
           enderecoDaLoja={config.storeAddress ?? null}

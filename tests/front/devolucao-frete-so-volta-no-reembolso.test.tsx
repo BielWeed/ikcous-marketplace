@@ -5,6 +5,9 @@
 // servidor só gera dinheiro quando a solução é o reembolso
 // (`admin_devolucao_concluir`: troca e vale não têm `order_refunds`). Com troca
 // ou vale-troca, mesmo com o pedido voltando inteiro, a frase não pode aparecer.
+// E só se promete o frete que EXISTIU: pedido de retirada na loja ou de frete
+// grátis (frete R$ 0) não tem frete a devolver, e sem o valor do frete a folha
+// também não promete.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,6 +30,10 @@ vi.mock("@/lib/imagem-abre", () => ({ imagemAbre: async () => true }));
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const FRASE_DO_FRETE = "o frete que você pagou também é devolvido";
+const PROMESSA_DO_FRETE =
+  "Como o pedido inteiro é reembolsado, o frete que você pagou também é devolvido.";
+const REGRA_DO_FRETE =
+  "O frete de ida só é devolvido quando o pedido inteiro é reembolsado; peça trocada ou que virou vale-troca não entra nessa conta.";
 
 const ELEGIBILIDADE: ElegibilidadeDevolucao = {
   pode: true,
@@ -86,7 +93,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function montar() {
+async function montar(freteDoPedido?: number) {
   const { SolicitarDevolucaoSheet } = await import(
     "@/components/devolucao/SolicitarDevolucaoSheet"
   );
@@ -101,6 +108,7 @@ async function montar() {
         horarioDaLoja="Seg a Sex, 9h às 18h"
         solicitar={vi.fn()}
         enviarFoto={vi.fn()}
+        freteDoPedido={freteDoPedido}
       />,
     );
   });
@@ -147,8 +155,9 @@ async function escolherFoto() {
 async function ateARevisaoComDefeito(
   resolucao: "reembolso" | "troca" | "vale",
   quantidade = 2,
+  frete: number | "desconhecido" = 19.9,
 ) {
-  await montar();
+  await montar(frete === "desconhecido" ? undefined : frete);
   for (let i = 0; i < quantidade; i++) {
     await clicar(botao("Aumentar Tênis"));
   }
@@ -168,7 +177,7 @@ async function ateARevisaoComDefeito(
 describe("SolicitarDevolucaoSheet — o frete só volta no reembolso", () => {
   it("defeito, pedido inteiro, REEMBOLSO: promete o frete de volta", async () => {
     const texto = await ateARevisaoComDefeito("reembolso");
-    expect(texto).toContain(FRASE_DO_FRETE);
+    expect(texto).toContain(PROMESSA_DO_FRETE);
   });
 
   it("defeito, uma de duas unidades, REEMBOLSO: não promete frete de volta", async () => {
@@ -179,12 +188,23 @@ describe("SolicitarDevolucaoSheet — o frete só volta no reembolso", () => {
   it("defeito, pedido inteiro, TROCA: não promete frete de volta e explica a regra", async () => {
     const texto = await ateARevisaoComDefeito("troca");
     expect(texto).not.toContain(FRASE_DO_FRETE);
-    expect(texto).toContain("só é devolvido quando a solução é o reembolso");
+    expect(texto).toContain(REGRA_DO_FRETE);
   });
 
   it("defeito, pedido inteiro, VALE-TROCA: não promete frete de volta", async () => {
     const texto = await ateARevisaoComDefeito("vale");
     expect(texto).not.toContain(FRASE_DO_FRETE);
-    expect(texto).toContain("só é devolvido quando a solução é o reembolso");
+    expect(texto).toContain(REGRA_DO_FRETE);
+  });
+
+  it("defeito, pedido inteiro, REEMBOLSO, frete R$ 0 (retirada ou grátis): não fala de frete", async () => {
+    const texto = await ateARevisaoComDefeito("reembolso", 2, 0);
+    expect(texto).not.toContain(FRASE_DO_FRETE);
+    expect(texto).not.toContain("frete de ida");
+  });
+
+  it("defeito, pedido inteiro, REEMBOLSO, frete desconhecido: não promete frete de volta", async () => {
+    const texto = await ateARevisaoComDefeito("reembolso", 2, "desconhecido");
+    expect(texto).not.toContain(FRASE_DO_FRETE);
   });
 });

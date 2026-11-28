@@ -116,6 +116,12 @@ interface SolicitarDevolucaoSheetProps {
    * "valor estimado" e explica; sem (ou sem a informação), nada muda.
    */
   readonly pedidoComDesconto?: boolean;
+  /**
+   * Frete que a cliente pagou no pedido, em reais. A revisão só promete o
+   * frete de volta quando ele existiu (> 0): retirada na loja e frete grátis
+   * (R$ 0) não têm frete a devolver, e sem o valor a folha não promete nada.
+   */
+  readonly freteDoPedido?: number;
 }
 
 type Passo = 1 | 2 | 3 | 4;
@@ -496,6 +502,7 @@ function FluxoDaDevolucao({
   descartarFotos,
   rotulosDosItens,
   pedidoComDesconto = false,
+  freteDoPedido,
   aoMudarRascunho,
 }: SolicitarDevolucaoSheetProps & {
   readonly aoMudarRascunho: (estado: EstadoDoRascunho) => void;
@@ -1273,7 +1280,7 @@ function FluxoDaDevolucao({
             <NotaLegal
               tipo={tipo}
               comFrete={comFrete}
-              resolucao={resolucaoValida}
+              freteDoPedido={freteDoPedido}
               prazoArrependimento={politica.prazo_arrependimento_dias}
               prazoAte={
                 tipo === "arrependimento"
@@ -1484,13 +1491,13 @@ function LinhaDeRevisao({
 function NotaLegal({
   tipo,
   comFrete,
-  resolucao,
+  freteDoPedido,
   prazoArrependimento,
   prazoAte,
 }: Readonly<{
   tipo: ReturnType<typeof tipoPrevisto>;
   comFrete: boolean;
-  resolucao: ResolucaoDevolucao | null;
+  freteDoPedido: number | undefined;
   prazoArrependimento: number;
   prazoAte: string | null;
 }>) {
@@ -1503,13 +1510,15 @@ function NotaLegal({
   } else {
     texto = `Troca por tamanho ou gosto segue a política da loja${ate}.`;
   }
+  // Frete R$ 0 (retirada, grátis) não tem o que devolver: nenhuma frase de
+  // frete. Valor desconhecido com o pedido voltando inteiro: não promete.
+  const fretePago = freteDoPedido !== undefined && freteDoPedido > 0;
+  const semFrete = freteDoPedido === 0 || (comFrete && !fretePago);
   const frete =
-    tipo === "arrependimento" || tipo === "vicio"
+    (tipo === "arrependimento" || tipo === "vicio") && !semFrete
       ? comFrete
-        ? " Como o pedido volta inteiro, o frete que você pagou também é devolvido."
-        : resolucao === "troca" || resolucao === "vale"
-          ? " O frete de ida só é devolvido quando a solução é o reembolso e o pedido volta inteiro."
-          : " O frete de ida só é devolvido quando o pedido volta inteiro."
+        ? " Como o pedido inteiro é reembolsado, o frete que você pagou também é devolvido."
+        : " O frete de ida só é devolvido quando o pedido inteiro é reembolsado; peça trocada ou que virou vale-troca não entra nessa conta."
       : "";
   return (
     <p className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-900">

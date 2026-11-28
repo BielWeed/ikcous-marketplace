@@ -49,7 +49,11 @@ import {
 } from "@/lib/link-de-rastreio";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import type { DevolucaoDetalhe, ResumoDevolucao } from "@/types/devolucao";
+import type {
+  DevolucaoDetalhe,
+  ResumoDevolucao,
+  StatusDevolucao,
+} from "@/types/devolucao";
 import { haptic } from "@/utils/haptic";
 
 const INTERVALO_DO_REEMBOLSO_MS = 15_000;
@@ -143,7 +147,12 @@ export function DevolucaoDoPedidoCard({
 }: DevolucaoDoPedidoCardProps) {
   const [codigo, setCodigo] = useState("");
   const [enviando, setEnviando] = useState<"cancelar" | "envio" | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
+  // `statusNoEnvio`: o status do cartão quando o rastreio foi recusado. Se a
+  // releitura trouxe outro, a recusa só dizia que o cartão estava velho.
+  const [erro, setErro] = useState<{
+    texto: string;
+    statusNoEnvio?: StatusDevolucao;
+  } | null>(null);
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
   useVoltarFechaAFolha(confirmandoCancelar, () =>
     setConfirmandoCancelar(false),
@@ -198,6 +207,12 @@ export function DevolucaoDoPedidoCard({
     paraCentavos(atual.valor_reembolso) <
       paraCentavos(atual.valor_itens) + paraCentavos(atual.valor_frete_ida);
 
+  // O rastreio foi recusado ("só depois da aprovação") e a releitura trouxe
+  // outro status: a loja já recebeu, ou outro aparelho já informou o envio. O
+  // erro contradiria o status acima; quando ele continua igual, a recusa vale.
+  const envioJaAvancou =
+    erro?.statusNoEnvio !== undefined && erro.statusNoEnvio !== atual.status;
+
   async function copiar(valor: string, rotulo: string) {
     const ok = await copiarParaClipboard(valor);
     if (ok) {
@@ -220,7 +235,7 @@ export function DevolucaoDoPedidoCard({
     if (r.ok) {
       setCodigo("");
       toast.success("Devolução cancelada.");
-    } else setErro(r.erro);
+    } else setErro({ texto: r.erro });
   }
 
   // Na etiqueta reversa o código de postagem JÁ É o rastreio: "Já postei"
@@ -245,7 +260,9 @@ export function DevolucaoDoPedidoCard({
     // Sem espaços (inclusive do meio): a RPC só aceita letras, números e hífen.
     const codigoFinal = codigoDaEtiqueta ?? normalizarCodigoDeRastreio(codigo);
     if (codigoFinal.length < 5) {
-      setErro("Digite o código de rastreio do comprovante de postagem.");
+      setErro({
+        texto: "Digite o código de rastreio do comprovante de postagem.",
+      });
       return;
     }
     setEnviando("envio");
@@ -260,7 +277,7 @@ export function DevolucaoDoPedidoCard({
         "Pronto! Registramos o envio. A loja acompanha pela lista de Devoluções do painel.",
       );
     } else {
-      setErro(r.erro);
+      setErro({ texto: r.erro, statusNoEnvio: atual.status });
     }
   }
 
@@ -559,11 +576,16 @@ export function DevolucaoDoPedidoCard({
         </form>
       )}
 
-      {erro && (
-        <p role="alert" className="mt-3 text-sm font-semibold text-red-700">
-          {erro}
-        </p>
-      )}
+      {erro &&
+        (envioJaAvancou ? (
+          <p role="status" className="mt-3 text-sm font-semibold text-zinc-700">
+            Essa devolução já avançou; veja o status acima.
+          </p>
+        ) : (
+          <p role="alert" className="mt-3 text-sm font-semibold text-red-700">
+            {erro.texto}
+          </p>
+        ))}
 
       {acoes.includes("cancelar") && (
         <button
