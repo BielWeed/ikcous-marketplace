@@ -523,7 +523,7 @@ describe("OrderList — lista vazia", () => {
     expect(texto).toContain("Nenhum pedido");
     expect(texto).toContain("Nenhum pedido feito nesta conta.");
     expect(texto).toContain(
-      "Comprou sem entrar na conta? Esse pedido não aparece aqui nem na consulta: fale com a loja informando o número do pedido.",
+      "Comprou sem entrar na conta? Esse pedido não aparece nesta lista. Se você deixou seu e-mail, consulte com ele e o WhatsApp da compra. Se não deixou, fale com a loja e informe o número do pedido.",
     );
     const botao = hospedeiro.querySelector("button");
     expect(botao?.textContent).toBe("Ver produtos");

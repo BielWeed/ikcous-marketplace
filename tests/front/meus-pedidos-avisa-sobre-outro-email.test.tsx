@@ -10,16 +10,11 @@ import { OrderList } from "@/components/ui/custom/OrderList";
 // conta (o pedido não fica ligado a conta nenhuma) e depois criou a conta com
 // o mesmo e-mail.
 //
-// 27/11/2026 (2): a consulta só acha pedido pelo e-mail gravado nele ou pelo
-// da conta que comprou — a compra SEM conta não grava e-mail
-// (get_orders_by_otp_v2), então "Consultar pedido feito sem conta" prometia o
-// que não existe. Agora a frase diz que esse pedido não aparece nem na
-// consulta e leva à loja (WhatsApp, quando a loja tem); a consulta é para o
-// pedido feito em OUTRA conta.
+// O pedido sem conta pode ser consultado se tiver um e-mail salvo.
 const FRASE =
-  "Comprou sem entrar na conta? Esse pedido não aparece aqui nem na consulta: fale com a loja informando o número do pedido.";
-const CONSULTAR = "Consultar pedido feito em outra conta (outro e-mail)";
-const PROMESSA_FALSA = "Consultar pedido feito sem conta";
+  "Comprou sem entrar na conta? Esse pedido não aparece nesta lista. Se você deixou seu e-mail, consulte com ele e o WhatsApp da compra. Se não deixou, fale com a loja e informe o número do pedido.";
+const CONSULTAR = "Consultar pedido";
+const ROTULO_ANTIGO = "Consultar pedido feito em outra conta";
 const WHATSAPP = "Falar com a loja no WhatsApp";
 
 async function montar(props: Partial<Parameters<typeof OrderList>[0]>) {
@@ -74,7 +69,7 @@ it("com a consulta disponível, o botão a abre", async () => {
   try {
     const consultar = botao(CONSULTAR);
     expect(consultar).toBeDefined();
-    expect(tela.textContent).not.toContain(PROMESSA_FALSA);
+    expect(tela.textContent).not.toContain(ROTULO_ANTIGO);
     expect(consultar?.getAttribute("type")).toBe("button");
     await act(async () => consultar?.click());
     expect(onConsultarSemConta).toHaveBeenCalledTimes(1);

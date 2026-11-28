@@ -13,11 +13,8 @@
 // ao sair da conta, ao fechar e depois de 15 minutos (o mesmo prazo do
 // retrato de quem consulta sem conta).
 //
-// 27/11/2026 (2): a consulta só acha pedido com e-mail (o gravado nele ou o da
-// conta que comprou); a compra SEM conta não grava e-mail. O botão passa a ser
-// "Consultar pedido feito em outra conta (outro e-mail)", a frase diz que o
-// pedido feito sem conta não aparece nem na consulta, e o caminho fica num
-// rodapé fixo também quando a conta TEM pedidos.
+// A lista e o rodapé orientam quem comprou sem conta: com o e-mail salvo no
+// pedido, dá para usar a consulta; sem ele, o caminho é falar com a loja.
 //
 // Dublê: só o OrderSearch (botão que dispara `onOrdersFound` e expõe as props);
 // a OrderList é a de verdade — é nela que mora a frase e o botão.
@@ -118,9 +115,9 @@ vi.mock("@/components/ui/custom/OrderSearch", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const RETRATO = "guest_tracked_orders";
-const CONSULTAR = "Consultar pedido feito em outra conta (outro e-mail)";
+const CONSULTAR = "Consultar pedido";
 const FRASE_DO_PEDIDO_SEM_CONTA =
-  "Comprou sem entrar na conta? Esse pedido não aparece aqui nem na consulta: fale com a loja informando o número do pedido.";
+  "Comprou sem entrar na conta? Esse pedido não aparece nesta lista. Se você deixou seu e-mail, consulte com ele e o WhatsApp da compra. Se não deixou, fale com a loja e informe o número do pedido.";
 const FRASE_FALSA = "Comprou com outro e-mail? Entre com o usado na compra.";
 const achadoSemConta = {
   id: "00000000-0000-0000-0000-0000000abc12",
@@ -232,7 +229,7 @@ describe("CartView — conta sem pedidos consulta o pedido feito sem conta", () 
     expect(texto()).not.toContain("Você ainda não fez nenhum pedido");
     expect(texto()).toContain("Nenhum pedido feito nesta conta");
     expect(texto()).toContain(FRASE_DO_PEDIDO_SEM_CONTA);
-    expect(texto()).not.toContain("Consultar pedido feito sem conta");
+    expect(texto()).not.toContain("Consultar pedido feito em outra conta");
     expect(busca()).toBeNull();
     // Um caminho só: a lista vazia já o oferece, o rodapé não repete.
     expect(
@@ -355,9 +352,7 @@ describe("CartView — conta sem pedidos consulta o pedido feito sem conta", () 
     expect(botao(CONSULTAR)).toBeUndefined();
     expect(document.activeElement?.contains(busca())).toBe(true);
     expect(
-      hospedeiro.querySelector(
-        'section[aria-label="Consultar pedido feito em outra conta"]',
-      ),
+      hospedeiro.querySelector('section[aria-label="Consultar pedido"]'),
     ).not.toBeNull();
 
     await clicar(botao("Fechar consulta"));
