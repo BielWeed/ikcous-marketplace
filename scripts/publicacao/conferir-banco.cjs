@@ -3800,6 +3800,19 @@ const ROL_DA_211B = [
   "v_store_config: as 48 colunas da 20261310000000 (ou as 50 desta), security_invoker",
   "tr_a_loja_so_entrega_o_confirmado: ausente, ou o desta (reaplicacao)",
 ];
+// Lote 215 (20261659000000, a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking: os corpos de
+// devolver_estoque, admin_devolucao_concluir, resolver_peca_sem_tamanho e get_admin_analytics_v2). Somente catalogo: nenhuma le pedido,
+// devolucao, produto nem peca e nenhuma chama funcao. A 215a espera os quatro corpos desta (md5); a 215b, os vigentes (1653, 1642 e
+// 3995) ou os desta. Rol de 7 nas duas.
+const ROL_DA_215 = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolver_estoque: corpo esperado (md5)",
+  "admin_devolucao_concluir: corpo esperado (md5)",
+  "resolver_peca_sem_tamanho: corpo esperado (md5)",
+  "get_admin_analytics_v2: corpo esperado (md5)",
+  "as quatro funcoes: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, assinatura e EXECUTE de sempre",
+  "produtos (id, deleted_at) e product_variants (id, product_id): as colunas que a regra nova le",
+];
 // Lote 212 (20261656000000, a visitante deixa o e-mail depois da compra: nascem informar_email_da_visitante, a porta da tela
 // "Pedido recebido!", e reivindicar_comprovante_da_visitante, a reserva do comprovante com o teto valendo tambem para pedido pago).
 // Somente catalogo: nenhuma le pedido nem contador e nenhuma chama funcao. A 212a espera as duas com o corpo desta (md5); a 212b, as
@@ -3868,6 +3881,10 @@ const ROL_FECHADO_POR_CONSULTA = {
     ROL_DA_216,
   "216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente":
     ROL_DA_216,
+  "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado":
+    ROL_DA_215,
+  "215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente":
+    ROL_DA_215,
   "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado": ROL_DA_214,
   "214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente": ROL_DA_214,
   "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado":

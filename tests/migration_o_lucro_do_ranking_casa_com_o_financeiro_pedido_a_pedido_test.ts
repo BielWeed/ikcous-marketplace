@@ -251,7 +251,8 @@ Deno.test("3995: as consultas das antecessoras aceitam o corpo novo como sucesso
   const a146 = ler(
     "scripts/publicacao/consultas/146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado.sql",
   );
-  assert.ok(a146.includes(`f.m IN ('${H.antes}', '${H.depois}')`));
+  // sem o parentese de fechamento: a 20261659000000 acrescenta o corpo dela depois do da 3995 (a lista cresce no fim)
+  assert.ok(a146.includes(`f.m IN ('${H.antes}', '${H.depois}'`));
   const a147b = ler(
     "scripts/publicacao/consultas/147b-antes-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-base-vigente.sql",
   );
@@ -266,7 +267,8 @@ Deno.test("3995: as consultas das antecessoras aceitam o corpo novo como sucesso
   ]) {
     const consulta = ler(`scripts/publicacao/consultas/${arq}.sql`);
     assert.ok(
-      consulta.includes(`'${H.antes}', '${H.depois}')`),
+      // sem o parentese de fechamento: a 20261659000000 acrescenta o corpo dela depois do da 3995 (a lista cresce no fim)
+      consulta.includes(`'${H.antes}', '${H.depois}'`),
       `${arq}: tem de aceitar o corpo da 3995 depois do da 3994`,
     );
   }

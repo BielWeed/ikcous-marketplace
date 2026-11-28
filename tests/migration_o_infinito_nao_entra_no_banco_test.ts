@@ -134,6 +134,12 @@ const SUCESSORAS = [
     versao: "20261658000000",
     consulta: "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
   },
+  // 20261659000000: a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking.
+  {
+    versao: "20261659000000",
+    consulta:
+      "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
+  },
   // 20261660000000: o caixa de ontem aberto nao some do saldo (fin_conta_salvar, fin_caixa_movimentar_com_chave e fin_lancamento_cancelar).
   {
     versao: "20261660000000",

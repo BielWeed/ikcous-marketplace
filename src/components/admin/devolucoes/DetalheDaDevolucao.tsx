@@ -13,10 +13,12 @@ import { toast } from "sonner";
 
 import { useDevolucaoAdmin } from "@/hooks/useDevolucoesAdmin";
 import { useItensDaDevolucaoQueEsperamTamanho } from "@/hooks/usePecasSemTamanho";
+import { useItensDeProdutoExcluido } from "@/hooks/useProdutosExcluidosDaDevolucao";
 import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formatarDataHoraBrasilia } from "@/lib/data-da-loja";
 import {
+  TEXTO_ITEM_DE_PRODUTO_EXCLUIDO,
   formatarDia,
   formatarReais,
   notaDoEventoParaLoja,
@@ -151,6 +153,9 @@ export function DetalheDaDevolucao({
     (item: ItemDevolvido) => itemEsperaTamanho(item, pecasQueEsperam),
     [pecasQueEsperam],
   );
+  // A peça de produto que JÁ estava excluído na volta não foi ao estoque
+  // (20261659000000): o carimbo da volta é gravado, o estoque não.
+  const deProdutoExcluido = useItensDeProdutoExcluido(itensDaFicha);
 
   const whatsapp = linkWhatsappDoCliente(detalhe?.pedido?.whatsapp);
   const dentroDoPrazo = detalhe?.prazo_ate
@@ -362,9 +367,11 @@ export function DetalheDaDevolucao({
                         un.
                         {item.condicao && ` · ${rotuloCondicao(item.condicao)}`}
                         {item.reestocado_em &&
-                          (esperaTamanho(item)
-                            ? ` · ${TEXTO_ITEM_ESPERANDO_TAMANHO}`
-                            : " · voltou ao estoque")}
+                          (deProdutoExcluido(item)
+                            ? ` · ${TEXTO_ITEM_DE_PRODUTO_EXCLUIDO}`
+                            : esperaTamanho(item)
+                              ? ` · ${TEXTO_ITEM_ESPERANDO_TAMANHO}`
+                              : " · voltou ao estoque")}
                       </p>
                       {item.ja_pedido_e_nao_veio && (
                         <p

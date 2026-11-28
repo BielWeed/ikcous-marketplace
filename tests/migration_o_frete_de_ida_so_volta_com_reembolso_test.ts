@@ -265,8 +265,8 @@ Deno.test("1658: a funcao que devolve o dinheiro nao e' tocada; a migration e' a
 
 Deno.test("1658: a cadeia de posteriores e o kit de publicacao conhecem a migration", () => {
   const suc = ler("tests/banco/sucessoras-da-99.cjs");
-  // A lista vai na ordem REAL de aplicacao (IKCOUS e Savy: 1654 -> 1657 -> 1656 -> 1655 -> 1658); so o que foi aplicado
-  // depois desta (a 20261660000000 e a 20261663000000) vem atras dela.
+  // A lista vai na ordem de NOME de arquivo (a que o CI aplica; o teste da grade do CRM cobra isso). Nas lojas a 1660 entrou
+  // antes da 1659, mas as duas mexem em funcoes diferentes; so as posteriores a esta (1659, 1660 e 1663) vem atras dela.
   const inicio = suc.indexOf("const NOMES = [");
   const ordem = [
     ...suc
@@ -276,7 +276,7 @@ Deno.test("1658: a cadeia de posteriores e o kit de publicacao conhecem a migrat
   assert.ok(ordem.includes(nome.slice(0, 14)), "na lista de sucessoras");
   assert.deepEqual(
     ordem.slice(ordem.indexOf(nome.slice(0, 14)) + 1),
-    ["20261660000000", "20261663000000"],
+    ["20261659000000", "20261660000000", "20261663000000"],
     "so a aplicada depois desta vem atras na lista de sucessoras",
   );
   assert.ok(suc.includes(`["${nome}", 2]`), "dois pares no pre-voo");

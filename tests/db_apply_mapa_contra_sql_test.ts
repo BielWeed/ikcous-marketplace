@@ -864,3 +864,109 @@ Deno.test("1642 e 1653: o corpo da 20261657000000 que as sucede não vira diverg
   // nao confere o ELSIF, mas tem de passar contra o corpo da 1657 igual).
   assertEquals(conferidas, 4);
 });
+
+// --------------------------------------------------------------------------
+// A 1642, a 1653 e a 1657 contra o corpo da 1659, que as sucede.
+//
+// A 20261659000000 redefine devolver_estoque, admin_devolucao_concluir e
+// resolver_peca_sem_tamanho. No retorno da conclusao ela poe
+// "- v_fora_do_estoque" entre o "'reestocados', v_reestocados - v_sem_tamanho"
+// e o "'sem_tamanho', v_sem_tamanho" que a 1642 e a 1653 declaravam como UM
+// marcador contiguo: no corpo vivo depois dela ele casava 0x, e um lote que
+// aplica a antecessora junto com a 1659 saia "AUSENTE" depois do COMMIT. O
+// marcador virou as duas metades, 1x cada, e tirar qualquer uma reprova.
+//
+// A troca "v_di.variant_id := NULL;" SAIU da entrada da 1653: o bloco da 1659
+// tambem anula a variacao do item de produto excluido, e nenhum texto contiguo
+// casa 1x no corpo da 1653, no da 1657 e no da 1659 ao mesmo tempo (a 1657
+// moveu a troca para dentro do sub-bloco dela, com outro recuo e outro
+// vizinho). A loja nova aplica a cadeia toda numa rodada, entao o lote
+// 1653..1659 tem de sair com 0 divergencia; o controle abaixo reprova se o
+// marcador voltar ao mapa.
+// --------------------------------------------------------------------------
+
+Deno.test("1642, 1653 e 1657: o corpo da 20261659000000 que as sucede nao vira divergencia falsa (0 divergencia no lote)", () => {
+  const SUCESSORA =
+    "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql";
+  const ANTECESSORAS = [
+    "20261642000000_a_peca_que_volta_sem_tamanho_espera_a_lojista.sql",
+    "20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql",
+    "20261657000000_o_produto_todo_desligado_nao_volta_a_venda.sql",
+  ];
+  const REDEFINIDAS = new Set([
+    "devolver_estoque",
+    "admin_devolucao_concluir",
+    "resolver_peca_sem_tamanho",
+  ]);
+  const REESTOCADOS = "'reestocados', v_reestocados - v_sem_tamanho";
+  const SEM_TAMANHO = "'sem_tamanho', v_sem_tamanho";
+  const TROCA_DA_1653 = "v_di.variant_id := NULL;";
+  const mapa = new Map(Object.entries(VERIFICACOES));
+  let conferidas = 0;
+  let metades = 0;
+  let trocaConferida = false;
+  for (const arquivo of ANTECESSORAS) {
+    for (const checagem of checagensDe(mapa.get(arquivo))) {
+      if (!REDEFINIDAS.has(checagem.funcao)) continue;
+      conferidas += 1;
+      const corpo1659 = corpoDaMigration(SUCESSORA, checagem.funcao);
+      const textos = checagem.esperado.map((m) =>
+        typeof m === "string" ? m : m.texto,
+      );
+      const avaliacao = avaliarChecagem(corpo1659, checagem);
+      // 0 divergencia: toda checagem das antecessoras verifica contra o corpo da 1659.
+      assertEquals(
+        avaliacao.situacao,
+        "verificada",
+        `${arquivo} / ${checagem.funcao} contra o corpo da 1659:\n${avaliacao.linhas.join("\n")}`,
+      );
+      if (
+        arquivo.startsWith("20261653000000") &&
+        checagem.funcao === "admin_devolucao_concluir"
+      ) {
+        trocaConferida = true;
+        // CONTROLE: a troca nao esta no mapa; se voltar (1x), o lote reprova, porque ela casa 2x no corpo da 1659.
+        assert(
+          !textos.includes(TROCA_DA_1653),
+          "a troca da 1653 voltou ao mapa",
+        );
+        assertEquals(conferirMarcador(corpo1659, TROCA_DA_1653).achou, 2);
+        assertEquals(
+          avaliarChecagem(corpo1659, {
+            ...checagem,
+            esperado: [
+              ...checagem.esperado,
+              { texto: TROCA_DA_1653, vezes: 1 },
+            ],
+          }).situacao,
+          "falhou",
+        );
+      }
+      if (!textos.includes(REESTOCADOS)) continue;
+      metades += 1;
+      // As duas metades, separadas, no corpo da 1659 (a premissa) e 1x cada.
+      assert(textos.includes(SEM_TAMANHO), `${arquivo}: sem a outra metade`);
+      assertEquals(conferirMarcador(corpo1659, REESTOCADOS).achou, 1);
+      assertEquals(conferirMarcador(corpo1659, SEM_TAMANHO).achou, 1);
+      assert(
+        !corpo1659.includes(`${REESTOCADOS}, ${SEM_TAMANHO}`),
+        "a premissa: a 1659 separa as metades",
+      );
+      // CONTROLES: o reestocados sem descontar o cantinho, e o retorno sem o sem_tamanho, reprovam.
+      for (const quebrado of [
+        corpo1659.replace(REESTOCADOS, "'reestocados', v_reestocados"),
+        corpo1659.replace(SEM_TAMANHO, "'sem_tamanho', 0"),
+      ])
+        assertEquals(
+          avaliarChecagem(quebrado, checagem).situacao,
+          "falhou",
+          `${arquivo}: o retorno quebrado passaria`,
+        );
+    }
+  }
+  // 1642: devolver, concluir e resolver; 1653: devolver e concluir; 1657: devolver e concluir.
+  assertEquals(conferidas, 7);
+  // O retorno da conclusao: na 1642 e na 1653.
+  assertEquals(metades, 2);
+  assert(trocaConferida, "a conclusao da 1653 nao foi conferida");
+});

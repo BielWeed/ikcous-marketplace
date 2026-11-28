@@ -495,6 +495,98 @@ describe("AcoesDaDevolucao — valor sugerido e itens que não voltaram", () => 
     );
   });
 
+  // Vale-troca: não há campo (o app não emite o vale), mas a lojista precisa
+  // de um número para criar o cupom. Antes o único número era "Itens R$ X",
+  // que contava o item marcado "Não veio"; agora o vale mostra o valor
+  // sugerido com a MESMA conta do reembolso e o mesmo aviso.
+  const valeSugerido = () =>
+    hospedeiro.querySelector('[data-testid="valor-sugerido-do-vale"]')
+      ?.textContent ?? "";
+
+  it("vale com item 'Não veio': o valor sugerido do vale desconta o item e mostra o mesmo aviso", async () => {
+    await abrirConclusao(detalheDe());
+    await clicar(condicaoDe("Camiseta azul", "Nova, sem uso"));
+    await clicar(condicaoDe("Calça preta", "Não veio"));
+    await clicar(botao("Vale-troca"));
+
+    expect(campoValor()).toBeNull();
+    expect(valeSugerido()).toContain("Valor sugerido do vale");
+    expect(valeSugerido()).toContain("100,00");
+    expect(valeSugerido()).not.toContain("200,00");
+    const texto = aviso()?.textContent ?? "";
+    expect(texto).toContain("Calça preta");
+    expect(texto).toContain("Não veio");
+    expect(texto).toContain("100,00");
+  });
+
+  it("vale com tudo voltando: o sugerido é o cheio, com o frete de ida quando a solicitação o guarda, e sem aviso", async () => {
+    await abrirConclusao(
+      detalheDe(
+        {
+          valor_itens: 100,
+          valor_frete_ida: 20,
+          itens: [
+            item("a", "Camiseta azul", 1, 50),
+            item("b", "Calça preta", 1, 50),
+          ],
+        },
+        { total: 120, shipping: 20 },
+      ),
+    );
+    await clicar(condicaoDe("Camiseta azul", "Nova, sem uso"));
+    await clicar(condicaoDe("Calça preta", "Nova, sem uso"));
+    await clicar(botao("Vale-troca"));
+
+    expect(valeSugerido()).toContain("120,00");
+    expect(valeSugerido()).toContain("frete de ida");
+    expect(aviso()).toBeNull();
+
+    // Um item não veio: sai o item e sai o frete, como no reembolso.
+    await clicar(condicaoDe("Calça preta", "Não veio"));
+    expect(valeSugerido()).toContain("50,00");
+    expect(valeSugerido()).not.toContain("frete de ida");
+    expect(aviso()?.textContent).toContain(
+      "Frete não incluído: nem todos os itens voltaram.",
+    );
+  });
+
+  it("vale: o saldo do pedido limita o sugerido, como no reembolso", async () => {
+    rpc.mockResolvedValue({
+      data: {
+        total: 200,
+        valor_estornado: 140,
+        em_voo: 0,
+        em_duvida: 0,
+        manual: 0,
+        disponivel: 60,
+        reservado_por_fora: 0,
+        linhas: [],
+      },
+      error: null,
+    });
+    await abrirConclusao(detalheDe());
+    await clicar(condicaoDe("Camiseta azul", "Nova, sem uso"));
+    await clicar(condicaoDe("Calça preta", "Nova, sem uso"));
+    await clicar(botao("Vale-troca"));
+
+    expect(valeSugerido()).toContain("60,00");
+    expect(valeSugerido()).toContain(
+      "o que ainda pode ser devolvido deste pedido",
+    );
+  });
+
+  it("vale: nada é enviado como valor (o app não emite o vale)", async () => {
+    await abrirConclusao(detalheDe());
+    await clicar(condicaoDe("Camiseta azul", "Nova, sem uso"));
+    await clicar(condicaoDe("Calça preta", "Não veio"));
+    await clicar(botao("Vale-troca"));
+    await clicar(botao("Concluir devolução"));
+
+    expect(concluir).toHaveBeenCalledWith(
+      expect.objectContaining({ resolucao: "vale", valorReembolso: null }),
+    );
+  });
+
   it("troca ou vale: não há campo de valor, então não há aviso de reembolso", async () => {
     await abrirConclusao(detalheDe());
     await clicar(condicaoDe("Calça preta", "Não veio"));

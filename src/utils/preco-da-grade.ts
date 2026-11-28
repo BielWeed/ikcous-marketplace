@@ -7,8 +7,11 @@
  * variação, ou o do produto quando ela está em Auto" (`preco-vendido.ts`).
  *
  * O que ela decide, só na hora de entregar as linhas ao formulário:
- *  - produto JÁ com preço: nada muda. O que se digita na grade vale só para as
- *    combinações novas (preço próprio) e o preço do produto fica como está;
+ *  - produto JÁ com preço: o preço do produto fica como está. A linha com o
+ *    MESMO valor do produto (em centavos) vira Auto e passa a seguir o preço
+ *    dele; as de valor diferente ganham preço próprio. Sem isso o "89,90" em
+ *    todas as linhas gravava 89,90 em cada uma, e baixar o Preço de Venda
+ *    depois não mudava o que a loja cobrava (sócio, 28/11/2026);
  *  - produto SEM preço e TODAS as linhas com preço maior que zero: o produto
  *    recebe o MENOR preço, e as linhas iguais a ele viram Auto (seguem o
  *    produto); as mais caras mantêm o preço próprio;
@@ -81,8 +84,19 @@ export function resolverPrecoDaGrade(
   const proprios = precosDigitados.map(precoDaLinha);
 
   // Produto que já tem um valor no campo (mesmo um inválido): a grade não
-  // escreve por cima do que a lojista digitou.
-  if (precoDoProduto.trim() !== "") return { precos: proprios };
+  // escreve por cima do que a lojista digitou. Com um preço de verdade (maior
+  // que zero), a linha igual a ele segue o produto em vez de copiar o valor.
+  if (precoDoProduto.trim() !== "") {
+    const doProduto = precoDaLinha(precoDoProduto);
+    if (doProduto === undefined || doProduto <= 0) return { precos: proprios };
+    return {
+      precos: proprios.map((preco) =>
+        preco !== undefined && emCentavos(preco) === emCentavos(doProduto)
+          ? undefined
+          : preco,
+      ),
+    };
+  }
 
   const positivos: number[] = [];
   for (const preco of proprios) {

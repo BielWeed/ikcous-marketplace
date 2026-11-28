@@ -390,6 +390,8 @@ on:
       - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
       - "scripts/publicacao/consultas/214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado.sql"
       - "scripts/publicacao/consultas/214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente.sql"
+      - "scripts/publicacao/consultas/215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado.sql"
+      - "scripts/publicacao/consultas/215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente.sql"
       - "scripts/publicacao/consultas/216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado.sql"
       - "scripts/publicacao/consultas/216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente.sql"
       - "scripts/publicacao/consultas/219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado.sql"
@@ -758,6 +760,8 @@ on:
       - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
       - "scripts/publicacao/consultas/214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado.sql"
       - "scripts/publicacao/consultas/214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente.sql"
+      - "scripts/publicacao/consultas/215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado.sql"
+      - "scripts/publicacao/consultas/215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente.sql"
       - "scripts/publicacao/consultas/216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado.sql"
       - "scripts/publicacao/consultas/216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente.sql"
       - "scripts/publicacao/consultas/219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado.sql"
@@ -1661,6 +1665,13 @@ jobs:
       - name: Prova viva do produto todo desligado que nao volta a venda (20261657000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-produto-todo-desligado-nao-volta-a-venda-viva.cjs
+      # Migration 20261659000000 (a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking): devolver_estoque
+      # pula o item de produto excluido, admin_devolucao_concluir o conta em fora_do_estoque (carimbo reestocado_em mantido),
+      # resolver_peca_sem_tamanho recusa o tamanho de produto excluido e get_admin_analytics_v2 nao desconta o vale (Financeiro como
+      # oraculo). Controle com os corpos anteriores, mutantes, reaplicar 2x e CRLF, rollback byte a byte, pre-voo e 215a/215b. CLONE proprio.
+      - name: Prova viva da peca de produto excluido e do vale no ranking (20261659000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-de-produto-excluido-viva.cjs
       # Migration 20261660000000 (o caixa de ontem aberto nao some do saldo): fin_conta_salvar recusa o saldo inicial depois do dia de um caixa
       # aberto que lanca na conta; fin_caixa_movimentar_com_chave recusa a sangria/suprimento para conta que so conta o saldo depois desse dia
       # (e le a contrapartida FOR SHARE); fin_lancamento_cancelar trava a sessao antes de conferir se fechou. Cenarios do defeito (quebra falsa,
