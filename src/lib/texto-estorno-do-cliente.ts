@@ -202,33 +202,55 @@ const ESTADOS_EM_CURSO: readonly StatusDevolucaoDoCliente[] = [
   "em_processamento",
 ];
 
-/** Os três desfechos possíveis de "o dinheiro está em movimento?" — a
- * pergunta que `textoDevolucao` e o card de `OrderDetailsView`
- * (`cancelledDescription`) faziam cada um à sua maneira até a rodada 4 do
- * laudo Opus PR#457 (decisão da hub: "3ª ocorrência = olhar a ESTRUTURA").
- * Precedência: EM CURSO vence CONCLUÍDA vence SEM DEVOLUÇÃO AUTOMÁTICA — uma
- * linha `solicitado` ao lado de uma `concluido` antiga ainda está em
- * movimento; `falhou`/`recusado` sozinhas (ou nenhuma linha) significam que o
- * automático desistiu. */
+/** Uma tentativa em curso vence qualquer tentativa antiga. Sem tentativa
+ * ativa, uma falha com confirmação parcial no app pede orientação da loja:
+ * o histórico lido pela cliente não inclui o que foi devolvido por fora. */
 type DesfechoDaDevolucao =
   | "em_curso"
+  | "parcial_com_falha"
   | "concluida"
   | "sem_devolucao_automatica";
 
+function totalConfirmadoDaDevolucao(linhas: LinhaDevolucaoDoCliente[]): number {
+  return linhas.reduce(
+    (soma, linha) => soma + (linha.status === "concluido" ? linha.amount : 0),
+    0,
+  );
+}
+
 export function desfechoDaDevolucao(
   linhas: LinhaDevolucaoDoCliente[],
+  totalDoPedido?: number,
 ): DesfechoDaDevolucao {
   const emCurso = linhas.some((linha) =>
     ESTADOS_EM_CURSO.includes(linha.status),
   );
   if (emCurso) return "em_curso";
   const temConcluida = linhas.some((linha) => linha.status === "concluido");
-  if (temConcluida) return "concluida";
+  if (temConcluida) {
+    if (
+      totalDoPedido !== undefined &&
+      linhas.some(
+        (linha) => linha.status === "falhou" || linha.status === "recusado",
+      )
+    ) {
+      const confirmado = totalConfirmadoDaDevolucao(linhas);
+      // Compara em centavos para não tratar ruído de ponto flutuante como parcial.
+      if (
+        confirmado > 0 &&
+        Math.round(confirmado * 100) < Math.round(totalDoPedido * 100)
+      ) {
+        return "parcial_com_falha";
+      }
+    }
+    return "concluida";
+  }
   return "sem_devolucao_automatica";
 }
 
 interface ParametrosTextoDevolucao {
   linhas: LinhaDevolucaoDoCliente[];
+  totalDoPedido?: number;
   cancelledAfterShipping: boolean;
   returnedToSellerAt?: string | null;
   metodoOnline?: Order["metodoOnline"];
@@ -248,21 +270,25 @@ interface ParametrosTextoDevolucao {
  */
 export function textoDevolucao({
   linhas,
+  totalDoPedido,
   cancelledAfterShipping,
   returnedToSellerAt,
   metodoOnline,
   retiradaNaLoja = false,
 }: ParametrosTextoDevolucao): string | null {
-  const desfecho = desfechoDaDevolucao(linhas);
+  const desfecho = desfechoDaDevolucao(linhas, totalDoPedido);
 
   if (desfecho === "em_curso") {
     return comOrientacaoDaDevolucao(TEXTO_EM_ANDAMENTO, metodoOnline);
   }
 
+  if (desfecho === "parcial_com_falha") {
+    const confirmado = totalConfirmadoDaDevolucao(linhas);
+    return `${formatCurrency(confirmado)} devolvidos pelo app. Fale com a loja para confirmar se falta algum valor.`;
+  }
+
   if (desfecho === "concluida") {
-    const concluidas = linhas.filter((linha) => linha.status === "concluido");
-    const total = concluidas.reduce((soma, linha) => soma + linha.amount, 0);
-    return `Devolução concluída: ${formatCurrency(total)}`;
+    return `Devolução concluída: ${formatCurrency(totalConfirmadoDaDevolucao(linhas))}`;
   }
 
   // desfecho === "sem_devolucao_automatica": sem linha nenhuma, ou só

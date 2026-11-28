@@ -53,7 +53,11 @@ const pedidoBase: Order = {
 
 let pedidoAtual: Order = pedidoBase;
 let linhasDeDevolucao: Array<Record<string, unknown>> = [];
-const consultasAoLivro = vi.fn();
+type RespostaDoLivro = {
+  data: typeof linhasDeDevolucao | null;
+  error: Error | null;
+};
+const consultasAoLivro = vi.fn<() => Promise<RespostaDoLivro>>();
 
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
@@ -77,13 +81,7 @@ vi.mock("@/lib/supabase", () => ({
         return {
           select: () => ({
             eq: () => ({
-              order: () => {
-                consultasAoLivro();
-                return Promise.resolve({
-                  data: linhasDeDevolucao,
-                  error: null,
-                });
-              },
+              order: () => consultasAoLivro(),
             }),
           }),
         };
@@ -197,7 +195,11 @@ describe("OrderDetailsView — cancelado e estornado", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
-    consultasAoLivro.mockClear();
+    consultasAoLivro.mockReset();
+    consultasAoLivro.mockImplementation(async () => ({
+      data: linhasDeDevolucao,
+      error: null,
+    }));
     linhasDeDevolucao = [];
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -208,6 +210,8 @@ describe("OrderDetailsView — cancelado e estornado", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   async function renderizar(pedido: Order) {
@@ -241,6 +245,85 @@ describe("OrderDetailsView — cancelado e estornado", () => {
     expect(tela).not.toContain("Fale com a loja");
     expect(tela).not.toContain("não seguirá para entrega");
     expect(tela).not.toMatch(/PIX cai|fatura/i);
+  });
+
+  it("relê a devolução quando a lista viva muda um Pix tardio para estornado", async () => {
+    const pixTardio: Order = {
+      ...pedidoBase,
+      paymentStatus: "pago_apos_expirar",
+      metodoOnline: "pix",
+    };
+    const antes = await renderizar(pixTardio);
+    expect(antes).toContain("A loja vai devolver o valor");
+    expect(consultasAoLivro).toHaveBeenCalledTimes(1);
+
+    linhasDeDevolucao = [concluida(100)];
+    const estornado: Order = {
+      ...pixTardio,
+      paymentStatus: "estornado",
+      updatedAt: "2026-11-03T10:00:00.000Z",
+    };
+    const depois = await renderizar(estornado);
+    expect(depois).toMatch(/Devolução concluída: R\$\s?100,00/);
+    expect(depois).toContain("o dinheiro foi devolvido");
+    expect(consultasAoLivro).toHaveBeenCalledTimes(2);
+
+    await renderizar({ ...estornado, updatedAt: "2026-11-03T10:01:00.000Z" });
+    expect(consultasAoLivro).toHaveBeenCalledTimes(2);
+  });
+
+  async function simularFalhaAposEstorno(falhaPersistente = false) {
+    vi.useFakeTimers();
+    const pixTardio: Order = {
+      ...pedidoBase,
+      paymentStatus: "pago_apos_expirar",
+      metodoOnline: "pix",
+    };
+    await renderizar(pixTardio);
+    expect(consultasAoLivro).toHaveBeenCalledTimes(1);
+
+    const falha = { data: null, error: new Error("Rede indisponível") };
+    if (falhaPersistente) consultasAoLivro.mockResolvedValue(falha);
+    else consultasAoLivro.mockResolvedValueOnce(falha);
+    linhasDeDevolucao = [concluida(100)];
+    const tela = await renderizar({ ...pixTardio, paymentStatus: "estornado" });
+    expect(consultasAoLivro).toHaveBeenCalledTimes(2);
+    expect(tela).not.toContain("Devolução concluída");
+  }
+
+  it("mostra o estorno sem sair da ficha se a primeira consulta após a mudança falhar", async () => {
+    await simularFalhaAposEstorno();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(hospedeiro.textContent).toMatch(/Devolução concluída: R\$\s?100,00/);
+    expect(consultasAoLivro).toHaveBeenCalledTimes(3);
+  });
+
+  it("para depois de três novas tentativas se a consulta continuar falhando", async () => {
+    await simularFalhaAposEstorno(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(consultasAoLivro).toHaveBeenCalledTimes(5);
+    expect(hospedeiro.textContent).not.toContain("Devolução concluída");
+  });
+
+  it("cancela a nova tentativa agendada ao sair da ficha", async () => {
+    await simularFalhaAposEstorno();
+
+    await act(async () => {
+      raiz.render(null);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(consultasAoLivro).toHaveBeenCalledTimes(2);
   });
 
   it("devolução em duas linhas concluídas: soma as duas", async () => {
@@ -293,6 +376,18 @@ describe("OrderDetailsView — cancelado e estornado", () => {
   it("estornado em pedido NÃO cancelado: não lê o livro (controle)", async () => {
     await renderizar({ ...pedidoBase, status: "pending" });
     expect(consultasAoLivro).not.toHaveBeenCalled();
+  });
+
+  it("mostra só o valor devolvido pelo app se a outra tentativa foi recusada", async () => {
+    linhasDeDevolucao = [
+      concluida(30),
+      { ...concluida(70), status: "recusado", concluido_em: null },
+    ];
+    const tela = await renderizar({ ...pedidoBase, paymentStatus: "pago" });
+    expect(tela).toContain(
+      "R$ 30,00 devolvidos pelo app. Fale com a loja para confirmar se falta algum valor.",
+    );
+    expect(tela).not.toContain("Devolução concluída");
   });
 
   it("PAGO e cancelado continua lendo o livro e mostrando a devolução de sempre (controle)", async () => {

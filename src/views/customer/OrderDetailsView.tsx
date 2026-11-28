@@ -457,12 +457,15 @@ function cancelledDescription(
     if (leituraDaDevolucao === "falhou") {
       return `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} ${TEXTO_NAO_CONSEGUI_CONFERIR}`;
     }
-    const desfecho = desfechoDaDevolucao(linhasDevolucao);
+    const desfecho = desfechoDaDevolucao(linhasDevolucao, totalDoPedido);
     if (desfecho === "em_curso") {
       return comOrientacaoDaDevolucao(
         `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} O dinheiro volta sozinho para você.`,
         metodoOnline,
       );
+    }
+    if (desfecho === "parcial_com_falha") {
+      return `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} Fale com a loja para confirmar se falta algum valor da devolução.`;
     }
     if (desfecho === "concluida") {
       return "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
@@ -1235,7 +1238,11 @@ export function OrderDetailsView({
     linhas: linhasDevolucao,
     lido: devolucaoLida,
     desistiu: devolucaoDesistiu,
-  } = useDevolucaoDoPedidoCliente(orderId, mostrarDevolucao);
+  } = useDevolucaoDoPedidoCliente(
+    orderId,
+    mostrarDevolucao,
+    order?.paymentStatus,
+  );
   const leituraDaDevolucao: LeituraDaDevolucao = devolucaoLida
     ? "lida"
     : devolucaoDesistiu
@@ -1410,6 +1417,7 @@ export function OrderDetailsView({
           ? TEXTO_NAO_CONSEGUI_CONFERIR
           : textoDevolucao({
               linhas: linhasDevolucao,
+              totalDoPedido: order.total,
               cancelledAfterShipping: order.cancelledAfterShipping,
               returnedToSellerAt: order.returnedToSellerAt,
               metodoOnline: order.metodoOnline,

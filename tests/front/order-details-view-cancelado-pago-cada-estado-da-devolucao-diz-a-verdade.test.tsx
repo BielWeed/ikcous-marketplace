@@ -202,13 +202,45 @@ describe("OrderDetailsView — pedido cancelado e pago: cada estado da devoluç�
         expect(texto).not.toContain(CONFERINDO);
       });
 
-      it("lida, devolução CONCLUÍDA: só o fato, sem prometer o que já aconteceu", async () => {
+      it("mostra o estorno do app sem afirmar um saldo que pode ter sido devolvido por fora", async () => {
+        // O histórico do app não traz os R$ 50 que a loja pode ter devolvido
+        // por fora, nem diz se ainda falta dinheiro.
+        const falha = { ...linha("falhou"), amount: 120 };
+        estado.devolucao.linhas = [
+          { ...linha("concluido"), amount: 80 },
+          falha,
+          falha,
+        ];
+
+        const texto = (
+          await abrir({
+            total: 200,
+            subtotal: 200,
+            paymentStatus: pagamento,
+          })
+        ).replace(/\s+/g, " ");
+        expect(texto).toContain(
+          "R$ 80,00 devolvidos pelo app. Fale com a loja para confirmar se falta algum valor.",
+        );
+        const descricao = Array.from(host.querySelectorAll("p")).find((p) =>
+          p.textContent?.startsWith(BASE),
+        );
+        expect(descricao?.textContent).toContain(
+          "Fale com a loja para confirmar se falta algum valor",
+        );
+        expect(texto).not.toMatch(/R\$ (120|70),00|valor que falta/);
+        expect(texto).not.toContain("Devolução concluída:");
+      });
+
+      it("lida, devolução CONCLUÍDA por inteiro: uma falha antiga não muda o desfecho", async () => {
         estado.devolucao = {
           ...estado.devolucao,
-          linhas: [linha("concluido")],
+          linhas: [linha("falhou"), linha("concluido")],
         };
         const texto = await abrir({ paymentStatus: pagamento });
         expect(texto).toContain(BASE);
+        expect(texto).toMatch(/Devolução concluída: R\$\s?100,00/);
+        expect(texto).not.toContain("Fale com a loja sobre");
         expect(texto).not.toContain(VOLTA_SOZINHO);
         expect(texto).not.toContain("Fale com a loja para resolver");
         expect(texto).not.toContain(CONFERINDO);

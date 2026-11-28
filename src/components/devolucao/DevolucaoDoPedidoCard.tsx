@@ -190,16 +190,19 @@ export function DevolucaoDoPedidoCard({
     statusDoReembolso,
   );
   const tom = tomDoStatus(atual.status);
-  const valorTotal = atual.valor_itens + atual.valor_frete_ida;
+  const resolucao = atual.resolucao_final ?? atual.resolucao_desejada;
+  const semReembolso = resolucao === "troca" || resolucao === "vale";
+  const valorTotal = semReembolso
+    ? atual.valor_itens
+    : atual.valor_itens + atual.valor_frete_ida;
+  const valorReembolso = semReembolso ? null : atual.valor_reembolso;
   // Com cupom, quantidade x preço (preço de uma unidade, arredondado) não soma
   // o valor que o servidor gravou: cada linha mostra a parte dela desse valor.
   const centavosPorLinha = centavosDeCadaLinha(
     paraCentavos(atual.valor_itens),
     atual.itens,
   );
-  const concluidaSemReembolso =
-    atual.status === "concluida" &&
-    (atual.resolucao_final === "troca" || atual.resolucao_final === "vale");
+  const concluidaSemReembolso = atual.status === "concluida" && semReembolso;
   const reembolsoAjustado =
     atual.status === "concluida" &&
     atual.resolucao_final === "reembolso" &&
@@ -472,7 +475,7 @@ export function DevolucaoDoPedidoCard({
             </dd>
           </div>
         ))}
-        {!concluidaSemReembolso && atual.valor_frete_ida > 0 && (
+        {!semReembolso && atual.valor_frete_ida > 0 && (
           <div className="flex justify-between gap-3">
             <dt className="text-zinc-600">Frete de ida</dt>
             <dd className="font-semibold tabular-nums text-zinc-900">
@@ -483,10 +486,10 @@ export function DevolucaoDoPedidoCard({
         {!concluidaSemReembolso && (
           <div className="flex justify-between gap-3">
             <dt className="text-zinc-600">
-              {atual.valor_reembolso !== null ? "Reembolso" : "Valor"}
+              {valorReembolso !== null ? "Reembolso" : "Valor"}
             </dt>
             <dd className="font-bold tabular-nums text-zinc-900">
-              {formatarReais(atual.valor_reembolso ?? valorTotal)}
+              {formatarReais(valorReembolso ?? valorTotal)}
             </dd>
           </div>
         )}
@@ -504,7 +507,7 @@ export function DevolucaoDoPedidoCard({
             {atual.resolucao_final ? "Resolvido com" : "Você pediu"}
           </dt>
           <dd className="text-right font-semibold text-zinc-900">
-            {rotuloResolucao(atual.resolucao_final ?? atual.resolucao_desejada)}
+            {rotuloResolucao(resolucao)}
           </dd>
         </div>
         <div className="flex justify-between gap-3">
