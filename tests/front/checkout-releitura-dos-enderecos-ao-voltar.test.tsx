@@ -570,7 +570,8 @@ describe("CheckoutView -- relê os endereços ao voltar ao app", () => {
         addressId: null,
         addressData: expect.objectContaining({ street: "Rua Teste" }),
       }),
-      { comPagamentoOnline: false },
+      // A compra da visitante vai sempre sem sessão (caça 28/11/2026).
+      { comPagamentoOnline: false, semSessao: true },
     );
   });
 

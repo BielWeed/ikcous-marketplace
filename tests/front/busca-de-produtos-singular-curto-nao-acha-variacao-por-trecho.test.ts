@@ -10,7 +10,7 @@ const comVariacao = (value: string, active = true) => ({
   name: "Bolsa Grande",
   category: "Geral",
   description: null,
-  variants: [{ value, active }],
+  variants: [{ value, active, stockIncrement: 1 }],
 });
 
 describe("singular derivado de 3 letras nas variacoes", () => {
