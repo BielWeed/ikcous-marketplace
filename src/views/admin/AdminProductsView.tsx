@@ -3074,10 +3074,13 @@ const AdminProductCard = memo(function AdminProductCard({
           : variantesAtivas.length > 0
             ? null
             : 0;
+    // Lucro sobre o custo usa o mesmo preço da margem, para os dois não se contradizerem.
     const roi =
-      !temCustoPositivo || product.variantsUnavailable || precoMedio === null
+      !temCustoPositivo ||
+      product.variantsUnavailable ||
+      precoMedioDaMargem === null
         ? null
-        : ((precoMedio - product.costPrice) / product.costPrice) * 100;
+        : ((precoMedioDaMargem - product.costPrice) / product.costPrice) * 100;
 
     const custoSuspeito = hasCost && product.costPrice <= 0.1;
     const precoNaLista = precoCobradoNaLista(product);

@@ -270,6 +270,10 @@ describe("Produtos: a lista mostra o preço que a loja cobra", () => {
     expect(hospedeiro.querySelector("[data-margem]")?.textContent).toBe(
       "16,7%",
     );
+    // Lucro sobre o custo pelo mesmo preço cobrado (R$ 60 sobre custo R$ 50).
+    expect(
+      hospedeiro.querySelector("[data-lucro-sobre-custo]")?.textContent,
+    ).toBe("20,0%");
   });
 
   it("detalhado: com um grupo, a margem continua ponderada pelo estoque", async () => {
