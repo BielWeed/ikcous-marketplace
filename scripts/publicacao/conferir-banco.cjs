@@ -3800,6 +3800,18 @@ const ROL_DA_211B = [
   "v_store_config: as 48 colunas da 20261310000000 (ou as 50 desta), security_invoker",
   "tr_a_loja_so_entrega_o_confirmado: ausente, ou o desta (reaplicacao)",
 ];
+// Lote 218 (20261662000000, o lucro do ranking so desconta o reembolso que saiu, e o frete de ida so quando foi devolvido: o corpo de
+// get_admin_analytics_v2). Somente
+// catalogo: nenhuma le pedido nem devolucao e nenhuma chama funcao. A 218a espera o corpo desta (md5); a 218b, o vigente (1659) ou o desta.
+// Rol de 6 nas duas.
+const ROL_DA_218 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: corpo esperado (md5)",
+  "get_admin_analytics_v2: uma so, plpgsql SECURITY DEFINER VOLATILE, search_path=public, assinatura e EXECUTE de sempre",
+  "devolucoes (id, status, resolucao_final, valor_reembolso, valor_frete_ida, refund_id, reembolso_manual): as colunas que a conta le",
+  "devolucao_itens (devolucao_id, quantidade, valor_unitario, condicao): as colunas que a conta do frete le",
+  "order_refunds (id, status): a linha ligada diz se o reembolso saiu",
+];
 // Lote 215 (20261659000000, a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking: os corpos de
 // devolver_estoque, admin_devolucao_concluir, resolver_peca_sem_tamanho e get_admin_analytics_v2). Somente catalogo: nenhuma le pedido,
 // devolucao, produto nem peca e nenhuma chama funcao. A 215a espera os quatro corpos desta (md5); a 215b, os vigentes (1653, 1642 e
@@ -3862,6 +3874,10 @@ const ROL_DA_214 = [
   "solicitar_devolucao: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
+  "218a-conferir-o-frete-de-ida-so-sai-do-lucro-quando-foi-devolvido-aplicado":
+    ROL_DA_218,
+  "218b-antes-o-frete-de-ida-so-sai-do-lucro-quando-foi-devolvido-base-vigente":
+    ROL_DA_218,
   "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado":
     ROL_DA_216,
   "216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente":

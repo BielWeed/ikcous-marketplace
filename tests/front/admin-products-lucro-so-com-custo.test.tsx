@@ -260,10 +260,11 @@ describe("o rótulo é verdade no banco: o get_admin_analytics_v2 VIVO só soma 
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .at(-1);
 
-  it("a viva é a 20261659000000 e a receita com preço efetivo continua filtrada por custo conhecido", () => {
+  it("a viva é a 20261662000000 e a receita com preço efetivo continua filtrada por custo conhecido", () => {
     // A 20261659000000 (o vale nao e dinheiro no ranking) parte do corpo da 20261399995000 e só troca o dinheiro devolvido do vale
-    // para 0; a 3995 só tinha trocado a conta do lucro de vendas; o estoque é o da 20261251000000.
-    expect(VIVA?.[0]).toContain("20261659000000");
+    // para 0; a 3995 só tinha trocado a conta do lucro de vendas; o estoque é o da 20261251000000. A 20261662000000 parte do corpo
+    // da 1659 e só troca o dinheiro devolvido da devolução por reembolso (só o que saiu; o frete de ida só quando foi devolvido).
+    expect(VIVA?.[0]).toContain("20261662000000");
     const sql = VIVA?.[1] ?? "";
     // a 20261242 só troca de ONDE vem o custo do LUCRO e do ranking (o do dia da venda, senão o de hoje); o estoque
     // segue com o custo de hoje, como a 20261214 deixou.

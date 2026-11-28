@@ -276,7 +276,7 @@ Deno.test("1658: a cadeia de posteriores e o kit de publicacao conhecem a migrat
   assert.ok(ordem.includes(nome.slice(0, 14)), "na lista de sucessoras");
   assert.deepEqual(
     ordem.slice(ordem.indexOf(nome.slice(0, 14)) + 1),
-    ["20261659000000", "20261660000000"],
+    ["20261659000000", "20261660000000", "20261662000000"],
     "so a aplicada depois desta vem atras na lista de sucessoras",
   );
   assert.ok(suc.includes(`["${nome}", 2]`), "dois pares no pre-voo");

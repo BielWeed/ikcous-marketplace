@@ -110,7 +110,8 @@ Deno.test("20261242 — a 45 sucede só o analytics: a 45a aceita o novo hash ex
   );
   assert.ok(
     a45.includes(
-      `f.m IN ('${DESTA[ANALYTICS]}', '${h45}', '${h50}', '${h51}', '${h3997}', '${h3994}', '${h3995}', '${h1659}')`,
+      // sem o parentese de fechamento: a 20261662000000 acrescenta o corpo dela depois do da 1659 (a lista cresce no fim)
+      `f.m IN ('${DESTA[ANALYTICS]}', '${h45}', '${h50}', '${h51}', '${h3997}', '${h3994}', '${h3995}', '${h1659}'`,
     ),
   );
   assert.ok(a45.includes(`'${DESTA[DRE]}'`));

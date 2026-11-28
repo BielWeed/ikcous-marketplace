@@ -146,6 +146,12 @@ const SUCESSORAS = [
     consulta:
       "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
   },
+  // 20261662000000: o lucro do ranking so desconta o reembolso que saiu, e o frete de ida so quando foi devolvido (get_admin_analytics_v2).
+  {
+    versao: "20261662000000",
+    consulta:
+      "218a-conferir-o-frete-de-ida-so-sai-do-lucro-quando-foi-devolvido-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

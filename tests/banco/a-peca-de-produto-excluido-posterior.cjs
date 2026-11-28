@@ -55,6 +55,11 @@ const PRODUTO_EXCLUIDO = Object.freeze({
 
 /** Desfaz a 20261659000000 na conexao aberta, se no ar; repetir e' no-op. Devolve true se desfez. */
 async function desfazerProdutoExcluidoNaTransacao(cliente) {
+  // A 20261662000000 (o frete de ida so sai do lucro quando foi devolvido) sucede o analytics desta: cai antes (o rollback desta recusa
+  // o corpo dela).
+  await require("./o-frete-de-ida-so-sai-do-lucro-posterior.cjs").desfazerFreteDeIdaNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(PRODUTO_EXCLUIDO.noAr);
   if (r.rows[0]?.sim !== true) return false;
   await cliente.query(
