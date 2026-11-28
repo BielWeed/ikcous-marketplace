@@ -315,6 +315,9 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
   const montadoRef = useRef(true);
   // O respiro da abertura ainda não terminou: a consulta inicial não saiu.
   const aberturaPendenteRef = useRef(false);
+  // Saída do canal de pedidos ainda sem confirmação do servidor (ver o efeito
+  // do tempo real). `null` = nada saindo.
+  const saidaDoCanalRef = useRef<Promise<unknown> | null>(null);
 
   useEffect(() => {
     montadoRef.current = true;
@@ -447,51 +450,76 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
       if (!espera) void carregar(false, true);
     };
 
-    const canal = supabase
-      .channel("admin-inicio-pedidos")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "marketplace_orders" },
-        aoMudarPedido,
-      )
-      .subscribe((status) => {
-        if (encerrado) return;
-        if (status === "SUBSCRIBED") {
-          const voltou = !conectado;
-          conectado = true;
-          // Mesmo padrão das notificações: abertura já lê, reconexão relê.
-          if (canalJaCaiu) {
-            if (voltou) aoMudarPedido();
-          } else {
-            setCanalVivo(true);
-            // Primeira confirmação: a consulta de abertura é independente do
-            // canal e, com conexão lenta, pode ter lido o banco ANTES de ele
-            // começar a ouvir — uma venda confirmada nesse intervalo não chega
-            // por evento. Uma releitura silenciosa fecha o buraco, a menos que
-            // a abertura ainda vá sair depois daqui (aí ela já lê o novo).
-            if (voltou && !aberturaVaiLerDepois(aberturaPendenteRef.current)) {
-              if (document.visibilityState === "hidden") sujoEscondido = true;
-              else recarregarJa(true);
-            }
+    let canal: ReturnType<typeof supabase.channel> | null = null;
+    const assinar = () => {
+      canal = supabase
+        .channel("admin-inicio-pedidos")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "marketplace_orders" },
+          aoMudarPedido,
+        )
+        .subscribe(aoMudarStatus);
+    };
+    const aoMudarStatus = (status: string) => {
+      if (encerrado) return;
+      if (status === "SUBSCRIBED") {
+        const voltou = !conectado;
+        conectado = true;
+        // Mesmo padrão das notificações: abertura já lê, reconexão relê.
+        if (canalJaCaiu) {
+          if (voltou) aoMudarPedido();
+        } else {
+          setCanalVivo(true);
+          // Primeira confirmação: a consulta de abertura é independente do
+          // canal e, com conexão lenta, pode ter lido o banco ANTES de ele
+          // começar a ouvir — uma venda confirmada nesse intervalo não chega
+          // por evento. Uma releitura silenciosa fecha o buraco, a menos que
+          // a abertura ainda vá sair depois daqui (aí ela já lê o novo).
+          if (voltou && !aberturaVaiLerDepois(aberturaPendenteRef.current)) {
+            if (document.visibilityState === "hidden") sujoEscondido = true;
+            else recarregarJa(true);
           }
-        } else if (
-          status === "CHANNEL_ERROR" ||
-          status === "TIMED_OUT" ||
-          status === "CLOSED"
-        ) {
-          conectado = false;
-          canalJaCaiu = true;
-          geracaoDoCanal += 1;
-          setCanalVivo(false);
         }
+      } else if (
+        status === "CHANNEL_ERROR" ||
+        status === "TIMED_OUT" ||
+        status === "CLOSED"
+      ) {
+        conectado = false;
+        canalJaCaiu = true;
+        geracaoDoCanal += 1;
+        setCanalVivo(false);
+      }
+    };
+    // Voltou à tela antes de o servidor confirmar a saída do canal de antes:
+    // `supabase.channel(nome)` devolveria o canal ANTIGO (o realtime-js
+    // devolve o que ainda está na lista com o mesmo nome) e o `.subscribe()`
+    // dele não faria nada (só entra canal fechado) — os números paravam até a
+    // próxima entrada. Espera a saída e assina.
+    const saidaAnterior = saidaDoCanalRef.current;
+    if (saidaAnterior) {
+      void saidaAnterior.then(() => {
+        if (!encerrado) assinar();
       });
+    } else {
+      assinar();
+    }
     document.addEventListener("visibilitychange", aoMudarVisibilidade);
 
     return () => {
       encerrado = true;
       if (espera) clearTimeout(espera);
       document.removeEventListener("visibilitychange", aoMudarVisibilidade);
-      supabase.removeChannel(canal);
+      if (!canal) return;
+      // `allSettled`: saída que falha ou expira também termina (o realtime-js
+      // fecha o canal no "timed out"); a espera nunca fica pendurada.
+      const saida: Promise<unknown> = Promise.allSettled([
+        supabase.removeChannel(canal),
+      ]).then(() => {
+        if (saidaDoCanalRef.current === saida) saidaDoCanalRef.current = null;
+      });
+      saidaDoCanalRef.current = saida;
     };
   }, [active, temSessao, carregar]);
 
