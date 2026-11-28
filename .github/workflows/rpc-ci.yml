@@ -1579,7 +1579,8 @@ jobs:
       # Migration 20261653000000 (a peca que volta para uma variacao desligada espera a lojista): devolver_estoque e admin_devolucao_concluir nao creditam mais
       # a variacao DESLIGADA (ou que nao existe mais); o item segue o caminho da peca sem tamanho da 20261642000000 (cantinho se ha variacao ligada, pai se nao ha).
       # Controle com os corpos da 642 (a peca vai para o M desligado), cancelar, Pix vencido e devolucao com o M desligado, CONTROLE com o M ligado, nenhum credito
-      # em dobro (repetir, achado C), produto sem variacao ligada, mutantes, reaplicar 2x e CRLF, pre-voo, rollback byte a byte e consultas 209a/209b. CLONE proprio.
+      # em dobro (repetir, achado C), produto sem variacao ligada, a leitura da ficha da devolucao (so o item do M desligado, nunca o do P ligado; religar nao muda;
+      # permissao), mutantes, reaplicar 2x e CRLF, pre-voo, rollback byte a byte (a leitura sai) e consultas 209a/209b. CLONE proprio.
       - name: Prova viva da peca da variacao desligada que espera a lojista (20261653000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-da-variacao-desligada-viva.cjs

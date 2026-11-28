@@ -4027,6 +4027,12 @@ export type Database = {
         Args: never;
         Returns: Json;
       };
+      pecas_sem_tamanho_da_devolucao: {
+        Args: { p_order_id: string };
+        Returns: {
+          devolucao_item_id: string;
+        }[];
+      };
       pecas_sem_tamanho_pendentes: {
         Args: { p_produto_id?: string };
         Returns: {

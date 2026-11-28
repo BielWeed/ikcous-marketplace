@@ -1054,7 +1054,7 @@ Deno.test("207a/207b — rol fechado, um statement so de catalogo, md5 do pre-vo
   );
 });
 
-// 209 (27/11/2026): o lote da 20261653000000 (a peca que volta para uma variacao desligada espera a lojista). Rol fechado de 4 linhas, o
+// 209 (27/11/2026): o lote da 20261653000000 (a peca que volta para uma variacao desligada espera a lojista). Rol fechado de 5 linhas, o
 // mesmo na 209a e na 209b, so catalogo; a 209a espera os corpos desta e a 209b os da 20261642000000 ou os desta. Os md5 saem do PRE-VOO da
 // propria migration e sao RECALCULADOS dos arquivos (os desta e os da 642, que o rollback devolve byte a byte); as consultas das
 // antecessoras (202a, 96a, 110a, 43a, 67a e 8e) aceitam os desta como sucessora.
@@ -1125,7 +1125,16 @@ Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-vo
     "admin_devolucao_concluir: corpo esperado (md5)",
     "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
     "o destino da peca que espera: pecas_sem_tamanho e as RPCs da 20261642000000 no ar, com a forma e os corpos dela",
+    "pecas_sem_tamanho_da_devolucao: corpo exato (md5), uma so, plpgsql SECURITY DEFINER STABLE, search_path=public, EXECUTE so de authenticated",
   ];
+  // A leitura NOVA da ficha da devolucao: o md5 do pos-voo e' o do corpo do arquivo, e o rollback confere o mesmo antes de tira-la.
+  const daDesta = md5(corpo(migration, "pecas_sem_tamanho_da_devolucao"));
+  assertEquals(
+    migration.split(`IS DISTINCT FROM '${daDesta}'`).length - 1,
+    2,
+    "pre-voo e pos-voo citam o md5 da leitura",
+  );
+  assertStringIncludes(rollback, `IS DISTINCT FROM '${daDesta}'`);
   for (const consulta of [A209, B209]) {
     assert(
       listarConsultas().includes(consulta),
@@ -1195,6 +1204,10 @@ Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-vo
   );
   assertStringIncludes(sqlB, `IN ('${devVigente}', '${devDesta}')`);
   assertStringIncludes(sqlB, `IN ('${conclVigente}', '${conclDesta}')`);
+  // A leitura: a 209a exige a desta; a 209b aceita AUSENTE (antes do apply) ou a desta.
+  assertStringIncludes(sqlA, `n = 1 AND h = '${daDesta}'`);
+  assert(!sqlA.includes("n = 0"), "a 209a nao aceita a leitura ausente");
+  assertStringIncludes(sqlB, `n = 0 OR (n = 1 AND h = '${daDesta}'`);
   // A consulta da antecessora direta (202a) aceita os desta como SUCESSORA: senao reprova em toda loja depois do apply.
   const a202 = sqlSemComentarios(
     await Deno.readTextFile(

@@ -1,6 +1,6 @@
 -- ============================================================================
--- Migration 20261653000000 — a peça que volta para uma variação DESLIGADA espera a lojista (estoque; troca o corpo de DUAS funções,
--- ADITIVA: nenhuma tabela, coluna ou linha é criada, apagada ou reescrita ao aplicar)
+-- Migration 20261653000000 — a peça que volta para uma variação DESLIGADA espera a lojista (estoque; troca o corpo de DUAS funções e
+-- cria UMA leitura para a ficha da devolução; ADITIVA: nenhuma tabela, coluna ou linha é criada, apagada ou reescrita ao aplicar)
 -- ============================================================================
 --
 -- 1. O DEFEITO (caça confirmada, 27/11/2026)
@@ -29,7 +29,7 @@
 -- Retornos: devolver_estoque não conta a peça que espera (como na 20261642000000); admin_devolucao_concluir a conta em 'sem_tamanho' e
 -- não em 'reestocados' (como na 20261642000000). Nada de dinheiro muda.
 --
--- 3. O QUE MUDA NO CORPO DAS DUAS FUNÇÕES (só isto; o resto não muda um byte)
+-- 3. O QUE MUDA NO CORPO DAS DUAS FUNÇÕES (só isto; o resto não muda um byte) E A LEITURA NOVA
 --
 --   devolver_estoque (corpo da 20261642000000): um bloco marcado ">>> a peca da variacao desligada (20261653000000)" logo antes do
 --   IF/ELSIF/ELSE do crédito: se a variação do item não está ligada, v_item.variant_id vira NULL (e v_item.product_id, se vazio, o pai
@@ -40,19 +40,27 @@
 --   item e o pai dela JÁ são trancados (FOR NO KEY UPDATE, ordem global) antes do laço nas duas; o "está ligada?" é lido com a variação
 --   trancada, então ligar ou desligar ao mesmo tempo espera esta transação.
 --
+--   pecas_sem_tamanho_da_devolucao(p_order_id uuid) (NOVA, só leitura): os itens de devolução daquele pedido (devolucao_item_id) que
+--   deixaram peça esperando a lojista. A ficha da devolução no painel só sabia marcar o item SEM variação, e pelo produto: a peça do M
+--   desligado aparecia como "voltou ao estoque" e, ao contrário, outro item do mesmo produto, num tamanho ligado e creditado de verdade,
+--   passaria a aparecer como "esperando". A origem gravada NA HORA da conclusão (pecas_sem_tamanho.devolucao_item_id, que a
+--   20261642000000 já grava) diz o item certo; religar o M depois não muda o que aconteceu. A mesma porta da pecas_sem_tamanho_pendentes:
+--   is_admin() e is_admin_atual() (senão 42501), STABLE SECURITY DEFINER, search_path=public, EXECUTE só do authenticated.
+--
 -- 4. DADOS EXISTENTES
 --
--- Nenhuma linha é lida para fora, reescrita ou apagada no apply (só CREATE OR REPLACE de duas funções). Créditos que já foram para uma
+-- Nenhuma linha é lida para fora, reescrita ou apagada no apply (só CREATE OR REPLACE de três funções). Créditos que já foram para uma
 -- variação desligada ANTES desta migration ficam onde estão (o estoque do M desligado não é mexido; se a lojista religar o M, ele volta a
--- vender com o estoque que tem). Só as voltas DEPOIS do apply seguem a regra nova.
+-- vender com o estoque que tem). Só as voltas DEPOIS do apply seguem a regra nova. As peças de devolução que a 20261642000000 já pôs no
+-- cantinho têm devolucao_item_id e aparecem na leitura nova do jeito que estão.
 --
 -- 5. PRÉ-VOO (B1_BASELINE_DIVERGENT, ANTES de qualquer escrita)
 --
 -- Recusa se: o corpo vivo de devolver_estoque ou de admin_devolucao_concluir não for o da 20261642000000 nem o desta; os atributos ou a
 -- ACL de qualquer uma não forem os de sempre; faltar product_variants (id, product_id, active); a tabela public.pecas_sem_tamanho não
 -- existir com a forma da 20261642000000; as RPCs pecas_sem_tamanho_pendentes(uuid) e resolver_peca_sem_tamanho(uuid, uuid) não estiverem
--- no ar com os corpos da 20261642000000 (sem elas a peça que espera não teria como sair do cantinho). Fotografa OID, dono, ACL e atributos
--- das duas funções que mudam para o pós-voo.
+-- no ar com os corpos da 20261642000000 (sem elas a peça que espera não teria como sair do cantinho); pecas_sem_tamanho_da_devolucao já
+-- existir com outro corpo ou com sobrecarga. Fotografa OID, dono, ACL e atributos das duas funções que mudam para o pós-voo.
 --
 -- 6. IDEMPOTÊNCIA, TRANSAÇÃO E TRAVA
 --
@@ -62,17 +70,20 @@
 --
 -- 7. ORDEM
 --
--- DEPOIS da 20261642000000 (o pré-voo recusa sem ela). O front não depende desta: o painel já lê 'sem_tamanho' e a lista das peças que
--- esperam desde a 20261642000000; o texto novo do aviso vale para as duas origens.
+-- DEPOIS da 20261642000000 (o pré-voo recusa sem ela). Banco antes ou depois do front: o painel já lê 'sem_tamanho' e a lista das peças
+-- que esperam desde a 20261642000000, e o texto novo do aviso vale para as duas origens; a ficha da devolução chama
+-- pecas_sem_tamanho_da_devolucao e, com PGRST202/42883 (loja sem esta), cai na leitura antiga (por produto, só o item sem variação: o
+-- único que a 20261642000000 sozinha põe no cantinho).
 --
 -- 8. FICHA DE VERIFICAÇÃO: consultas 209a (depois) / 209b (antes).
 --   PROVA VIVA: tests/banco/a-peca-da-variacao-desligada-viva.cjs (rpc-ci).
 --
 -- 9. ROLLBACK
 --
--- rollback-manual-20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql devolve os DOIS corpos da 20261642000000 byte a byte. Não apaga nada:
--- as peças que já foram para o cantinho por esta regra continuam lá, e a lojista as resolve pela mesma tela. Vem ANTES do rollback da
--- 20261642000000 (o pré-voo dele recusa o corpo desta).
+-- rollback-manual-20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql devolve os DOIS corpos da 20261642000000 byte a byte e
+-- tira a leitura nova (DROP FUNCTION só dela, que esta criou; a ficha volta à leitura antiga). Não apaga nenhuma linha: as peças que já
+-- foram para o cantinho por esta regra continuam lá, e a lojista as resolve pela mesma tela. Vem ANTES do rollback da 20261642000000 (o
+-- pré-voo dele recusa o corpo desta).
 -- ============================================================================
 
 SET LOCAL lock_timeout = '5s';
@@ -162,6 +173,14 @@ BEGIN
      OR (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.resolver_peca_sem_tamanho(uuid,uuid)'))
        IS DISTINCT FROM 'cac3d04d9be77c7d4004003bb70561c5' THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: pecas_sem_tamanho_pendentes ou resolver_peca_sem_tamanho ausente ou com outro corpo; aplique a 20261642000000 antes.';
+  END IF;
+
+  -- A leitura nova da ficha: ausente, ou a desta (reaplicacao idempotente); nunca outra com o mesmo nome.
+  IF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'pecas_sem_tamanho_da_devolucao')
+     AND ((SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'pecas_sem_tamanho_da_devolucao') <> 1
+       OR (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.pecas_sem_tamanho_da_devolucao(uuid)'))
+            IS DISTINCT FROM 'a5514b503791af689ba68dfda6b76b6e') THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: pecas_sem_tamanho_da_devolucao ja existe com outra assinatura ou outro corpo; revise antes de aplicar.';
   END IF;
 
   -- Fotografia: OID, dono, ACL e TODOS os atributos (o CREATE OR REPLACE so pode trocar o texto).
@@ -567,12 +586,50 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------------
--- PÓS-VOO (B2_POSTFLIGHT_FAILED): os dois corpos desta, com OID, dono, ACL e atributos de antes
+-- 3. A ficha da devolução: QUAIS itens deixaram peça esperando (só o admin de agora)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.pecas_sem_tamanho_da_devolucao(p_order_id uuid)
+RETURNS TABLE (devolucao_item_id uuid)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $da_devolucao$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
+  END IF;
+  -- Papel ATUAL (auth.users E profiles), não o do JWT: admin rebaixado para aqui (20261197000000).
+  IF NOT public.is_admin_atual() THEN
+    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
+  END IF;
+
+  -- O item da devolução gravado NA HORA da conclusão (admin_devolucao_concluir): a verdade do que aconteceu, e não o que a variação é hoje.
+  -- Só a peça de devolução tem o item (a de pedido desfeito, devolver_estoque, não tem): o IS NOT NULL é o filtro de origem.
+  RETURN QUERY
+    SELECT DISTINCT p.devolucao_item_id
+      FROM public.pecas_sem_tamanho p
+     WHERE p.resolvida_em IS NULL
+       AND p.order_id = p_order_id
+       AND p.devolucao_item_id IS NOT NULL
+     ORDER BY p.devolucao_item_id;
+END;
+$da_devolucao$;
+
+COMMENT ON FUNCTION public.pecas_sem_tamanho_da_devolucao(uuid) IS
+  'Os itens de devolução do pedido (devolucao_item_id) com peça que voltou e ainda espera a lojista escolher o tamanho (20261653000000): a ficha da devolução diz "voltou sem tamanho" só neles. Só o admin de agora.';
+
+REVOKE ALL ON FUNCTION public.pecas_sem_tamanho_da_devolucao(uuid) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.pecas_sem_tamanho_da_devolucao(uuid) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- PÓS-VOO (B2_POSTFLIGHT_FAILED): os dois corpos desta, com OID, dono, ACL e atributos de antes, e a leitura nova
 -- ---------------------------------------------------------------------------
 DO $posvoo_20261653000000$
 DECLARE
   v_dev oid := to_regprocedure('public.devolver_estoque(uuid)');
   v_concl oid := to_regprocedure('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)');
+  v_da oid := to_regprocedure('public.pecas_sem_tamanho_da_devolucao(uuid)');
 BEGIN
   IF (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = v_dev) IS DISTINCT FROM '2913f3178498938d0a79e3b47a1084d1'
      OR (SELECT to_jsonb(p) - 'prosrc' FROM pg_proc p WHERE p.oid = v_dev) IS DISTINCT FROM current_setting('ikcous.var653_devolver')::jsonb THEN
@@ -581,6 +638,29 @@ BEGIN
   IF (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = v_concl) IS DISTINCT FROM 'd146dc7aefb07a0bf580ed7265d9453e'
      OR (SELECT to_jsonb(p) - 'prosrc' FROM pg_proc p WHERE p.oid = v_concl) IS DISTINCT FROM current_setting('ikcous.var653_concluir')::jsonb THEN
     RAISE EXCEPTION 'B2_POSTFLIGHT_FAILED: admin_devolucao_concluir nao ficou com o corpo desta migration ou mudou OID, dono, ACL ou atributos.';
+  END IF;
+  -- A leitura nova: uma so, o corpo desta, plpgsql STABLE SECURITY DEFINER, search_path=public, a forma desenhada.
+  IF v_da IS NULL
+     OR (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = v_da) IS DISTINCT FROM 'a5514b503791af689ba68dfda6b76b6e'
+     OR (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'pecas_sem_tamanho_da_devolucao') <> 1
+     OR NOT EXISTS (
+          SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
+           WHERE p.oid = v_da
+             AND l.lanname = 'plpgsql' AND p.prokind = 'f' AND p.prosecdef AND p.provolatile = 's'
+             AND NOT p.proisstrict AND p.proretset
+             AND p.proconfig = ARRAY['search_path=public']::text[]
+             AND pg_get_function_arguments(p.oid) = 'p_order_id uuid'
+             AND pg_get_function_result(p.oid) = 'TABLE(devolucao_item_id uuid)') THEN
+    RAISE EXCEPTION 'B2_POSTFLIGHT_FAILED: pecas_sem_tamanho_da_devolucao nao ficou com o corpo, a assinatura ou os atributos desta migration.';
+  END IF;
+  -- EXECUTE so do authenticated: nem PUBLIC, nem anon, nem service_role.
+  IF EXISTS (SELECT 1 FROM pg_proc p
+               CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g
+              WHERE p.oid = v_da AND g.privilege_type = 'EXECUTE' AND g.grantee = 0)
+     OR has_function_privilege('anon', v_da, 'EXECUTE')
+     OR has_function_privilege('service_role', v_da, 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', v_da, 'EXECUTE') THEN
+    RAISE EXCEPTION 'B2_POSTFLIGHT_FAILED: o EXECUTE de pecas_sem_tamanho_da_devolucao deve ser so do authenticated.';
   END IF;
 END $posvoo_20261653000000$;
 

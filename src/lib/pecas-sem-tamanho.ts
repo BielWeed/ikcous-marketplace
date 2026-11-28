@@ -135,6 +135,51 @@ export const TEXTO_ITEM_ESPERANDO_TAMANHO =
   "voltou sem tamanho: escolha o tamanho na tela do produto";
 
 /**
+ * Quais itens de uma devolução deixaram peça esperando o tamanho.
+ *
+ * `porItem` (20261653000000, `pecas_sem_tamanho_da_devolucao`): os itens que o
+ * banco gravou NA HORA da conclusão — vale para o item sem variação e para o de
+ * um tamanho que estava desligado, e religar o tamanho depois não muda o que
+ * aconteceu. `porProdutoSemVariacao` (loja só com a 20261642000000): a lista
+ * antiga só diz o produto, e ali só o item SEM variação vai para o cantinho.
+ */
+export type PecasQueEsperamNaDevolucao =
+  | { readonly porItem: ReadonlySet<string> }
+  | { readonly porProdutoSemVariacao: ReadonlySet<string> };
+
+/** As linhas de `pecas_sem_tamanho_da_devolucao`; `null` = forma torta (não sei). */
+export function lerItensQueEsperamTamanho(data: unknown): string[] | null {
+  if (!Array.isArray(data)) return null;
+  const itens: string[] = [];
+  for (const linha of data) {
+    if (typeof linha !== "object" || linha === null) return null;
+    const id = (linha as Record<string, unknown>).devolucao_item_id;
+    if (!texto(id)) return null;
+    itens.push(id);
+  }
+  return itens;
+}
+
+/** O item da devolução voltou e espera o tamanho? `null` (não sei) = não: a ficha diz o de sempre. */
+export function itemEsperaTamanho(
+  item: {
+    readonly id: string;
+    readonly reestocado_em: string | null;
+    readonly variant_id: string | null;
+    readonly product_id: string | null;
+  },
+  pecas: PecasQueEsperamNaDevolucao | null,
+): boolean {
+  if (item.reestocado_em == null || !pecas) return false;
+  if ("porItem" in pecas) return pecas.porItem.has(item.id);
+  return (
+    !item.variant_id &&
+    item.product_id != null &&
+    pecas.porProdutoSemVariacao.has(item.product_id)
+  );
+}
+
+/**
  * Nenhuma variação LIGADA e GRAVADA: a RPC só aceita essas, e o Salvar do
  * produto leva para a lista (o tamanho novo só aparece ao abrir de novo).
  */

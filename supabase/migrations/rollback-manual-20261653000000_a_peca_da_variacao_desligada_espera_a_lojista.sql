@@ -3,16 +3,18 @@
 -- ============================================================================
 -- Devolve public.devolver_estoque(uuid) ao corpo da 20261642000000 (md5 80b1a90baf10d1b4c59484772e4864c4) e
 -- public.admin_devolucao_concluir(uuid, text, jsonb, numeric, text) ao corpo da 20261642000000 (md5 1a548896acb8248f1b1771d765c92fcb),
--- byte a byte (LF), mantendo OID, dono, atributos, comentário e ACL (CREATE OR REPLACE; nenhum GRANT nem REVOKE).
+-- byte a byte (LF), mantendo OID, dono, atributos, comentário e ACL (CREATE OR REPLACE; nenhum GRANT nem REVOKE). Tira a leitura que esta
+-- criou, public.pecas_sem_tamanho_da_devolucao(uuid) (DROP FUNCTION só dela, md5 a5514b503791af689ba68dfda6b76b6e): a ficha da devolução
+-- volta à leitura antiga (por produto, só o item sem variação).
 --
--- NÃO APAGA NADA: as peças que foram para public.pecas_sem_tamanho por esta regra continuam lá, e a lojista as resolve pela mesma tela
--- (as RPCs são da 20261642000000 e ficam).
+-- NÃO APAGA NENHUMA LINHA: as peças que foram para public.pecas_sem_tamanho por esta regra continuam lá, e a lojista as resolve pela mesma
+-- tela (as RPCs são da 20261642000000 e ficam).
 --
 -- COM ELE VOLTA O DEFEITO descrito no cabeçalho da migration 20261653000000 (a peça volta para a variação desligada e some da venda).
 --
 -- PRÉ-VOO: recusa (B1_BASELINE_DIVERGENT) se algum dos dois corpos vivos não for o desta migration nem o da 20261642000000 (repetir o
--- rollback é no-op) ou se os atributos não forem os de sempre. O pós-voo recusa se os corpos não voltaram ou se OID, dono, ACL ou
--- atributos mudaram.
+-- rollback é no-op), se os atributos não forem os de sempre, ou se pecas_sem_tamanho_da_devolucao existir com outro corpo (não é desta).
+-- O pós-voo recusa se os corpos não voltaram, se OID, dono, ACL ou atributos mudaram, ou se a leitura ficou.
 --
 -- ORDEM: este vem ANTES do rollback da 20261642000000 (o pré-voo dele recusa o corpo desta). Executar pelo aplicar-migrations.yml (apaga
 -- o registro do ledger na mesma transação). Sem BEGIN/COMMIT de nível superior neste arquivo — regra da casa.
@@ -69,6 +71,14 @@ BEGIN
           AND pg_get_function_result(p.oid) = 'jsonb'
      ) THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: atributos de admin_devolucao_concluir nao sao os conhecidos; revise antes de desfazer.';
+  END IF;
+
+  -- A leitura da ficha: so sai se for a desta (ou se ja saiu: repetir e' no-op); outra com o mesmo nome nao e' nossa.
+  IF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'pecas_sem_tamanho_da_devolucao')
+     AND ((SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'pecas_sem_tamanho_da_devolucao') <> 1
+       OR (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.pecas_sem_tamanho_da_devolucao(uuid)'))
+            IS DISTINCT FROM 'a5514b503791af689ba68dfda6b76b6e') THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: pecas_sem_tamanho_da_devolucao existe com outra assinatura ou outro corpo; revise antes de desfazer.';
   END IF;
 
   -- Fotografia: OID, dono, ACL e TODOS os atributos (o CREATE OR REPLACE so pode trocar o texto).
@@ -442,11 +452,17 @@ BEGIN
 END;
 $$;
 
+-- A leitura da ficha que esta migration criou (o pré-voo já confirmou que é a desta, ou que não existe). Só a função; nenhuma linha.
+DROP FUNCTION IF EXISTS public.pecas_sem_tamanho_da_devolucao(uuid);
+
 DO $posvoo_rollback_20261653000000$
 DECLARE
   v_dev oid := to_regprocedure('public.devolver_estoque(uuid)');
   v_concl oid := to_regprocedure('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)');
 BEGIN
+  IF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'pecas_sem_tamanho_da_devolucao') THEN
+    RAISE EXCEPTION 'B2_POSTFLIGHT_FAILED: pecas_sem_tamanho_da_devolucao ainda existe.';
+  END IF;
   IF (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = v_dev) IS DISTINCT FROM '80b1a90baf10d1b4c59484772e4864c4'
      OR (SELECT to_jsonb(p) - 'prosrc' FROM pg_proc p WHERE p.oid = v_dev) IS DISTINCT FROM current_setting('ikcous.var653_rb_devolver')::jsonb THEN
     RAISE EXCEPTION 'B2_POSTFLIGHT_FAILED: devolver_estoque nao voltou ao corpo da 20261642000000 ou mudou OID, dono, ACL ou atributos.';

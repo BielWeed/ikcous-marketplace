@@ -75,6 +75,20 @@ const H_DEV_642 = "80b1a90baf10d1b4c59484772e4864c4";
 const H_CONCL_642 = "1a548896acb8248f1b1771d765c92fcb";
 const H_DEV = md5(corpo(devNovo, "$devolver$"));
 const H_CONCL = md5(corpo(conclNovo, "$$"));
+// A leitura NOVA da ficha da devolucao (os itens com peca esperando, pela origem gravada na conclusao).
+const DA = [
+  "CREATE OR REPLACE FUNCTION public.pecas_sem_tamanho_da_devolucao(p_order_id uuid)",
+  "\n$da_devolucao$;",
+];
+const daNovo = bloco(migration, DA[0], DA[1]);
+const H_DA = md5(corpo(daNovo, "$da_devolucao$"));
+const DA_ACL = [
+  "COMMENT ON FUNCTION public.pecas_sem_tamanho_da_devolucao(uuid) IS\n",
+  "REVOKE ALL ON FUNCTION public.pecas_sem_tamanho_da_devolucao(uuid) FROM PUBLIC, anon, authenticated, service_role;\n",
+  "GRANT EXECUTE ON FUNCTION public.pecas_sem_tamanho_da_devolucao(uuid) TO authenticated;\n",
+];
+const DA_DROP =
+  "DROP FUNCTION IF EXISTS public.pecas_sem_tamanho_da_devolucao(uuid);\n";
 const blocoDo = (sql: string, marca: string) => {
   const i = sql.indexOf(`DO $${marca}$`);
   assert(i >= 0, `bloco ${marca} ausente`);
@@ -199,8 +213,17 @@ Deno.test("20261653: admin_devolucao_concluir novo = o da 20261642000000 com SO 
   );
 });
 
-Deno.test("20261653: ADITIVA - fora dos dois corpos, nada de DDL, escrita em dado, GRANT ou REVOKE", () => {
-  let fora = migration.replace(devNovo, "").replace(conclNovo, "");
+Deno.test("20261653: ADITIVA - fora dos dois corpos e da leitura nova (com o comentario e a ACL dela), nada de DDL, escrita em dado, GRANT ou REVOKE", () => {
+  let fora = migration
+    .replace(devNovo, "")
+    .replace(conclNovo, "")
+    .replace(daNovo, "");
+  // O COMMENT (texto ate o ';' do fim da linha), o REVOKE e o GRANT da leitura nova: uma vez cada, e so dela.
+  for (const linha of DA_ACL) {
+    assertEquals(fora.split(linha).length, 2, `uma vez: ${linha.trim()}`);
+    const i = fora.indexOf(linha);
+    fora = fora.slice(0, i) + fora.slice(fora.indexOf(";\n", i) + 2);
+  }
   fora = semComentario(fora);
   for (const proibido of [
     /\bINSERT\s+INTO\b/i,
@@ -221,8 +244,68 @@ Deno.test("20261653: ADITIVA - fora dos dois corpos, nada de DDL, escrita em dad
         /CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+([a-z_.]+)/gi,
       ),
     ].map((m) => m[2]),
-    ["public.devolver_estoque", "public.admin_devolucao_concluir"],
+    [
+      "public.devolver_estoque",
+      "public.admin_devolucao_concluir",
+      "public.pecas_sem_tamanho_da_devolucao",
+    ],
   );
+});
+
+Deno.test("20261653: a leitura da ficha da devolucao - porta do admin de agora, so o que ainda espera, pelo item gravado na conclusao, EXECUTE so do authenticated", () => {
+  // A forma: STABLE, SECURITY DEFINER, search_path fixo, uma coluna (o item da devolucao).
+  assertStringIncludes(
+    daNovo,
+    "RETURNS TABLE (devolucao_item_id uuid)\nLANGUAGE plpgsql\nSTABLE\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $da_devolucao$\n",
+  );
+  const c = corpo(daNovo, "$da_devolucao$");
+  // A porta: is_admin() E is_admin_atual(), as duas com 42501, ANTES de ler.
+  const porta =
+    "  IF NOT public.is_admin() THEN\n    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';\n  END IF;\n";
+  const portaAtual =
+    "  IF NOT public.is_admin_atual() THEN\n    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';\n  END IF;\n";
+  assert(c.indexOf(porta) >= 0 && c.indexOf(portaAtual) > c.indexOf(porta));
+  assert(c.indexOf("RETURN QUERY") > c.indexOf(portaAtual));
+  // O filtro: so pendente, so deste pedido, so com o item gravado (so a peca de devolucao o tem). Nada escreve.
+  assertStringIncludes(
+    c,
+    "    SELECT DISTINCT p.devolucao_item_id\n      FROM public.pecas_sem_tamanho p\n     WHERE p.resolvida_em IS NULL\n       AND p.order_id = p_order_id\n       AND p.devolucao_item_id IS NOT NULL\n",
+  );
+  for (const proibido of [/\bUPDATE\b/i, /\bINSERT\b/i, /\bDELETE\b/i])
+    assert(!proibido.test(semComentario(c)), `leitura: ${proibido}`);
+  // A origem que ela le e' a que a conclusao grava: o item da devolucao em cada peca do cantinho.
+  assertStringIncludes(
+    conclNovo,
+    "INSERT INTO public.pecas_sem_tamanho (produto_id, order_id, order_item_id, devolucao_item_id, origem)\n        SELECT v_di.product_id, v_d.order_id, v_di.order_item_id, v_di.id, 'devolucao'\n",
+  );
+  // A ACL: tira de todos e da so ao authenticated, DEPOIS do CREATE (o CREATE OR REPLACE da funcao nova herdaria o padrao).
+  for (const linha of DA_ACL) assertStringIncludes(migration, linha);
+  assert(
+    migration.indexOf(DA_ACL[1]) > migration.indexOf(DA[0]) &&
+      migration.indexOf(DA_ACL[2]) > migration.indexOf(DA_ACL[1]),
+  );
+  // O pos-voo confere a forma, os atributos e a ACL da leitura.
+  const pos = blocoDo(migration, "posvoo_20261653000000");
+  for (const trecho of [
+    "pg_get_function_result(p.oid) = 'TABLE(devolucao_item_id uuid)'",
+    "p.provolatile = 's'",
+    "OR has_function_privilege('anon', v_da, 'EXECUTE')",
+    "OR has_function_privilege('service_role', v_da, 'EXECUTE')",
+    "OR NOT has_function_privilege('authenticated', v_da, 'EXECUTE')",
+  ])
+    assertStringIncludes(pos, trecho);
+  // A porta da leitura esta na lista das portas que o logado executa (senao a prova das portas reprova).
+  const portas = JSON.parse(
+    lerTexto("tests/banco/portas-do-visitante-permitidas.json"),
+  );
+  const linha = portas.funcoes.filter(
+    (f) =>
+      f.funcao === "public.pecas_sem_tamanho_da_devolucao(p_order_id uuid)",
+  );
+  assertEquals(linha.length, 1);
+  assertEquals(linha[0].executa, ["authenticated"]);
+  assertEquals(linha[0].tipo, "leitura");
+  assertEquals(linha[0].secdef, true);
 });
 
 Deno.test("20261653: os md5 do pre-voo, do pos-voo, do rollback, das consultas e do posterior sao os dos corpos que os arquivos carregam", () => {
@@ -260,6 +343,25 @@ Deno.test("20261653: os md5 do pre-voo, do pos-voo, do rollback, das consultas e
   assertStringIncludes(rbPos, `IS DISTINCT FROM '${H_DEV_642}'`);
   assertStringIncludes(rbPos, `IS DISTINCT FROM '${H_CONCL_642}'`);
   assert(!rbPos.includes(H_DEV) && !rbPos.includes(H_CONCL));
+  // A leitura nova: o pre-voo aceita ausente ou a desta; o pos-voo so a desta; o rollback so tira a desta e confere que saiu.
+  assertEquals(pre.split(`IS DISTINCT FROM '${H_DA}'`).length, 2);
+  assertStringIncludes(
+    pre,
+    "IF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'pecas_sem_tamanho_da_devolucao')\n     AND (",
+  );
+  assertEquals(pos.split(`IS DISTINCT FROM '${H_DA}'`).length, 2);
+  assertEquals(rbPre.split(`IS DISTINCT FROM '${H_DA}'`).length, 2);
+  assertStringIncludes(
+    rbPos,
+    "IF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'pecas_sem_tamanho_da_devolucao') THEN",
+  );
+  // o DROP vem DEPOIS do pre-voo do rollback (que confirmou que a leitura e' a desta) e ANTES do pos-voo
+  assert(
+    rollback.indexOf("END $preflight_rollback_20261653000000$;") <
+      rollback.indexOf(DA_DROP) &&
+      rollback.indexOf(DA_DROP) <
+        rollback.indexOf("DO $posvoo_rollback_20261653000000$"),
+  );
   // o pre-voo vem ANTES de qualquer escrita; o pos-voo DEPOIS de tudo
   assert(
     migration.indexOf("DO $preflight_20261653000000$") <
@@ -275,12 +377,22 @@ Deno.test("20261653: os md5 do pre-voo, do pos-voo, do rollback, das consultas e
   );
   assertStringIncludes(posterior, `HASH_DEVOLVER_DESTA = "${H_DEV}"`);
   assertStringIncludes(posterior, `HASH_CONCLUIR_DESTA = "${H_CONCL}"`);
+  assertStringIncludes(posterior, `HASH_DA_DEVOLUCAO_DESTA = "${H_DA}"`);
   const a = lerTexto(`scripts/publicacao/consultas/${A209}.sql`);
   const b = lerTexto(`scripts/publicacao/consultas/${B209}.sql`);
   for (const h of [H_DEV, H_CONCL]) assertStringIncludes(a, `'${h}'`);
   assert(!semComentario(a).includes(H_DEV_642), "a 209a nao aceita a 642");
   assertStringIncludes(b, `IN ('${H_DEV_642}', '${H_DEV}')`);
   assertStringIncludes(b, `IN ('${H_CONCL_642}', '${H_CONCL}')`);
+  // a leitura: a 209a exige a desta (uma so); a 209b aceita AUSENTE ou a desta
+  assertStringIncludes(
+    semComentario(a),
+    `COALESCE((SELECT n = 1 AND h = '${H_DA}' AND COALESCE(atributos, false) FROM da), false)`,
+  );
+  assertStringIncludes(
+    semComentario(b),
+    `COALESCE((SELECT n = 0 OR (n = 1 AND h = '${H_DA}' AND COALESCE(atributos, false)) FROM da), false)`,
+  );
   // as fichas das antecessoras aceitam o corpo desta como SUCESSORA (senao reprovam em toda loja depois do apply)
   for (const [ficha, h] of [
     ["202a-conferir-a-peca-que-volta-sem-tamanho-aplicado", H_DEV],
@@ -301,7 +413,7 @@ Deno.test("20261653: os md5 do pre-voo, do pos-voo, do rollback, das consultas e
     );
 });
 
-Deno.test("20261653: o rollback devolve os blocos da 20261642000000 BYTE A BYTE e nao apaga nada", () => {
+Deno.test("20261653: o rollback devolve os blocos da 20261642000000 BYTE A BYTE, tira SO a leitura que esta criou e nao apaga nenhuma linha", () => {
   assertEquals(
     rollback.split(dev642).length,
     2,
@@ -312,8 +424,10 @@ Deno.test("20261653: o rollback devolve os blocos da 20261642000000 BYTE A BYTE 
     2,
     "o bloco de admin_devolucao_concluir da 642 nao esta letra por letra",
   );
+  // O unico DROP: a leitura que a migration criou, uma vez, pela assinatura exata.
+  assertEquals(rollback.split(DA_DROP).length, 2);
   const fora = semComentario(
-    rollback.replace(dev642, "").replace(concl642, ""),
+    rollback.replace(dev642, "").replace(concl642, "").replace(DA_DROP, ""),
   );
   for (const proibido of [
     /\bDROP\b/i,
@@ -366,10 +480,13 @@ Deno.test("20261653: ligada na release - canais, consultas, conferir-banco, rpc-
   const corpos = {
     devolver_estoque: corpo(devNovo, "$devolver$"),
     admin_devolucao_concluir: corpo(conclNovo, "$$"),
+    pecas_sem_tamanho_da_devolucao: corpo(daNovo, "$da_devolucao$"),
   };
+  // Antes desta: os corpos da 642, e a leitura nao existe (undefined = funcao ausente para o db-apply).
   const corpos642 = {
     devolver_estoque: corpo(dev642, "$devolver$"),
     admin_devolucao_concluir: corpo(concl642, "$$"),
+    pecas_sem_tamanho_da_devolucao: undefined,
   };
   assertEquals(
     entrada.map((c) => c.funcao),

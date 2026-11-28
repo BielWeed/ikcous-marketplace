@@ -23,8 +23,12 @@
  *   8. DUAS CONEXOES REAIS: a lojista desliga o M ao mesmo tempo que o pedido volta; a volta espera a trava da variacao e ve o M
  *      desligado (a peca vai para o cantinho, o M nao muda);
  *   9. mutantes (cada um na guarda certa), restaurando o corpo exato depois;
- *  10. reaplicar (LF e CRLF), pre-voo (corpo estranho, destino ausente), rollback (corpos da 642 byte a byte, o da 642 recusa antes
- *      dele, as linhas do cantinho ficam), consultas 209a/209b e a 202a como sucessora.
+ *  10. reaplicar (LF e CRLF), pre-voo (corpo estranho, destino ausente, leitura alheia com o mesmo nome), rollback (corpos da 642
+ *      byte a byte, a leitura sai, o da 642 recusa antes dele, as linhas do cantinho ficam), consultas 209a/209b e a 202a como sucessora;
+ *  11. a ficha da devolucao (pecas_sem_tamanho_da_devolucao): o item do M desligado aparece e o do P ligado do MESMO produto nao; uma
+ *      linha por item (duas pecas = um item); some quando a ultima peca e' decidida; outro pedido, pedido desfeito e pedido NULL nao
+ *      aparecem; religar o M depois NAO muda a resposta (e' a origem gravada na conclusao); o item sem variacao da 642 tambem aparece;
+ *      anon, service_role, cliente e admin rebaixado recusados (42501).
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-da-variacao-desligada-viva.cjs
  */
@@ -42,6 +46,7 @@ const {
   VARIACAO_DESLIGADA,
   HASH_DEVOLVER_DESTA,
   HASH_CONCLUIR_DESTA,
+  HASH_DA_DEVOLUCAO_DESTA,
 } = require("./a-peca-da-variacao-desligada-posterior.cjs");
 
 const RAIZ = path.resolve(__dirname, "..", "..");
@@ -86,9 +91,16 @@ const H_DEV_642 = "80b1a90baf10d1b4c59484772e4864c4";
 const H_CONCL_642 = "1a548896acb8248f1b1771d765c92fcb";
 const DEVOLVER = blocoDe(MIGRATION, INICIO_DEV, "\n$devolver$;");
 const CONCLUIR = blocoDe(MIGRATION, INICIO_CONCL, "\n$$;");
+const DA_DEVOLUCAO = blocoDe(
+  MIGRATION,
+  "CREATE OR REPLACE FUNCTION public.pecas_sem_tamanho_da_devolucao(p_order_id uuid)",
+  "\n$da_devolucao$;",
+);
 
 const ADMIN = "7e7e1653-0000-4000-8000-0000000000a1";
 const CLIENTE = "7e7e1653-0000-4000-8000-0000000000c1";
+const REBAIXADO = "7e7e1653-0000-4000-8000-0000000000a2";
+const CLAIMS_CLIENTE = JSON.stringify({ role: "authenticated" });
 const CLAIMS_ADMIN = JSON.stringify({
   role: "authenticated",
   app_metadata: { role: "admin" },
@@ -105,6 +117,8 @@ const prova = (nome, corpo) => PROVAS.push({ nome, corpo });
 async function semearPessoas() {
   for (const [id, meta, papel] of [
     [ADMIN, '{"role":"admin"}', "admin"],
+    // Rebaixado: o JWT ainda diz admin, mas o profiles ja diz customer (is_admin_atual recusa).
+    [REBAIXADO, '{"role":"admin"}', "customer"],
     [CLIENTE, "{}", "customer"],
   ]) {
     await C.query(
@@ -209,14 +223,19 @@ async function devolucao(c, itens) {
 }
 
 /** O erro volta ao savepoint e nao derruba a transacao da prova. */
-async function chamar(conn, sql, params = []) {
+async function chamar(
+  conn,
+  sql,
+  params = [],
+  { papel = "authenticated", uid = ADMIN, claims = CLAIMS_ADMIN } = {},
+) {
   await conn.query("SAVEPOINT tentativa");
   try {
     await conn.query(
       "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
-      [ADMIN, CLAIMS_ADMIN],
+      [uid ?? "", claims],
     );
-    await conn.query("SET LOCAL ROLE authenticated");
+    await conn.query(`SET LOCAL ROLE ${papel}`);
     const r = await conn.query(sql, params);
     await conn.query("RESET ROLE");
     await conn.query("RELEASE SAVEPOINT tentativa");
@@ -240,6 +259,16 @@ const concluir = (conn, dev, itens) =>
     "SELECT public.admin_devolucao_concluir($1::uuid, 'troca', $2::jsonb, NULL, NULL) AS r",
     [dev, JSON.stringify(itens)],
   );
+/** Os itens da devolucao com peca esperando, pela leitura da ficha (como o painel chama). */
+const daDevolucao = (conn, order, opcoes) =>
+  chamar(
+    conn,
+    "SELECT devolucao_item_id FROM public.pecas_sem_tamanho_da_devolucao($1::uuid)",
+    [order],
+    opcoes,
+  );
+const itensDaFicha = async (order, opcoes) =>
+  ok(await daDevolucao(C, order, opcoes)).map((l) => l.devolucao_item_id);
 const ok = (r) => {
   assert.equal(r.erro, undefined, `a chamada foi recusada: ${r.erro}`);
   return r.linhas;
@@ -301,6 +330,8 @@ const hashDe = async (assinatura, c = C) =>
 const hashDevolver = (c) => hashDe("public.devolver_estoque(uuid)", c);
 const hashConcluir = (c) =>
   hashDe("public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)", c);
+const hashDaDevolucao = (c) =>
+  hashDe("public.pecas_sem_tamanho_da_devolucao(uuid)", c);
 
 /**
  * Os corpos da 20261642000000, dentro da transacao aberta (o ROLLBACK do fim devolve os do banco). Pelos blocos da propria 642, e
@@ -662,6 +693,89 @@ async function provaDeDuasConexoes() {
 }
 
 // ---------------------------------------------------------------------------
+// 11. A ficha da devolucao: QUAIS itens deixaram peca esperando
+// ---------------------------------------------------------------------------
+async function provaDaFicha() {
+  await emTransacao(async () => {
+    const b = await blusa();
+    // O M (2 pecas) e o P (1) do MESMO produto na mesma devolucao; a lojista desligou o M antes de concluir.
+    const dev = await devolucao(C, [
+      { p: b.produto, v: b.v.M, q: 2 },
+      { p: b.produto, v: b.v.P, q: 1 },
+    ]);
+    // Antes de concluir: nada espera.
+    assert.deepEqual(await itensDaFicha(dev.order), []);
+    await desligar(b.v.M);
+    ok(
+      await concluir(C, dev.dev, [
+        { item_id: dev.di[0], condicao: "nova", reestocar: true },
+        { item_id: dev.di[1], condicao: "nova", reestocar: true },
+      ]),
+    );
+    // So o item do M (uma linha, mesmo com duas pecas); o do P, ligado e creditado de verdade, NAO.
+    assert.deepEqual(await itensDaFicha(dev.order), [dev.di[0]]);
+    // Religar o M depois nao muda o que aconteceu na conclusao: as pecas seguem no cantinho, e a ficha segue dizendo.
+    await C.query(
+      "UPDATE public.product_variants SET active = true WHERE id = $1",
+      [b.v.M],
+    );
+    assert.deepEqual(await itensDaFicha(dev.order), [dev.di[0]]);
+    // Outro pedido, pedido NULL e pedido desfeito (origem pedido_desfeito) nao aparecem nesta ficha.
+    const outra = await devolucao(C, [{ p: b.produto, v: b.v.P, q: 1 }]);
+    assert.deepEqual(await itensDaFicha(outra.order), []);
+    assert.deepEqual(await itensDaFicha(null), []);
+    await desligar(b.v.P);
+    const { order: desfeito } = await pedido(C, [
+      { p: b.produto, v: b.v.P, q: 1 },
+    ]);
+    assert.equal(await devolverEstoque(desfeito), 0);
+    assert.equal(
+      (await cantinho(b.produto)).filter((l) => l.order_id === desfeito).length,
+      1,
+      "a peca do pedido desfeito esta no cantinho",
+    );
+    assert.deepEqual(await itensDaFicha(desfeito), []);
+    // A lojista decide uma das duas pecas do M: o item ainda espera; decidida a ultima, sai da ficha.
+    const doM = (await cantinho(b.produto)).filter(
+      (l) => l.devolucao_item_id === dev.di[0],
+    );
+    assert.equal(doM.length, 2);
+    ok(await resolver(C, doM[0].id, b.v.M));
+    assert.deepEqual(await itensDaFicha(dev.order), [dev.di[0]]);
+    ok(await resolver(C, doM[1].id, null));
+    assert.deepEqual(await itensDaFicha(dev.order), []);
+
+    // O item SEM variacao de produto que hoje tem tamanho ligado (o caminho da 642) tambem aparece, pelo item.
+    const b2 = await blusa();
+    const dev2 = await devolucao(C, [
+      { p: b2.produto, v: null, q: 1 },
+      { p: b2.produto, v: b2.v.P, q: 1 },
+    ]);
+    ok(
+      await concluir(C, dev2.dev, [
+        { item_id: dev2.di[0], condicao: "nova", reestocar: true },
+        { item_id: dev2.di[1], condicao: "nova", reestocar: true },
+      ]),
+    );
+    assert.deepEqual(await itensDaFicha(dev2.order), [dev2.di[0]]);
+
+    // Permissao: so o admin de agora le; nenhum de fora le nem o que existe.
+    for (const [rotulo, opcoes] of [
+      ["anon", { papel: "anon", uid: null, claims: "{}" }],
+      [
+        "service_role",
+        { papel: "service_role", uid: null, claims: '{"role":"service_role"}' },
+      ],
+      ["cliente", { uid: CLIENTE, claims: CLAIMS_CLIENTE }],
+      ["admin rebaixado", { uid: REBAIXADO, claims: CLAIMS_ADMIN }],
+    ]) {
+      const r = await daDevolucao(C, dev2.order, opcoes);
+      assert.equal(r.codigo, "42501", `${rotulo}: ${r.erro}`);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // 9. Mutantes: cada um tem de derrubar a prova certa
 // ---------------------------------------------------------------------------
 const troca = (s, de, para) => {
@@ -723,6 +837,42 @@ const MUTANTES = [
     ),
     prova: provaDaDevolucao,
   },
+  {
+    nome: "pecas_sem_tamanho_da_devolucao sem o filtro do que ainda espera (a peca decidida segue na ficha)",
+    sql: troca(
+      DA_DEVOLUCAO,
+      "     WHERE p.resolvida_em IS NULL\n       AND p.order_id",
+      "     WHERE p.order_id",
+    ),
+    prova: provaDaFicha,
+  },
+  {
+    nome: "pecas_sem_tamanho_da_devolucao sem o filtro do pedido (o item de outra devolucao aparece)",
+    sql: troca(
+      DA_DEVOLUCAO,
+      "     WHERE p.resolvida_em IS NULL\n       AND p.order_id = p_order_id\n",
+      "     WHERE p.resolvida_em IS NULL\n",
+    ),
+    prova: provaDaFicha,
+  },
+  {
+    nome: "pecas_sem_tamanho_da_devolucao sem o item gravado (a peca do pedido desfeito aparece, sem item)",
+    sql: troca(
+      DA_DEVOLUCAO,
+      "       AND p.devolucao_item_id IS NOT NULL\n",
+      "",
+    ),
+    prova: provaDaFicha,
+  },
+  {
+    nome: "pecas_sem_tamanho_da_devolucao sem o admin de AGORA (o rebaixado le)",
+    sql: troca(
+      DA_DEVOLUCAO,
+      "  IF NOT public.is_admin_atual() THEN",
+      "  IF false THEN",
+    ),
+    prova: provaDaFicha,
+  },
 ];
 
 /** Aplica o mutante (COMMIT no clone), roda a prova esperando que caia, e restaura os corpos desta. */
@@ -737,8 +887,10 @@ async function provarMutante(m) {
   await C.query("ROLLBACK").catch(() => {});
   await C.query(DEVOLVER);
   await C.query(CONCLUIR);
+  await C.query(DA_DEVOLUCAO);
   assert.equal(await hashDevolver(), HASH_DEVOLVER_DESTA);
   assert.equal(await hashConcluir(), HASH_CONCLUIR_DESTA);
+  assert.equal(await hashDaDevolucao(), HASH_DA_DEVOLUCAO_DESTA);
   assert.ok(morreu, `o mutante sobreviveu: ${m.nome}`);
   return morreu;
 }
@@ -788,6 +940,7 @@ async function provaDaMigration() {
     );
     assert.equal(await hashDevolver(), HASH_DEVOLVER_DESTA);
     assert.equal(await hashConcluir(), HASH_CONCLUIR_DESTA);
+    assert.equal(await hashDaDevolucao(), HASH_DA_DEVOLUCAO_DESTA);
 
     // O rollback da 642 recusa por baixo desta (ordem).
     const r642 = await tentarSql(ROLLBACK_642);
@@ -798,6 +951,7 @@ async function provaDaMigration() {
     assert.equal((await tentarSql(ROLLBACK)).erro, undefined);
     assert.equal(await hashDevolver(), H_DEV_642);
     assert.equal(await hashConcluir(), H_CONCL_642);
+    assert.equal(await hashDaDevolucao(), null, "a leitura da ficha saiu");
     assert.equal(
       (await cantinho(b.produto)).length,
       1,
@@ -813,9 +967,40 @@ async function provaDaMigration() {
     );
     assert.equal(await hashDevolver(), H_DEV_642);
 
-    // Reaplicar depois do rollback.
+    // Reaplicar depois do rollback: a leitura volta com a porta de sempre (so o authenticated executa).
     assert.equal((await tentarSql(MIGRATION)).erro, undefined);
     assert.equal(await hashDevolver(), HASH_DEVOLVER_DESTA);
+    assert.equal(await hashDaDevolucao(), HASH_DA_DEVOLUCAO_DESTA);
+    assert.deepEqual(
+      await um(
+        `SELECT has_function_privilege('authenticated', to_regprocedure('public.pecas_sem_tamanho_da_devolucao(uuid)'), 'EXECUTE') AS auth,
+                has_function_privilege('anon', to_regprocedure('public.pecas_sem_tamanho_da_devolucao(uuid)'), 'EXECUTE') AS anon,
+                has_function_privilege('service_role', to_regprocedure('public.pecas_sem_tamanho_da_devolucao(uuid)'), 'EXECUTE') AS srv`,
+      ),
+      { auth: true, anon: false, srv: false },
+    );
+
+    // Pre-voo: uma leitura ALHEIA com o mesmo nome (outro corpo) recusa a migration e o rollback, sem trocar nem tirar nada.
+    await C.query(
+      DA_DEVOLUCAO.replace(
+        "     ORDER BY p.devolucao_item_id;",
+        () => "     ORDER BY 1;",
+      ),
+    );
+    const alheia = await hashDaDevolucao();
+    assert.notEqual(alheia, HASH_DA_DEVOLUCAO_DESTA);
+    assert.match(
+      String((await tentarSql(MIGRATION)).erro),
+      /B1_BASELINE_DIVERGENT/,
+    );
+    assert.match(
+      String((await tentarSql(ROLLBACK)).erro),
+      /B1_BASELINE_DIVERGENT/,
+    );
+    assert.equal(await hashDaDevolucao(), alheia, "nada trocado nem tirado");
+    await fichaTemNao(FICHA_A, "209a com a leitura alheia");
+    await fichaTemNao(FICHA_B, "209b com a leitura alheia");
+    await C.query(DA_DEVOLUCAO);
 
     // Pre-voo: corpo desconhecido recusa sem escrever nada (e o rollback tambem recusa).
     await C.query(
@@ -888,8 +1073,12 @@ for (const m of MUTANTES) {
   });
 }
 prova(
-  "10. reaplicar (LF e CRLF), pre-voo, rollback (ordem, corpos, dado mantido) e fichas 209a/209b/202a",
+  "10. reaplicar (LF e CRLF), pre-voo, rollback (ordem, corpos, a leitura sai, dado mantido) e fichas 209a/209b/202a",
   provaDaMigration,
+);
+prova(
+  "11. a ficha da devolucao: so o item do M desligado (nunca o do P ligado do mesmo produto), religar nao muda, decidir tira, permissao",
+  provaDaFicha,
 );
 
 async function main() {
@@ -911,6 +1100,7 @@ async function main() {
       "a migration 20261653000000 nao esta no banco efemero",
     );
     assert.equal(await hashConcluir(), HASH_CONCLUIR_DESTA);
+    assert.equal(await hashDaDevolucao(), HASH_DA_DEVOLUCAO_DESTA);
     await semearPessoas();
     for (const p of PROVAS) {
       try {

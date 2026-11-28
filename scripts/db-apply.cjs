@@ -617,8 +617,9 @@ const VERIFICACOES = {
   // 20261653000000: a peca que volta para uma variacao desligada espera a lojista. devolver_estoque e admin_devolucao_concluir (corpos da
   // 20261642000000) ganham UM bloco cada: a variacao do item que nao esta ligada vira "sem variacao" e o item segue o ramo da 642 (cantinho
   // ou pai). Os marcadores sao as decisoes que, tiradas, voltam o defeito (o filtro de ligada, a troca para sem variacao, o produto pelo pai
-  // da variacao) e o destino da 642 que o bloco usa (uma vez cada). O corpo exato (md5) e' da consulta 209a e do pos-voo; o comportamento,
-  // da prova viva a-peca-da-variacao-desligada-viva.cjs.
+  // da variacao) e o destino da 642 que o bloco usa (uma vez cada); e a leitura NOVA pecas_sem_tamanho_da_devolucao (os itens da devolucao
+  // com peca esperando, pela origem gravada na conclusao). O corpo exato (md5) e' da consulta 209a e do pos-voo; o comportamento, da prova
+  // viva a-peca-da-variacao-desligada-viva.cjs.
   "20261653000000_a_peca_da_variacao_desligada_espera_a_lojista.sql": [
     {
       funcao: "devolver_estoque",
@@ -650,6 +651,17 @@ const VERIFICACOES = {
             "'reestocados', v_reestocados - v_sem_tamanho, 'sem_tamanho', v_sem_tamanho",
           vezes: 1,
         },
+      ],
+    },
+    // A leitura NOVA da ficha da devolucao: a porta do admin de agora e o filtro pelo item gravado na conclusao (so o que ainda espera).
+    {
+      funcao: "pecas_sem_tamanho_da_devolucao",
+      esperado: [
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "SELECT DISTINCT p.devolucao_item_id", vezes: 1 },
+        { texto: "WHERE p.resolvida_em IS NULL", vezes: 1 },
+        { texto: "AND p.devolucao_item_id IS NOT NULL", vezes: 1 },
+        { texto: "AND p.order_id = p_order_id", vezes: 1 },
       ],
     },
   ],
