@@ -225,7 +225,18 @@ describe("precoAnunciadoVelho — o texto bate com o preço de agora?", () => {
     expect(precoAnunciadoVelho(["Leve 2 por R$ 150"], vestido(90))).toBeNull();
   });
 
-  it.each(["R$ 70 cada 2 peças", "Leve 2 por R$ 70 cada 2 peças"])(
+  it("'cada' no fim da linha e número na linha de baixo é preço da peça", () => {
+    expect(
+      precoAnunciadoVelho(["Blusas por R$ 70 cada\n2 cores disponíveis"], vestido(90)),
+    ).toEqual({ tipo: "preco", citado: 70, atual: 90, aPartirDe: false });
+  });
+
+  it.each([
+    "R$ 70 cada 2 peças",
+    "Leve 2 por R$ 70 cada 2 peças",
+    "Leve 2 blusas por R$ 70 cada duas peças",
+    "R$ 100 CADA TRÊS",
+  ])(
     "'%s' é preço do grupo, não da peça",
     (texto) => {
       expect(precoAnunciadoVelho([texto], vestido(90))).toBeNull();

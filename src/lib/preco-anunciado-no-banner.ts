@@ -27,10 +27,13 @@ const PERCENTUAL_OFF = /(\d[\d,]*)\s*%\s*OFF\b/gi;
  */
 const ANTES_DE_COMBO = /\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}$/i;
 // "R$ 70 cada" e "R$ 70 a/à/por unidade" é preço da peça; "R$ 70 cada 2
-// peças" é preço do grupo (fica fora, como o combo).
+// peças" / "cada duas" é preço do grupo (fica fora, como o combo, e é
+// conferido antes). Só espaço na mesma linha: "R$ 70 cada" + quebra + "2
+// cores" segue sendo preço da peça.
 const DEPOIS_DE_PRECO_UNITARIO =
-  /^\s+(?:cada\b(?!\s*\d)|(?:a|à|À|por)\s+unidade\b)/i;
-const DEPOIS_DE_PRECO_DE_GRUPO = /^\s+cada\s+\d/i;
+  /^[^\S\r\n]+(?:cada\b|(?:a|à|À|por)[^\S\r\n]+unidade\b)/i;
+const DEPOIS_DE_PRECO_DE_GRUPO =
+  /^[^\S\r\n]+cada[^\S\r\n]+(?:\d|(?:dois|duas|tr[eê]s|quatro|cinco|seis|dez|doze)\b)/i;
 const ANTES_DE_VALOR_DE_FORA =
   /(?:\bacima\s+de\s*|\bdesconto\s+de\s*|\bcupom(?:\sde\sdesconto)?(?:\sde)?\s*[:\-–]?\s*|\bfrete(?:\sfixo)?(?:\sde)?\s*[:\-–]?\s*)$/i;
 const DEPOIS_DE_VALOR_DE_FORA = /^\s*(?:OFF\b|de\s+desconto\b)/i;
