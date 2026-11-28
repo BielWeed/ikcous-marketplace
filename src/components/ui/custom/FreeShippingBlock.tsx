@@ -11,6 +11,10 @@ import {
   promessasDeFrete,
   semMetaDeFreteGratis,
 } from "@/lib/estrategias-de-frete";
+import {
+  chavesDeTransportadoraDaLista,
+  entregaPropriaLigada,
+} from "@/lib/guarda-de-frete";
 // FRETE V2 (frente B, 03/09): o que a Home anuncia passa a ser derivado do
 // PRESET escolhido pelo lojista — fonte única em presets-de-frete-gratis.ts.
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
@@ -84,6 +88,17 @@ export function AvisoDeFreteGratis({
   const metaEmCentavos = Math.round(minShipping * 100);
   const remaining = Math.max(0, (metaEmCentavos - totalEmCentavos) / 100);
   const isGoalReached = totalEmCentavos >= metaEmCentavos;
+  const avisoDeAlcanceNacional =
+    isGoalReached &&
+    preset === "acima_de_valor" &&
+    promessas.iguais &&
+    config.nationalBenefitScope === "mais_barata" &&
+    entregaPropriaLigada(config.localDeliveryEnabled) &&
+    config.shippingCoverage !== "local" &&
+    (!Array.isArray(config.enabledShippingMethods) ||
+      chavesDeTransportadoraDaLista(config.enabledShippingMethods).length > 0)
+      ? "Entrega local grátis. Para envios nacionais, só a opção mais barata fica grátis."
+      : null;
   const progressPercent = isGoalReached
     ? 100
     : (totalEmCentavos / metaEmCentavos) * 100;
@@ -154,7 +169,7 @@ export function AvisoDeFreteGratis({
                 ? "Pedido com entrega local sai grátis."
                 : "Todo pedido sai com entrega grátis."
               : liberado
-                ? "Já vale para o seu carrinho."
+                ? (avisoDeAlcanceNacional ?? "Já vale para o seu carrinho.")
                 : totalCartValue > 0
                   ? `${formatCurrency(totalCartValue)} de ${formatCurrency(minShipping)}`
                   : `Compras a partir de ${formatCurrency(minShipping)}`}
@@ -264,9 +279,12 @@ export function AvisoDeFreteGratis({
 
   const renderSubtext = () => {
     if (isGoalReached) {
-      return soLocal
-        ? "Seu carrinho já ganhou entrega local grátis!"
-        : "Seu carrinho já ganhou entrega grátis!";
+      return (
+        avisoDeAlcanceNacional ??
+        (soLocal
+          ? "Seu carrinho já ganhou entrega local grátis!"
+          : "Seu carrinho já ganhou entrega grátis!")
+      );
     }
     if (totalCartValue > 0) {
       return (
