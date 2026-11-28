@@ -75,6 +75,8 @@ import { formatarInteiro } from "@/lib/crm";
 import { carimboLocalParaNomeDeArquivo } from "@/lib/data-local-csv";
 import { mensagemDeErroDeSessaoDoPainel } from "@/lib/erro-de-sessao-do-painel";
 import {
+  instanteDentroDoPeriodo,
+  periodoDaListaEmTexto,
   periodoInvertido,
   recorteDaListaDePedidos,
 } from "@/lib/filtro-da-lista-de-pedidos";
@@ -465,6 +467,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     Record<string, "INSERT" | "UPDATE">
   >({});
   const onRealtimeEventRef = useRef<(payload: any) => void>(() => {});
+  // Cartões com a janela de ação aberta agora (o próprio cartão avisa). O
+  // pedido novo que entra no topo da página 1 não os empurra para fora: a
+  // janela é estado do cartão e sumiria com ele, levando o que foi digitado.
+  const pedidosComJanelaAbertaRef = useRef(new Set<string>());
+  const marcarJanelaDoCartao = useCallback(
+    (orderId: string, aberta: boolean) => {
+      if (aberta) pedidosComJanelaAbertaRef.current.add(orderId);
+      else pedidosComJanelaAbertaRef.current.delete(orderId);
+    },
+    [],
+  );
   // Após a reconexão, o topo e a ficha aberta por link precisam conferir os
   // eventos perdidos. Os callbacks só existem depois de chamar useOrders.
   const aoReconciliarRef = useRef<() => void>(() => {});
@@ -497,6 +510,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   } = useOrders(active ?? false, true, {
     onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload),
     onReconciliar: () => aoReconciliarRef.current(),
+    pedidosQueNaoSaemDaPagina: () => pedidosComJanelaAbertaRef.current,
   });
   const {
     stats: analyticsStats,
@@ -655,6 +669,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     0,
   );
   const itemsPerPage = 12;
+  /** O "Limpar Datas": tira o período e volta à primeira página. */
+  const limparDatas = useCallback(() => {
+    setDateRange({ start: "", end: "" });
+    setCurrentPage(0);
+  }, [setDateRange, setCurrentPage]);
   const [paginaLidaParaVagas, setPaginaLidaParaVagas] = useState<string>();
   const chaveDosFiltrosParaVagas = JSON.stringify([
     filter,
@@ -1636,15 +1655,44 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       if (payload.eventType === "INSERT") {
         if (deveAvisarPedidoNovo(payload.new)) {
           const newId = payload.new?.id;
-          toast.info(`Novo pedido recebido! #${numeroDoPedido(newId)}`, {
-            duration: 10_000,
-            action: {
-              label: "Ver",
-              onClick: () => {
-                if (payload.new) handleSelectOrder(payload.new as Order);
-              },
-            },
+          const aviso = `Novo pedido recebido! #${numeroDoPedido(newId)}`;
+          // Pedido fora do período filtrado (salvo no aparelho, não vence)
+          // não entra na lista: sem explicar, a lista parecia travada. O
+          // período não sai sozinho; "Ver todos" o limpa. Mesma régua de
+          // instantes que a lista usa (decidirRealtimeInsertAdmin).
+          const recorte = recorteDaListaDePedidos({
+            searchQuery: "",
+            dateRange,
           });
+          const criadoEm = payload.new?.created_at;
+          const periodo = periodoDaListaEmTexto(dateRange.start, dateRange.end);
+          if (
+            periodo &&
+            typeof criadoEm === "string" &&
+            !instanteDentroDoPeriodo(
+              criadoEm,
+              recorte.startDate,
+              recorte.endDate,
+            )
+          ) {
+            toast.info(
+              `${aviso}. Ele não aparece na lista porque você está vendo só os pedidos ${periodo}.`,
+              {
+                duration: 10_000,
+                action: { label: "Ver todos", onClick: limparDatas },
+              },
+            );
+          } else {
+            toast.info(aviso, {
+              duration: 10_000,
+              action: {
+                label: "Ver",
+                onClick: () => {
+                  if (payload.new) handleSelectOrder(payload.new as Order);
+                },
+              },
+            });
+          }
         }
       } else if (payload.eventType === "UPDATE") {
         const updatedId = payload.new?.id;
@@ -1685,7 +1733,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       loadStats();
       pedirRecargaDosNumeros();
     };
-  }, [loadStats, pedirRecargaDosNumeros, handleSelectOrder, selectedOrderId]);
+  }, [
+    loadStats,
+    pedirRecargaDosNumeros,
+    handleSelectOrder,
+    selectedOrderId,
+    dateRange,
+    limparDatas,
+  ]);
 
   const totalPages = Math.ceil(totalOrders / itemsPerPage);
   const paginatedOrders = useMemo(
@@ -2679,10 +2734,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   {(dateRange.start || dateRange.end) && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setDateRange({ start: "", end: "" });
-                        setCurrentPage(0);
-                      }}
+                      onClick={limparDatas}
                       className={BOTAO_PEDIDOS}
                     >
                       Limpar Datas
@@ -3055,10 +3107,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         <button
                           type="button"
                           className={BOTAO_PEDIDOS}
-                          onClick={() => {
-                            setDateRange({ start: "", end: "" });
-                            setCurrentPage(0);
-                          }}
+                          onClick={limparDatas}
                         >
                           <CalendarDays
                             aria-hidden="true"
@@ -3112,6 +3161,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       changeType={recentOrderChanges[order.id]}
                       onRegistrarPagamento={handleRegistrarPagamento}
                       registrandoPagamento={registrandoPagamentoId === order.id}
+                      onJanelaDeAcaoAberta={marcarJanelaDoCartao}
                     />
                   ))}
                 </div>
@@ -3132,6 +3182,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       changeType={recentOrderChanges[order.id]}
                       onRegistrarPagamento={handleRegistrarPagamento}
                       registrandoPagamento={registrandoPagamentoId === order.id}
+                      onJanelaDeAcaoAberta={marcarJanelaDoCartao}
                     />
                   ))}
                 </div>
