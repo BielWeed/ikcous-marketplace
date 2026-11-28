@@ -52,6 +52,22 @@ describe("estilo do card de frete na Home", () => {
     expect(container.firstElementChild?.className).toContain("min-h-[172px]");
   });
 
+  it.each(["compacto", "completo"])(
+    "aviso %s explica que só a opção nacional mais barata fica grátis",
+    (estilo) => {
+      estado.config.freeShippingCardStyle = estilo;
+      estado.config.nationalShippingStrategy = "acima_de_valor";
+      estado.config.nationalBenefitScope = "mais_barata";
+      estado.cartTotal = 150;
+
+      const conteudo = montar();
+      expect(conteudo).toContain(
+        "Entrega local grátis. Para envios nacionais, só a opção mais barata fica grátis.",
+      );
+      expect(conteudo).not.toContain("Seu carrinho já ganhou entrega grátis!");
+    },
+  );
+
   for (const soLocal of [false, true]) {
     describe(soLocal ? "somente entrega local" : "regras iguais", () => {
       beforeEach(() => {
