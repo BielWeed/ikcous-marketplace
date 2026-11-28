@@ -89,6 +89,12 @@ interface AdminOrderCardProps {
   ) => Promise<ResultadoDaAnulacao>;
   readonly isOffline?: boolean;
   readonly destaquePrimario?: boolean;
+  /**
+   * A janela de ação deste cartão abriu (`true`) ou fechou (`false`). A tela
+   * usa isso para o pedido novo não empurrar o cartão para fora da página
+   * enquanto a janela está aberta (ela é estado do cartão e sumiria com ele).
+   */
+  readonly onJanelaDeAcaoAberta?: (orderId: string, aberta: boolean) => void;
 }
 
 const FOCO =
@@ -120,6 +126,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   onAnularVenda,
   isOffline = false,
   destaquePrimario = false,
+  onJanelaDeAcaoAberta,
 }: AdminOrderCardProps) {
   const [painel, setPainel] = useState<
     "acoes" | "cancelar" | "receber" | "avancar" | "entregar" | null
@@ -133,6 +140,12 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   useVoltarFechaAFolha(painel !== null && painel !== "acoes", () =>
     setPainel(null),
   );
+  const janelaAberta = painel !== null;
+  useEffect(() => {
+    if (!janelaAberta || !onJanelaDeAcaoAberta) return;
+    onJanelaDeAcaoAberta(order.id, true);
+    return () => onJanelaDeAcaoAberta(order.id, false);
+  }, [janelaAberta, onJanelaDeAcaoAberta, order.id]);
   const [processando, setProcessando] = useState(false);
   const [destinoConfirmado, setDestinoConfirmado] = useState<{
     status: OrderStatus;
@@ -694,7 +707,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
       )}
 
       <Dialog
-        open={painel !== null}
+        open={janelaAberta}
         onOpenChange={(aberto) => {
           if (!aberto) fecharPainel();
         }}

@@ -2413,6 +2413,13 @@ export function useOrders(
      * do topo de Pedidos) pedir a própria recontagem.
      */
     onReconciliar?: () => void;
+    /**
+     * Pedidos que o corte da página 1 (pedido novo entrando no topo) NÃO pode
+     * tirar da lista agora: o cartão deles está com a janela de ação aberta,
+     * e tirá-lo desmontaria a janela no meio do que a lojista está fazendo
+     * (o motivo da anulação digitado se perdia). Lido na hora do corte.
+     */
+    pedidosQueNaoSaemDaPagina?: () => ReadonlySet<string>;
   },
 ) {
   const { user, isAdmin: isUserAdmin } = useAuth();
@@ -3649,9 +3656,20 @@ export function useOrders(
               // atualizado; o cache só se renova no fetch, que roda no
               // mount.
               const lista = inserirPedidoPorData(prev, newOrder);
-              return typeof tamanhoDaPagina === "number" && tamanhoDaPagina > 0
-                ? lista.slice(0, tamanhoDaPagina)
-                : lista;
+              if (typeof tamanhoDaPagina !== "number" || tamanhoDaPagina <= 0) {
+                return lista;
+              }
+              // Cartão com a janela de ação aberta fica no fim da página (um
+              // a mais) até a janela fechar; o corte seguinte o tira.
+              const seguros = pedidosQueNaoSaemDaPaginaRef.current?.();
+              return [
+                ...lista.slice(0, tamanhoDaPagina),
+                ...(seguros?.size
+                  ? lista
+                      .slice(tamanhoDaPagina)
+                      .filter((pedido) => seguros.has(pedido.id))
+                  : []),
+              ];
             });
             setTotalOrders((total) => total + 1);
           } else if (decisao === "recarregar") {
@@ -3923,6 +3941,9 @@ export function useOrders(
   const handleRealtimeDeleteRef = useRef(handleRealtimeDelete);
   const onRealtimeEventRef = useRef(options?.onRealtimeEvent);
   const onReconciliarRef = useRef(options?.onReconciliar);
+  const pedidosQueNaoSaemDaPaginaRef = useRef(
+    options?.pedidosQueNaoSaemDaPagina,
+  );
 
   useEffect(() => {
     fetchUserOrdersRef.current = fetchUserOrders;
@@ -3937,6 +3958,7 @@ export function useOrders(
     handleRealtimeDeleteRef.current = handleRealtimeDelete;
     onRealtimeEventRef.current = options?.onRealtimeEvent;
     onReconciliarRef.current = options?.onReconciliar;
+    pedidosQueNaoSaemDaPaginaRef.current = options?.pedidosQueNaoSaemDaPagina;
   });
 
   // Realtime subscription for orders

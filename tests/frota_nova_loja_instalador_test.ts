@@ -1094,6 +1094,191 @@ Deno.test("T8 + T6: retomada depois do timeout pega a partir do ledger (a versã
   assertEquals(b.marca, "concluida");
 });
 
+// ─── ATUALIZAR: a loja que ESTE instalador concluiu e a release deixou para trás ───
+// (lote 566, 28/11/2026): ledger = começo contínuo e completo de uma fila MAIS
+// ANTIGA, marca concluída, e só faltam as migrations NOVAS no fim. Só com a
+// opção `atualizarConcluida` (o nova-loja.mjs a liga para loja que ainda não
+// entrou no cadastro da frota); sem ela, a recusa de hoje fica igual.
+
+const ATRASADA = () => est(80, VERSOES.slice(0, 2), "concluida");
+const ATUALIZAR = { atualizarConcluida: true };
+
+Deno.test("ATUALIZAR (plano): marca concluída + ledger PREFIXO + opção → 'atualizar' só com as migrations novas do FIM, na ordem", () => {
+  const plano = planejarInstalacao(ATRASADA(), REPO, ATUALIZAR);
+  assertEquals(plano.acao, "atualizar", plano.motivo);
+  assertEquals(nomes(plano), EM_ORDEM.slice(2));
+  assertEquals(plano.jaNoLedger, 2);
+  assertEquals(plano.total, 4);
+  assertStringIncludes(plano.motivo, "2 migration(s) nova(s)");
+  assertStringIncludes(plano.motivo, EM_ORDEM[2]);
+});
+
+Deno.test("ATUALIZAR (plano): sem a opção a recusa de hoje fica IGUAL (loja do cadastro: o portão decide)", () => {
+  for (const opcoes of [undefined, {}, { atualizarConcluida: false }]) {
+    const plano = planejarInstalacao(ATRASADA(), REPO, opcoes);
+    assertEquals(plano.acao, "recusar", JSON.stringify(opcoes));
+    assertStringIncludes(plano.motivo, "loja já instalada");
+  }
+});
+
+Deno.test("ATUALIZAR (plano): a opção NÃO abre o que é dano ou dúvida — sem marca, marca em curso, lacuna, versão estranha, public vazio, ledger vazio", () => {
+  const casos = [
+    // a loja que vende (sem marca): nunca por aqui
+    [est(80, VERSOES.slice(0, 2), "ausente"), "loja já instalada"],
+    // lacuna: tem a 3ª sem a 2ª
+    [est(80, [VERSOES[0], VERSOES[2]], "concluida"), "lacuna"],
+    // versão que o checkout não tem (checkout velho)
+    [
+      est(80, [...VERSOES.slice(0, 2), "20991231000000"], "concluida"),
+      "20991231000000",
+    ],
+    // public sem tabela com ledger: incoerente
+    [est(0, VERSOES.slice(0, 2), "concluida"), "incoerente"],
+    // marca concluída com ledger vazio: incoerente
+    [est(0, [], "concluida"), "incoerente"],
+  ];
+  for (const [estado, trecho] of casos) {
+    const plano = planejarInstalacao(estado, REPO, ATUALIZAR);
+    assertEquals(plano.acao, "recusar", JSON.stringify(estado));
+    assertStringIncludes(plano.motivo, trecho);
+  }
+  // marca em curso continua sendo retomada (instalar), não "atualizar"
+  assertEquals(
+    planejarInstalacao(est(9, VERSOES.slice(0, 2), "em_curso"), REPO, ATUALIZAR)
+      .acao,
+    "instalar",
+  );
+  // completa continua ja_instalada
+  assertEquals(
+    planejarInstalacao(est(80, VERSOES, "concluida"), REPO, ATUALIZAR).acao,
+    "ja_instalada",
+  );
+});
+
+Deno.test("ATUALIZAR (aplicar): confere os privilégios ANTES, manda SÓ os envelopes novos (sem DDL, sem marcar de novo), relê e dá OK; a marca segue concluída", async () => {
+  const b = bancoFalso({
+    tabelas: 80,
+    ledger: VERSOES.slice(0, 2),
+    marca: "concluida",
+    privilegios: true,
+  });
+  const plano = planejarInstalacao(estadoDo(b), REPO, ATUALIZAR);
+  const r = await instalar(b, plano, { aplicar: true });
+  assertEquals(r.estado, "OK", r.mensagem);
+  assertEquals(r.aplicados, EM_ORDEM.slice(2));
+  assertEquals(
+    escritas(b),
+    plano.fila.map((i) => i.envelope),
+    "só os envelopes das novas: nem o DDL do ledger nem o SQL_CONCLUIR",
+  );
+  const iPriv = b.chamadas.indexOf(SQL_PRIVILEGIOS);
+  const iPrimeiro = b.chamadas.findIndex(ehEnvelope);
+  assert(iPriv >= 0 && iPriv < iPrimeiro, "privilégios conferidos antes");
+  assert(
+    ehLeitura(b.chamadas.at(-1)),
+    "a última chamada é a releitura de conferência",
+  );
+  assertEquals(b.marca, "concluida");
+  assertStringIncludes(r.mensagem, "continua concluída");
+  // rodar de novo: já instalada, só leituras
+  const plano2 = planejarInstalacao(estadoDo(b), REPO, ATUALIZAR);
+  assertEquals(plano2.acao, "ja_instalada");
+  b.chamadas = [];
+  const r2 = await instalar(b, plano2, { aplicar: true });
+  assertEquals(r2.estado, "JA_INSTALADA", r2.mensagem);
+  assertEquals(escritas(b), []);
+});
+
+Deno.test("ATUALIZAR (aplicar): os privilégios padrão FALTANDO → FALHOU fechado, nada gravado", async () => {
+  const b = bancoFalso({
+    tabelas: 80,
+    ledger: VERSOES.slice(0, 2),
+    marca: "concluida",
+    privilegios: false,
+  });
+  const r = await instalar(
+    b,
+    planejarInstalacao(estadoDo(b), REPO, ATUALIZAR),
+    { aplicar: true },
+  );
+  assertEquals(r.estado, "FALHOU", r.mensagem);
+  assertEquals(r.fase, "privilégios padrão");
+  assertEquals(escritas(b), []);
+  assertEquals(b.marca, "concluida");
+});
+
+Deno.test("ATUALIZAR: sem aplicar é ENSAIO (só leituras) e diz quais aplicaria", async () => {
+  const b = bancoFalso({
+    tabelas: 80,
+    ledger: VERSOES.slice(0, 2),
+    marca: "concluida",
+    privilegios: true,
+  });
+  const r = await instalar(b, planejarInstalacao(estadoDo(b), REPO, ATUALIZAR));
+  assertEquals(r.estado, "ENSAIO");
+  assertEquals(r.aplicaria, EM_ORDEM.slice(2));
+  assertEquals(escritas(b), []);
+});
+
+Deno.test("ATUALIZAR: erro de SQL na 2ª nova → FALHOU nela, a 1ª fica no ledger, nada depois; a retomada pega só a que falta", async () => {
+  const b = bancoFalso({
+    tabelas: 80,
+    ledger: VERSOES.slice(0, 2),
+    marca: "concluida",
+    privilegios: true,
+    falhas: {
+      [EM_ORDEM[3]]: { quando: "antes", erro: erroSql("42P07", "já existe") },
+    },
+  });
+  const r = await instalar(
+    b,
+    planejarInstalacao(estadoDo(b), REPO, ATUALIZAR),
+    { aplicar: true },
+  );
+  assertEquals(r.estado, "FALHOU", r.mensagem);
+  assertEquals(r.arquivo, EM_ORDEM[3]);
+  assertEquals(r.aplicados, [EM_ORDEM[2]]);
+  assertEquals(b.marca, "concluida");
+  const plano2 = planejarInstalacao(estadoDo(b), REPO, ATUALIZAR);
+  assertEquals(plano2.acao, "atualizar");
+  assertEquals(nomes(plano2), [EM_ORDEM[3]]);
+});
+
+Deno.test("ATUALIZAR: o banco mudou desde o plano (outro comando aplicou uma) → RECUSADO sem gravar", async () => {
+  const plano = planejarInstalacao(ATRASADA(), REPO, ATUALIZAR);
+  const b = bancoFalso({
+    tabelas: 81,
+    ledger: VERSOES.slice(0, 3),
+    marca: "concluida",
+    privilegios: true,
+  });
+  const r = await instalar(b, plano, { aplicar: true });
+  assertEquals(r.estado, "RECUSADO", r.mensagem);
+  assertEquals(escritas(b), []);
+});
+
+Deno.test("ATUALIZAR: a releitura acha a marca fora de 'concluída' → FALHOU na conferência (não dá OK)", async () => {
+  const b = bancoFalso({
+    tabelas: 80,
+    ledger: VERSOES.slice(0, 2),
+    marca: "concluida",
+    privilegios: true,
+  });
+  const plano = planejarInstalacao(estadoDo(b), REPO, ATUALIZAR);
+  const consultar = b.consultar;
+  let envios = 0;
+  b.consultar = async (sql) => {
+    if (ehEnvelope(sql)) {
+      envios += 1;
+      if (envios === plano.fila.length) b.marca = "em_curso";
+    }
+    return await consultar(sql);
+  };
+  const r = await instalar(b, plano, { aplicar: true });
+  assertEquals(r.estado, "FALHOU", r.mensagem);
+  assertEquals(r.fase, "conferência");
+});
+
 // ─── RITMO: o limite da Management API (120 pedidos/min por projeto) ─────────
 
 /** 290 migrations: o tamanho da fila real (276) com folga. */

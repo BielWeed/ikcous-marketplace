@@ -34,6 +34,7 @@ import {
   executar,
   shaDoLsRemote,
 } from "../scripts/frota/functions-da-loja.mjs";
+import { arquivosEsperados } from "../scripts/frota/publicar-release.mjs";
 import { criarClienteGestao } from "../scripts/frota/supabase-gestao.mjs";
 
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
@@ -127,10 +128,24 @@ function servidorFalso({
   existentes = [],
   deploy,
   listaFalha = false,
+  // o CÓDIGO no ar de cada existente (o que o download devolve): por padrão
+  // o do repositório (a mesma function do commit); { slug: arquivos[] }
+  // troca o de uma; `baixarFalha` faz o download de todas falhar
+  codigoNoAr = {},
+  baixarFalha = false,
 } = {}) {
   const funcoes = new Map(existentes.map((f) => [f.slug, { ...f }]));
+  const codigo = new Map(
+    existentes.map((f) => [
+      f.slug,
+      Object.hasOwn(codigoNoAr, f.slug)
+        ? codigoNoAr[f.slug]
+        : codigoDoRepo(f.slug),
+    ]),
+  );
   const chamadas = [];
   const publicados = [];
+  const downloads = [];
   let nDeploy = 0;
   const json = (status, corpo) =>
     Promise.resolve(
@@ -169,6 +184,7 @@ function servidorFalso({
         })),
       );
       publicados.push({ slug, meta, arquivos });
+      codigo.set(slug, arquivos);
       if (deploy) {
         const r = await deploy(slug, nDeploy);
         if (r) return r;
@@ -192,6 +208,14 @@ function servidorFalso({
   f.chamadas = chamadas;
   f.publicados = publicados;
   f.funcoes = funcoes;
+  f.downloads = downloads;
+  // o download do código no ar (o baixarFuncao do portão, aqui sem CLI)
+  f.baixar = async (ref, nome) => {
+    downloads.push({ ref, nome });
+    if (baixarFalha) throw new Error("supabase functions download falhou");
+    if (!codigo.has(nome)) throw new Error("function não existe no ar");
+    return codigo.get(nome).map((a) => ({ ...a }));
+  };
   f.posts = () => chamadas.filter((c) => c.metodo === "POST");
   return f;
 }
@@ -229,8 +253,20 @@ function deps(fetchFn, extra = {}) {
     git: gitFalso({ trocas: extra.trocas }),
     cliente: criarClienteGestao({ token: TOKEN, fetch: fetchFn }),
     esperar: async () => {},
+    baixarFuncao: fetchFn.baixar,
     ...extra,
   };
+}
+
+/** O código da function no commit (o disco): o mesmo conjunto que o portão
+ * espera no ar (arquivosEsperados), como o download o devolveria. */
+function codigoDoRepo(nome) {
+  return [...arquivosEsperados(nome, lerDoDisco)].map(
+    ([caminho, conteudo]) => ({
+      caminho,
+      conteudo,
+    }),
+  );
 }
 
 const ARGS_NOVA = ["--projeto", REF_NOVA, "--canal", NOVA];
@@ -958,4 +994,116 @@ Deno.test("o SHA do topo sai do ls-remote só com UMA linha exata do ramo", () =
     null,
   );
   assertEquals(shaDoLsRemote(`curto\trefs/heads/${ramo}`, ramo), null);
+});
+
+// ------------------------------------------- lote 566: o CÓDIGO no ar conta
+
+/** Todas as publicáveis já no ar, ACTIVE, verify_jwt certo, versão 3. */
+const todasNoAr = () => {
+  const esperado = verifyJwtLidoPeloTeste();
+  return PUBLICAVEIS.map((slug) => ({
+    slug,
+    status: "ACTIVE",
+    version: 3,
+    verify_jwt: esperado[slug],
+  }));
+};
+/** O código de uma release ANTERIOR: o index.ts com outro conteúdo. */
+const codigoVelho = (nome) =>
+  codigoDoRepo(nome).map((a) =>
+    a.caminho.endsWith(`/${nome}/index.ts`)
+      ? { ...a, conteudo: `${a.conteudo}\n// release anterior\n` }
+      : a,
+  );
+
+Deno.test("lote 566: já no ar e certa, mas com o código DIFERENTE do commit = republicada SEM --substituir; a versão sobe e dá SIM", async () => {
+  const velhas = PUBLICAVEIS.slice(0, 2);
+  const srv = servidorFalso({
+    existentes: todasNoAr(),
+    codigoNoAr: Object.fromEntries(velhas.map((n) => [n, codigoVelho(n)])),
+  });
+  const r = await executar([...ARGS_NOVA, "--aplicar"], deps(srv));
+  assertEquals(r.veredito, "SIM", [...r.saida, ...r.erros].join("\n"));
+  assertEquals(
+    srv.publicados.map((p) => p.slug),
+    velhas,
+    "só as de código diferente sobem",
+  );
+  for (const n of velhas) assertEquals(srv.funcoes.get(n).version, 4);
+  assert(/ATUALIZAR/.test(r.saida.join("\n")), r.saida.join("\n"));
+  // rodar de novo: o código no ar agora é o do commit, nada sobe
+  const antes = srv.publicados.length;
+  const r2 = await executar([...ARGS_NOVA, "--aplicar"], deps(srv));
+  assertEquals(r2.veredito, "SIM");
+  assertEquals(srv.publicados.length, antes);
+});
+
+Deno.test("lote 566: ENSAIO (o que o conferir usa) com código diferente no ar = NÃO dizendo qual difere, 0 POST", async () => {
+  const srv = servidorFalso({
+    existentes: todasNoAr(),
+    codigoNoAr: { "criar-pagamento": codigoVelho("criar-pagamento") },
+  });
+  const r = await executar(ARGS_NOVA, deps(srv));
+  assertEquals(srv.posts().length, 0);
+  assertEquals(r.veredito, "NAO", r.saida.join("\n"));
+  const texto = [...r.saida, ...r.erros].join("\n");
+  assert(/criar-pagamento.*ATUALIZAR/.test(texto), texto);
+  assert(/index\.ts \(difere\)/.test(texto), texto);
+});
+
+Deno.test("lote 566: o critério é o do portão — CRLF no ar e LF no commit é o MESMO código; arquivo a mais ou a menos no ar difere", async () => {
+  const comCrlf = codigoDoRepo("criar-pagamento").map((a) => ({
+    ...a,
+    conteudo: a.conteudo.replace(/\n/g, "\r\n"),
+  }));
+  const igual = servidorFalso({
+    existentes: todasNoAr(),
+    codigoNoAr: { "criar-pagamento": comCrlf },
+  });
+  const r = await executar(ARGS_NOVA, deps(igual));
+  assertEquals(r.veredito, "SIM", [...r.saida, ...r.erros].join("\n"));
+
+  const aMais = servidorFalso({
+    existentes: todasNoAr(),
+    codigoNoAr: {
+      "criar-pagamento": [
+        ...codigoDoRepo("criar-pagamento"),
+        {
+          caminho: "supabase/functions/criar-pagamento/extra.ts",
+          conteudo: "x",
+        },
+      ],
+    },
+  });
+  assertEquals((await executar(ARGS_NOVA, deps(aMais))).veredito, "NAO");
+
+  const aMenos = servidorFalso({
+    existentes: todasNoAr(),
+    codigoNoAr: {
+      "criar-pagamento": codigoDoRepo("criar-pagamento").slice(0, 1),
+    },
+  });
+  assertEquals((await executar(ARGS_NOVA, deps(aMenos))).veredito, "NAO");
+});
+
+Deno.test("lote 566: download do código que falha — ENSAIO é INCERTO (nunca SIM); com --aplicar republica e só dá SIM provando a versão nova", async () => {
+  const srv = servidorFalso({ existentes: todasNoAr(), baixarFalha: true });
+  const e = await executar(ARGS_NOVA, deps(srv));
+  assertEquals(e.veredito, "INCERTO", [...e.saida, ...e.erros].join("\n"));
+  assertEquals(srv.posts().length, 0);
+  const r = await executar([...ARGS_NOVA, "--aplicar"], deps(srv));
+  assertEquals(r.veredito, "SIM", [...r.saida, ...r.erros].join("\n"));
+  assertEquals(srv.posts().length, PUBLICAVEIS.length);
+  for (const n of PUBLICAVEIS) assertEquals(srv.funcoes.get(n).version, 4);
+});
+
+Deno.test("lote 566: sem baixarFuncao nas dependências nenhuma function no ar é dada como igual (ENSAIO = INCERTO, nunca SIM)", async () => {
+  const srv = servidorFalso({ existentes: todasNoAr() });
+  const r = await executar(ARGS_NOVA, {
+    ...deps(srv),
+    baixarFuncao: undefined,
+  });
+  assertEquals(r.veredito, "INCERTO", [...r.saida, ...r.erros].join("\n"));
+  assertEquals(srv.downloads.length, 0);
+  assertEquals(srv.posts().length, 0);
 });
