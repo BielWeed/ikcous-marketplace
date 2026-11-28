@@ -31,9 +31,9 @@ const ANTES_DE_COMBO = /\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}$/i;
 // conferido antes). Só espaço na mesma linha: "R$ 70 cada" + quebra + "2
 // cores" segue sendo preço da peça.
 const DEPOIS_DE_PRECO_UNITARIO =
-  /^[^\S\r\n]+(?:cada\b|(?:a|à|À|por)[^\S\r\n]+unidade\b)/i;
+  /^\s+(?:cada\b|(?:a|à|À|por)\s+unidade\b)/i;
 const DEPOIS_DE_PRECO_DE_GRUPO =
-  /^[^\S\r\n]+cada[^\S\r\n]+(?:\d|(?:dois|duas|tr[eê]s|quatro|cinco|seis|dez|doze)\b)/i;
+  /^\s+cada[^\S\r\n]+(?:[2-9]|\d{2,}|(?:dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze)\b)/i;
 const ANTES_DE_VALOR_DE_FORA =
   /(?:\bacima\s+de\s*|\bdesconto\s+de\s*|\bcupom(?:\sde\sdesconto)?(?:\sde)?\s*[:\-–]?\s*|\bfrete(?:\sfixo)?(?:\sde)?\s*[:\-–]?\s*)$/i;
 const DEPOIS_DE_VALOR_DE_FORA = /^\s*(?:OFF\b|de\s+desconto\b)/i;
