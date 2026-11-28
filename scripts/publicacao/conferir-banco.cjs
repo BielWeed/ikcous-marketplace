@@ -3764,7 +3764,28 @@ const ROL_DA_209 = [
   "o destino da peca que espera: pecas_sem_tamanho e as RPCs da 20261642000000 no ar, com a forma e os corpos dela",
   "pecas_sem_tamanho_da_devolucao: corpo exato (md5), uma so, plpgsql SECURITY DEFINER STABLE, search_path=public, EXECUTE so de authenticated",
 ];
+// Lote 210 (20261654000000, o caixa pertence ao dia em que abriu: fin_lancamento_salvar, fin_lancamento_baixar, fin_caixa_fechar_sessao e
+// fin_caixa_movimentar_com_chave trocam so o corpo). A 210a e a 210b tem o MESMO rol de 13 linhas (controle e, para cada funcao, o md5,
+// os atributos e a ACL); a 210a espera os corpos desta e a 210b os vigentes de antes (20261246000000, 20261199000000 e 20261252000000).
+// So catalogo: nenhuma le lancamento, conta ou sessao de caixa.
+const ROL_DA_210 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_lancamento_salvar: corpo exato (md5)",
+  "fin_lancamento_salvar: assinatura e atributos conhecidos",
+  "fin_lancamento_salvar: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_lancamento_baixar: corpo exato (md5)",
+  "fin_lancamento_baixar: assinatura e atributos conhecidos",
+  "fin_lancamento_baixar: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_caixa_fechar_sessao: corpo exato (md5)",
+  "fin_caixa_fechar_sessao: assinatura e atributos conhecidos",
+  "fin_caixa_fechar_sessao: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_caixa_movimentar_com_chave: corpo exato (md5)",
+  "fin_caixa_movimentar_com_chave: assinatura e atributos conhecidos",
+  "fin_caixa_movimentar_com_chave: EXECUTE authenticated, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado": ROL_DA_210,
+  "210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente": ROL_DA_210,
   "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado":
     ROL_DA_209,
   "209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente":
