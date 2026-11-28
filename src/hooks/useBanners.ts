@@ -62,9 +62,11 @@ const TEXTO_QUEDA_AO_ADICIONAR =
 // não voltou: a lista relida mostra como ficou.
 const TEXTO_JA_SALVO_SEM_LEITURA = `O banner já estava salvo. ${CONFIRA_A_LISTA}`;
 
-// FILA DA ORDEM NO BANCO. Arrumar as posições (`normalizeBannersOrder`) LÊ a
-// ordem e depois grava cada posição numa gravação separada; a troca de dois
-// banners (`reorder_banners_atomic`) é uma RPC só. As duas mexem na mesma
+// FILA DA ORDEM NO BANCO. Arrumar as posições (`normalizeBannersOrder`) e
+// trocar dois banners de lugar são, hoje, uma RPC cada, sob a trava da página
+// no banco (migration 20261651000000), o que vale também ENTRE aparelhos. A
+// fila abaixo continua: numa loja sem as RPCs novas, arrumar volta a LER a
+// ordem e gravar cada posição numa gravação separada. As duas mexem na mesma
 // coluna, e a tela não espera pela arrumação (excluir, criar e editar a
 // disparam em segundo plano): com rede lenta, a troca feita logo em seguida
 // era desfeita quando a arrumação antiga terminava por último, e a lista
@@ -112,56 +114,123 @@ function normalizarOrdemOuFalhar(
   );
 }
 
+// A RPC nova não existe nesta loja (o front sobe antes do banco numa loja
+// atrasada): PGRST202 no PostgREST, 42883 no Postgres. Só aí vale o caminho
+// antigo; qualquer outro erro é erro.
+function rpcAusente(error: { code?: string } | null | undefined): boolean {
+  return error?.code === "PGRST202" || error?.code === "42883";
+}
+
 async function arrumarAOrdemNoBanco(
   pos: "home_top" | "home_middle" | "home_bottom",
   prioritarioId: string | undefined,
   salvoDepoisDoEmpate: boolean,
 ) {
   try {
-    const { data, error } = await supabase
-      .from("banners")
-      .select("id, order")
-      .eq("position", pos)
-      .order("order", { ascending: true })
-      .order("id", { ascending: true });
-
-    if (error) throw error;
-    if (!data || data.length === 0) return;
-
-    // Subir/criar entra antes do empate; descer entra depois, na posição pedida.
-    const updates = data
-      .sort(
-        (a, b) =>
-          (a.order ?? 0) - (b.order ?? 0) ||
-          (salvoDepoisDoEmpate ? -1 : 1) *
-            (Number(b.id === prioritarioId) - Number(a.id === prioritarioId)) ||
-          a.id.localeCompare(b.id),
-      )
-      .map((b: any, idx: number) => {
-        const targetOrder = idx + 1;
-        if (b.order !== targetOrder) {
-          return supabase
-            .from("banners")
-            .update({ order: targetOrder })
-            .eq("id", b.id);
-        }
-        return null;
-      })
-      .filter(Boolean);
-
-    if (updates.length > 0) {
-      const results = await Promise.all(updates);
-      for (const result of results) {
-        if (result?.error) throw result.error;
+    // Uma transação só, sob a trava da página no banco: duas arrumações (de
+    // dois aparelhos, ou excluir seguido de trocar) esperam uma pela outra.
+    const { data: regravados, error: erroDaRpc } = await supabase.rpc(
+      "normalize_banners_atomic",
+      {
+        p_position: pos,
+        p_prioritario: prioritarioId,
+        p_prioritario_depois: salvoDepoisDoEmpate,
+      },
+    );
+    if (!erroDaRpc) {
+      if (regravados) {
+        console.log(
+          `[Banners] Normalized ${regravados} orders for position: ${pos}`,
+        );
       }
-      console.log(
-        `[Banners] Normalized ${updates.length} orders for position: ${pos}`,
-      );
+      return;
     }
+    if (!rpcAusente(erroDaRpc)) throw erroDaRpc;
+    await arrumarBannerABanner(pos, prioritarioId, salvoDepoisDoEmpate);
   } catch (err) {
     console.error("[Banners] Error normalizing banners order:", err);
     throw err;
   }
+}
+
+/** O caminho antigo (loja sem `normalize_banners_atomic`): lê a ordem e grava
+ * cada posição numa gravação separada. */
+async function arrumarBannerABanner(
+  pos: "home_top" | "home_middle" | "home_bottom",
+  prioritarioId: string | undefined,
+  salvoDepoisDoEmpate: boolean,
+) {
+  const { data, error } = await supabase
+    .from("banners")
+    .select("id, order")
+    .eq("position", pos)
+    .order("order", { ascending: true })
+    .order("id", { ascending: true });
+
+  if (error) throw error;
+  if (!data || data.length === 0) return;
+
+  // Subir/criar entra antes do empate; descer entra depois, na posição pedida.
+  const updates = data
+    .sort(
+      (a, b) =>
+        (a.order ?? 0) - (b.order ?? 0) ||
+        (salvoDepoisDoEmpate ? -1 : 1) *
+          (Number(b.id === prioritarioId) - Number(a.id === prioritarioId)) ||
+        a.id.localeCompare(b.id),
+    )
+    .map((b: any, idx: number) => {
+      const targetOrder = idx + 1;
+      if (b.order !== targetOrder) {
+        return supabase
+          .from("banners")
+          .update({ order: targetOrder })
+          .eq("id", b.id);
+      }
+      return null;
+    })
+    .filter(Boolean);
+
+  if (updates.length > 0) {
+    const results = await Promise.all(updates);
+    for (const result of results) {
+      if (result?.error) throw result.error;
+    }
+    console.log(
+      `[Banners] Normalized ${updates.length} orders for position: ${pos}`,
+    );
+  }
+}
+
+/**
+ * Troca um banner de lugar no banco. Com a direção, o vizinho é achado DENTRO
+ * do banco, sob a trava da página (`move_banner_atomic`), e volta o id de com
+ * quem trocou (null: já estava na ponta). Sem a direção — ou numa loja que
+ * ainda não tem a RPC nova — troca com o vizinho que a tela mandou
+ * (`reorder_banners_atomic`) e `vizinhoNoBanco` volta undefined.
+ */
+async function trocarAOrdemNoBanco(
+  posicao: "home_top" | "home_middle" | "home_bottom",
+  bannerId: string,
+  vizinhoDaTela: string,
+  direcao: "cima" | "baixo" | undefined,
+): Promise<{ error: unknown; vizinhoNoBanco?: string | null }> {
+  if (direcao) {
+    const { data, error } = await supabase.rpc("move_banner_atomic", {
+      p_position: posicao,
+      p_banner_id: bannerId,
+      p_direcao: direcao,
+    });
+    if (!rpcAusente(error)) {
+      return error ? { error } : { error: null, vizinhoNoBanco: data ?? null };
+    }
+  }
+  const { error } = await supabase.rpc("reorder_banners_atomic", {
+    p_position: posicao,
+    p_banner_id_1: bannerId,
+    p_banner_id_2: vizinhoDaTela,
+  });
+  return { error };
 }
 
 /** Conexão do cofre fechada (saída cancelada, outra aba)? Dublês de teste não
@@ -844,9 +913,12 @@ export function useBanners(adminMode = false) {
     }
   };
 
+  // `direcao`: o lado para onde a lojista mandou (setas do painel). Com ela o
+  // banco acha o vizinho de agora; `overBannerId` é o que a tela mostra.
   const reorderBanners = async (
     activeBannerId: string,
     overBannerId: string,
+    direcao?: "cima" | "baixo",
   ) => {
     if (!isAdmin) {
       toast.error(
@@ -916,14 +988,13 @@ export function useBanners(adminMode = false) {
 
       // Na fila da ordem: se uma arrumação de posições ainda está gravando,
       // a troca espera por ela (o prazo conta só a partir da RPC).
-      const { error } = await naFilaDaOrdem(() =>
+      const { error, vizinhoNoBanco } = await naFilaDaOrdem(() =>
         aguardarComPrazo(
-          Promise.resolve(
-            supabase.rpc("reorder_banners_atomic", {
-              p_position: activePosition,
-              p_banner_id_1: activeBannerId,
-              p_banner_id_2: overBannerId,
-            }),
+          trocarAOrdemNoBanco(
+            activePosition,
+            activeBannerId,
+            overBannerId,
+            direcao,
           ),
           PRAZO_DA_GRAVACAO_DO_BANNER_MS,
           () => erroDeConsultaSemResposta(TEXTO_SEM_RESPOSTA_AO_REORDENAR),
@@ -931,6 +1002,12 @@ export function useBanners(adminMode = false) {
       );
 
       if (error) throw error;
+      // O banco trocou com outro vizinho (outro aparelho mudou a lista) ou com
+      // nenhum (já estava na ponta): a troca otimista da tela não é a gravada,
+      // então a lista é relida do banco.
+      if (vizinhoNoBanco !== undefined && vizinhoNoBanco !== overBannerId) {
+        void fetchBanners(false, true);
+      }
     } catch (error) {
       applyLocalBanners(previousBanners);
       console.error("Error reordering banners:", error);

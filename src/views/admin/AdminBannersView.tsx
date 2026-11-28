@@ -2477,7 +2477,13 @@ export const AdminBannersView = memo(function AdminBannersView({
       setIsProcessing(true);
       setActiveAction({ id: banner.id, type: direction });
       try {
-        await reorderBanners(banner.id, targetBanner.id);
+        // A direção vai junto: o banco acha o vizinho de agora (outro
+        // aparelho pode ter mudado a lista); `targetBanner` é o da tela.
+        await reorderBanners(
+          banner.id,
+          targetBanner.id,
+          direction === "up" ? "cima" : "baixo",
+        );
       } catch (error) {
         console.error("Erro ao reordenar banners:", error);
         toast.error("Erro ao reordenar banners.");

@@ -3718,7 +3718,20 @@ const ROL_DA_205 = [
   "devolucao_avisa_o_cliente: uma so, plpgsql SECURITY DEFINER VOLATILE, retorno trigger, search_path=public, sem EXECUTE de PUBLIC, anon nem authenticated",
   "tr_devolucao_avisa_o_cliente: em devolucoes, ligado, chama a funcao",
 ];
+// Lote 207 (20261651000000, a ordem dos banners muda numa trava so: DUAS RPCs NOVAS, normalize_banners_atomic e move_banner_atomic,
+// e nada mais muda). Somente catalogo: nenhuma le banner. A 207a espera as duas com o corpo desta (md5); a 207b, ausentes ou com o
+// corpo desta (reaplicacao idempotente). As duas conferem a reorder_banners_atomic da 20261381000000 (o app em cache a chama) e a base
+// que o pre-voo exige. Rol de 5, o mesmo nas duas.
+const ROL_DA_207 = [
+  "normalize_banners_atomic: corpo exato (md5), arruma a pagina inteira sob a trava da pagina",
+  "move_banner_atomic: corpo exato (md5), acha o vizinho dentro do banco sob a mesma trava",
+  "normalize_banners_atomic e move_banner_atomic: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE so de authenticated e service_role",
+  "reorder_banners_atomic: corpo da 20261381000000 (md5), a troca antiga segue para o app em cache",
+  "banners e is_admin_atual: as colunas id, position e order e a trava de admin de agora existem",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado": ROL_DA_207,
+  "207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente": ROL_DA_207,
   "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado":
     ROL_DA_205,
   "205b-antes-o-aviso-do-vale-troca-diz-que-a-loja-combina-base-vigente":

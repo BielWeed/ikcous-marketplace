@@ -234,7 +234,8 @@ describe("lote 222 — banners filtrados", () => {
     await act(async () => {
       seta.click();
     });
-    expect(reorderBanners).toHaveBeenCalledWith("b2", "b1");
+    // A direção vai junto: quem acha o vizinho de agora é o banco.
+    expect(reorderBanners).toHaveBeenCalledWith("b2", "b1", "cima");
     expect(document.activeElement).toBe(seta);
     expect(seta.disabled).toBe(false);
     expect(seta.getAttribute("aria-disabled")).toBe("true");

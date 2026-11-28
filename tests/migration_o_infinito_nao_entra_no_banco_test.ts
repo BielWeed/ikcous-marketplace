@@ -86,6 +86,11 @@ const SUCESSORAS = [
     consulta:
       "205a-conferir-o-aviso-do-vale-troca-diz-que-a-loja-combina-aplicado",
   },
+  // 20261651000000: a ordem dos banners muda numa trava so.
+  {
+    versao: "20261651000000",
+    consulta: "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));
