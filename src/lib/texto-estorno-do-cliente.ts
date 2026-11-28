@@ -203,8 +203,8 @@ const ESTADOS_EM_CURSO: readonly StatusDevolucaoDoCliente[] = [
 ];
 
 /** Uma tentativa em curso vence qualquer tentativa antiga. Sem tentativa
- * ativa, só há devolução parcial com falha se há dinheiro confirmado e ainda
- * falta uma parte do total pago. */
+ * ativa, uma falha com confirmação parcial no app pede orientação da loja:
+ * o histórico lido pela cliente não inclui o que foi devolvido por fora. */
 type DesfechoDaDevolucao =
   | "em_curso"
   | "parcial_com_falha"
@@ -216,11 +216,6 @@ function totalConfirmadoDaDevolucao(linhas: LinhaDevolucaoDoCliente[]): number {
     (soma, linha) => soma + (linha.status === "concluido" ? linha.amount : 0),
     0,
   );
-}
-
-function saldoDaDevolucao(totalDoPedido: number, confirmado: number): number {
-  // Compara em centavos; 0,10 + 0,20 não pode deixar um saldo de ponto flutuante.
-  return (Math.round(totalDoPedido * 100) - Math.round(confirmado * 100)) / 100;
 }
 
 export function desfechoDaDevolucao(
@@ -240,7 +235,11 @@ export function desfechoDaDevolucao(
       )
     ) {
       const confirmado = totalConfirmadoDaDevolucao(linhas);
-      if (confirmado > 0 && saldoDaDevolucao(totalDoPedido, confirmado) > 0) {
+      // Compara em centavos para não tratar ruído de ponto flutuante como parcial.
+      if (
+        confirmado > 0 &&
+        Math.round(confirmado * 100) < Math.round(totalDoPedido * 100)
+      ) {
         return "parcial_com_falha";
       }
     }
@@ -283,10 +282,9 @@ export function textoDevolucao({
     return comOrientacaoDaDevolucao(TEXTO_EM_ANDAMENTO, metodoOnline);
   }
 
-  if (desfecho === "parcial_com_falha" && totalDoPedido !== undefined) {
+  if (desfecho === "parcial_com_falha") {
     const confirmado = totalConfirmadoDaDevolucao(linhas);
-    const saldo = saldoDaDevolucao(totalDoPedido, confirmado);
-    return `${formatCurrency(confirmado)} devolvidos. Fale com a loja sobre os ${formatCurrency(saldo)} que faltam.`;
+    return `${formatCurrency(confirmado)} devolvidos pelo app. Fale com a loja para confirmar se falta algum valor.`;
   }
 
   if (desfecho === "concluida") {

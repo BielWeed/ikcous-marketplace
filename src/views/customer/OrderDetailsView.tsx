@@ -465,7 +465,7 @@ function cancelledDescription(
       );
     }
     if (desfecho === "parcial_com_falha") {
-      return `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} Parte do dinheiro já foi devolvida. Fale com a loja sobre o valor que falta.`;
+      return `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} Fale com a loja para confirmar se falta algum valor da devolução.`;
     }
     if (desfecho === "concluida") {
       return "Este pedido foi cancelado, mas o seu pagamento foi recebido.";

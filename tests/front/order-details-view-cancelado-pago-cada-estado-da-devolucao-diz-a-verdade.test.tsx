@@ -202,7 +202,9 @@ describe("OrderDetailsView — pedido cancelado e pago: cada estado da devoluç�
         expect(texto).not.toContain(CONFERINDO);
       });
 
-      it("mostra o valor devolvido e quanto falta mesmo com tentativas de estorno repetidas", async () => {
+      it("mostra o estorno do app sem afirmar um saldo que pode ter sido devolvido por fora", async () => {
+        // O histórico do app não traz os R$ 50 que a loja pode ter devolvido
+        // por fora, nem diz se ainda falta dinheiro.
         const falha = { ...linha("falhou"), amount: 120 };
         estado.devolucao.linhas = [
           { ...linha("concluido"), amount: 80 },
@@ -218,12 +220,15 @@ describe("OrderDetailsView — pedido cancelado e pago: cada estado da devoluç�
           })
         ).replace(/\s+/g, " ");
         expect(texto).toContain(
-          "R$ 80,00 devolvidos. Fale com a loja sobre os R$ 120,00 que faltam.",
+          "R$ 80,00 devolvidos pelo app. Fale com a loja para confirmar se falta algum valor.",
         );
         const descricao = Array.from(host.querySelectorAll("p")).find((p) =>
           p.textContent?.startsWith(BASE),
         );
-        expect(descricao?.textContent).toContain("Fale com a loja");
+        expect(descricao?.textContent).toContain(
+          "Fale com a loja para confirmar se falta algum valor",
+        );
+        expect(texto).not.toMatch(/R\$ (120|70),00|valor que falta/);
         expect(texto).not.toContain("Devolução concluída:");
       });
 
