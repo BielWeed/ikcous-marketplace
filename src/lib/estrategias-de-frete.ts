@@ -496,7 +496,9 @@ export function erroDoFormularioNacional(
       return "Escolha o tipo de desconto: percentual ou valor fixo.";
     }
     if (!(form.valorDesconto > 0)) {
-      return "Informe um valor de desconto maior que R$ 0.";
+      return form.tipoDesconto === "percentual"
+        ? "Informe uma porcentagem de desconto maior que 0%."
+        : "Informe um valor de desconto maior que R$ 0.";
     }
     if (
       form.tipoDesconto === "percentual" &&
