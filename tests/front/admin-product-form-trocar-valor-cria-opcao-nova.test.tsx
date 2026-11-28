@@ -258,12 +258,15 @@ describe("AdminProductFormView — trocar o valor de uma opção gravada cria op
     expect(mandado?.apagar).toEqual(["v2"]);
     expect(mandado?.variantes).toHaveLength(2);
     const [antiga, nova] = mandado?.variantes ?? [];
-    // A antiga, ANTES da nova: desligada, sem SKU nem código de barras, com o
-    // valor antigo e sem mexer no estoque dela.
-    expect(antiga).toMatchObject({ id: "v2", value: "M", active: false });
+    // As sete peças só ficam no GG, mesmo se a lojista religar o M guardado.
+    expect(antiga).toMatchObject({
+      id: "v2",
+      value: "M",
+      active: false,
+      stockIncrement: 0,
+    });
     expect(antiga.sku).toBeUndefined();
     expect(antiga.codigoBarras).toBeUndefined();
-    expect(antiga).not.toHaveProperty("stockIncrement");
     // A nova: sem id de banco (temp-), herdando códigos, estoque e preço.
     expect(nova.id).toMatch(/^temp-/);
     expect(nova).toMatchObject({

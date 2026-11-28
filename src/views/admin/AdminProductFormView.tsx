@@ -4577,18 +4577,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         const idsExcluidosAqui = new Set(
           deletedVariantIds.filter((id) => !idsQueVoltaram.has(id)),
         );
-        const criadasEmOutroAparelho = variants.filter(
-          (v) => !idsNoFormulario.has(v.id) && !idsExcluidosAqui.has(v.id),
-        );
         const gradeMesclada = variacoesAposConflito(
           formData.variants,
           initialData.variants,
           variants,
           estoqueQueAPrimeiraVariacaoHerda({ stock, variants }),
         );
-        // O salvar anterior gravou a troca de valor e a resposta se perdeu:
-        // a junção acima já mostra a antiga como o banco a guardou e a nova
-        // como a do banco (sem refazer a troca). Ela só não tinha lido o aviso.
+        const mescladasPorId = new Map(gradeMesclada.map((v) => [v.id, v]));
+        const criadasEmOutroAparelho = variants
+          .filter(
+            (v) => !idsNoFormulario.has(v.id) && !idsExcluidosAqui.has(v.id),
+          )
+          // A nova pode trazer o preço digitado que precisa de confirmação.
+          .map((v) => mescladasPorId.get(v.id) ?? v);
+        // A troca já está no banco. A junção não a refaz; só resta avisar
+        // quando a antiga foi guardada para os pedidos.
         const trocasJaFeitas = trocasJaGravadasNoBanco(
           formData.variants,
           initialData.variants,

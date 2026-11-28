@@ -64,7 +64,7 @@ describe("trocasDeValorComoOpcaoNova", () => {
     }),
   ];
 
-  it("troca de verdade: a antiga vai para apagar E desligada sem códigos, ANTES da nova; a nova vai sem id com códigos, estoque e preço da linha", () => {
+  it("troca de verdade: a antiga vai para apagar ou ficar desligada, sem códigos e zerada; a nova recebe códigos, estoque e preço", () => {
     const naTela = [
       gravadas[0],
       { ...gravadas[1], value: "GG", priceOverride: 70 },
@@ -87,11 +87,10 @@ describe("trocasDeValorComoOpcaoNova", () => {
       sku: undefined,
       codigoBarras: undefined,
       priceOverride: 62.5,
+      stockIncrement: 0,
       active: false,
       imageUrl: "https://x/m.jpg",
     });
-    // Sem `stockIncrement`: o estoque guardado da antiga fica como está.
-    expect(antiga).not.toHaveProperty("stockIncrement");
     expect(nova.id).toMatch(/^temp-/);
     expect(nova).toMatchObject({
       name: "Tamanho",

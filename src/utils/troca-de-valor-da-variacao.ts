@@ -8,7 +8,7 @@
  *  - a antiga entra em `p_apagar` E, na grade, desligada e sem SKU nem código de
  *    barras. O banco apaga primeiro; a que já tem venda é recusada (fica em
  *    `recusadas`) e então recebe o UPDATE: desligada, guardada para os pedidos
- *    antigos, com o código liberado para a nova (os dois são únicos na loja);
+ *    antigos, sem estoque para venda e com os códigos liberados para a nova;
  *  - a nova vai sem id, com os códigos, o estoque e o preço da linha da tela.
  * As antigas vão na FRENTE da lista: o UPDATE que solta o código roda antes de
  * qualquer linha que o pegue.
@@ -67,8 +67,8 @@ export function trocasDeValorComoOpcaoNova<V extends VariacaoDoEnvio>(
       resto.push(v);
       continue;
     }
-    // A antiga leva o tipo ATUAL (um grupo só por produto) e o próprio valor,
-    // preço e foto; sem `stockIncrement`, o estoque guardado dela não muda.
+    // A antiga guarda valor, preço e foto para o histórico. O saldo vai só
+    // para a nova, para não duplicar as peças se a antiga for religada.
     antigas.push({
       id: gravada.id,
       productId: gravada.productId,
@@ -77,6 +77,7 @@ export function trocasDeValorComoOpcaoNova<V extends VariacaoDoEnvio>(
       sku: undefined,
       codigoBarras: undefined,
       priceOverride: gravada.priceOverride,
+      stockIncrement: 0,
       active: false,
       imageUrl: gravada.imageUrl,
     });
@@ -106,21 +107,16 @@ type VariacaoDaConferencia = Pick<
 >;
 
 /**
- * As trocas que um salvar anterior JÁ gravou sem a resposta voltar (o prazo
- * estourou com a transação comitada) e que a tela ainda mostra pendentes.
- * Refazê-las guardaria a antiga de novo e criaria mais um "GG", com o estoque
- * copiado. O sinal no banco: a linha antiga segue com o valor de abertura e
- * DESLIGADA, e existe uma opção que a tela nunca viu com o tipo e o valor
- * novos. Cada opção nova responde por uma troca só.
- *
- * A antiga sem venda o banco apagou: ela some na junção pelo caminho de
- * sempre (apagada em outro aparelho) e não precisa deste reconhecimento.
+ * Liga cada troca pendente à opção de mesmo tipo e valor criada no banco.
+ * A antiga está desligada com o valor de abertura ou já foi apagada. Isso
+ * identifica a opção, não prova que o preço digitado também foi salvo.
  */
-export function trocasJaGravadasNoBanco(
+export function opcoesNovasCorrespondentes<V extends VariacaoDaConferencia>(
   tela: readonly VariacaoDaConferencia[],
   abertura: readonly VariacaoDaConferencia[],
-  banco: readonly VariacaoDaConferencia[],
-): TrocaDeValor[] {
+  banco: readonly V[],
+  soAntigasGuardadas = false,
+): Map<string, V> {
   const aberturaPorId = new Map(abertura.map((v) => [v.id, v]));
   const bancoPorId = new Map(banco.map((v) => [v.id, v]));
   const conhecidas = new Set([...tela, ...abertura].map((v) => v.id));
@@ -130,16 +126,16 @@ export function trocasJaGravadasNoBanco(
     normalizarValorDaOpcao(a.name) === normalizarValorDaOpcao(b.name) &&
     normalizarValorDaOpcao(a.value) === normalizarValorDaOpcao(b.value);
 
-  const trocas: TrocaDeValor[] = [];
+  const novasPorIdAntigo = new Map<string, V>();
   for (const v of tela) {
     if (v.id.startsWith("temp-")) continue;
     const antes = aberturaPorId.get(v.id);
     const hoje = bancoPorId.get(v.id);
-    if (!antes || !hoje || hoje.active) continue;
+    if (!antes || hoje?.active || (soAntigasGuardadas && !hoje)) continue;
     const valorDeAbertura = normalizarValorDaOpcao(antes.value);
     if (
       normalizarValorDaOpcao(v.value) === valorDeAbertura ||
-      normalizarValorDaOpcao(hoje.value) !== valorDeAbertura
+      (hoje && normalizarValorDaOpcao(hoje.value) !== valorDeAbertura)
     ) {
       continue;
     }
@@ -148,13 +144,26 @@ export function trocasJaGravadasNoBanco(
     );
     if (!nova) continue;
     usadas.add(nova.id);
-    trocas.push({
-      idAntigo: v.id,
-      valorAntigo: hoje.value,
-      valorNovo: nova.value,
-    });
+    novasPorIdAntigo.set(v.id, nova);
   }
-  return trocas;
+  return novasPorIdAntigo;
+}
+
+/** Trocas reconhecidas em que o banco guardou a antiga para os pedidos. */
+export function trocasJaGravadasNoBanco(
+  tela: readonly VariacaoDaConferencia[],
+  abertura: readonly VariacaoDaConferencia[],
+  banco: readonly VariacaoDaConferencia[],
+): TrocaDeValor[] {
+  const bancoPorId = new Map(banco.map((v) => [v.id, v]));
+  return Array.from(
+    opcoesNovasCorrespondentes(tela, abertura, banco, true),
+  ).flatMap(([idAntigo, nova]) => {
+    const antiga = bancoPorId.get(idAntigo);
+    return antiga
+      ? [{ idAntigo, valorAntigo: antiga.value, valorNovo: nova.value }]
+      : [];
+  });
 }
 
 /** O aviso quando o banco guardou a antiga (ela já tinha venda). */

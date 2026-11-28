@@ -132,7 +132,7 @@ const GRADE_GRAVADA = [
 const GRADE_DEPOIS_DA_TROCA = [
   GRADE_GRAVADA[0],
   variacao("v2", "Tamanho", "M", {
-    stockIncrement: 7,
+    stockIncrement: 0,
     priceOverride: 62.5,
     active: false,
   }),
@@ -279,6 +279,47 @@ describe("AdminProductFormView — bordas da troca de valor de uma opção vendi
       [],
     );
     expect(terceira?.variantes.some((v) => v.id === "v2")).toBe(false);
+  });
+
+  it("avisa quando outro aparelho salvou M → GG com outro preço e só grava os R$ 89 após confirmar", async () => {
+    const gradeDoOutroAparelho = GRADE_DEPOIS_DA_TROCA.map((v) =>
+      v.id === "v9" ? { ...v, priceOverride: 75, stockIncrement: 6 } : v,
+    );
+    mocks.salvarProdutoComGrade.mockRejectedValueOnce(
+      Object.assign(new Error("O produto mudou enquanto você editava."), {
+        code: "PRD01",
+        produtoAtual: produto(gradeDoOutroAparelho, "2026-11-28T10:05:00Z"),
+      }),
+    );
+    await montar(GRADE_GRAVADA);
+
+    await editar("M");
+    await digitarCampo("variant-value", "GG");
+    await digitarCampo("variant-price", "8900");
+    await clicar("Salvar variação");
+    await clicar("Trocar o nome");
+    await salvarProduto();
+
+    const aviso = [...document.querySelectorAll('[role="alert"]')].find((el) =>
+      el.textContent?.includes("Nada foi salvo"),
+    );
+    expect(aviso?.textContent ?? "").toMatch(
+      /GG · Atual: R\$\s*75,00 · Digitado: R\$\s*89,00/,
+    );
+    expect(quantos("Religar variação M")).toBe(1);
+    expect(quantos("Editar variação GG")).toBe(1);
+    await salvarProduto();
+    expect(mocks.salvarProdutoComGrade).toHaveBeenCalledTimes(1);
+
+    await clicar("Confirmar preço digitado");
+    await salvarProduto();
+
+    expect(chamada(1)).toMatchObject({
+      baseUpdatedAt: "2026-11-28T10:05:00Z",
+      apagar: [],
+      variantes: [{ id: "v9", value: "GG", priceOverride: 89 }],
+    });
+    expect(chamada(1)?.variantes[0]).not.toHaveProperty("stockIncrement");
   });
 
   it("2. troca guardada pelo banco e a releitura falha: avisa para recarregar e um segundo Salvar não grava de novo", async () => {
