@@ -96,6 +96,14 @@ function Sonda() {
   });
   return null;
 }
+/** A cliente cancelando o próprio pedido: o hook sem o papel de painel. */
+function SondaDaCliente() {
+  const retorno = useOrders(false, false);
+  useEffect(() => {
+    atuais = retorno;
+  });
+  return null;
+}
 
 const ID_DINHEIRO = "PED-DINHEIRO";
 const ID_ONLINE = "PED-ONLINE";
@@ -105,6 +113,7 @@ async function mudar(
   id: string,
   status: OrderStatus,
   statusEsperado?: OrderStatus,
+  silent = false,
 ): Promise<{ ok: boolean; erro: unknown; valor: unknown }> {
   const desfecho = {
     ok: false,
@@ -113,7 +122,7 @@ async function mudar(
   };
   await act(async () => {
     const promessa = atuais
-      .updateOrderStatus(id, status, undefined, false, statusEsperado)
+      .updateOrderStatus(id, status, undefined, silent, statusEsperado)
       .then(
         (valor: unknown) => {
           desfecho.ok = true;
@@ -323,6 +332,40 @@ describe("Hora do banco no aviso: os caminhos em que a resposta não traz a linh
       expect(toast.success).toHaveBeenCalledWith(
         "Este pedido já estava cancelado.",
       );
+    });
+
+    it("cancelamento SILENCIOSO do painel: provado pela edge, sem leitura da hora (só a ficha avisa a cliente)", async () => {
+      respostaDaEdge = async () => {
+        statusNoBanco = "cancelled";
+        return { data: { cancelamento: "cancelado" }, error: null };
+      };
+
+      const r = await mudar(ID_ONLINE, "cancelled", undefined, true);
+
+      expect(r.erro).toBeNull();
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(r.valor).toEqual({ gravadoNoBancoEm: null });
+      expect(from).not.toHaveBeenCalledWith("marketplace_orders");
+      expect(colunasLidas).toEqual([]);
+    });
+
+    it("a CLIENTE cancela o próprio pedido pela edge: sem leitura da hora (o aviso é da ficha do painel)", async () => {
+      await act(async () => {
+        raiz.render(<SondaDaCliente />);
+      });
+      vi.clearAllMocks();
+      respostaDaEdge = async () => {
+        statusNoBanco = "cancelled";
+        return { data: { cancelamento: "cancelado" }, error: null };
+      };
+
+      const r = await mudar(ID_ONLINE, "cancelled");
+
+      expect(r.erro).toBeNull();
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(r.valor).toEqual({ gravadoNoBancoEm: null });
+      expect(from).not.toHaveBeenCalledWith("marketplace_orders");
+      expect(colunasLidas).toEqual([]);
     });
   });
 
