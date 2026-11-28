@@ -109,6 +109,30 @@ export function instanteDentroDoPeriodo(
   );
 }
 
+/** "2026-11-27" -> "27/11". */
+function diaEMes(dia: string): string {
+  const [, mes, data] = dia.split("-");
+  return `${data}/${mes}`;
+}
+
+/**
+ * O período filtrado em português, para completar "você está vendo só os
+ * pedidos ..." ("de 27/11", "de 20/11 a 27/11", "a partir de 27/11", "até
+ * 27/11"). Sem dia válido nenhum: `undefined` (não há período a explicar).
+ */
+export function periodoDaListaEmTexto(
+  start: string | undefined,
+  end: string | undefined,
+): string | undefined {
+  const inicio = diaValido(start) ? diaEMes(start) : undefined;
+  const fim = diaValido(end) ? diaEMes(end) : undefined;
+  if (inicio && fim)
+    return inicio === fim ? `de ${inicio}` : `de ${inicio} a ${fim}`;
+  if (inicio) return `a partir de ${inicio}`;
+  if (fim) return `até ${fim}`;
+  return undefined;
+}
+
 /**
  * O recorte que a tela manda ao banco, num ponto só: a LISTA e a planilha
  * (CSV) passam por aqui, então não dá para a lista mostrar um período e o
