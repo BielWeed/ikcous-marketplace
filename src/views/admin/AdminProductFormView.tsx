@@ -175,6 +175,7 @@ import {
 import { ESTOQUE_MAXIMO_DA_VARIACAO } from "@/utils/truth_gate";
 import {
   chaveDoGrupo,
+  explicacaoDeOutroTipoDeVariacao,
   gruposDeVariacao,
   temGrupoDemais,
   travaDeUmGrupoSo,
@@ -604,6 +605,11 @@ function indiceDaFoto(galeria: GaleriaLocal, alvo: AlvoDaFoto) {
     ? galeria.itens.findIndex((foto) => foto.id === alvo.id)
     : -1;
 }
+
+// "Tirar foto" sobe uma foto por vez e espera ela subir para liberar a próxima.
+// Várias de uma vez: a câmera do celular primeiro, depois a escolha em lote.
+const dicaDeVariasFotos = (ondeEscolher: string) =>
+  `Para várias fotos: tire todas com a câmera do celular e escolha juntas ${ondeEscolher}.`;
 
 const AVISO_COMBINACAO_JA_CRIADA =
   "Outro aparelho já criou essa combinação; mantivemos a dele, confira o estoque.";
@@ -1587,6 +1593,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     nomeDoUltimoAtributo.trim() === ""
       ? "+ Outra coisa que muda"
       : `+ Outra coisa que muda (ex.: ${exemploDoProximoAtributo})`;
+  // As OUTRAS opções já usam um tipo de um atributo só ("Tamanho"): mais uma
+  // coisa que muda seria recusada pela trava no "Salvar variação". No lugar do
+  // botão, a janela explica antes o caminho real.
+  const gruposDasOutrasVariacoes = gruposDeVariacao(
+    formData.variants.filter((v) => v.id !== editingVariant?.id),
+  );
+  const tipoUnicoDasOutras =
+    gruposDasOutrasVariacoes.length === 1 &&
+    !gruposDasOutrasVariacoes[0].includes(SEPARADOR_DE_ATRIBUTOS)
+      ? gruposDasOutrasVariacoes[0]
+      : null;
+  const algumaVariacaoJaSalva = formData.variants.some(
+    (v) => !v.id.startsWith("temp-"),
+  );
 
   const avaliarFoto = useCallback((url: string) => {
     // Só a tentativa mais recente desta URL pode concluir a avaliação.
@@ -1995,10 +2015,25 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             manter: voltamDoBanco,
             alteradas: alteradasEmOutroAparelho,
           } = variacoesExcluidasNoRascunho(parsed, initialData.variants);
+          // A troca de valor que um salvar já gravou sem resposta se reconhece
+          // contra a BASE do rascunho (o valor que a tela tinha ao abrir).
+          const variacoesDaBase: ProductVariant[] = Array.isArray(
+            parsed.baseDoRascunho?.variants,
+          )
+            ? parsed.baseDoRascunho.variants
+            : [];
+          const trocasJaFeitas = Array.isArray(parsed.variants)
+            ? trocasJaGravadasNoBanco(
+                parsed.variants,
+                variacoesDaBase,
+                initialData.variants,
+              )
+            : [];
           const variacoesDoRascunho = Array.isArray(parsed.variants)
             ? variacoesDoRascunhoComEstoqueDoBanco(
                 parsed.variants,
                 initialData.variants,
+                variacoesDaBase,
               )
             : initialData.variants;
           const gradeRestaurada = juntarVariacoesDeOutroAparelho(
@@ -2104,6 +2139,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   alteradasEmOutroAparelho,
                 );
               if (avisoDasAlteradas) toast.warning(avisoDasAlteradas);
+              for (const feita of trocasJaFeitas) {
+                toast.warning(fraseDaTrocaGuardada(feita), { duration: 15000 });
+              }
               // As que ela excluiu saem do banco quando ela salvar (a RPC só
               // apaga o que vem em `p_apagar`).
               if (exclusoesDaLojista.length > 0) {
@@ -3186,9 +3224,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       toast.error(`Este produto já usa "${trava.grupoEmUso}"`, {
         description: trava.grupoEmUso.includes(SEPARADOR_DE_ATRIBUTOS)
           ? `Cada produto aceita um conjunto de atributos só. Para criar outra opção, use os mesmos atributos das que já existem (${trava.grupoEmUso}).`
-          : "Cada produto aceita um tipo de variação só. Para vender cor e " +
-            "tamanho juntos, crie as opções combinadas dentro do mesmo tipo " +
-            '(ex: "Rosa P", "Rosa M") — assim o estoque e o pedido saem certos.',
+          : explicacaoDeOutroTipoDeVariacao(
+              trava.grupoEmUso,
+              algumaVariacaoJaSalva,
+            ),
         duration: 10000,
       });
       return;
@@ -5052,18 +5091,30 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     {/* Mais uma dimensão da combinação (ex: além de Cor,
                         Tamanho). A trava de um grupo por produto vale para o
                         resultado inteiro, não por par. */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setVariantFormData((p) => ({
-                          ...p,
-                          pares: [...p.pares, parNovo()],
-                        }))
-                      }
-                      className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-admin-bg/60 px-5 py-3 text-sm font-bold text-zinc-400 transition-all hover:border-admin-border-strong hover:text-foreground active:scale-95"
-                    >
-                      {rotuloDoMaisUmAtributo}
-                    </button>
+                    {tipoUnicoDasOutras ? (
+                      <p
+                        data-testid="outro-tipo-de-variacao"
+                        className="rounded-2xl border border-admin-border bg-admin-bg/60 px-4 py-3 text-sm leading-relaxed text-zinc-400"
+                      >
+                        {explicacaoDeOutroTipoDeVariacao(
+                          tipoUnicoDasOutras,
+                          algumaVariacaoJaSalva,
+                        )}
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVariantFormData((p) => ({
+                            ...p,
+                            pares: [...p.pares, parNovo()],
+                          }))
+                        }
+                        className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-admin-bg/60 px-5 py-3 text-sm font-bold text-zinc-400 transition-all hover:border-admin-border-strong hover:text-foreground active:scale-95"
+                      >
+                        {rotuloDoMaisUmAtributo}
+                      </button>
+                    )}
 
                     {/* Estoque e preço desta variação. */}
                     <div className="space-y-3 rounded-[22px] border border-admin-border bg-admin-surface p-4">
@@ -5706,6 +5757,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         Galeria
                       </button>
                     </div>
+                    <p
+                      data-testid="dica-de-varias-fotos"
+                      className="col-span-2 mt-1 text-[11px] leading-relaxed text-zinc-400"
+                    >
+                      {dicaDeVariasFotos('na "Galeria"')}
+                    </p>
                   </div>
                 ) : (
                   <div className="produto-fotos-cheio">
@@ -6003,10 +6060,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </div>
               )}
               {formData.images.length > 0 && (
-                <p className="mt-3 text-[11px] text-zinc-400">
-                  Máx. {MAXIMO_DE_FOTOS_DO_PRODUTO} fotos · 12 MB cada. A ordem
-                  não muda por arraste.
-                </p>
+                <>
+                  <p className="mt-3 text-[11px] text-zinc-400">
+                    Máx. {MAXIMO_DE_FOTOS_DO_PRODUTO} fotos · 12 MB cada. A
+                    ordem não muda por arraste.
+                  </p>
+                  <p
+                    data-testid="dica-de-varias-fotos"
+                    className="mt-1 text-[11px] text-zinc-400"
+                  >
+                    {dicaDeVariasFotos('em "Mais fotos"')}
+                  </p>
+                </>
               )}
             </div>
             {formData.images.length > 0 &&
@@ -6733,37 +6798,28 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         >
                           <div className="space-y-3 rounded-2xl border border-admin-border bg-zinc-950/40 p-4">
                             <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
-                              Variações permitem vender o mesmo produto com
-                              diferentes opções — tamanho, cor, voltagem. Cada
-                              produto aceita{" "}
-                              <b className="text-zinc-350">um tipo só</b>: para
-                              vender tamanho e cor juntos, combine os dois no
-                              valor da opção (ex: Nome: <i>Modelo</i>, Valores:{" "}
-                              <i>Rosa P</i>, <i>Rosa M</i>).
+                              Variações são as opções do mesmo produto: tamanho,
+                              cor, voltagem. Toque em{" "}
+                              <b className="text-zinc-350">"+ Grade"</b>,
+                              escolha o tipo (ex.: Tamanho) e marque as opções.
+                              Para tamanho e cor juntos, toque em{" "}
+                              <b className="text-zinc-350">
+                                "+ Adicionar outro atributo"
+                              </b>{" "}
+                              dentro da grade: cada combinação vira uma opção
+                              com estoque próprio. Escolha os dois logo na
+                              primeira vez: cada produto usa um tipo só.
                             </p>
                             <ul className="list-none space-y-2 pl-0 text-[11px] font-medium text-zinc-500">
                               <li className="flex items-start gap-2.5">
                                 <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
                                 <span>
                                   <b className="text-zinc-350">
-                                    Atributo (Nome e Valor):
+                                    "Preço desta variação":
                                   </b>{" "}
-                                  Defina a característica (ex: Nome:{" "}
-                                  <i>Tamanho</i>, Valor: <i>G</i>; ou Nome:{" "}
-                                  <i>Cor</i>, Valor: <i>Azul</i>).
-                                </span>
-                              </li>
-                              <li className="flex items-start gap-2.5">
-                                <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                                <span>
-                                  <b className="text-zinc-350">
-                                    Ajuste de Preço (Opcional):
-                                  </b>{" "}
-                                  Se uma variante custar mais caro (ex: tamanho
-                                  especial ou material premium), preencha o
-                                  campo de preço substituto. Se deixar em
-                                  branco, o preço principal do produto será
-                                  usado.
+                                  deixe em "Auto" para usar o preço do produto.
+                                  Preencha só se esta opção custar diferente
+                                  (ex.: um tamanho maior).
                                 </span>
                               </li>
                               <li className="flex items-start gap-2.5">
@@ -6783,12 +6839,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
                                 <span>
                                   <b className="text-zinc-350">
-                                    Foto da Variante:
+                                    Foto da variação:
                                   </b>{" "}
-                                  Vincule uma foto específica da variação.
-                                  Quando o comprador selecioná-la na página do
-                                  produto, o carrossel exibirá automaticamente a
-                                  foto correspondente.
+                                  escolha a foto desta opção. Quando a cliente
+                                  tocar nela na loja, é essa foto que aparece.
                                 </span>
                               </li>
                             </ul>

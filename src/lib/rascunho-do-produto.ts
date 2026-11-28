@@ -23,6 +23,7 @@ import {
   variacaoMudou,
 } from "@/utils/campos-mexidos-do-produto";
 import { estoqueDaVariacaoValido } from "@/utils/estoque-da-variacao";
+import { trocasJaGravadasNoBanco } from "@/utils/troca-de-valor-da-variacao";
 
 /**
  * Validade do rascunho: 7 dias, contados do ÚLTIMO salvamento automático (a
@@ -155,17 +156,27 @@ export function esvaziarEstoqueInvalidoDoRascunho(
  *  - nova (`temp-…`): fica como digitada; estoque inválido volta em branco;
  *  - tem id de verdade mas já não existe no banco (saiu desde o rascunho):
  *    não volta — restaurá-la recriaria, pelo upsert, uma variação apagada com
- *    o estoque de antes.
+ *    o estoque de antes;
+ *  - troca de valor ("M" -> "GG") que um salvar JÁ gravou sem a resposta
+ *    voltar (`trocasJaGravadasNoBanco`, contra a base do rascunho): volta como
+ *    o banco a guardou (o "M" desligado). O "GG" do banco é a opção nova e
+ *    entra pela junção; restaurar o "GG" do rascunho refazia a troca no
+ *    salvar e gravava um segundo "GG" com o estoque copiado.
  */
 export function variacoesDoRascunhoComEstoqueDoBanco(
   doRascunho: ProductVariant[],
   doBanco: ProductVariant[],
+  daBase: ProductVariant[] = [],
 ): ProductVariant[] {
   const bancoPorId = new Map(doBanco.map((v) => [v.id, v]));
+  const jaTrocadas = new Set(
+    trocasJaGravadasNoBanco(doRascunho, daBase, doBanco).map((t) => t.idAntigo),
+  );
   return doRascunho.flatMap((v) => {
     if (ehVariacaoNova(v)) return [esvaziarEstoqueInvalidoDoRascunho(v)];
     const noBanco = bancoPorId.get(v.id);
     if (!noBanco) return [];
+    if (jaTrocadas.has(v.id)) return [noBanco];
     const { stock: _estoqueDoRascunho, ...resto } = v;
     return [
       {
