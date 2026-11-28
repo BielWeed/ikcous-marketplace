@@ -375,6 +375,12 @@ describe("App — o modo manutenção vem da ficha da loja (escala etapa 3)", ()
       // como ProductDetailView) — sem isto o React reclama de um recurso
       // suspenso resolvendo fora de act() depois que o teste já terminou.
       await new Promise((resolve) => setTimeout(resolve, 0));
+      // Uma macrotarefa só NÃO basta (medido 28/11): os chunks lazy
+      // terminavam ~1 s DEPOIS do afterAll, o React logava "suspended
+      // resource ... not wrapped in act" com o worker já fechando, e o CI
+      // saía com EnvironmentTeardownError sem teste vermelho. Esperar TODO
+      // import() dinâmico em voo, dentro do act, fecha a janela.
+      await vi.dynamicImportSettled();
     });
 
     expect(hospedeiro.textContent).toContain(TEXTO_MANUTENCAO);
@@ -395,6 +401,8 @@ describe("App — o modo manutenção vem da ficha da loja (escala etapa 3)", ()
       // como ProductDetailView) — sem isto o React reclama de um recurso
       // suspenso resolvendo fora de act() depois que o teste já terminou.
       await new Promise((resolve) => setTimeout(resolve, 0));
+      // Mesmo motivo do teste acima: espera todo import() dinâmico em voo.
+      await vi.dynamicImportSettled();
     });
 
     expect(hospedeiro.textContent).not.toContain(TEXTO_MANUTENCAO);
