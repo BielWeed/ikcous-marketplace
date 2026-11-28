@@ -118,6 +118,12 @@ const SUCESSORAS = [
     versao: "20261655000000",
     consulta: "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
   },
+  // 20261657000000: o produto todo desligado nao volta a venda (devolver_estoque e admin_devolucao_concluir).
+  {
+    versao: "20261657000000",
+    consulta:
+      "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
+  },
   // 20261658000000: o frete de ida so volta com reembolso.
   {
     versao: "20261658000000",

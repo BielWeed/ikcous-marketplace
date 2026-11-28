@@ -2023,7 +2023,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   >(() => {});
   // Último avanço confirmado de cada pedido. A resposta do envio do aviso
   // pode chegar fora de ordem (A→B e logo B→C): a de B não reescreve a
-  // confirmação de C nem monta o WhatsApp com a etapa velha.
+  // confirmação de C nem monta o WhatsApp com a etapa velha. O cancelamento
+  // também grava aqui ("cancelled"), para a resposta de um avanço anterior
+  // não oferecer o WhatsApp da etapa abandonada.
   const ultimoAvancoRef = useRef<Map<string, OrderStatus>>(new Map());
 
   // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
@@ -2064,6 +2066,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // No cancelamento pela edge ela chega DEPOIS (promessa): a ficha não a
     // espera, só o aviso.
     let gravadoNoBancoEm: string | null | Promise<string | null> = null;
+    // Cancelar também é o último passo do pedido, e conta ANTES da gravação:
+    // o envio do aviso de um avanço feito logo antes pode responder durante o
+    // cancelamento ou depois dele, e não pode reabrir a confirmação com o
+    // WhatsApp da etapa abandonada (ver `ultimoAvancoRef`). O valor de antes
+    // fica guardado: se o cancelamento falhar, ele volta (ver o `catch`).
+    const marcaAntesDoCancelamento = ultimoAvancoRef.current.get(orderId);
+    if (newStatus === "cancelled") {
+      ultimoAvancoRef.current.set(orderId, newStatus);
+    }
     // A RPC VEM PRIMEIRO (PEDIDO-090, #87).
     //
     // Até aqui o push saía ANTES da gravação. Se a RPC falhasse — 401, sessão
@@ -2118,6 +2129,19 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     } catch (err: any) {
       haptic.error();
       console.error("[handleStatusChange] Erro ao avançar status:", err);
+      // O cancelamento não aconteceu (pago no meio, outro aparelho mexeu): o
+      // pedido segue na etapa do avanço, e a resposta do aviso dele volta a
+      // valer. Só se a marca ainda é deste cancelamento.
+      if (
+        newStatus === "cancelled" &&
+        ultimoAvancoRef.current.get(orderId) === "cancelled"
+      ) {
+        if (marcaAntesDoCancelamento === undefined) {
+          ultimoAvancoRef.current.delete(orderId);
+        } else {
+          ultimoAvancoRef.current.set(orderId, marcaAntesDoCancelamento);
+        }
+      }
       // Rodada 2 (achado 1/3 do laudo, deep link): quando o pedido não
       // está em `orders` (deep link/paginação), a correção que o hook faz
       // em `orders`/`cachedAdminOrders` é um no-op — a ficha aberta é

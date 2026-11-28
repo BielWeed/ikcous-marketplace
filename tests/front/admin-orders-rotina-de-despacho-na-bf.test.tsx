@@ -328,6 +328,41 @@ describe("AdminOrdersView — confirmação do avanço e volta da ficha aberta p
     expect(abrirWhatsapp).toHaveBeenCalledTimes(1);
   });
 
+  // Lote 596: o toque no WhatsApp da confirmação pode vir depois de a
+  // lojista salvar o código de rastreio e voltar para a lista. A mensagem sai
+  // com o pedido de AGORA (o da lista), não com o retrato do momento do
+  // avanço, que não tinha o código.
+  it("código de rastreio salvo depois do avanço: o WhatsApp da confirmação já leva o código", async () => {
+    const pedido: Order = {
+      ...pedidoBase,
+      userId: "cliente-fic-1",
+      status: "processing",
+    };
+    await avancarNaFicha(pedido);
+    expect(updateOrderStatus.mock.calls[0]?.[1]).toBe("shipping");
+    const [, opcoes] = sucessos()[0]!;
+    expect(opcoes?.action?.label).toBe("Avisar pelo WhatsApp");
+
+    // A lista recebe a versão nova (etapa gravada e código salvo) e a
+    // lojista volta para ela: a ficha fecha, a confirmação continua na tela.
+    mockOrders = [
+      { ...pedido, status: "shipping", trackingCode: "AB123456789BR" },
+    ];
+    await renderizar(undefined);
+
+    act(() => {
+      opcoes!.action!.onClick();
+    });
+    expect(abrirWhatsapp).toHaveBeenCalledTimes(1);
+    const texto = decodeURIComponent(
+      new URL(abrirWhatsapp.mock.calls[0]![0] as string).searchParams.get(
+        "text",
+      ) ?? "",
+    );
+    expect(texto).toContain("AB123456789BR");
+    expect(texto).toContain(rotuloDoStatusParaACliente("shipping"));
+  });
+
   it("pedido com conta sem telefone: confirma sem ação", async () => {
     await avancarNaFicha({
       ...pedidoBase,

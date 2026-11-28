@@ -31,6 +31,7 @@ import { avisoDeCartaoNoPedidoVencido } from "@/lib/aviso-de-cartao-no-pedido-ve
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { enderecoParaDevolver } from "@/lib/devolucao";
+import { devolucaoConcluidaPorInteiro } from "@/lib/devolucao-do-dinheiro-concluida";
 import {
   avisoDeJurosDoParcelamento,
   pedidoSemValorAPagar,
@@ -421,6 +422,7 @@ function cancelledDescription(
   noBalcao = false,
   retiradaNaLoja = false,
   metodoOnline?: Order["metodoOnline"],
+  totalDoPedido = 0,
 ): string {
   const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
@@ -465,19 +467,39 @@ function cancelledDescription(
     if (desfecho === "concluida") {
       return "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
     }
+    // Pago depois de o pedido já estar cancelado (decisão do sócio,
+    // 28/11/2026): o guia da lojista oferece UM caminho só, devolver pelo
+    // app — então a cliente lê o que vai acontecer, não "fale com a loja".
+    if (key === "pago_apos_expirar") {
+      return "Este pedido foi cancelado antes de o seu pagamento chegar. A loja vai devolver o valor; se ainda quiser a peça, faça um pedido novo.";
+    }
     return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
   }
-  // Reembolso concluído (ou chargeback, ou "Já estornei" da loja): o dinheiro
-  // JÁ voltou. Sem o meio (PIX/cartão): o app não sabe qual foi. O valor, quando
-  // há linha concluída no livro, vem da linha "Devolução concluída" do bloco de
-  // pagamento — a descrição só diz o desfecho.
+  // `estornado` é o MESMO par de status para a devolução pedida pela loja ou
+  // pela cliente e para a contestação no cartão (chargeback) — em análise,
+  // ganha pela loja (o dinheiro fica com ela) ou perdida. Só o livro separa:
+  // "o dinheiro foi devolvido" exige a mesma prova do selo do painel
+  // (`devolucaoConcluidaPorInteiro`: linhas `concluido` pedidas por PESSOA
+  // cobrindo o total), e só depois de o livro deste pedido ter sido lido. Sem
+  // ela (contestação, estorno feito no painel do Mercado Pago — também linha
+  // `sistema`, que a cliente não distingue da contestação —, "Já estornei",
+  // pedido antigo sem livro, leitura em curso ou falha), o texto vale para
+  // qualquer desfecho. Sem o meio (PIX/cartão): o app não sabe qual foi. O
+  // valor, quando há linha concluída no livro, vem da linha "Devolução
+  // concluída" do bloco de pagamento — a descrição só diz o desfecho.
   if (key === "estornado") {
     // Venda do balcão anulada: o app não devolve nada, a loja acerta com a
     // cliente na mão. Não afirmar que o dinheiro voltou.
     if (noBalcao) {
       return "Esta compra foi anulada pela loja. A devolução do valor é combinada diretamente com a loja.";
     }
-    return "Este pedido foi cancelado e o seu pagamento foi estornado: o dinheiro foi devolvido.";
+    if (
+      leituraDaDevolucao === "lida" &&
+      devolucaoConcluidaPorInteiro(linhasDevolucao, totalDoPedido)
+    ) {
+      return "Este pedido foi cancelado e o seu pagamento foi estornado: o dinheiro foi devolvido.";
+    }
+    return "Este pedido foi cancelado e o pagamento foi estornado ou contestado no cartão. Se você contestou a compra, acompanhe o resultado com o banco do seu cartão. Se não, fale com a loja para confirmar a devolução.";
   }
   if (key === "aguardando") {
     return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague.";
@@ -1355,6 +1377,7 @@ export function OrderDetailsView({
             noBalcao,
             order.retiradaNaLoja,
             order.metodoOnline,
+            order.total,
           )
         : (order.status === "processing" || order.status === "shipping") &&
             chaveDoPagamento === "aguardando" &&
@@ -2433,6 +2456,7 @@ export function OrderDetailsView({
           elegibilidade={devolucaoDoProduto.elegibilidade}
           rotulosDosItens={rotulosPorLinhaDoPedido}
           pedidoComDesconto={order.discount > 0}
+          freteDoPedido={order.shipping}
           orderId={orderId}
           userId={contaDona.id}
           enderecoDaLoja={config.storeAddress ?? null}

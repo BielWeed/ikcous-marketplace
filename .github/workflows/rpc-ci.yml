@@ -384,6 +384,8 @@ on:
       - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
       - "scripts/publicacao/consultas/211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado.sql"
       - "scripts/publicacao/consultas/211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente.sql"
+      - "scripts/publicacao/consultas/213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado.sql"
+      - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
       - "scripts/publicacao/consultas/214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado.sql"
       - "scripts/publicacao/consultas/214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -744,6 +746,8 @@ on:
       - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
       - "scripts/publicacao/consultas/211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado.sql"
       - "scripts/publicacao/consultas/211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente.sql"
+      - "scripts/publicacao/consultas/213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado.sql"
+      - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
       - "scripts/publicacao/consultas/214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado.sql"
       - "scripts/publicacao/consultas/214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1629,6 +1633,14 @@ jobs:
       - name: Prova viva da loja nova que so vende o que confirmou (20261655000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nova-so-vende-o-que-confirmou-viva.cjs
+      # Migration 20261657000000 (o produto com TODOS os tamanhos desligados nao volta a venda sozinho): devolver_estoque e admin_devolucao_concluir so
+      # tiram a variacao desligada do item quando o produto ainda tem variacao LIGADA (cantinho da 1653); com todas desligadas a peca fica na propria
+      # variacao (como antes da 1653) e o pai, que a compra vende sem variacao ligada, nao recebe. Controle com os corpos da 1653 (o pai recebe), religar,
+      # devolucao e achado C, item sem produto, produto sem variacao nenhuma (o pai segue), cantinho da 1653 igual, matriz diferencial, mutantes,
+      # reaplicar 2x e CRLF, pre-voo, rollback byte a byte e consultas 213a/213b (e 209a/202a como sucessora). CLONE proprio.
+      - name: Prova viva do produto todo desligado que nao volta a venda (20261657000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-produto-todo-desligado-nao-volta-a-venda-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais

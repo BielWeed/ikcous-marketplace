@@ -323,9 +323,10 @@ describe("OrderList — o cartão de cada pedido", () => {
         { paymentStatus: "recusado" },
         "O pagamento não foi aprovado e o pedido foi cancelado.",
       ],
+      // Devolução da loja ou contestação no cartão: a lista não distingue.
       [
         { paymentStatus: "estornado" },
-        "O dinheiro deste pedido foi devolvido. Toque para ver os detalhes.",
+        "Pagamento estornado ou contestado no cartão. Toque para ver os detalhes.",
       ],
       [
         { paymentStatus: "estornado", canal: "presencial" },
