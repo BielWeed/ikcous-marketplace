@@ -374,8 +374,8 @@ const temTransparencia = (
     }
     return false;
   } catch {
-    // Sem como ler os pixels: segue como antes (JPEG com fundo branco), que
-    // nunca perde a foto.
+    // Sem como ler os pixels: trata como opaca e sai JPEG — quem chama pinta
+    // o fundo branco atrás, então a área transparente não vira preto.
     return false;
   }
 };
@@ -464,11 +464,20 @@ export const compressProductImage = async (
       // Exceção: o WebP/AVIF PEQUENO, que só passa pelo canvas para abrir no
       // iPhone antigo (não para pesar menos). Pequeno, ele subiria como veio
       // se fosse PNG — com a transparência. Então mantém: com algum pixel
-      // transparente sai PNG; todo opaco, JPEG (o fundo nem aparece).
+      // transparente sai PNG; senão, JPEG — e aí o branco vai ATRÁS do que já
+      // foi desenhado (`destination-over`). Sem ele, a foto em que não deu
+      // para ler os pixels (canvas "sujo") saía JPEG com o fundo PRETO.
       let formato = "image/jpeg";
       if (soParaConverter) {
         ctx.drawImage(img, 0, 0, width, height);
-        if (temTransparencia(ctx, width, height)) formato = "image/png";
+        if (temTransparencia(ctx, width, height)) {
+          formato = "image/png";
+        } else {
+          ctx.globalCompositeOperation = "destination-over";
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, width, height);
+          ctx.globalCompositeOperation = "source-over";
+        }
       } else {
         ctx.fillStyle = "#FFFFFF";
         ctx.fillRect(0, 0, width, height);

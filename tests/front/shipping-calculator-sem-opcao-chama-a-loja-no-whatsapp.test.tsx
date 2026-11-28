@@ -72,7 +72,8 @@ const PRODUTO: Product = {
   createdAt: new Date(0).toISOString(),
 };
 const CARRINHO: CartItem[] = [{ product: PRODUTO, quantity: 1 }];
-const TEXTO_SEM_OPCAO = "A calcular: nenhuma opção de entrega";
+const TEXTO_SEM_OPCAO =
+  "Esta loja ainda não entrega neste CEP pelo site. Combine com a loja.";
 const ROTULO = "Combinar entrega pelo WhatsApp";
 
 describe("ShippingCalculator — sem opção de entrega, a cliente chama a loja", () => {
@@ -154,7 +155,6 @@ describe("ShippingCalculator — sem opção de entrega, a cliente chama a loja"
     await pintar();
 
     expect(hospedeiro.textContent).toContain(TEXTO_SEM_OPCAO);
-    expect(hospedeiro.textContent).toContain("combine a entrega com a loja");
     const b = botao();
     expect(b).toBeDefined();
 
@@ -178,11 +178,9 @@ describe("ShippingCalculator — sem opção de entrega, a cliente chama a loja"
       await pintar();
 
       expect(hospedeiro.textContent).toContain(
-        "Nenhuma opção de entrega para este endereço.",
+        "Esta loja ainda não entrega neste CEP. Confira se o CEP está certo.",
       );
-      expect(hospedeiro.textContent).not.toContain(
-        "combine a entrega com a loja",
-      );
+      expect(hospedeiro.textContent).not.toContain("Combine com a loja");
       expect(botao()).toBeUndefined();
     },
   );

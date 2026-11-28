@@ -153,6 +153,11 @@ const COMUNS = FRASES_DO_BANCO.filter(
 // INSERT `a_loja_aceita_pedido_novo` recusa o pedido novo da vitrine com a loja
 // em manutenção ou com as vendas pausadas. As regras irmãs em recusaDoPedido.ts
 // (aguardar_a_loja ×2) morrem caladas se alguma frase sumir ou for reescrita.
+// 20261655000000: a loja nova so entrega na cidade depois de confirmar (gatilho em marketplace_orders).
+const DA_ENTREGA_NAO_CONFIRMADA = [
+  "Esta loja ainda está se preparando para entregar. Escolha outra entrega ou fale com a loja.",
+];
+
 const DA_PAUSA_DE_VENDAS = [
   "A loja está em manutenção. Tente de novo mais tarde.",
   "Esta loja não está aceitando pedidos agora.",
@@ -188,6 +193,7 @@ describe("as recusas continuam no corpo mais novo de cada função", () => {
     ["create_marketplace_order_v24", [...COMUNS, SOMENTE_V24]],
     ["pedido_com_cupom_exige_a_chave_ligada", [DO_GATILHO]],
     ["a_loja_aceita_pedido_novo", DA_PAUSA_DE_VENDAS],
+    ["a_loja_so_entrega_na_cidade_o_que_confirmou", DA_ENTREGA_NAO_CONFIRMADA],
   ] as const) {
     const atual = corpoMaisNovo(MIGRATIONS, funcao);
     it(`${funcao}: a definição vigente foi encontrada e tem corpo`, () => {
@@ -210,17 +216,21 @@ describe("as recusas continuam no corpo mais novo de cada função", () => {
   // frases CONHECIDAS; esta prende a frase NOVA. Um RAISE acrescentado ao
   // gatilho sem regra em recusaDoPedido.ts cairia em `conferir_antes` ("Ver
   // meus pedidos" e Finalizar travado) sobre um pedido que nunca nasceu.
-  it("a_loja_aceita_pedido_novo: TODA frase de recusa do corpo vigente tem saída própria, nunca conferir_antes", () => {
-    const atual = corpoMaisNovo(MIGRATIONS, "a_loja_aceita_pedido_novo");
-    const frases = frasesDeRecusa(atual?.corpo ?? "");
-    expect(frases.length).toBeGreaterThan(0);
-    for (const frase of frases) {
-      expect(
-        classificarRecusaDoPedido({ code: "P0001", message: frase }).acao,
-        `${atual?.nome}: "${frase}" não tem regra em recusaDoPedido.ts`,
-      ).not.toBe("conferir_antes");
-    }
-  });
+  for (const gatilho of [
+    "a_loja_aceita_pedido_novo",
+    "a_loja_so_entrega_na_cidade_o_que_confirmou",
+  ])
+    it(`${gatilho}: TODA frase de recusa do corpo vigente tem saída própria, nunca conferir_antes`, () => {
+      const atual = corpoMaisNovo(MIGRATIONS, gatilho);
+      const frases = frasesDeRecusa(atual?.corpo ?? "");
+      expect(frases.length).toBeGreaterThan(0);
+      for (const frase of frases) {
+        expect(
+          classificarRecusaDoPedido({ code: "P0001", message: frase }).acao,
+          `${atual?.nome}: "${frase}" não tem regra em recusaDoPedido.ts`,
+        ).not.toBe("conferir_antes");
+      }
+    });
 
   it("comentário e outra função não contam como recusa; aspas e acentos são preservados", () => {
     const atual = corpoMaisNovo(

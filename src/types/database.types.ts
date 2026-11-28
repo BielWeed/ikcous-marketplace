@@ -2824,6 +2824,7 @@ export type Database = {
           enable_coupons: boolean | null;
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
+          entrega_local_liberada: boolean | null;
           free_shipping_card_style: string | null;
           free_shipping_min: number | null;
           home_sections: Json | null;
@@ -2842,6 +2843,7 @@ export type Database = {
           national_shipping_min: number | null;
           national_shipping_strategy: string | null;
           origin_cep: string | null;
+          pagamento_na_entrega_liberado: boolean | null;
           pagamento_online: boolean | null;
           primary_color: string | null;
           secondary_color: string | null;
