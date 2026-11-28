@@ -25,6 +25,10 @@ import {
 import { instanteDentroDoPeriodo } from "@/lib/filtro-da-lista-de-pedidos";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
 import {
+  confirmarListaVaziaDaConta,
+  ehLeituraSemSessaoDaDona,
+} from "@/lib/lista-vazia-da-conta";
+import {
   enderecoDeRetiradaDoCustomerData,
   mapOrderFromDB,
 } from "@/lib/mappers";
@@ -2315,6 +2319,27 @@ type RespostaDosPedidosDoCliente = Awaited<
   ReturnType<typeof iniciarConsultaDoCliente>
 >;
 
+// A consulta de rede + a conferência da lista VAZIA (caça 28/11/2026): na
+// janela em que a renovação do token falhou a consulta sai com a chave anônima
+// e a RLS devolve `[]`. Sem a sessão da dona, o `[]` vira falha
+// (`LeituraSemSessaoDaDona`) e não chega a trocar a lista nem a cópia do
+// aparelho. Aqui, e não em cada instância: quem pega carona recebe o mesmo
+// veredito, com uma conferência só.
+async function consultarConferindoADona(
+  userId: string,
+  signal: AbortSignal,
+): Promise<RespostaDosPedidosDoCliente> {
+  const resposta = await iniciarConsultaDoCliente(userId, signal);
+  if (
+    !resposta.error &&
+    Array.isArray(resposta.data) &&
+    resposta.data.length === 0
+  ) {
+    await confirmarListaVaziaDaConta(userId);
+  }
+  return resposta;
+}
+
 type ConsultaDoClienteEmVoo = {
   resposta: Promise<RespostaDosPedidosDoCliente>;
   controlador: AbortController;
@@ -2360,9 +2385,7 @@ function consultarPedidosDoCliente(
   if (!consulta) {
     const controlador = new AbortController();
     const nova: ConsultaDoClienteEmVoo = {
-      resposta: Promise.resolve(
-        iniciarConsultaDoCliente(userId, controlador.signal),
-      ),
+      resposta: consultarConferindoADona(userId, controlador.signal),
       controlador,
       esperando: 0,
       iniciadaEm: Date.now(),
@@ -2480,6 +2503,15 @@ export function useOrders(
   // iniciar ≠ este (o transporte pode ignorar o cancelamento). Vale só para
   // a leitura DO CLIENTE; o painel (`loadOrders`) tem o próprio controlador.
   const userIdAtualRef = useRef<string | null>(user?.id ?? null);
+  // Leitura DO CLIENTE recusada porque voltou vazia sem a sessão da dona
+  // (`LeituraSemSessaoDaDona`, caça 28/11/2026): o religador espera o aviso de
+  // sessão renovada DESTA conta e relê uma vez. Só fica ouvindo depois de uma
+  // recusa -- o SIGNED_IN que o supabase-js reanuncia a cada volta ao app não
+  // vira uma segunda leitura por cima da recarga por visibilidade.
+  const religadorDaLeituraRef = useRef<{
+    userId: string;
+    religador: ReturnType<typeof criarReligadorDaFila>;
+  } | null>(null);
   // De que conta é a última leitura da LISTA que TERMINOU (a mais nova desta
   // instância, deu certo ou falhou). O primeiro `SUBSCRIBED` do canal só relê a
   // lista se esta leitura já terminou: a leitura sai antes de a assinatura
@@ -2620,6 +2652,10 @@ export function useOrders(
           });
           // Resposta ok (inclusive com 0 pedidos): a falha anterior acabou.
           setOrdersLoadError(null);
+          // E a espera pela sessão, se havia, também.
+          if (religadorDaLeituraRef.current?.userId === user.id) {
+            religadorDaLeituraRef.current.religador.aoFimDaPassada(false);
+          }
           // P-2 (laudo varredura 01/09): o setItem do cache está sob
           // try/catch — localStorage cheio (QuotaExceededError) NÃO é erro
           // de rede nem da leitura: é o armazenamento LOCAL do aparelho
@@ -2674,6 +2710,14 @@ export function useOrders(
         }
         // Falha que chegou depois da troca de conta é da conta ANTERIOR.
         if (userIdAtualRef.current !== (user.id ?? null)) return [];
+        // Vazia sem a sessão da dona: segue como falha (a lista e a cópia
+        // ficam), e a releitura sai quando a sessão desta conta voltar.
+        if (
+          ehLeituraSemSessaoDaDona(err) &&
+          religadorDaLeituraRef.current?.userId === user.id
+        ) {
+          religadorDaLeituraRef.current.religador.aoFimDaPassada(true);
+        }
         console.error("Error fetching user orders:", err);
         // Estourou o prazo: larga a requisição pendurada (ela só sai da
         // consulta compartilhada quando não resta ninguém esperando). Aqui e
@@ -3988,6 +4032,30 @@ export function useOrders(
     onReconciliarRef.current = options?.onReconciliar;
     pedidosQueNaoSaemDaPaginaRef.current = options?.pedidosQueNaoSaemDaPagina;
   });
+
+  // Um religador por conta da cliente (ver `religadorDaLeituraRef`). A
+  // releitura é agendada fora do aviso: o supabase-js entrega o evento
+  // segurando a própria trava de sessão, e a leitura confere a sessão. O
+  // desmonte e a troca de conta encerram a espera e o agendamento pendente.
+  useEffect(() => {
+    if (!enabled || isAdmin || !user?.id) return;
+    const userId = user.id;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const religador = criarReligadorDaFila(userId, () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void fetchUserOrdersRef.current(true);
+      }, 0);
+    });
+    religadorDaLeituraRef.current = { userId, religador };
+    return () => {
+      clearTimeout(timer);
+      religador.encerrar();
+      if (religadorDaLeituraRef.current?.religador === religador) {
+        religadorDaLeituraRef.current = null;
+      }
+    };
+  }, [enabled, isAdmin, user?.id]);
 
   // Realtime subscription for orders
   useEffect(() => {
