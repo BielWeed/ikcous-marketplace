@@ -1577,6 +1577,17 @@ body.admin-modal-open .active-scroll-container {
   }
 }
 
+/* Camada flutuante por cima de folha modal (ui/sheet, 27/11/2026): com a
+   folha aberta o Radix grava `pointer-events: none` no <body>, e o aviso do
+   Sonner, a cápsula e a ilha do topo HERDAVAM isso — pintavam por cima do
+   véu, mas o dedo atravessava até ele e a folha fechava. `auto` aqui só
+   devolve o estado normal (sem folha aberta nada muda); o sheet.tsx cuida
+   de não ler esse toque como "toque fora". */
+[data-camada-flutuante],
+[data-sonner-toaster] {
+  pointer-events: auto;
+}
+
 /* Top Anchored Toast Notification System */
 [data-sonner-toaster][data-position^="top"] {
   top: calc(var(--safe-area-top, 0px) + 64px) !important;
