@@ -54,7 +54,13 @@
  * vende.) A ÚNICA exceção é a loja que ESTE instalador
  * terminou e que está completa (marca concluída + ledger == fila inteira):
  * rodar de novo dá JA_INSTALADA, saída de sucesso, só leituras (26/11/2026;
- * antes devolvia o mesmo RECUSADO das recusas perigosas).
+ * antes devolvia o mesmo RECUSADO das recusas perigosas). E, só com a opção
+ * `atualizarConcluida` (lote 566, 28/11/2026: uma release nova deixava a loja
+ * em instalação travada para sempre), a loja que este instalador concluiu e
+ * cujo ledger é um começo contínuo da fila recebe as migrations NOVAS do fim
+ * ("atualizar"), com o mesmo envelope e as mesmas conferências; a marca
+ * continua concluída. Sem a opção (a loja que já está no cadastro da frota),
+ * a recusa fica como era.
  *
  * OS PRIVILÉGIOS PADRÃO DE PUBLIC (26/11/2026): desde 30/05/2026 projeto
  * Supabase NOVO nasce sem o `ALTER DEFAULT PRIVILEGES` que dava acesso a
@@ -179,10 +185,17 @@ const recusa = (motivo, estado) => ({
  * @param estadoObservado {tabelasEmPublic, ledgerExiste, versoesNoLedger} (de lerEstado)
  * @param arquivosDoRepo  [{arquivo, corpo}] — `arquivo` é o nome (ou caminho
  *        relativo; quem tem pasta no caminho não é da fila)
- * @returns {acao: "recusar"|"instalar"|"nada"|"ja_instalada", motivo, estado,
- *          fila: [{arquivo, versao, nome, envelope}], jaNoLedger, total}
+ * @param opcoes          { atualizarConcluida?: true } — só com ela (literal)
+ *        a loja de marca CONCLUÍDA cujo ledger é um começo contínuo da fila
+ *        vira "atualizar" (as migrations novas do fim); sem ela, "loja já
+ *        instalada" e recusa, como sempre. Quem liga é o nova-loja.mjs, só
+ *        para loja que ainda não está no cadastro da frota (a do cadastro
+ *        recebe migration nova pelo aplicar-migrations.yml).
+ * @returns {acao: "recusar"|"instalar"|"nada"|"ja_instalada"|"atualizar",
+ *          motivo, estado, fila: [{arquivo, versao, nome, envelope}],
+ *          jaNoLedger, total}
  */
-export function planejarInstalacao(estadoObservado, arquivosDoRepo) {
+export function planejarInstalacao(estadoObservado, arquivosDoRepo, opcoes) {
   const estado = estadoObservado;
   if (!estadoLegivel(estado)) {
     return recusa(
@@ -248,7 +261,16 @@ export function planejarInstalacao(estadoObservado, arquivosDoRepo) {
       total: fila.length,
     };
   }
-  if (noLedger.size > 0 && estado.marca !== "em_curso") {
+  // A loja que ESTE instalador concluiu e que uma release deixou para trás
+  // (lote 566): só com a opção, só com a marca concluída e só se o ledger é
+  // um começo CONTÍNUO da fila (as guardas de baixo: versão estranha, public
+  // vazio e lacuna continuam recusando). O que falta são as migrations NOVAS
+  // do fim, aplicadas com o mesmo envelope (corpo + ledger numa transação).
+  const atualizar =
+    opcoes?.atualizarConcluida === true &&
+    estado.marca === "concluida" &&
+    noLedger.size > 0;
+  if (noLedger.size > 0 && estado.marca !== "em_curso" && !atualizar) {
     return recusa(
       `RECUSADO: ${LOJA_JA_INSTALADA} (o ledger registra ${noLedger.size} versão(ões) e a marca de instalação está ${estado.marca === "concluida" ? "concluída" : "ausente — não foi este instalador que começou este banco"}). Nada se aplica por aqui.`,
       estado,
@@ -312,6 +334,25 @@ export function planejarInstalacao(estadoObservado, arquivosDoRepo) {
       );
     }
     itens.push({ arquivo: a.arquivo, versao: m[1], nome: m[2], envelope });
+  }
+
+  if (atualizar) {
+    // ledger == fila já saiu como ja_instalada lá em cima; sem nada a aplicar
+    // aqui não há o que atualizar (defesa: nunca vira "nada", que marcaria)
+    if (itens.length === 0) {
+      return recusa(
+        "RECUSADO: estado incoerente — a marca está concluída e nada falta, mas a loja não fechou como já instalada. Diagnóstico antes.",
+        estado,
+      );
+    }
+    return {
+      acao: "atualizar",
+      motivo: `atualização: a instalação está concluída com ${noLedger.size} de ${fila.length}; faltam ${itens.length} migration(s) nova(s) desta pasta, todas depois da última do ledger (a partir de ${itens[0].arquivo})`,
+      estado,
+      fila: itens,
+      jaNoLedger: noLedger.size,
+      total: fila.length,
+    };
   }
 
   return {
@@ -628,6 +669,80 @@ function recusaDaRetomadaSemPrivilegios({ papelDono, faltando }) {
 }
 
 /**
+ * "atualizar" com `aplicar` (lote 566): a loja que ESTE instalador concluiu
+ * recebe as migrations novas do fim. O estado já foi relido e conferido por
+ * quem chama (mesmoEstado). Os privilégios padrão têm de bater ANTES (o que
+ * nasce agora conta com eles; faltando = FALHOU fechado, nada gravado). Sem
+ * DDL do ledger e sem SQL_CONCLUIR: o ledger e a marca já existem e a marca
+ * continua concluída — só os envelopes (corpo + ledger numa transação, sem ON
+ * CONFLICT: outro comando que registrou a mesma versão dá 23505 e volta
+ * tudo). Para na primeira falha; o OK só sai com a releitura mostrando TODAS
+ * as versões enviadas no ledger e a marca ainda concluída.
+ */
+async function atualizarConcluida(cliente, plano) {
+  let priv;
+  try {
+    priv = await lerPrivilegiosPadrao(cliente);
+  } catch (e) {
+    return falhaNaLeituraDosPrivilegios(e, [], "antes de atualizar");
+  }
+  if (priv.faltando !== "") {
+    return {
+      estado: "FALHOU",
+      fase: FASE_DOS_PRIVILEGIOS,
+      aplicados: [],
+      mensagem: `FALHOU: a loja está instalada, mas os privilégios padrão de public do papel ${priv.papelDono} não batem (falta: ${priv.faltando}); ${SEM_ELES}. Nenhuma migration nova foi enviada: diagnóstico antes (a consulta 185-privilegios-padrao-em-public mede a regra).`,
+    };
+  }
+  const aplicados = [];
+  for (const item of plano.fila) {
+    try {
+      await cliente.consultar(item.envelope);
+    } catch (e) {
+      return falhaDeEscrita(e, item.arquivo, item.versao, aplicados);
+    }
+    aplicados.push(item.arquivo);
+  }
+  let depois;
+  try {
+    depois = await lerEstado(cliente);
+  } catch (e) {
+    return {
+      estado: "FALHOU",
+      fase: "conferência",
+      releituraFalhou: true,
+      aplicados,
+      mensagem: `FALHOU ao conferir o ledger depois de atualizar (${String(e?.message ?? e).slice(0, 300)}): os ${aplicados.length} envios voltaram sem erro, mas sem a conferência não digo OK.`,
+    };
+  }
+  const registradas = new Set(depois.versoesNoLedger);
+  const faltam = plano.fila
+    .filter((i) => !registradas.has(i.versao))
+    .map((i) => i.versao);
+  if (faltam.length > 0) {
+    return {
+      estado: "FALHOU",
+      fase: "conferência",
+      aplicados,
+      mensagem: `FALHOU na conferência: o ledger não registra ${faltam.join(", ")} depois de envio sem erro. Diagnóstico antes de rodar de novo.`,
+    };
+  }
+  if (depois.marca !== "concluida") {
+    return {
+      estado: "FALHOU",
+      fase: "conferência",
+      aplicados,
+      mensagem: `FALHOU na conferência: a marca de instalação está ${depois.marca}, esperava concluída (esta rodada não mexe nela). Diagnóstico antes.`,
+    };
+  }
+  return {
+    estado: "OK",
+    aplicados,
+    mensagem: `OK: ${aplicados.length} migration(s) nova(s) aplicada(s) e registrada(s); o ledger tem ${registradas.size}; a instalação continua concluída.`,
+  };
+}
+
+/**
  * Executa o plano. Sem `aplicar: true` (literal) é ENSAIO: só leituras.
  * Sempre relê o estado antes (o banco pode ter mudado desde o plano: outro
  * instalador, alguém no SQL Editor) e, se mudou, RECUSA sem gravar. Para na
@@ -655,7 +770,8 @@ export async function instalar(clienteSemRitmo, plano, opcoes = {}) {
   if (
     plano.acao !== "instalar" &&
     plano.acao !== "nada" &&
-    plano.acao !== "ja_instalada"
+    plano.acao !== "ja_instalada" &&
+    plano.acao !== "atualizar"
   ) {
     return {
       estado: "RECUSADO",
@@ -725,6 +841,10 @@ export async function instalar(clienteSemRitmo, plano, opcoes = {}) {
       aplicaria: plano.fila.map((i) => i.arquivo),
       mensagem: `ENSAIO (nada gravado): ${plano.motivo}. Antes da 1ª, os privilégios padrão de public. Rode com --aplicar para gravar.`,
     };
+  }
+
+  if (plano.acao === "atualizar") {
+    return await atualizarConcluida(cliente, plano);
   }
 
   // Retomada ("instalar" com ledger, ou "nada"): o que já nasceu nasceu com os

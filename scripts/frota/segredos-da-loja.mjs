@@ -57,7 +57,7 @@
  * USO: node scripts/frota/segredos-da-loja.mjs --projeto <ref> [--aplicar]
  *        [--vapid-subject mailto:...|https://...]
  * O token vem de SUPABASE_ACCESS_TOKEN (a mesma fonte dos scripts da
- * Management API; no orquestrador nova-loja.mjs é o token OAuth da lojista,
+ * Management API; no orquestrador nova-loja.mjs é o token OAuth da ORG central,
  * passado pelo `cliente`). Nunca é impresso.
  */
 import { generateKeyPairSync, randomBytes } from "node:crypto";
