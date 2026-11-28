@@ -94,6 +94,7 @@ import {
   resumoDoEndereco,
 } from "@/lib/endereco-de-entrega";
 import {
+  AVISO_CARTAO_DO_CHECKOUT_NO_AR,
   AVISO_ENVIO_DO_CHECKOUT_EM_CURSO,
   marcarEnvioDoCheckout,
 } from "@/lib/envio-do-checkout-em-curso";
@@ -2080,6 +2081,11 @@ export function CheckoutViewDaConta({
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
   // function, dentro do PagamentoOnline (ver comentário lá).
   const [aguardandoPagamento, setAguardandoPagamento] = useState(false);
+  // Caça "voltar do navegador" (27/11/2026): um envio do cartão espera a
+  // resposta do banco, avisado pela tela do cartão (`onCartaoNoAr`). Segura o
+  // Voltar e a navegação como o envio do pedido (`isSubmitting`) — sair agora
+  // desmontaria a tela do cartão e a resposta seria descartada.
+  const [cartaoNoAr, setCartaoNoAr] = useState(false);
   // CHECKOUT-090: estado exclusivo, não booleanos independentes
   // — dois booleanos podem divergir (os dois `true` ao mesmo tempo, ou os
   // dois `false` quando um dos dois status chegou), e essa divergência é
@@ -3558,18 +3564,23 @@ export function CheckoutViewDaConta({
   // Voltar cair no override abaixo em vez de sair da página. O teto de 30 s do
   // envio (`aguardarComPrazo`) garante que a guarda se solta; a entrada que
   // sobra no histórico depois de uma falha só custa um toque a mais no Voltar.
+  //
+  // Cartão no ar (caça "voltar do navegador", 27/11/2026): a mesma guarda.
+  // Sem ela o Voltar cairia na entrada ANTES do checkout (o carrinho), e a
+  // sincronização da URL levaria a cliente para lá mesmo com o Voltar retido.
+  const envioOuCartaoNoAr = isSubmitting || cartaoNoAr;
   useEffect(() => {
-    if (isSubmitting && !hasPushedEnvioState.current) {
+    if (envioOuCartaoNoAr && !hasPushedEnvioState.current) {
       globalThis.history.pushState(
         { modal: "checkout-enviando" },
         "",
         globalThis.location.pathname,
       );
       hasPushedEnvioState.current = true;
-    } else if (!isSubmitting) {
+    } else if (!envioOuCartaoNoAr) {
       hasPushedEnvioState.current = false;
     }
-  }, [isSubmitting]);
+  }, [envioOuCartaoNoAr]);
 
   // Navegar durante o ENVIO (caça 8, 03/11/2026): o Voltar já era retido acima,
   // mas a barra de baixo e o cabeçalho passam por `handleNavigate` (App.tsx), que
@@ -3579,10 +3590,13 @@ export function CheckoutViewDaConta({
   // commit em que o círculo aparece. Solta em todo fim de envio (o `finally` de
   // `enviarPedido` desliga `isSubmitting` ANTES de a confirmação aparecer, então
   // os botões dela não são barrados) e, no desmonte, pelo cleanup.
+  //
+  // Cartão no ar: a mesma bandeira — a barra de baixo desmontaria a tela do
+  // cartão com a resposta do banco ainda a caminho.
   useLayoutEffect(() => {
-    marcarEnvioDoCheckout(isSubmitting);
+    marcarEnvioDoCheckout(envioOuCartaoNoAr);
     return () => marcarEnvioDoCheckout(false);
-  }, [isSubmitting]);
+  }, [envioOuCartaoNoAr]);
 
   // O Pix está de fato ABERTO na tela (r55-d): pedido em pagamento por Pix que
   // o servidor ainda não deu por pago, vencido, recusado nem estornado. É a
@@ -3615,6 +3629,18 @@ export function CheckoutViewDaConta({
       });
     } else if (isSummaryPanelOpen) {
       onSetBackOverride(() => () => setIsSummaryPanelOpen(false));
+    } else if (cartaoNoAr) {
+      // Cartão sendo cobrado (caça "voltar do navegador", 27/11/2026): ANTES
+      // do ramo de aguardando pagamento, que levaria ao Início e descartaria a
+      // resposta do banco. Mesmo jeito do envio do pedido, logo abaixo.
+      onSetBackOverride(() => () => {
+        globalThis.history.pushState(
+          { modal: "checkout-enviando" },
+          "",
+          globalThis.location.pathname,
+        );
+        toast.info(AVISO_CARTAO_DO_CHECKOUT_NO_AR);
+      });
     } else if (showSuccess || aguardandoPagamento) {
       // Sucesso ou aguardando pagamento: o pedido já foi criado e o carrinho
       // já foi limpo — não existe formulário para o botão voltar recuperar.
@@ -3649,6 +3675,7 @@ export function CheckoutViewDaConta({
   }, [
     isAddressModalOpen,
     isSummaryPanelOpen,
+    cartaoNoAr,
     showSuccess,
     aguardandoPagamento,
     pixAindaAbertoNaTela,
@@ -6984,6 +7011,7 @@ export function CheckoutViewDaConta({
             // regra "sem sinal em modo cartão é incerto" — e "Cancelar
             // pedido" reaparecia sobre um cartão que podia ter sido aprovado.
             onCartaoEmCurso={registrarCartaoEmCurso}
+            onCartaoNoAr={setCartaoNoAr}
             cartaoEncerrado={cartaoEncerrado}
             // Confirmação do cartão sem fim (03/10/2026): a consulta sem
             // cobrança da tela do cartão (`verificar`) provou a vaga desta

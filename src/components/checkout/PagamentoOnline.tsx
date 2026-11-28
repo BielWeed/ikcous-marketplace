@@ -431,6 +431,7 @@ export function PagamentoOnline({
   onVoltarAoCarrinho,
   onCobrancaEmDuvida,
   onCartaoEmCurso,
+  onCartaoNoAr,
   cartaoEncerrado,
   onCartaoEncerradoPelaConsulta,
   sessaoAtiva = true,
@@ -465,6 +466,8 @@ export function PagamentoOnline({
   onCobrancaEmDuvida?: (pontoDePartida: PontoDePartidaDaVerificacao) => void;
   // C6 (P1): repassados à tela do cartão — ver `CartaoEmCurso`.
   onCartaoEmCurso?: (cartao: CartaoEmCurso | null) => void;
+  // Repassado à tela do cartão — ver `onCartaoNoAr` em `PagamentoComCartao`.
+  onCartaoNoAr?: (noAr: boolean) => void;
   cartaoEncerrado?: CartaoEmCurso | null;
   // Confirmação do cartão sem fim (03/10/2026): repassados à tela do cartão
   // — ver `confirmacao-do-cartao.ts` e `PagamentoComCartao`.
@@ -543,6 +546,7 @@ export function PagamentoOnline({
           onPagarComPix={pagarComPix}
           onCobrancaEmDuvida={onCobrancaEmDuvida}
           onCartaoEmCurso={onCartaoEmCurso}
+          onCartaoNoAr={onCartaoNoAr}
           cartaoEncerrado={cartaoEncerrado}
           onCartaoEncerradoPelaConsulta={onCartaoEncerradoPelaConsulta}
           onVerMeusPedidos={onVerMeusPedidos}
