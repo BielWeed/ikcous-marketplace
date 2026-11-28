@@ -60,6 +60,14 @@ vi.mock("@/lib/supabase", () => ({
     }),
     removeChannel: vi.fn(() => Promise.resolve()),
     rpc: vi.fn(),
+    // Sessão da conta logada (user-1): a lista vazia só é aceita com a sessão da dona.
+    auth: {
+      getSession: () =>
+        Promise.resolve({ data: { session: { user: { id: "user-1" } } } }),
+      onAuthStateChange: () => ({
+        data: { subscription: { unsubscribe: () => {} } },
+      }),
+    },
   },
 }));
 
