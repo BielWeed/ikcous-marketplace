@@ -90,7 +90,10 @@
  *    do commit (o critério e o download do portão da release; lote 566) e
  *    republica o que difere. O download real (CLI do Supabase) só entra pela
  *    linha de comando (principal); sem ele, nada no ar é dado como igual.
- *    Mensagem de script B que manda
+ *    O download leva o token OAuth da ORG desta rodada (lote 573): o CLI
+ *    tenta com ele e, se não servir, com o login de quem roda (o portão da
+ *    release só usa o login, como antes); se os dois falham, a saída diz a
+ *    causa provável e o que fazer (semDownload). Mensagem de script B que manda
  *    "rodar sem --aplicar" para ler o estado é reescrita para o conferir
  *    (pelo nova-loja, sem --aplicar não se lê nada);
  *  - definir-dono (regra do sócio, 26/11): sem dono e com EXATAMENTE uma
@@ -1784,6 +1787,22 @@ function lidoDoB2(r) {
   };
 }
 
+/** O download do código no ar com a autorização da ORG desta rodada (lote
+ * 573): o baixador tenta primeiro com o access token da org central (o
+ * mesmo do resto do nova-loja) e só depois com o login do CLI de quem roda.
+ * Sem baixador (teste que não o deu), continua sem. */
+const comAcessoDaOrg = (baixar, token) =>
+  typeof baixar === "function"
+    ? (ref, nome) => baixar(ref, nome, { token })
+    : baixar;
+
+/** Por que o download do código no ar costuma falhar, e o que fazer. Só
+ * quando o B2 disse que um download FALHOU (não quando não há baixador). */
+const RE_DOWNLOAD_FALHOU = /o download falhou/;
+function semDownload(ref) {
+  return `O código no ar não foi baixado nem pelo acesso da org central nem pelo login do CLI do Supabase deste PC. Causa provável: o CLI supabase ausente do PATH, ou nenhuma das duas autorizações enxerga a organização do projeto ${ref}. O que fazer, na mesma janela: supabase --version tem de responder; supabase projects list tem de mostrar ${ref} (se não mostrar, supabase login com uma conta da organização). Enquanto isso, functions --aplicar republica todas (a versão que sobe prova o código) e o item functions do conferir fica INCERTO.`;
+}
+
 /** O B2 com o cliente OAuth desta rodada: só o commit aprovado (HEAD == topo
  * do ramo da release) publica, uma por vez, conferindo cada uma. A recusa
  * dele (HEAD fora do topo, loja fora do cadastro, fontes divergentes) é
@@ -1792,7 +1811,7 @@ async function passoFunctions(pedido, d) {
   const { slug } = pedido;
   const pre = await projetoPronto(d, slug, "functions");
   if (pre.falta) return resultado(NAO, pre.falta);
-  const { gestao } = contexto(pedido, d);
+  const { gestao, token } = contexto(pedido, d);
   const repetir =
     "Rode functions de novo: as que já estão no ar com o verify_jwt certo e o código do commit são puladas.";
   let r;
@@ -1803,7 +1822,7 @@ async function passoFunctions(pedido, d) {
         git: d.git,
         cliente: gestao,
         esperar: d.dormir,
-        baixarFuncao: d.baixarFuncao,
+        baixarFuncao: comAcessoDaOrg(d.baixarFuncao, token),
       },
     );
   } catch (erro) {
@@ -1820,6 +1839,8 @@ async function passoFunctions(pedido, d) {
   }
   const l = lidoDoB2(r);
   for (const x of [...l.antes, ...l.erros]) d.saida.out(x);
+  if ([...l.antes, ...l.erros].some((x) => RE_DOWNLOAD_FALHOU.test(x)))
+    d.saida.out(semDownload(pre.ref));
   const mensagem =
     l.erros.length > 0 ? `${l.corpo} (${l.erros.join("; ")})` : l.corpo;
   return await fecharPasso(
@@ -3314,13 +3335,17 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
         git: d.git,
         cliente: leitura,
         esperar: d.dormir,
-        baixarFuncao: d.baixarFuncao,
+        baixarFuncao: comAcessoDaOrg(d.baixarFuncao, token),
       }),
     );
+    // o download que falhou ganha a causa provável e o que fazer ANTES da
+    // lista (que é cortada), para não sumir no corte (lote 573)
     item(
       "functions",
       l.veredito,
-      [l.corpo, ...l.erros].join("; ").slice(0, 600),
+      l.erros.some((x) => RE_DOWNLOAD_FALHOU.test(x))
+        ? `${l.corpo}. ${semDownload(ref)} ${l.erros.join("; ").slice(0, 300)}`
+        : [l.corpo, ...l.erros].join("; ").slice(0, 600),
     );
   } catch (erro) {
     item(

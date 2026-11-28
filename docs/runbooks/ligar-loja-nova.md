@@ -418,9 +418,13 @@ organização.
 `supabase/config.toml`, e confere cada uma antes da próxima. Só pula a que já está no ar com o
 `verify_jwt` certo **e o mesmo código** do commit (comparado do mesmo jeito que o portão da
 release compara: baixa o código no ar pelo CLI do Supabase). A que tem código diferente (uma
-release nova mudou) é publicada de novo, e só conta quando a versão no ar sobe. Se o download do
-código falhar, ela é publicada de novo do mesmo jeito. Só publica com o checkout **exatamente**
-no topo da branch da release.
+release nova mudou) é publicada de novo, e só conta quando a versão no ar sobe. O download tenta
+primeiro com a autorização da organização (a mesma do resto do comando) e, se ela não servir, com
+o login do CLI `supabase` deste PC. Se os dois falharem, a function é publicada de novo do mesmo
+jeito, e a saída diz a causa provável e o que fazer (`supabase --version` tem de responder;
+`supabase projects list` tem de mostrar o projeto; se não mostrar, `supabase login` com uma conta
+da organização — quem digita é o dono, na tela dele). Só publica com o checkout **exatamente** no
+topo da branch da release.
 
 ```powershell
 node scripts/frota/nova-loja.mjs functions --loja <slug> --aplicar
@@ -509,7 +513,7 @@ node scripts/frota/nova-loja.mjs conferir --loja <slug> --aplicar
 - **`banco`** com a instalação concluída e migrations novas faltando diz qual é o caminho: `banco
   --aplicar` (loja ainda fora do cadastro) ou o `aplicar-migrations.yml` (loja do cadastro).
 - **`functions`** só dá SIM com o código no ar igual ao do commit; INCERTO se o download do código
-  falhou.
+  falhou, e aí o item já diz a causa provável e o que fazer (o mesmo roteiro do passo 8).
 - A frase `a loja está pronta para vender` só aparece com **todos** os itens SIM.
 
 ### Trocar a dona — `trocar-dono` (raro; só com o pedido escrito)

@@ -76,6 +76,7 @@ import {
   sqlDaPromocao,
   sqlDoDiagnostico,
 } from "../scripts/frota/primeira-admin.mjs";
+import { baixadorDeFuncaoPeloCli } from "../scripts/frota/publicar-release.mjs";
 import {
   SQL_ESTADO_DO_BANCO,
   SQL_NOMES_NO_VAULT,
@@ -2664,6 +2665,148 @@ Deno.test("functions: deploy da ÚLTIMA sem resposta (504) = INCERTO repassado, 
 });
 
 // ─── C2: login ──────────────────────────────────────────────────────────────
+
+// ─── o download do código no ar com a autorização da ORG (lote 573) ─────────
+
+/** CLI falso do download: grava o index.ts na --workdir (como o CLI) ou
+ * falha quando `falhar(opcoes)` diz. Guarda as opções de cada chamada. */
+function cliFalso(falhar = () => false) {
+  const chamadas = [];
+  const executar = async (args, opcoes) => {
+    chamadas.push({ args, opcoes });
+    if (falhar(opcoes))
+      throw new Error(
+        `functions download falhou: ${opcoes?.env?.SUPABASE_ACCESS_TOKEN ?? "sem token"}`,
+      );
+    const dir = args[args.indexOf("--workdir") + 1];
+    const nome = args[args.indexOf("download") + 1];
+    await Deno.mkdir(join(dir, "supabase", "functions", nome), {
+      recursive: true,
+    });
+    await Deno.writeTextFile(
+      join(dir, "supabase", "functions", nome, "index.ts"),
+      "export {};\n",
+    );
+    return "";
+  };
+  return { chamadas, executar };
+}
+const BAIXADO = (nome) => [
+  { caminho: `supabase/functions/${nome}/index.ts`, conteudo: "export {};\n" },
+];
+
+Deno.test("baixador (lote 573): SEM token é o portão de hoje — UMA chamada do CLI, sem ambiente próprio (o login de quem roda)", async () => {
+  const cli = cliFalso();
+  const r = await baixadorDeFuncaoPeloCli(cli.executar)(REF, "criar-pagamento");
+  assertEquals(r, BAIXADO("criar-pagamento"));
+  assertEquals(cli.chamadas.length, 1);
+  assertEquals(Object.keys(cli.chamadas[0].opcoes).sort(), ["cwd"]);
+});
+
+Deno.test("baixador (lote 573): COM o token da org, o CLI roda com SUPABASE_ACCESS_TOKEN = esse token (o resto do ambiente junto); deu certo = sem 2ª chamada", async () => {
+  const cli = cliFalso();
+  const r = await baixadorDeFuncaoPeloCli(cli.executar)(
+    REF,
+    "criar-pagamento",
+    { token: async () => ACCESS },
+  );
+  assertEquals(r, BAIXADO("criar-pagamento"));
+  assertEquals(cli.chamadas.length, 1);
+  const env = cli.chamadas[0].opcoes.env;
+  assertEquals(env.SUPABASE_ACCESS_TOKEN, ACCESS);
+  assert(
+    Object.keys(env).some((k) => k.toUpperCase() === "PATH"),
+    "o PATH do processo foi junto",
+  );
+});
+
+Deno.test("baixador (lote 573): token da org recusado ou que não se obtém = 2ª tentativa pelo login do CLI (sem ambiente próprio); as duas falhando = erro SEM o token", async () => {
+  // recusado pelo CLI: cai no login, que baixa
+  const cli = cliFalso((o) => o?.env !== undefined);
+  const r = await baixadorDeFuncaoPeloCli(cli.executar)(REF, "pix", {
+    token: async () => ACCESS,
+  });
+  assertEquals(r, BAIXADO("pix"));
+  assertEquals(cli.chamadas.length, 2);
+  assertEquals(cli.chamadas[1].opcoes.env, undefined);
+  // a renovação falha: nem tenta com token, vai direto ao login
+  const cli2 = cliFalso();
+  const r2 = await baixadorDeFuncaoPeloCli(cli2.executar)(REF, "pix", {
+    token: async () => {
+      throw new Error("refresh girado");
+    },
+  });
+  assertEquals(r2, BAIXADO("pix"));
+  assertEquals(cli2.chamadas.length, 1);
+  assertEquals(cli2.chamadas[0].opcoes.env, undefined);
+  // as duas falham: erro, e a mensagem não carrega o token
+  const cli3 = cliFalso(() => true);
+  let erro;
+  try {
+    await baixadorDeFuncaoPeloCli(cli3.executar)(REF, "pix", {
+      token: async () => ACCESS,
+    });
+  } catch (e) {
+    erro = e;
+  }
+  assert(erro instanceof Error, "tinha de falhar");
+  assert(!String(erro.message).includes(ACCESS), erro.message);
+  assertEquals(cli3.chamadas.length, 2);
+});
+
+Deno.test("functions (lote 573): o download do código no ar recebe a autorização da ORG desta rodada (o mesmo token OAuth), no passo functions e no conferir", async () => {
+  const amb = await ateFicha();
+  const vistos = [];
+  const baixar = amb.api.baixar;
+  amb.deps.baixarFuncao = async (ref, nome, extra) => {
+    vistos.push(
+      typeof extra?.token === "function" ? await extra.token() : "sem token",
+    );
+    return await baixar(ref, nome);
+  };
+  assertEquals(
+    (await executarPasso(pedido("functions"), amb.deps)).veredito,
+    "SIM",
+  );
+  const r = await executarPasso(pedido("functions"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  const c = await executarPasso(pedido("conferir"), amb.deps);
+  const f = c.itens.find((i) => i.item === "functions");
+  assertEquals(f.veredito, "SIM", f.detalhe);
+  assert(vistos.length >= 2 * PUBLICAVEIS.length, `${vistos.length}`);
+  assert(
+    vistos.every((t) => t === ACCESS),
+    [...new Set(vistos)].join(","),
+  );
+  assert(!amb.saida.join("\n").includes(ACCESS));
+});
+
+Deno.test("functions (lote 573): o download que falha diz a causa provável e o que fazer — no INCERTO do conferir e na publicação que republica", async () => {
+  const amb = await ateFicha();
+  assertEquals(
+    (await executarPasso(pedido("functions"), amb.deps)).veredito,
+    "SIM",
+  );
+  amb.deps.baixarFuncao = async () => {
+    throw new Error("supabase não encontrado");
+  };
+  const c = await executarPasso(pedido("conferir"), amb.deps);
+  const f = c.itens.find((i) => i.item === "functions");
+  assertEquals(f.veredito, "INCERTO", f.detalhe);
+  for (const trecho of [
+    "acesso da org central",
+    "login do CLI",
+    "supabase --version",
+    "supabase login",
+  ])
+    assertStringIncludes(f.detalhe, trecho);
+  const n = amb.saida.length;
+  const r = await executarPasso(pedido("functions"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  const depois = amb.saida.slice(n).join("\n");
+  assertStringIncludes(depois, "supabase --version");
+  assertStringIncludes(depois, "republica");
+});
 
 Deno.test("login: endereços de <slug>.vercel.app e gancho DESLIGADO pelo B4 com o token OAuth; SIM conferido; o segredo do gancho não sai", async () => {
   const amb = await ateFicha();
