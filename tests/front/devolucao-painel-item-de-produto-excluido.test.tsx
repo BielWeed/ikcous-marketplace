@@ -241,6 +241,12 @@ describe("ficha da devolução: a peça de produto excluído não voltou ao esto
     );
   });
 
+  it("produto excluído no mesmo milissegundo da volta: a peça não voltou ao estoque", async () => {
+    tabelas.produtos = [{ id: P1, deleted_at: VOLTA }];
+    await montar(detalheDe([item("i-1", "Saia Excluída na Volta")]));
+    expect(linhaDo("Saia Excluída na Volta")).toContain(NAO_VOLTOU);
+  });
+
   it("produto excluído DEPOIS da volta: a peça voltou ao estoque antes, a linha segue como sempre", async () => {
     tabelas.produtos = [{ id: P1, deleted_at: "2026-11-25T09:00:00Z" }];
     await montar(detalheDe([item("i-1", "Saia Depois")]));
