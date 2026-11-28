@@ -51,9 +51,10 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
          -- A 343 preserva a regra da 241 e a estende ao reembolso manual; a 20261395200000 (a conclusao tranca o estoque na mesma ordem da
          -- compra) e' a sucessora da 343 e tambem a preserva (so acrescenta o bloco das travas antes do laco); a 20261642000000 (a peca que
          -- volta sem tamanho) e' a sucessora da 395 e tambem (so acrescenta o ramo da peca sem tamanho no reestoque); a 20261653000000 (a
-         -- peca da variacao desligada) e' a sucessora da 642 e tambem (so acrescenta o bloco da variacao desligada no reestoque).
+         -- peca da variacao desligada) e' a sucessora da 642 e tambem (so acrescenta o bloco da variacao desligada no reestoque); a
+         -- 20261657000000 (o produto todo desligado) e' a sucessora da 1653 e tambem (so acrescenta o sub-bloco do produto todo desligado).
          -- A 20261645000000 (o aviso do vale-troca diz que a loja combina) sucede o aviso da 241 trocando so a frase do vale.
-         CASE WHEN t.chave = 'concluir' AND md5(replace(p.prosrc, chr(13), '')) IN ('ea651d52157521c0fe7ffccc948b4b1a', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e')
+         CASE WHEN t.chave = 'concluir' AND md5(replace(p.prosrc, chr(13), '')) IN ('ea651d52157521c0fe7ffccc948b4b1a', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e', 'b55bf2488a1d5165afddaa4d103d3e18')
            THEN t.hash_desta
            WHEN t.chave = 'avisa' AND md5(replace(p.prosrc, chr(13), '')) = '68792e520aa47e6e62330718430d82a8'
            THEN t.hash_desta ELSE md5(replace(p.prosrc, chr(13), '')) END AS m,

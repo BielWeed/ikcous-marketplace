@@ -3800,7 +3800,20 @@ const ROL_DA_211B = [
   "v_store_config: as 48 colunas da 20261310000000 (ou as 50 desta), security_invoker",
   "tr_a_loja_so_entrega_o_confirmado: ausente, ou o desta (reaplicacao)",
 ];
+// Lote 213 (20261657000000, o produto com todos os tamanhos desligados nao volta a venda sozinho: os corpos de devolver_estoque e de
+// admin_devolucao_concluir mudam, um sub-bloco cada, dentro do bloco da 20261653000000). Somente catalogo: nenhuma le pedido, devolucao,
+// produto nem peca e nenhuma chama funcao. A 213a espera os corpos desta (md5); a 213b, os da 20261653000000 ou os desta (reaplicacao
+// idempotente). Rol de 3, o mesmo nas duas (os dois corpos e os atributos e a ACL de sempre).
+const ROL_DA_213 = [
+  "devolver_estoque: corpo esperado (md5)",
+  "admin_devolucao_concluir: corpo esperado (md5)",
+  "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado":
+    ROL_DA_213,
+  "213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente":
+    ROL_DA_213,
   "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado": ROL_DA_211A,
   "211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente": ROL_DA_211B,
   "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado": ROL_DA_210,
