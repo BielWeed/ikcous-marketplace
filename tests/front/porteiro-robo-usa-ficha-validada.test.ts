@@ -1639,6 +1639,20 @@ describe("middleware — prévia do link: esgotado e título sem preço", () => 
     ).toBe("Saia Midi - R$ 80,00 | Loja Estoque");
   });
 
+  // #2066: estoque vazio é "não sei", não zero. Lido como zero (`Number(null)`
+  // é 0), a prévia anunciaria "Esgotado" num produto à venda.
+  it.each([
+    ["nulo", { estoque: null, preco_venda: 50 }],
+    ["ausente", { preco_venda: 50 }],
+  ])(
+    'estoque %s e sem variações -> o preço, nunca "Esgotado"',
+    async (caso, produto) => {
+      const titulo = await tituloDe(`vazio${caso}`, produto);
+      expect(titulo).toContain("R$ 50,00");
+      expect(titulo).not.toContain("Esgotado");
+    },
+  );
+
   it("sem preço -> o título não fica com espaço duplo antes da barra", async () => {
     expect(await tituloDe("sempreco", { estoque: 5, preco_venda: 0 })).toBe(
       "Saia Midi | Loja Estoque",
