@@ -3737,6 +3737,21 @@ const ROL_DA_207 = [
   "reorder_banners_atomic: corpo da 20261381000000 (md5), a troca antiga segue para o app em cache",
   "banners e is_admin_atual: as colunas id, position e order e a trava de admin de agora existem",
 ];
+// Lote 208 (20261652000000, a loja nova confirma a entrega e o pagamento: duas colunas em store_config e o corpo de
+// upsert_store_config). Somente catalogo: nenhuma le a ficha da loja. A 208a espera o corpo desta (md5) e as duas colunas; a
+// 208b, o vigente (20261643000000) ou o desta, e as colunas ausentes (ou as duas na forma desta). Rol de 4 em cada.
+const ROL_DA_208A = [
+  "controle: funcoes de public visiveis a este papel",
+  "upsert_store_config: corpo exato (md5), aceita as chaves de confirmacao",
+  "upsert_store_config: uma assinatura so, SECURITY DEFINER plpgsql VOLATILE com search_path=public, retorno jsonb, EXECUTE de authenticated e service_role (nem anon nem PUBLIC)",
+  "store_config: entrega_confirmada_em e pagamento_confirmado_em timestamptz, anulaveis, sem default",
+];
+const ROL_DA_208B = [
+  "upsert_store_config: corpo da 20261643000000 ou desta (md5)",
+  "upsert_store_config: uma assinatura so, SECURITY DEFINER plpgsql VOLATILE com search_path=public, retorno jsonb, EXECUTE de authenticated e service_role (nem anon nem PUBLIC)",
+  "store_config: colunas de confirmacao ausentes as duas, ou as duas timestamptz anulaveis sem default (reaplicacao)",
+  "is_admin() e is_admin_atual() existem",
+];
 // Lote 209 (20261653000000, a peca que volta para uma variacao desligada espera a lojista: os corpos de devolver_estoque e de
 // admin_devolucao_concluir mudam, um bloco cada, e nasce a leitura pecas_sem_tamanho_da_devolucao da ficha). Somente catalogo: nenhuma
 // le pedido, devolucao, produto nem peca e nenhuma chama funcao. A 209a espera os corpos e a leitura desta (md5); a 209b, os corpos da
@@ -3754,6 +3769,10 @@ const ROL_FECHADO_POR_CONSULTA = {
     ROL_DA_209,
   "209b-antes-a-peca-da-variacao-desligada-espera-a-lojista-base-vigente":
     ROL_DA_209,
+  "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado":
+    ROL_DA_208A,
+  "208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente":
+    ROL_DA_208B,
   "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado": ROL_DA_207,
   "207b-antes-a-ordem-dos-banners-numa-trava-so-base-vigente": ROL_DA_207,
   "206a-conferir-a-categoria-so-com-produto-excluido-pode-sair-aplicado":

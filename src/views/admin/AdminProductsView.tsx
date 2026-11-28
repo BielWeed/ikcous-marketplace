@@ -1254,7 +1254,9 @@ export const AdminProductsView = memo(function AdminProductsView({
           // grade nenhuma. Sem SKU, a lojista preenche o que quiser depois
           // e não há literal para colidir, duplicar quantas vezes for.
           sku: undefined,
-          stockIncrement: v.stockIncrement,
+          // A cópia nasce sem estoque (decisão de produto, 27/11/2026): as
+          // peças são do original; a lojista põe as quantidades antes de ativar.
+          stockIncrement: 0,
           priceOverride: v.priceOverride,
           active: v.active,
           imageUrl: v.imageUrl ? await copiarUma(v.imageUrl) : v.imageUrl,
@@ -1268,7 +1270,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         // custo nasce sem custo (null), brinde de custo zero nasce com 0.
         costPrice: productToDuplicate.costPrice ?? null,
         originalPrice: productToDuplicate.originalPrice,
-        stock: productToDuplicate.stock,
+        stock: 0,
         // Sem aviso próprio no original (`null`): a cópia fica com o padrão da coluna.
         estoqueMinimo: productToDuplicate.estoqueMinimo ?? undefined,
         category: productToDuplicate.category,
@@ -1288,7 +1290,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         variants: variantes,
       };
 
-      // O aviso de sucesso é desta tela ("Produto Duplicado"): o hook cala o dele.
+      // O aviso de sucesso é desta tela ("Cópia criada…"): o hook cala o dele.
       passo = "gravando-a-copia";
       const copia = await addProduct(duplicateData, { avisarSucesso: false });
       // A cópia existe (mesmo a que ficou sem grade): recarrega a lista, como a
@@ -1316,9 +1318,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         haptic.error();
       } else {
         haptic.success();
-        toast.success("Produto Duplicado", {
-          description: "O produto foi duplicado com sucesso.",
-        });
+        toast.success("Cópia criada, desativada e sem estoque.");
       }
       // Mesmo motivo de `confirmDelete`: sem `await` para não alongar a
       // janela entre o clique e o `finally` que fecha o diálogo.
@@ -2558,10 +2558,8 @@ export const AdminProductsView = memo(function AdminProductsView({
                 ativa quando quiser.
                 {planoDeCopia ? (
                   <span className="mt-2 block">
-                    {planoDeCopia.origem.variants?.length
-                      ? "O estoque de cada variação também é copiado."
-                      : `O estoque do original (${planoDeCopia.origem.stock} ${planoDeCopia.origem.stock === 1 ? "unidade" : "unidades"}) também é copiado.`}{" "}
-                    Ajuste antes de ativar.
+                    A cópia nasce sem estoque: coloque as quantidades antes de
+                    ativar.
                   </span>
                 ) : null}
               </AlertDialogDescription>

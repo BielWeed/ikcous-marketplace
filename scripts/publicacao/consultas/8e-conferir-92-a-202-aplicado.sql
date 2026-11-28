@@ -61,8 +61,9 @@
 --   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita)
 --                                e, DEPOIS dela, 20261249000000 (o motivo do desconto fica na nota privada);
 --   * `upsert_store_config`    → 20261239000000 (a loja declara razão social, CNPJ/CPF e e-mail de atendimento)
---                                e, DEPOIS dela, 20261244000000, 20261310000000 e 20261643000000 (as listas dos ajustes
---                                não somem entre aparelhos: confere a lista vista);
+--                                e, DEPOIS dela, 20261244000000, 20261310000000, 20261643000000 (as listas dos ajustes
+--                                não somem entre aparelhos: confere a lista vista) e 20261652000000 (a loja nova confirma
+--                                a entrega e o pagamento);
 --   * `salvar_politica_de_devolucao` → 20261643000000 (as listas dos ajustes não somem entre aparelhos: confere a lista vista);
 --   * `pedido__saldo_a_estornar`, `solicitar_estorno`, `admin_devolucao_concluir` e
 --     `autorizar_post_do_estorno` → 20261241000000 (o reembolso em dúvida prende o saldo). Estes quatro
@@ -201,6 +202,7 @@ WITH corpos AS (
     ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3', '20261239000000'),
     ('upsert_store_config', 'aa4ed730ac6ad3d3c2644b4285ff39a9', '20261310000000'),
     ('upsert_store_config', '2f772ffd1370359ba6c64540b71c35b2', '20261643000000'),
+    ('upsert_store_config', '3c62896ca905200f1a931ac6ccfed297', '20261652000000'),
     ('salvar_politica_de_devolucao', '976f05a67ca929ace608a62391588bcd', '20261643000000'),
     ('pedido__saldo_a_estornar', '99741b4cdbf1e8d8340f80440e6da094', '20261241000000'),
     ('solicitar_estorno', '840de50f44958fe43b55f5222691df9b', '20261241000000'),

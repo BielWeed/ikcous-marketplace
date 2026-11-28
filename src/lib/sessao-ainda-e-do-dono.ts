@@ -19,14 +19,22 @@ import { isAuthRetryableFetchError } from "@supabase/supabase-js";
  *
  * O uid de GUARDAR não vem daqui — vem do contexto de auth (`user.id`), que
  * continua certo no tablet offline.
+ *
+ * `userId = null` (caça 27/11/2026) é o dono "ninguém": a VISITANTE que
+ * finaliza sem conta. `true` só com a sessão VAZIA e lida sem erro — outra aba
+ * do mesmo aparelho que entrou numa conta durante a espera faria o pedido dela
+ * sair na conta da outra pessoa. A mesma regra vale: falha ao ler = `false`.
+ * Só `null` explícito: `undefined` não é aceito pelo tipo.
  */
 export async function sessaoAindaEhDoDono(
-  userId: string,
+  userId: string | null,
   aoFalharPorRede?: () => void,
 ): Promise<boolean> {
   try {
     const { data, error } = await supabase.auth.getSession();
-    if (data?.session?.user?.id === userId) return true;
+    if (userId === null) {
+      if (data && !data.session && !error) return true;
+    } else if (data?.session?.user?.id === userId) return true;
     if (!data?.session && isAuthRetryableFetchError(error)) aoFalharPorRede?.();
     return false;
   } catch {

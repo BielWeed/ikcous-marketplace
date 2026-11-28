@@ -97,6 +97,11 @@ const SUCESSORAS = [
     versao: "20261651000000",
     consulta: "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado",
   },
+  // 20261652000000: a loja nova confirma a entrega e o pagamento.
+  {
+    versao: "20261652000000",
+    consulta: "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
+  },
   // 20261653000000: a peca da variacao desligada espera a lojista (devolver_estoque e admin_devolucao_concluir).
   {
     versao: "20261653000000",

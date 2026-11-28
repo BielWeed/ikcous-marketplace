@@ -302,3 +302,39 @@ describe("Minha loja — rascunho da descrição sobrevive à aba descartada", (
     expect(guardado.texto).toBe("Rascunho antigo");
   });
 });
+
+// "Descartar e Sair" do aviso de saída (App.tsx) chama
+// `descartarRascunhoDeTexto`: com o "Rascunho não salvo encontrado" ainda sem
+// resposta, o rascunho não é o que ela está descartando — fica para depois.
+describe("Minha loja — Descartar e Sair só apaga o rascunho que ela viu", () => {
+  async function descartarESair() {
+    const { descartarRascunhoDeTexto } = await import(
+      "@/lib/rascunho-de-texto"
+    );
+    descartarRascunhoDeTexto("sobre-a-loja", "admin-1");
+  }
+
+  it("aviso de rascunho sem resposta: descartar ao sair não o apaga", async () => {
+    guardarRascunho("A história que o celular guardou", "Texto salvo");
+    const guardado = localStorage.getItem(chave("admin-1"));
+    await montar();
+    expect(ofertaDeRascunho()).toBeDefined();
+
+    await descartarESair();
+    expect(localStorage.getItem(chave("admin-1"))).toBe(guardado);
+
+    toast.info.mockClear();
+    await remontar();
+    expect(ofertaDeRascunho()).toBeDefined();
+  });
+
+  it("controle: descrição sendo editada e sem salvar sai no descartar", async () => {
+    await montar();
+    await digitar("Descrição que ela desistiu de salvar");
+    await ocultarAAba();
+    expect(localStorage.getItem(chave("admin-1"))).not.toBeNull();
+
+    await descartarESair();
+    expect(localStorage.getItem(chave("admin-1"))).toBeNull();
+  });
+});

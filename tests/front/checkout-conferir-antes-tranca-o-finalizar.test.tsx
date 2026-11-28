@@ -24,6 +24,14 @@ const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const toastError = vi.fn();
 
+// A conferência da sessão antes de enviar — também a da visitante, que só
+// envia com a sessão vazia (caça 27/11/2026) — tem suíte própria
+// (checkout-pedido-chave-voltar-e-sessao.test.tsx); aqui a sessão é a de quem
+// está na tela.
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: async () => true,
+}));
+
 // A calculadora de frete do checkout (cotação automática pelo endereço)
 // tem suíte própria (shipping-calculator-*.test.tsx e
 // checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não

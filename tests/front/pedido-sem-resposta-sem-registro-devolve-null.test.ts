@@ -12,13 +12,13 @@ describe("lerPedidoSemResposta: nada guardado", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("armazenamento vazio devolve null", () => {
-    expect(lerPedidoSemResposta()).toBeNull();
+    expect(lerPedidoSemResposta(null)).toBeNull();
   });
 
   it("armazenamento com texto vazio devolve null", () => {
     sessionStorage.setItem("ikcous-pedido-sem-resposta-v1", "");
 
-    expect(lerPedidoSemResposta()).toBeNull();
+    expect(lerPedidoSemResposta(null)).toBeNull();
   });
 
   it("armazenamento bloqueado pelo navegador devolve null, sem lançar erro", () => {
@@ -26,6 +26,6 @@ describe("lerPedidoSemResposta: nada guardado", () => {
       throw new DOMException("bloqueado", "SecurityError");
     });
 
-    expect(lerPedidoSemResposta()).toBeNull();
+    expect(lerPedidoSemResposta(null)).toBeNull();
   });
 });

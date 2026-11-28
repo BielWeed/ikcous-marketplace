@@ -4,12 +4,18 @@ import {
   EXEMPLO_DE_INTERVALO_DE_CEP,
   faixaDeCepReconhecida,
 } from "@/lib/faixa-de-cep";
-import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-entrega";
 import {
+  FORMAS_DE_PAGAMENTO_NA_ENTREGA_EM_ORDEM,
+  type FormaDePagamentoNaEntrega,
+} from "@/lib/formas-de-pagamento-na-entrega";
+import {
+  diasDaEntregaPropria,
+  entregaPropriaLigada,
   modoDaEntregaNaCidade,
   retiradaLigadaNaLista,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { reaisComEspacoComum } from "@/lib/utils";
 import { produtoDisponivel } from "@/lib/vitrine";
 import type { View } from "@/types";
 
@@ -304,6 +310,14 @@ export interface PassoDaLoja {
    * o rótulo basta.
    */
   readonly explicacaoPendente?: string;
+  /**
+   * O que vale HOJE, quando o passo está pendente só porque a lojista ainda
+   * não confirmou o que a loja nova trouxe de fábrica (migration
+   * 20261652000000): "Entrega na sua cidade: R$ 10,00, em 1 dia." O cartão
+   * do Início mostra a frase com "Está certo" e "Mudar". Ausente = não é
+   * confirmação (o passo segue o rótulo de sempre).
+   */
+  readonly aConfirmar?: string;
 }
 
 /** Só o que os seis passos leem da config da loja. */
@@ -317,6 +331,17 @@ export interface ConfigDosSeisPassos {
   readonly localCepRange?: string | null;
   /** "Só retiro" (entrega própria desligada) muda o que o passo "entrega" pede. */
   readonly localDeliveryEnabled?: boolean | null;
+  /** Taxa e prazo da entrega na cidade: o texto do "Está certo?" do passo "entrega". */
+  readonly localDeliveryFee?: number | null;
+  readonly localDeliveryDays?: number | null;
+  /**
+   * A lojista confirmou o que veio de fábrica (20261652000000)? `false` = a
+   * coluna existe e está vazia (loja nova): o passo pede confirmação.
+   * Ausente = banco sem a coluna, ou ainda não lido: vale confirmado, como
+   * antes da migration.
+   */
+  readonly entregaConfirmada?: boolean | null;
+  readonly pagamentoConfirmado?: boolean | null;
 }
 
 /** Só o que o passo "Primeiro produto" lê do produto: ativo e como vender. */
@@ -371,6 +396,82 @@ export interface EntradaDosSeisPassos {
    * cadastrar (o texto de antes).
    */
   readonly produtosOcultos?: number;
+  /**
+   * O passo só espera a lojista CONFIRMAR o que veio de fábrica: a frase do
+   * que vale hoje (`PassoDaLoja.aConfirmar`). Ausente = não é confirmação.
+   */
+  readonly recebeAConfirmar?: string;
+  readonly entregaAConfirmar?: string;
+}
+
+const NOME_DA_FORMA_A_CONFIRMAR = new Map<FormaDePagamentoNaEntrega, string>([
+  ["pix", "Pix"],
+  ["card", "cartão (maquininha)"],
+  ["cash", "dinheiro"],
+]);
+
+/** "a", "a e b", "a, b e c". */
+function emLista(itens: readonly string[]): string {
+  if (itens.length <= 1) return itens.join("");
+  return `${itens.slice(0, -1).join(", ")} e ${itens.at(-1)}`;
+}
+
+/**
+ * O que vale hoje na entrega da cidade, com os valores REAIS da loja: a frase
+ * do "Está certo?" do passo "entrega". Taxa 0 é "grátis"; prazo 0 é "no mesmo
+ * dia". Ausente lê como o padrão de fábrica (R$ 10, 1 dia), o mesmo que a
+ * tela de Frete e o pedido usam.
+ */
+export function textoDaEntregaAConfirmar(config: {
+  readonly localDeliveryEnabled?: boolean | null;
+  readonly localDeliveryFee?: number | null;
+  readonly localDeliveryDays?: number | null;
+}): string {
+  if (!entregaPropriaLigada(config.localDeliveryEnabled)) {
+    return "Na sua cidade: só retirada na loja.";
+  }
+  const taxa = Number(config.localDeliveryFee ?? 10);
+  const valor =
+    Number.isFinite(taxa) && taxa > 0 ? reaisComEspacoComum(taxa) : "grátis";
+  const dias = diasDaEntregaPropria(config.localDeliveryDays);
+  const prazo =
+    dias === 0 ? "no mesmo dia" : `em ${dias} ${dias === 1 ? "dia" : "dias"}`;
+  return `Entrega na sua cidade: ${valor}, ${prazo}.`;
+}
+
+/**
+ * O que a loja aceita hoje na entrega, na ordem de sempre: a frase do "Está
+ * certo?" do passo "recebe". Sem forma na entrega, a loja recebe só pelo app.
+ */
+export function textoDoRecebimentoAConfirmar(
+  formasNaEntrega: readonly FormaDePagamentoNaEntrega[],
+): string {
+  const nomes = FORMAS_DE_PAGAMENTO_NA_ENTREGA_EM_ORDEM.filter((forma) =>
+    formasNaEntrega.includes(forma),
+  ).map((forma) => NOME_DA_FORMA_A_CONFIRMAR.get(forma) ?? forma);
+  return nomes.length === 0
+    ? "Você recebe só pelo app, no PIX."
+    : `Na entrega você aceita: ${emLista(nomes)}.`;
+}
+
+/**
+ * Salvar a tela de Frete também confirma a entrega — só quando falta: com a
+ * coluna presente e vazia (`false`). Coluna ausente (banco atrasado) nunca
+ * manda a chave: o banco antigo não a grava e o "gravou mesmo?" falharia.
+ */
+export function confirmacaoAoSalvarAEntrega(
+  config: { readonly entregaConfirmada?: boolean | null } | null | undefined,
+): { entregaConfirmada?: true } {
+  return config?.entregaConfirmada === false ? { entregaConfirmada: true } : {};
+}
+
+/** O mesmo, para as formas de pagamento (Ajustes > Pagamentos). */
+export function confirmacaoAoSalvarOPagamento(
+  config: { readonly pagamentoConfirmado?: boolean | null } | null | undefined,
+): { pagamentoConfirmado?: true } {
+  return config?.pagamentoConfirmado === false
+    ? { pagamentoConfirmado: true }
+    : {};
 }
 
 function textoPreenchido(texto: string | null | undefined): boolean {
@@ -390,9 +491,22 @@ export function entradaDosSeisPassos(
   // constantes de build, então com PIX ok o passo está `feito` na hora, mesmo
   // com a config carregando; sem PIX a resposta depende das formas — e antes
   // de a config chegar elas são o PADRÃO do app, não a escolha da loja.
-  const recebe: EstadoDoItem = pixOk
+  const recebeSemConfirmar: EstadoDoItem = pixOk
     ? "feito"
     : daConfig(formasNaEntrega.length > 0);
+  // A loja nova nasce com as três formas na entrega ligadas: "feito" sem a
+  // lojista ter escolhido nada. Com a confirmação vazia (20261652000000), o
+  // passo pede um toque — inclusive com o PIX pelo app pronto, porque cartão e
+  // dinheiro na entrega continuam valendo para a cliente.
+  const recebeAConfirmar =
+    recebeSemConfirmar === "feito" && config.pagamentoConfirmado === false;
+  const recebe: EstadoDoItem = recebeAConfirmar
+    ? "pendente"
+    : recebeSemConfirmar;
+  // Idem para a entrega na cidade: CEP com alcance que cobre a cidade já dá
+  // "feito" com a taxa e o prazo de fábrica (R$ 10, 1 dia).
+  const entregaAConfirmar =
+    fatos.entrega === "feito" && config.entregaConfirmada === false;
 
   // Endereço = CEP + número: o texto precisa ser o do formato novo E o CEP
   // dele ser o CEP da loja. Só o CEP (loja de antes) ou texto livre antigo
@@ -405,6 +519,12 @@ export function entradaDosSeisPassos(
 
   return {
     pixOk,
+    ...(recebeAConfirmar && {
+      recebeAConfirmar: textoDoRecebimentoAConfirmar(formasNaEntrega),
+    }),
+    ...(entregaAConfirmar && {
+      entregaAConfirmar: textoDaEntregaAConfirmar(config),
+    }),
     // Há produto ativo, mas nenhum com estoque: é a pendência "repor", não
     // "cadastrar". Só muda o texto do passo "produto".
     produtoSemEstoque:
@@ -428,7 +548,7 @@ export function entradaDosSeisPassos(
       endereco: daConfig(enderecoPronto),
       whatsapp: daConfig(lojaTemWhatsapp(config.whatsappNumber)),
       recebe,
-      entrega: fatos.entrega,
+      entrega: entregaAConfirmar ? "pendente" : fatos.entrega,
       // `.some(ativo E disponível)`, nunca `produtos.length`: o cofre do admin
       // também guarda produto desativado (realtimeSyncEngine.ts seleciona
       // `ativo` e só filtra `deleted_at`). E ativo-mas-esgotado não vende:
@@ -462,6 +582,8 @@ export function seisPassosDaLojaPronta(
     entregaPrefixo = null,
     produtoSemEstoque = false,
     produtosOcultos = 0,
+    recebeAConfirmar,
+    entregaAConfirmar,
   } = entrada;
   const umOculto = produtosOcultos === 1;
   return [
@@ -495,7 +617,10 @@ export function seisPassosDaLojaPronta(
       rotuloFeito: pixOk
         ? "Pagamento PIX configurado"
         : "Pagamento na entrega ativo — revise as opções",
-      rotuloPendente: "Configurar como você recebe",
+      rotuloPendente: recebeAConfirmar
+        ? "Confirmar como você recebe"
+        : "Configurar como você recebe",
+      ...(recebeAConfirmar && { aConfirmar: recebeAConfirmar }),
       estado: estados.recebe,
       destino: "admin-settings",
     },
@@ -507,9 +632,12 @@ export function seisPassosDaLojaPronta(
       // é a lojista CONFIRMAR até onde ela vale — "só perto da loja" é uma
       // resposta tão boa quanto "em mais lugares" (a tela de Frete, em "Entrega
       // na sua cidade", deixa dizer as duas).
-      rotuloPendente: entregaAlcanceCurto
-        ? "Confirmar até onde você entrega"
-        : "Configurar a entrega",
+      rotuloPendente: entregaAConfirmar
+        ? "Confirmar como você entrega"
+        : entregaAlcanceCurto
+          ? "Confirmar até onde você entrega"
+          : "Configurar a entrega",
+      ...(entregaAConfirmar && { aConfirmar: entregaAConfirmar }),
       ...(entregaAlcanceCurto && {
         explicacaoPendente: entregaPrefixo
           ? `Hoje você entrega só em CEPs que começam com ${entregaPrefixo}`

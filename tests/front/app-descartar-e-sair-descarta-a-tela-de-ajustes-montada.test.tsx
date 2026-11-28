@@ -750,7 +750,7 @@ describe("Descartar e Sair descarta de verdade a tela que continua montada", () 
     await esperarAte(() => view() === "admin-orders");
   });
 
-  it("Descartar e Sair em Ajustes apaga o rascunho do texto da política (senão voltaria como Restaurar?)", async () => {
+  it("Descartar e Sair em Ajustes NÃO apaga o rascunho da política cujo Restaurar? ainda espera resposta (ela descartou o prazo, não o texto)", async () => {
     const rascunho = JSON.stringify({
       texto: "rascunho",
       base: "",
@@ -766,10 +766,68 @@ describe("Descartar e Sair descarta de verdade a tela que continua montada", () 
 
     await clicarNoTexto("Descartar e Sair");
 
-    expect(localStorage.getItem(CHAVE_DA_POLITICA)).toBeNull();
+    // Decisão de 28/11/2026 (#2068): o aviso "Restaurar?" estava sem resposta, então o texto
+    // não fazia parte do que ela descartou; ele fica guardado e volta a ser oferecido.
+    expect(localStorage.getItem(CHAVE_DA_POLITICA)).toBe(rascunho);
     // O de outra conta no mesmo aparelho não é dela para descartar.
     expect(localStorage.getItem(CHAVE_DA_POLITICA_DE_OUTRA_CONTA)).toBe(
       rascunho,
+    );
+    await esperarAte(() => view() === "admin-orders");
+  });
+
+  it("Descartar e Sair em Ajustes APAGA o rascunho da política que ela estava editando (sem Restaurar? pendente)", async () => {
+    const rascunhoDeOutraConta = JSON.stringify({
+      texto: "de outra conta",
+      base: "",
+      salvoEm: Date.now(),
+    });
+    localStorage.setItem(
+      CHAVE_DA_POLITICA_DE_OUTRA_CONTA,
+      rascunhoDeOutraConta,
+    );
+    await abrir("/admin-settings", { view: "admin-settings" });
+    await abrirAPoliticaEmAjustes();
+
+    // Ela digita no texto da política (um passo por evento, como o teclado:
+    // o campo só repassa o texto à tela quando perde o foco).
+    const campo =
+      container?.querySelector<HTMLTextAreaElement>("#politica-texto");
+    if (!campo) throw new Error("campo #politica-texto não encontrado");
+    const definir = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      campo.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+    await act(async () => {
+      definir?.call(campo, "texto que ela estava escrevendo");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      campo.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+    await assentar();
+
+    // O celular esconde a aba: o rascunho do que ela digitou vai para o aparelho.
+    await act(async () => {
+      globalThis.dispatchEvent(new Event("pagehide"));
+    });
+    expect(
+      JSON.parse(localStorage.getItem(CHAVE_DA_POLITICA) ?? "null")?.texto,
+    ).toBe("texto que ela estava escrevendo");
+
+    await clicar("ir-pedidos");
+    expect(prova.dialogoAberturas).toBe(1);
+    await clicarNoTexto("Descartar e Sair");
+
+    // Era o texto que ela estava editando: descartar é descartar, não volta
+    // como "Restaurar?" (o defeito do #2050).
+    expect(localStorage.getItem(CHAVE_DA_POLITICA)).toBeNull();
+    // O de outra conta no mesmo aparelho não é dela para descartar.
+    expect(localStorage.getItem(CHAVE_DA_POLITICA_DE_OUTRA_CONTA)).toBe(
+      rascunhoDeOutraConta,
     );
     await esperarAte(() => view() === "admin-orders");
   });

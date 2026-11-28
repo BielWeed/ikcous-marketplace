@@ -15,6 +15,10 @@ const HASH_POLITICA_DESTA = "976f05a67ca929ace608a62391588bcd";
 async function desfazerAsListasDosAjustesNaTransacao(c) {
   if (process.env.CI_BANCO_EFEMERO !== "1")
     throw new Error("Exige banco efemero");
+  // A sucessora 20261652000000 (a loja nova confirma a entrega e o pagamento) redefine o mesmo upsert: sai antes (so se no ar).
+  await require("./a-loja-nova-confirma-posterior.cjs").desfazerConfirmacaoDaLojaNovaNaTransacao(
+    c,
+  );
   const vivo = await c.query(
     `SELECT
        (SELECT md5(replace(prosrc, chr(13), '')) FROM pg_proc WHERE oid = to_regprocedure('public.upsert_store_config(jsonb)')) AS up,

@@ -427,6 +427,9 @@ function apagarDadosLocaisDaConta() {
       // A busca digitada nas listas do painel (`admin_<lista>_search_query`)
       // pode ser nome ou WhatsApp de cliente. Modo de lista e filtros ficam.
       (key?.startsWith("admin_") && key.endsWith("_search_query")) ||
+      // A lista de Produtos guarda a busca com outro sufixo (o nome da chave
+      // fica: renomear perderia a busca de quem já está logado).
+      key === "admin_products_search_term" ||
       // L10 — rascunho de edição de produto de ANTES do desenho por usuário
       // (`…_edit_<id>`, sem `:<uid>`; o id é um UUID, nunca tem `:`).
       (key?.startsWith("ikcous_product_form_draft_edit_") && !key.includes(":"))
@@ -1210,6 +1213,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         previousUserId !== currentUserId
       ) {
         esquecerRastreioDeConvidado();
+        // Caça 27/11/2026: o pedido de visitante que ficou sem resposta (nome,
+        // WhatsApp e endereço dela, para o "Tentar de novo") também é da aba
+        // de antes — a conta que entra nunca o vê. O checkout confere o dono
+        // na leitura; isto o tira do aparelho já na entrada.
+        limparPedidoSemResposta();
       }
 
       if (previousUserId && currentUserId && previousUserId !== currentUserId) {

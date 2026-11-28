@@ -107,6 +107,13 @@ async function main() {
   const dono = new Client({ connectionString: url });
   await dono.connect();
 
+  // A sucessora 20261652000000 (a loja nova confirma a entrega e o pagamento) redefine o upsert: esta prova mede a 1643
+  // isolada, entao a 1652 sai do clone antes (COMMIT: as conexoes da prova sao outras).
+  await dono.query("BEGIN");
+  await require("./a-loja-nova-confirma-posterior.cjs").desfazerConfirmacaoDaLojaNovaNaTransacao(
+    dono,
+  );
+  await dono.query("COMMIT");
   assert.equal(await hash(dono, SIG_UP), HASH_UPSERT_DESTA, "a 1643 no ar");
   assert.equal(await hash(dono, SIG_PO), HASH_POLITICA_DESTA, "a 1643 no ar");
   const catalogoAntes = await catalogo(dono);

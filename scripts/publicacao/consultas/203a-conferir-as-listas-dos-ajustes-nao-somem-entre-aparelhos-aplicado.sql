@@ -20,8 +20,10 @@ WITH fn AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
          CASE WHEN EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL
+  -- A sucessora 20261652000000 (a loja nova confirma a entrega e o pagamento) tambem conta: o `vivo` mostra o esperado.
   SELECT 'upsert_store_config: corpo exato (md5)', '2f772ffd1370359ba6c64540b71c35b2',
-         COALESCE((SELECT m FROM fn WHERE proname = 'upsert_store_config'), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN m = '3c62896ca905200f1a931ac6ccfed297' THEN '2f772ffd1370359ba6c64540b71c35b2' ELSE m END
+                     FROM fn WHERE proname = 'upsert_store_config'), 'AUSENTE')
   UNION ALL
   SELECT 'salvar_politica_de_devolucao: corpo exato (md5)', '976f05a67ca929ace608a62391588bcd',
          COALESCE((SELECT m FROM fn WHERE proname = 'salvar_politica_de_devolucao'), 'AUSENTE')

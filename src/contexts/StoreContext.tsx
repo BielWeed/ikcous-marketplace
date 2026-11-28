@@ -164,7 +164,8 @@ type TipoColunaStoreConfig =
   | "texto"
   | "texto_array"
   | "home_sections"
-  | "branding_assets";
+  | "branding_assets"
+  | "carimbo";
 
 // `Map`, não `Record` -- `chave` vem do banco (nome de coluna que a RPC
 // devolveu) e indexar objeto com string vinda de fora é exatamente o que
@@ -234,7 +235,28 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   // `enabled_shipping_methods` (o servidor preserva a ordem que o front
   // manda — nunca reordena).
   ["formas_pagamento_entrega", "texto_array"],
+  // 20261652000000: "Está certo" da Loja pronta. O front manda `true` e o
+  // banco devolve a DATA que carimbou (timestamptz) — "carimbo" confere isso.
+  // Banco sem a migration descarta a chave e não a devolve: falha, como deve.
+  ["entrega_confirmada_em", "carimbo"],
+  ["pagamento_confirmado_em", "carimbo"],
 ]);
+
+// Lê a confirmação da Loja pronta (20261652000000). Coluna PRESENTE: vazia
+// (`null`) = loja nova que ainda não confirmou; com data = confirmou. Coluna
+// AUSENTE (banco atrasado, sem a migration): o campo nem entra na config, e a
+// Loja pronta lê ausência como confirmado, como antes da migration. Entrar
+// com `true` inventado faria a config lida diferir do cofre a cada carga e
+// regravá-lo à toa. `jaLido` cobre o cache offline, já em camelCase.
+function lerConfirmacao(
+  campo: "entregaConfirmada" | "pagamentoConfirmado",
+  carimbo: unknown,
+  jaLido: unknown,
+): Partial<Pick<StoreConfig, "entregaConfirmada" | "pagamentoConfirmado">> {
+  if (carimbo !== undefined) return { [campo]: carimbo !== null };
+  if (typeof jaLido === "boolean") return { [campo]: jaLido };
+  return {};
+}
 
 // Normaliza um valor de `home_sections` para comparação POR VALOR: ordena
 // as chaves de OBJETO (o round-trip por `jsonb` pode reordenar objeto --
@@ -377,6 +399,11 @@ function valorFoiGravado(
       );
     case "home_sections":
       return homeSectionsForamGravadas(enviado, gravado);
+    case "carimbo":
+      // Só `true` é pedido válido; confirma quando o banco devolve a data.
+      return (
+        enviado === true && typeof gravado === "string" && gravado.trim() !== ""
+      );
     default:
       // Coluna que este mapa não conhece: dúvida, nunca sucesso.
       return false;
@@ -1076,6 +1103,16 @@ export function StoreProvider({
           defaultStoreConfig.formasPagamentoEntrega,
         ),
       ),
+      ...lerConfirmacao(
+        "entregaConfirmada",
+        data.entrega_confirmada_em,
+        data.entregaConfirmada,
+      ),
+      ...lerConfirmacao(
+        "pagamentoConfirmado",
+        data.pagamento_confirmado_em,
+        data.pagamentoConfirmado,
+      ),
     };
   }, []);
 
@@ -1665,6 +1702,12 @@ export function StoreProvider({
         // banco (store_config_exige_forma_de_pagamento) então recusa.
         if (updates.formasPagamentoEntrega !== undefined)
           dbUpdates.formas_pagamento_entrega = updates.formasPagamentoEntrega;
+        // "Está certo" da Loja pronta (20261652000000): só `true` vai ao banco,
+        // que carimbe a data. Não existe desconfirmar — `false` nunca sai daqui.
+        if (updates.entregaConfirmada === true)
+          dbUpdates.entrega_confirmada_em = true;
+        if (updates.pagamentoConfirmado === true)
+          dbUpdates.pagamento_confirmado_em = true;
 
         const listasVistas = listasVistasDoPedido(vistos, dbUpdates);
         if (!current()) return false;
