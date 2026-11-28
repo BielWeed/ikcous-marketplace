@@ -763,6 +763,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-ordem-dos-banners-muda-numa-trava-so-viva.cjs",
     // 20261652000000: a loja nova confirma a entrega e o pagamento (duas colunas em store_config e as chaves de confirmacao no upsert).
     "tests/banco/a-loja-nova-confirma-entrega-e-pagamento-viva.cjs",
+    // 20261654000000: o caixa pertence ao dia em que abriu (a data que a sessao grava e o pago entre o dia da abertura e hoje na gaveta).
+    "tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
     // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;

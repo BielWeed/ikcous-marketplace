@@ -596,6 +596,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "207a-conferir-a-ordem-dos-banners-numa-trava-so-aplicado",
     // 20261652000000: a loja nova confirma a entrega e o pagamento.
     "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
+    // 20261654000000: o caixa pertence ao dia em que abriu.
+    "209a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

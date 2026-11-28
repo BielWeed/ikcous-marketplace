@@ -134,6 +134,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // parte do corpo da 1643, nao do da 99, e a migration tem PROVA PROPRIA (tests/banco/a-loja-nova-confirma-entrega-e-pagamento-viva.cjs,
     // 208a/208b). O `noEstado` a desfaz antes de montar o estado (as-listas-dos-ajustes-posterior.cjs chama a-loja-nova-confirma-posterior.cjs).
     s.nome !== "20261652000000_a_loja_nova_confirma_entrega_e_pagamento.sql" &&
+    // A 20261654000000 (o caixa pertence ao dia em que abriu) e a SEGUNDA sucessora de fin_lancamento_salvar (99 -> 246 -> 1654) e a PRIMEIRA de
+    // fin_lancamento_baixar (99 -> 1654); as outras duas funcoes dela (as RPCs do caixa da 252) nao sao da 8e. Tem a PROVA PROPRIA do que as consultas
+    // 209a/209b fazem com ela em tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs, e a 8e ja traz os dois pares; `noEstado` a desfaz antes
+    // (o-caixa-pertence-ao-dia-posterior.cjs, o rollback dela devolve as quatro de uma vez).
+    s.nome !== "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql" &&
     // A 20261350000000 (a compra online trava o preco e espera a mesma chave) so redefine v23 e v24, em cima da 44; nenhuma
     // das duas e' funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 44 (a-compra-online-trava-posterior.cjs,
     // chamado por desfazerEntregaNaCidadeNaTransacao); aqui sai do rol pela mesma razao da 44 e da 1310.
@@ -434,6 +439,11 @@ let C; // a conexão única com o clone do rodar-isolado
 async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
+    // A 20261654000000 (o caixa pertence ao dia em que abriu) sucede a 246 em fin_lancamento_salvar e a 99 em fin_lancamento_baixar: sai PRIMEIRO
+    // (ordem inversa da aplicacao; so se no ar). O rollback dela devolve as quatro funcoes de uma vez.
+    await require("./o-caixa-pertence-ao-dia-posterior.cjs").desfazerCaixaDoDiaDaAberturaNaTransacao(
+      C,
+    );
     await desfazerRelatorioDeCategoriasNaTransacao(C);
     // A 20261404000000 (a observacao da inspecao e so da loja) sucede o corpo da 3992 (devolucao_detalhe) e o GRANT de public.devolucoes: sai ANTES da 3992 (so se no ar).
     await require("./a-observacao-da-inspecao-posterior.cjs").desfazerAObservacaoDaInspecaoNaTransacao(

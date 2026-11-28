@@ -746,6 +746,13 @@ async function main() {
     console.log(`  ok ${provas}: ${nome}`);
   };
   try {
+    // A 20261654000000 (o caixa pertence ao dia em que abriu) sucede o corpo desta migration: sai PRIMEIRO, no clone exclusivo
+    // (rodar-isolado.cjs), para a prova medir a 246 (o rollback-manual dela recusa com um corpo posterior no ar).
+    await c.query("BEGIN");
+    await require("./o-caixa-pertence-ao-dia-posterior.cjs").desfazerCaixaDoDiaDaAberturaNaTransacao(
+      c,
+    );
+    await c.query("COMMIT");
     assert.equal(
       await hashVivo(c),
       H_NOVO,

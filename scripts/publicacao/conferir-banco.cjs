@@ -3752,7 +3752,28 @@ const ROL_DA_208B = [
   "store_config: colunas de confirmacao ausentes as duas, ou as duas timestamptz anulaveis sem default (reaplicacao)",
   "is_admin() e is_admin_atual() existem",
 ];
+// Lote 209 (20261654000000, o caixa pertence ao dia em que abriu: fin_lancamento_salvar, fin_lancamento_baixar, fin_caixa_fechar_sessao e
+// fin_caixa_movimentar_com_chave trocam so o corpo). A 209a e a 209b tem o MESMO rol de 13 linhas (controle e, para cada funcao, o md5,
+// os atributos e a ACL); a 209a espera os corpos desta e a 209b os vigentes de antes (20261246000000, 20261199000000 e 20261252000000).
+// So catalogo: nenhuma le lancamento, conta ou sessao de caixa.
+const ROL_DA_209 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_lancamento_salvar: corpo exato (md5)",
+  "fin_lancamento_salvar: assinatura e atributos conhecidos",
+  "fin_lancamento_salvar: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_lancamento_baixar: corpo exato (md5)",
+  "fin_lancamento_baixar: assinatura e atributos conhecidos",
+  "fin_lancamento_baixar: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_caixa_fechar_sessao: corpo exato (md5)",
+  "fin_caixa_fechar_sessao: assinatura e atributos conhecidos",
+  "fin_caixa_fechar_sessao: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_caixa_movimentar_com_chave: corpo exato (md5)",
+  "fin_caixa_movimentar_com_chave: assinatura e atributos conhecidos",
+  "fin_caixa_movimentar_com_chave: EXECUTE authenticated, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "209a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado": ROL_DA_209,
+  "209b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente": ROL_DA_209,
   "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado":
     ROL_DA_208A,
   "208b-antes-a-loja-nova-confirma-entrega-e-pagamento-base-vigente":
