@@ -143,7 +143,14 @@ describe("AuthContext — veredito sem boolean e confirmação só de quem é ad
     let callback: AuthChangeCallback = () => {};
     dublê.auth.onAuthStateChange.mockImplementation(
       (cb: AuthChangeCallback) => {
-        callback = cb;
+        // Como o cliente real: depois do evento, `getSession` devolve a sessão
+        // dele (um "não" do `is_admin` só vale com a sessão da própria pessoa).
+        callback = (evento, sessao) => {
+          (
+            supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
+          ).mockResolvedValue({ data: { session: sessao }, error: null });
+          return cb(evento, sessao);
+        };
         return { data: { subscription: { unsubscribe: vi.fn() } } };
       },
     );
@@ -276,7 +283,14 @@ describe("AuthContext — troca de conta com a pergunta do servidor ainda em voo
     let callback: AuthChangeCallback = () => {};
     dublê.auth.onAuthStateChange.mockImplementation(
       (cb: AuthChangeCallback) => {
-        callback = cb;
+        // Como o cliente real: depois do evento, `getSession` devolve a sessão
+        // dele (um "não" do `is_admin` só vale com a sessão da própria pessoa).
+        callback = (evento, sessao) => {
+          (
+            supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
+          ).mockResolvedValue({ data: { session: sessao }, error: null });
+          return cb(evento, sessao);
+        };
         return { data: { subscription: { unsubscribe: vi.fn() } } };
       },
     );
