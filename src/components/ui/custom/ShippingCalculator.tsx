@@ -114,6 +114,12 @@ const FRASE_CARRINHO_INVALIDO =
 const CODIGO_LOJA_SEM_CEP_DE_ORIGEM = "loja_sem_cep_de_origem";
 const FRASE_LOJA_SEM_FRETE =
   "Esta loja ainda não calcula o frete pelo app. Fale com a loja.";
+// A loja nova que ainda não confirmou a entrega na cidade (edge 409
+// `loja_se_preparando_para_entregar`, migration 20261655000000): só a lojista
+// desfaz (tocar "Está certo" no painel). Definitiva; com WhatsApp, o botão de
+// combinar a entrega aparece embaixo.
+const FRASE_LOJA_SE_PREPARANDO_PARA_ENTREGAR =
+  "Esta loja ainda está se preparando para entregar.";
 const FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO =
   "Esta loja ainda não calcula o frete pelo app e não cadastrou um contato aqui. Procure a loja pelos canais em que você a conheceu.";
 // Recusas DEFINITIVAS para aquele CEP (ou carrinho, ou loja) — "fora da área",
@@ -128,6 +134,7 @@ const FRASES_DEFINITIVAS = new Set<string>([
   FRASE_CARRINHO_INVALIDO,
   FRASE_LOJA_SEM_FRETE,
   FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO,
+  FRASE_LOJA_SE_PREPARANDO_PARA_ENTREGAR,
 ]);
 // Recusas do servidor que têm frase própria (escolhida pelo `codigo`, nunca
 // pelo texto vindo de fora).
@@ -138,6 +145,7 @@ const FRASE_POR_CODIGO_DA_EDGE = new Map<string, string>([
     "Muitas consultas de frete em pouco tempo. Aguarde alguns minutos e tente de novo.",
   ],
   ["fora_da_area", FRASE_FORA_DA_AREA],
+  ["loja_se_preparando_para_entregar", FRASE_LOJA_SE_PREPARANDO_PARA_ENTREGAR],
   ["carrinho_invalido", FRASE_CARRINHO_INVALIDO],
   [
     "carrinho_grande_demais",
@@ -1657,6 +1665,13 @@ export function ShippingCalculator({
               )}
             </div>
           )}
+          {destinoValido &&
+            error === FRASE_LOJA_SE_PREPARANDO_PARA_ENTREGAR &&
+            temWhatsappDaLoja && (
+              <BotaoWhatsapp onClick={combinarEntregaPeloWhatsapp}>
+                Combinar entrega pelo WhatsApp
+              </BotaoWhatsapp>
+            )}
 
           {/* Lista de opções. SEM animação de saída de propósito: trocar de
               endereço invalida a cotação na hora, e uma saída animada deixava as
@@ -1718,8 +1733,8 @@ export function ShippingCalculator({
                   <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
                   <span>
                     {temWhatsappDaLoja
-                      ? "A calcular: nenhuma opção de entrega para este endereço — combine a entrega com a loja."
-                      : "Nenhuma opção de entrega para este endereço."}
+                      ? "Esta loja ainda não entrega neste CEP pelo site. Combine com a loja."
+                      : "Esta loja ainda não entrega neste CEP. Confira se o CEP está certo."}
                   </span>
                 </div>
                 {/* "Combine com a loja" precisa de um jeito de combinar: com

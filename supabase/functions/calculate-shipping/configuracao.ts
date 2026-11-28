@@ -84,6 +84,43 @@ export async function lerEntregaPropriaDaLoja(supabase: any): Promise<{ ok: true
 }
 
 /**
+ * A LOJA NOVA SÓ ENTREGA NA CIDADE DEPOIS DE CONFIRMAR (20261655000000): a
+ * data do "Está certo" da Loja pronta (`entrega_confirmada_em`, coluna da
+ * 20261652000000). Leitura SEPARADA, pelo mesmo motivo da entrega própria: a
+ * coluna nunca entra em `COLUNAS_DA_LOJA` (banco sem ela derrubaria a cotação
+ * inteira).
+ */
+export const COLUNA_DA_CONFIRMACAO_DA_ENTREGA = 'entrega_confirmada_em'
+
+/**
+ * `{ok:true, confirmada}`: NULL = a loja nova ainda não confirmou; com data =
+ * confirmou. Coluna ausente (`42703`/`PGRST204`, banco antes da 1652) =
+ * confirmada, o comportamento de antes. Qualquer outra falha = `{ok:false}`,
+ * e quem cota não decide no escuro (nem oferece o que o pedido recusaria, nem
+ * esconde a entrega de quem já confirmou).
+ */
+export async function lerConfirmacaoDaEntregaDaLoja(supabase: any): Promise<{ ok: true; confirmada: boolean } | { ok: false }> {
+    try {
+        const { data, error } = await supabase
+            .from('store_config')
+            .select(COLUNA_DA_CONFIRMACAO_DA_ENTREGA)
+            .eq('id', 1)
+            .maybeSingle()
+        if (error) {
+            if (error.code === '42703' || error.code === 'PGRST204') return { ok: true, confirmada: true }
+            console.error('Error fetching local delivery confirmation:', error.code ?? 'sem_codigo')
+            return { ok: false }
+        }
+        if (!data) return { ok: false }
+        const valor = data[COLUNA_DA_CONFIRMACAO_DA_ENTREGA]
+        return { ok: true, confirmada: valor === undefined || valor !== null }
+    } catch (error) {
+        console.error('Error fetching local delivery confirmation:', error?.code ?? 'sem_codigo')
+        return { ok: false }
+    }
+}
+
+/**
  * Leitura tolerante das 5 colunas nacionais: `{ok:true, estrategia}` quando a
  * linha bate com o formato esperado; `{ok:false}` em erro do PostgREST
  * (banco sem as colunas — `42703`), exceção, ou linha com forma inesperada.
