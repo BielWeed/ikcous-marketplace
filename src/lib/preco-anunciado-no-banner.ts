@@ -36,11 +36,11 @@ const ANTES_DE_COMBO = /\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}$/i;
 const DEPOIS_DE_POR_UNIDADE = /^\s+(?:a|à|À|por)\s+unidade\b/i;
 const DEPOIS_DE_CADA = /^\s+cada/i;
 const PECA_DEPOIS_DE_CADA = /^[^\S\r\n]+(?:um|uma|pe[cç]a|unidade|item)\b/i;
-// Lista do que É permitido, não do que é proibido: só o fim do texto ou um
-// ponto final/exclamação/interrogação na mesma linha fecham a frase. Qualquer
-// outra coisa depois ("cada kit", "(kit com 2)", "cada\nkit de 2") tira a
+// Lista do que É permitido: "cada"/"por unidade" só é o preço da peça quando
+// encerra o texto inteiro (só espaço e pontuação final depois). Qualquer outra
+// coisa depois ("cada kit", "(kit com 2)", "por unidade. Unidade = kit") tira a
 // certeza, e na dúvida o combo fica fora como na base.
-const FECHA_A_FRASE = /^[^\S\r\n]*(?:[.!?…]|$)/;
+const FECHA_A_FRASE = /^[\s.!?…]*$/;
 
 function precoUnitarioDepois(depois: string): boolean {
   // A mesma regra para "por unidade" e "cada".
