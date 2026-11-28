@@ -83,13 +83,19 @@ vi.mock("@/views/customer/HomeView", () => ({
     onCategoryChange,
     onNavigate,
     onProductClick,
+    isActive,
   }: {
     readonly selectedCategory: string;
     readonly onCategoryChange: (category: string) => void;
     readonly onNavigate: (view: string) => void;
     readonly onProductClick: (id: string) => void;
+    readonly isActive?: boolean;
   }) => (
-    <div data-testid="home" data-categoria={selectedCategory}>
+    <div
+      data-testid="home"
+      data-categoria={selectedCategory}
+      data-ativo={String(isActive)}
+    >
       {["Bebidas", "Todas", "Doces", "Café & chá"].map((categoria) => (
         <button
           key={categoria}
@@ -525,6 +531,19 @@ describe("App — trocar de tela avisa em voz alta e leva o foco", () => {
     expect(container?.querySelector("#tab-cart")).not.toBeNull();
     expect(aviso()?.textContent).toBe("Carrinho");
     expect(document.activeElement).toBe(principal());
+  });
+
+  // 27/11/2026: o Início fica montado escondido depois da primeira visita, e
+  // o aviso do pedido aguardando pagamento só relê quando ele volta a ser a
+  // tela atual. O App diz isso ao Início pelo `isActive`.
+  it("Home -> Carrinho -> Início: o Início escondido recebe isActive falso e volta a verdadeiro", async () => {
+    await abrir();
+    const inicio = () => container?.querySelector('[data-testid="home"]');
+    expect(inicio()?.getAttribute("data-ativo")).toBe("true");
+    await tocar("aba-carrinho");
+    expect(inicio()?.getAttribute("data-ativo")).toBe("false");
+    await tocar("aba-inicio");
+    expect(inicio()?.getAttribute("data-ativo")).toBe("true");
   });
 
   it("antes de qualquer toque (abertura direta por endereço) o foco NÃO vai para o <main>, mas o aviso é dado", async () => {
