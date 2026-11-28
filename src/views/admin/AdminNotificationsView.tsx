@@ -148,8 +148,16 @@ function formatarQuando(quando: string): string {
   });
 }
 
-function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
-  const [aberta, setAberta] = useState(!novidade.lida);
+function CartaoDeNovidade({
+  novidade,
+  nasceAberta,
+}: {
+  novidade: Readonly<Novidade>;
+  nasceAberta: boolean;
+}) {
+  // Quem pulou versões tem várias não lidas: abrir todas virava uma rolagem
+  // de milhares de caracteres. Só a não lida mais nova nasce aberta.
+  const [aberta, setAberta] = useState(nasceAberta);
   const conteudoId = useId();
   const botaoDoCartao = useRef<HTMLButtonElement>(null);
   const grupos = [
@@ -159,11 +167,10 @@ function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
   ];
 
   function alternar() {
-    const vaiAbrir = !aberta;
-    setAberta(vaiAbrir);
-    if (vaiAbrir && !novidade.lida) {
-      marcarNovidadeComoLida(novidade.versao);
-    }
+    setAberta(!aberta);
+    // Recolher também é ler: a não lida que nasce aberta, ao ser recolhida,
+    // não pode continuar "Não lida".
+    if (!novidade.lida) marcarNovidadeComoLida(novidade.versao);
   }
 
   return (
@@ -260,6 +267,8 @@ function NovidadesDoApp({
   const titulo = useRef<HTMLHeadingElement>(null);
 
   if (novidades.length === 0) return null;
+  // A lista vem da mais nova para a mais antiga.
+  const maisNovaNaoLida = novidades.find((novidade) => !novidade.lida)?.versao;
 
   return (
     <section aria-labelledby={tituloId} className="space-y-3">
@@ -287,7 +296,11 @@ function NovidadesDoApp({
         )}
       </div>
       {novidades.map((novidade) => (
-        <CartaoDeNovidade key={novidade.versao} novidade={novidade} />
+        <CartaoDeNovidade
+          key={novidade.versao}
+          novidade={novidade}
+          nasceAberta={novidade.versao === maisNovaNaoLida}
+        />
       ))}
     </section>
   );
