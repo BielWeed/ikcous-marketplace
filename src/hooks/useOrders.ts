@@ -295,6 +295,12 @@ const PRAZO_DA_CONFERENCIA_DO_AVANCO_MS = 5_000;
 // banco na etapa marcada pode ser outro aparelho que já avançou (e avisou a
 // cliente): a tentativa segue o caminho de "mudou", sem segundo aviso.
 export const VALIDADE_DA_MARCA_DO_AVANCO_MS = 120_000;
+// Quanto tempo o painel lembra a linha de um pedido que nasceu pelo realtime
+// (`pedidosNovosDoRealtimeRef`): cobre a aprovação do cartão e do PIX logo
+// depois da compra. Depois disso, um evento perdido numa queda de conexão
+// deixaria a lembrança velha; o aviso volta a ser o neutro de sempre.
+const LEMBRANCA_DO_PEDIDO_NOVO_MS = 5 * 60_000;
+const MAXIMO_DE_PEDIDOS_NOVOS_LEMBRADOS = 50;
 export const MENSAGEM_CANCELAMENTO_SEM_RESPOSTA =
   "A conexão está lenta e não conseguimos confirmar se o pedido foi cancelado. Confira o pedido antes de tentar de novo.";
 export const MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA =
@@ -3565,6 +3571,28 @@ export function useOrders(
    */
   const insertsEmVooRef = useRef(new Map<string, any>());
 
+  /**
+   * Pedidos que NASCERAM pelo INSERT do realtime nesta sessão (id -> status,
+   * pagamento e versão da linha mais nova que chegou, e quando chegou). É o
+   * "antes" do aviso do UPDATE (`completarOldDoEvento`) enquanto a lista não
+   * tem o pedido: o cartão aprovado na hora manda o UPDATE "pago" com o
+   * INSERT ainda buscando a linha completa (ou o pedido não entra na lista
+   * por causa do filtro), e o `old` do evento traz só a chave primária. Sem
+   * isto o painel dizia "Pedido #N foi atualizado" de uma venda nova já paga.
+   * Pedido antigo nunca entra aqui: o aviso dele continua neutro.
+   */
+  const pedidosNovosDoRealtimeRef = useRef(
+    new Map<
+      string,
+      {
+        status: OrderStatus;
+        paymentStatus: Order["paymentStatus"];
+        updatedAt?: string;
+        em: number;
+      }
+    >(),
+  );
+
   const handleRealtimeInsert = useCallback(
     async (newPayload: any) => {
       // DONO DA CHAMADA, capturado ANTES do await: a conta que estava logada
@@ -4108,14 +4136,50 @@ export function useOrders(
       const oldId = (payload.old as any)?.id;
       // O `old` do UPDATE chega só com a chave primária (RLS ligada): o "antes"
       // de status/pagamento é o do pedido que a tela JÁ tinha, lido antes de o
-      // evento ser mesclado logo abaixo.
+      // evento ser mesclado logo abaixo. Pedido que nasceu pelo INSERT desta
+      // sessão e ainda não está na lista usa a última linha que chegou dele.
+      const novos = pedidosNovosDoRealtimeRef.current;
+      const instanteDoEvento = Date.now();
+      for (const [id, lembrado] of novos) {
+        if (instanteDoEvento - lembrado.em > LEMBRANCA_DO_PEDIDO_NOVO_MS) {
+          novos.delete(id);
+        }
+      }
       const paraOPainel =
         payload.eventType === "UPDATE" && newId
           ? completarOldDoEvento(
               payload,
-              ordersRef.current.find((pedido) => pedido.id === newId),
+              ordersRef.current.find((pedido) => pedido.id === newId) ??
+                novos.get(newId),
             )
           : payload;
+      const lembrarLinhaDoPedidoNovo = (linha: any) => {
+        const anterior = novos.get(linha.id);
+        if (versaoMaisVelhaQueAMemoria(anterior?.updatedAt, linha.updated_at)) {
+          return;
+        }
+        novos.delete(linha.id);
+        if (novos.size >= MAXIMO_DE_PEDIDOS_NOVOS_LEMBRADOS) {
+          const maisAntigo = novos.keys().next().value;
+          if (maisAntigo !== undefined) novos.delete(maisAntigo);
+        }
+        novos.set(linha.id, {
+          status: linha.status as OrderStatus,
+          paymentStatus: (linha.payment_status ??
+            null) as Order["paymentStatus"],
+          ...(typeof linha.updated_at === "string"
+            ? { updatedAt: linha.updated_at }
+            : {}),
+          em: instanteDoEvento,
+        });
+      };
+      if (payload.eventType === "INSERT" && newId) {
+        lembrarLinhaDoPedidoNovo(payload.new);
+      } else if (payload.eventType === "UPDATE" && newId && novos.has(newId)) {
+        lembrarLinhaDoPedidoNovo(payload.new);
+      } else if (payload.eventType === "DELETE" && oldId) {
+        novos.delete(oldId);
+      }
 
       console.log(
         "[Realtime] Order change event processed:",
