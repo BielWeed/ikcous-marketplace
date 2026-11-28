@@ -65,7 +65,7 @@ const { estadoDoBanco } = vi.hoisted(() => ({
     // postgrest-js resolve normalmente com `{ data: null, error }`. `null`
     // aqui é "insert vai dar certo"; preencher é "o banco recusou esta
     // linha".
-    erroDoInsertNotificacoes: null as null | { message: string },
+    erroDoInsertNotificacoes: null as null | { message: string; code?: string },
     erroDoInsertDoHistorico: null as null | { message: string },
   },
 }));
@@ -629,7 +629,12 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
       await abrirTela("cliente-sem-aparelho");
       await preencherMensagem("Oferta especial", "Corre que acaba hoje!");
 
-      estadoDoBanco.erroDoInsertNotificacoes = { message: "RLS negou a linha" };
+      // Recusa de verdade do banco traz código (RLS = 42501). Erro SEM código
+      // é queda de rede, que pode ter gravado e tem frase própria.
+      estadoDoBanco.erroDoInsertNotificacoes = {
+        code: "42501",
+        message: "RLS negou a linha",
+      };
 
       await clicarEnviar();
 
