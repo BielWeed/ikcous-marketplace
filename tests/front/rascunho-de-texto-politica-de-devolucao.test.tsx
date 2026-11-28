@@ -144,7 +144,7 @@ async function ocultarAAba() {
 
 type OpcoesDoAviso = {
   action: { onClick: () => void };
-  cancel: { onClick: () => void };
+  cancel: { props: { onClick: () => void } };
 };
 const ofertaDeRascunho = () =>
   toast.info.mock.calls.find(([titulo]) =>

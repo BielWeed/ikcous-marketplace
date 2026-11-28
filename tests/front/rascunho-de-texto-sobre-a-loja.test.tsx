@@ -134,7 +134,8 @@ type Clique = { preventDefault: () => void };
 type OpcoesDoAviso = {
   description: string;
   action: { onClick: (evento?: Clique) => void };
-  cancel: { onClick: () => void };
+  // Botão próprio (JSX): o `cancel` comum não roda num aviso não dismissible.
+  cancel: { props: { onClick: () => void } };
 };
 const ofertasDeRascunho = () =>
   toast.info.mock.calls.filter(([titulo]) =>
@@ -173,7 +174,7 @@ describe("Minha loja — rascunho da descrição sobrevive à aba descartada", (
 
     const oferta = ofertaDeRascunho();
     expect(oferta).toBeDefined();
-    await act(async () => oferta?.[1].cancel.onClick());
+    await act(async () => oferta?.[1].cancel.props.onClick());
     expect(localStorage.getItem(chave("admin-1"))).toBeNull();
     expect(campo().value).toBe("Texto salvo");
   });

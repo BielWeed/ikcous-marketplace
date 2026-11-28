@@ -153,6 +153,13 @@ describe("AdminProductFormView — Descartar o rascunho antigo no Sonner real", 
       ),
     ].find((b) => b.textContent?.trim() === rotulo);
 
+  it("o aviso não fecha por gesto (arrastar mataria o salvamento automático)", async () => {
+    await abrirProduto();
+    const aviso = document.querySelector("[data-sonner-toast]");
+    expect(aviso).not.toBeNull();
+    expect(aviso?.getAttribute("data-dismissible")).toBe("false");
+  });
+
   it("tocar Descartar apaga o rascunho antigo", async () => {
     await abrirProduto();
     const descartar = botaoDoAviso("Descartar");

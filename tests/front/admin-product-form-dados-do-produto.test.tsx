@@ -486,9 +486,7 @@ describe("AdminProductFormView — dados do produto", () => {
         id?: string;
       };
       expect(opcoes.duration).toBe(Number.POSITIVE_INFINITY);
-      // NÃO `dismissible: false`: no Sonner 2.0.8 isso desliga o Descartar
-      // (admin-product-form-descartar-rascunho-no-sonner-real.test.tsx).
-      expect(opcoes.dismissible).not.toBe(false);
+      expect(opcoes.dismissible).toBe(false);
       // Id próprio: não é o aviso da grade pendente (esse segue como era).
       expect(opcoes.id).toBeDefined();
       expect(opcoes.id).not.toBe("rascunho-da-grade-pendente");

@@ -1,3 +1,4 @@
+import { CLASSES_DO_BOTAO_CANCELAR_DO_AVISO } from "@/components/ui/classes-do-aviso";
 // O rascunho de um texto longo do painel na TELA (as regras de guardar, a
 // chave por conta e a validade estão em `@/lib/rascunho-de-texto`).
 //
@@ -11,10 +12,11 @@
 //   montada mas escondida (a aba Ajustes por baixo de Pedidos, ou o grupo
 //   fechado: `ativo` falso) não mostra o aviso, mas a pendência vem do
 //   APARELHO e não da tela: esconder a aba do navegador sem ter visto o aviso
-//   não apaga o rascunho. Ao ficar à vista, o aviso aparece. Fechar o aviso
-//   arrastando é "decido depois": a pendência fica até a próxima abertura.
-//   O aviso NÃO é `dismissible: false`: no Sonner 2.0.8 isso desliga o botão
-//   "Descartar" (o `cancel` sai sem chamar o onClick).
+//   não apaga o rascunho. Ao ficar à vista, o aviso aparece. O aviso não
+//   fecha por gesto (`dismissible: false`): arrastá-lo deixaria a pendência
+//   presa e o rascunho deixaria de ser guardado. Por isso o "Descartar" é um
+//   botão próprio (`cancel` em JSX): no Sonner 2.0.8 o `cancel` comum sai
+//   sem chamar o onClick quando o aviso não é dismissible.
 // - O salvo pode mudar com o aviso aberto (o tempo real traz o que outro
 //   aparelho gravou). "Restaurar" confere de novo: se mudou e ela ainda não
 //   foi avisada, o aviso fica aberto com o recado e só o segundo toque troca.
@@ -114,16 +116,28 @@ export function useRascunhoDeTexto({
             atual.current.aoRestaurar(lido.texto);
           },
         },
-        cancel: {
-          label: "Descartar",
-          onClick: () => {
-            decidiu();
-            apagarRascunhoDeTexto(chave);
-            toast.info("Rascunho descartado.");
-          },
-        },
-        // Não some sozinho: sumir deixaria o rascunho sem dono.
+        // Botão próprio: o `cancel` comum não roda num aviso não dismissible.
+        // A decisão vem ANTES de fechar; `toast.dismiss` fecha sem olhar o
+        // dismissible.
+        cancel: (
+          <button
+            type="button"
+            data-button=""
+            data-cancel=""
+            className={CLASSES_DO_BOTAO_CANCELAR_DO_AVISO}
+            onClick={() => {
+              decidiu();
+              apagarRascunhoDeTexto(chave);
+              toast.dismiss(idDoAviso);
+              toast.info("Rascunho descartado.");
+            }}
+          >
+            Descartar
+          </button>
+        ),
+        // Fica até a decisão: não some sozinho nem por gesto.
         duration: Number.POSITIVE_INFINITY,
+        dismissible: false,
       });
     };
     oferecer(mudouDepois());

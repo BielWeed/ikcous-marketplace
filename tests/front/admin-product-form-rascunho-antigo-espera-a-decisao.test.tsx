@@ -113,7 +113,8 @@ const opcoesDoAviso = () => {
   if (!chamada) throw new Error("O aviso de rascunho não apareceu.");
   return chamada[1] as {
     action: { onClick: () => void };
-    cancel: { onClick: () => void };
+    // Botão próprio (JSX): o `cancel` comum não roda num aviso não dismissible.
+    cancel: { props: { onClick: () => void } };
     duration: number;
     dismissible?: boolean;
     id?: string;
@@ -205,14 +206,12 @@ describe("AdminProductFormView — rascunho antigo espera a decisão", () => {
     });
   }
 
-  it("o aviso fica até ela decidir: sem tempo, com id para ser retirado", async () => {
+  it("o aviso fica até ela decidir: sem tempo, sem deslizar para fechar, com id para ser retirado", async () => {
     await abrirProduto();
 
     const opcoes = opcoesDoAviso();
     expect(opcoes.duration).toBe(Number.POSITIVE_INFINITY);
-    // NÃO `dismissible: false`: no Sonner 2.0.8 isso desliga o Descartar
-    // (admin-product-form-descartar-rascunho-no-sonner-real.test.tsx).
-    expect(opcoes.dismissible).not.toBe(false);
+    expect(opcoes.dismissible).toBe(false);
     expect(typeof opcoes.id).toBe("string");
     expect(opcoes.action).toBeDefined();
     expect(opcoes.cancel).toBeDefined();
@@ -239,7 +238,7 @@ describe("AdminProductFormView — rascunho antigo espera a decisão", () => {
     expect(armazem.get(CHAVE)).toBe(rascunhoAntigo);
 
     await act(async () => {
-      opcoesDoAviso().cancel.onClick();
+      opcoesDoAviso().cancel.props.onClick();
     });
     expect(armazem.get(CHAVE)).toBeUndefined();
 

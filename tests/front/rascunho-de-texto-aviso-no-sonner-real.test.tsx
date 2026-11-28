@@ -104,6 +104,13 @@ async function tocar(rotulo: string) {
 }
 
 describe("aviso de rascunho de texto no Sonner real", () => {
+  it("o aviso não fecha por gesto (arrastar deixaria a pendência presa)", async () => {
+    await montar();
+    const aviso = document.querySelector("[data-sonner-toast]");
+    expect(aviso).not.toBeNull();
+    expect(aviso?.getAttribute("data-dismissible")).toBe("false");
+  });
+
   it("Descartar apaga o rascunho do aparelho", async () => {
     await montar();
     expect(botao("Descartar")).toBeDefined();
