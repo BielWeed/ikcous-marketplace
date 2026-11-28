@@ -241,16 +241,15 @@ function cofreFechado(vault: DataVault): boolean {
   return typeof vault.isClosed === "function" && vault.isClosed();
 }
 
-// Um id malformado faria o banco recusar o lote todo. O banco também aceita
-// o id sem hífens (ou entre chaves): leva tudo à forma com hífens.
-const HEX_DO_ID = /^[0-9a-f]{32}$/;
+// Um id malformado faria o banco recusar o lote todo. Aceita exatamente o que
+// o Postgres aceita como uuid (hífen opcional depois de cada 4 dígitos, chaves
+// opcionais) e leva à forma com hífens.
+const ID_DO_POSTGRES = /^\{?[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}\}?$/;
 
 function idDeProduto(bruto: string): string | undefined {
-  const hex = bruto
-    .toLowerCase()
-    .replace(/^\{|\}$/g, "")
-    .replaceAll("-", "");
-  if (!HEX_DO_ID.test(hex)) return;
+  const minusculo = bruto.toLowerCase();
+  if (!ID_DO_POSTGRES.test(minusculo)) return;
+  const hex = minusculo.replace(/[{}-]/g, "");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 

@@ -132,12 +132,16 @@ describe("destinos de produto da vitrine", () => {
         banner("pausado-sem-hifen", {
           link: `/product-detail?id=${pausado.replaceAll("-", "")}`,
         }),
+        // Hífen duplicado o banco recusa: não entra na consulta e o banner fica.
+        banner("hifen-duplo", {
+          link: `/product-detail?id=${pausado.replace("-", "--")}`,
+        }),
         banner("esgotado", { link: link(esgotado) }),
         banner("categoria", { link: "/?category=Bolsas" }),
         banner("externo", { link: `https://externo.invalid${link(pausado)}` }),
         banner("sem-link", { productId: pausado }),
       ]),
-    ).toBe("categoria,esgotado,externo,sem-link");
+    ).toBe("categoria,esgotado,externo,hifen-duplo,sem-link");
     expect(consultaPublica.from).toHaveBeenCalledExactlyOnceWith(
       "vw_produtos_public",
     );
