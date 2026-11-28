@@ -164,6 +164,9 @@ describe("lerElegibilidade — o campo ja_reembolsada", () => {
 });
 
 // A tela de verdade: a revisão do pedido (passo 4) só promete o frete quando o servidor o devolve.
+// O pedido teve frete pago (> 0): sem o valor a folha nunca promete o frete (#2108), e o caso da
+// trocada passaria sem provar nada sobre `ja_reembolsada`.
+const FRETE_PAGO = 20;
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
 
@@ -230,6 +233,7 @@ async function revisaoDoReembolsoDeB(itens: ItemElegivel[]) {
         userId="u-1"
         enderecoDaLoja="Rua A, 10"
         horarioDaLoja="Seg a Sex, 9h às 18h"
+        freteDoPedido={FRETE_PAGO}
         solicitar={vi.fn()}
         enviarFoto={vi.fn()}
       />,
