@@ -55,7 +55,7 @@ const comparar = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
  * (`ordenarPelaGrade`), que no cadastro antigo com Cor e Tamanho é a Cor -- e
  * o estoque é o de TODAS as escolhidas (levar "Azul P" precisa de azul E de P).
  */
-function precosPossiveis(
+export function precosPossiveis(
   produto: ProdutoDeVitrine,
   apenasComEstoque: boolean,
 ): number[] {
