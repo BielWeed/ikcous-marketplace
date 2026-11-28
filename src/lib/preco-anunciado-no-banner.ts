@@ -16,11 +16,31 @@ const REAIS = /R\$\s*(\d[\d.,]*)/g;
 /** "30% OFF", "30 % OFF", "30%OFF", "12,5% off". */
 const PERCENTUAL_OFF = /(\d[\d,]*)\s*%\s*OFF\b/gi;
 
-/** "1.234,56" -> 123456; "70" -> 7000; "70.00" (sem milhar de verdade) -> 7000. */
+/**
+ * Valor que o banner cita mas que NÃO é o preço do produto: o preço do combo
+ * ("Leve 2 por R$ 150"), o cupom ("cupom de R$ 20", "R$ 20 OFF", "desconto de
+ * R$ 30"), o frete ("frete R$ 9,90") e o mínimo de compra ("acima de R$ 199").
+ * Conferi-los contra o preço do produto só dava falso aviso. Olha só o que
+ * encosta no valor -- "Frete grátis! Vestido por R$ 70" segue conferido -- e
+ * só tira o valor que é dos outros: "com desconto R$ 79,90", "frete grátis
+ * R$ 70" e "leve 1 vestido R$ 70" citam o preço do produto e são conferidos.
+ */
+const ANTES_DE_VALOR_DE_FORA =
+  /(?:\b(?:leve|compre)\s+(?:[2-9]|\d{2,})\b[^\d$]{0,15}|\bacima\s+de\s*|\bdesconto\s+de\s*|\bcupom(?:\sde\sdesconto)?(?:\sde)?\s*[:\-–]?\s*|\bfrete(?:\sfixo)?(?:\sde)?\s*[:\-–]?\s*)$/i;
+const DEPOIS_DE_VALOR_DE_FORA = /^\s*(?:OFF\b|de\s+desconto\b)/i;
+
+/**
+ * "1.234,56" -> 123456; "70" -> 7000; "70.00" -> 7000; "70.50" -> 7050 (ponto
+ * com exatamente dois dígitos depois e sem vírgula é a vírgula dos centavos);
+ * "1.299" -> 129900 (três dígitos depois do ponto é milhar).
+ */
 function centavosDe(numero: string): number {
-  const [inteiroBruto, fracaoBruta = ""] = numero
-    .replace(/[.,]+$/, "")
-    .split(",");
+  const limpo = numero.replace(/[.,]+$/, "");
+  const decimalComPonto = /^(\d+)\.(\d{2})$/.exec(limpo);
+  if (decimalComPonto) {
+    return Number(decimalComPonto[1]) * 100 + Number(decimalComPonto[2]);
+  }
+  const [inteiroBruto, fracaoBruta = ""] = limpo.split(",");
   const grupos = inteiroBruto.split(".");
   const comMilhar =
     grupos.length > 1 &&
@@ -39,11 +59,20 @@ export function valoresCitados(texto: string | null | undefined): {
   const centavos: number[] = [];
   const percentuais: number[] = [];
   if (!texto) return { centavos, percentuais };
-  for (const [, numero] of texto.matchAll(REAIS)) {
-    centavos.push(centavosDe(numero));
+  const antes = (achado: RegExpExecArray) => texto.slice(0, achado.index);
+  for (const achado of texto.matchAll(REAIS)) {
+    const depois = texto.slice(achado.index + achado[0].length);
+    if (
+      ANTES_DE_VALOR_DE_FORA.test(antes(achado)) ||
+      DEPOIS_DE_VALOR_DE_FORA.test(depois)
+    ) {
+      continue;
+    }
+    centavos.push(centavosDe(achado[1]));
   }
-  for (const [, numero] of texto.matchAll(PERCENTUAL_OFF)) {
-    const percentual = Number(numero.replace(",", "."));
+  for (const achado of texto.matchAll(PERCENTUAL_OFF)) {
+    if (ANTES_DE_VALOR_DE_FORA.test(antes(achado))) continue;
+    const percentual = Number(achado[1].replace(",", "."));
     if (Number.isFinite(percentual)) percentuais.push(percentual);
   }
   return { centavos, percentuais };

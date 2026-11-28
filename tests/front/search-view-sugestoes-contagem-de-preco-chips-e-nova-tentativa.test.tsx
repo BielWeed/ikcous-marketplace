@@ -40,7 +40,8 @@ function produto(p: Partial<Product> & Pick<Product, "id">): Product {
     name: p.id,
     description: "",
     price: 100,
-    images: [],
+    // Com foto de verdade: a sugestão da busca vazia só mostra quem tem foto.
+    images: ["https://loja.test/foto.webp"],
     category: "Vestidos",
     stock: 5,
     sold: 0,
@@ -216,6 +217,29 @@ describe("SearchView — sugestões, contagem de preço, chips e nova tentativa"
     await abrir({ initialQuery: "nada-parecido" });
     expect(hospedeiro.textContent).toContain("Ué, nenhum resultado?");
     expect(ids()).toEqual(["p1", "p2", "p3", "p4"]);
+  });
+
+  it("nenhum resultado: produto SEM foto não vira sugestão (a mesma regra das faixas da Home)", async () => {
+    loja.catalogo = [
+      produto({ id: "sem-foto", images: [] }),
+      produto({
+        id: "so-marcador",
+        images: ["https://placehold.co/600x600?text=Sem+Imagem"],
+      }),
+      produto({ id: "foto-vazia", images: ["  "] }),
+      produto({ id: "p1" }),
+      produto({ id: "p2" }),
+    ];
+    await abrir({ initialQuery: "nada-parecido" });
+    expect(ids()).toEqual(["p1", "p2"]);
+  });
+
+  it("nenhum resultado e só produtos sem foto: sem sugestões nem a frase", async () => {
+    loja.catalogo = [produto({ id: "sem-foto", images: [] })];
+    await abrir({ initialQuery: "nada-parecido" });
+    expect(hospedeiro.textContent).toContain("Ué, nenhum resultado?");
+    expect(hospedeiro.textContent).not.toContain("Que tal dar uma olhada");
+    expect(ids()).toEqual([]);
   });
 
   it("nenhum resultado e só 3 produtos disponíveis: mostra os 3 (não inventa o quarto)", async () => {

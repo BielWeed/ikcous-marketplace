@@ -22,6 +22,7 @@ import {
 } from "@/hooks/useSearch";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { soFotosReais } from "@/lib/foto-do-produto";
 import { cn } from "@/lib/utils";
 import { produtoDisponivel } from "@/lib/vitrine";
 import type { Product, View } from "@/types";
@@ -341,8 +342,15 @@ export const SearchView = React.memo(function SearchView({
     aoMudarQuantidadeRef.current?.({ termo: query, quantidade: visibleCount });
   }, [query, visibleCount]);
   // Só nas sugestões: esgotados ativos seguem encontráveis na busca normal.
+  // Sem foto de verdade também fica de fora (a mesma regra das faixas da Home,
+  // `soFotosReais`): o cartão cinza "Sem Imagem" não é vitrine.
   const trendingProducts = useMemo(
-    () => produtosAVenda.filter(produtoDisponivel).slice(0, 4),
+    () =>
+      produtosAVenda
+        .filter(
+          (p) => produtoDisponivel(p) && soFotosReais(p.images).length > 0,
+        )
+        .slice(0, 4),
     [produtosAVenda],
   );
 
