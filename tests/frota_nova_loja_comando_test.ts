@@ -76,6 +76,7 @@ import {
   sqlDaPromocao,
   sqlDoDiagnostico,
 } from "../scripts/frota/primeira-admin.mjs";
+import { baixadorDeFuncaoPeloCli } from "../scripts/frota/publicar-release.mjs";
 import {
   SQL_ESTADO_DO_BANCO,
   SQL_NOMES_NO_VAULT,
@@ -2189,6 +2190,92 @@ Deno.test("conferir (lote 566): fila com migration nova = item banco NÃO dizend
   assert(!b2.detalhe.includes("não está concluída"), b2.detalhe);
 });
 
+// ─── banco só do commit aprovado da release (lote 573) ──────────────────────
+
+/** Tudo que o Supabase viu desde `n` (fetch inclusive: nada de renovação). */
+const chamadasDesde = (amb, n) => amb.api.chamadas.slice(n);
+
+Deno.test("banco (lote 573): ATUALIZAR com o HEAD fora do topo da release = NÃO, nenhuma chamada ao Supabase, a migration nova não vai e o SIM fica; diz o checkout do topo", async () => {
+  const amb = await ateFicha();
+  // um checkout de outra branch, com uma migration que a release não juntou
+  amb.deps.git = gitFalso({ head: OUTRO_SHA });
+  amb.deps.arquivos = () => [...MIGRATIONS, MIGRATION_NOVA];
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "não é o topo");
+  assertStringIncludes(r.mensagem, TOPO);
+  assertStringIncludes(r.mensagem, "Nada foi enviado ao banco");
+  assertEquals(chamadasDesde(amb, n), []);
+  assertEquals(envelopesDo(amb.api.banco).length, 2);
+  assertEquals(await vereditoNoEstado(amb, "banco"), "SIM");
+  // de volta ao topo, a mesma loja recebe a nova e fecha SIM
+  amb.deps.git = gitFalso();
+  const r2 = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r2.veredito, "SIM", r2.mensagem);
+  assertEquals(envelopesDo(amb.api.banco).length, 3);
+});
+
+Deno.test("banco (lote 573): instalação DO ZERO com o HEAD fora do topo = NÃO, nenhuma chamada ao Supabase e nada do banco no estado", async () => {
+  const amb = await ambiente({ git: gitFalso({ head: OUTRO_SHA }) });
+  await conectar(amb);
+  assertEquals(
+    (await executarPasso(pedido("criar-projeto"), amb.deps)).veredito,
+    "SIM",
+  );
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "não é o topo");
+  assertEquals(chamadasDesde(amb, n), []);
+  assertEquals(envelopesDo(amb.api.banco).length, 0);
+  assertEquals(await vereditoNoEstado(amb, "banco"), undefined);
+});
+
+Deno.test("banco (lote 573): topo do ramo da release que não se lê = NÃO sem chamada ao Supabase, e o SIM fica", async () => {
+  const amb = await ateFicha();
+  const git = gitFalso();
+  git.topoDoRamo = async () => {
+    throw new Error("sem rede");
+  };
+  amb.deps.git = git;
+  amb.deps.arquivos = () => [...MIGRATIONS, MIGRATION_NOVA];
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, "Nada foi enviado ao banco");
+  assertEquals(chamadasDesde(amb, n), []);
+  assertEquals(await vereditoNoEstado(amb, "banco"), "SIM");
+});
+
+Deno.test("banco (lote 573): as migrations vêm do COMMIT aprovado (o topo), e o que só existe na árvore não vai", async () => {
+  const amb = await ateFicha();
+  const pedidos = [];
+  // a árvore de trabalho tem uma migration solta; o commit aprovado, não
+  amb.deps.arquivos = (sha) => {
+    pedidos.push(sha);
+    return sha === TOPO ? [...MIGRATIONS] : [...MIGRATIONS, MIGRATION_NOVA];
+  };
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  assert(pedidos.length > 0 && pedidos.every((s) => s === TOPO), `${pedidos}`);
+  assertEquals(envelopesDo(amb.api.banco).length, 2, "a solta não foi");
+});
+
+Deno.test("banco (lote 573): as migrations do commit que não se leem (git falha) = NÃO sem chamada ao Supabase, e o SIM fica", async () => {
+  const amb = await ateFicha();
+  amb.deps.arquivos = () => {
+    throw new Error("git cat-file falhou");
+  };
+  const n = amb.api.chamadas.length;
+  const r = await executarPasso(pedido("banco"), amb.deps);
+  assertEquals(r.veredito, "NÃO", r.mensagem);
+  assertStringIncludes(r.mensagem, TOPO);
+  assertStringIncludes(r.mensagem, "Nada foi enviado ao banco");
+  assertEquals(chamadasDesde(amb, n), []);
+  assertEquals(await vereditoNoEstado(amb, "banco"), "SIM");
+});
+
 // ─── C3: o slug que não cabe no cadastro para no abrir ──────────────────────
 
 /** Os passos de loja (todos menos autorizar e os que não existem mais). */
@@ -2544,7 +2631,10 @@ Deno.test("functions (lote 566): sem o download do código (dependência ausente
 });
 
 Deno.test("functions: HEAD diferente do topo da release = NÃO com a recusa do B2 repassada e 0 chamadas ao Supabase", async () => {
-  const amb = await ateFicha({ git: gitFalso({ head: OUTRO_SHA }) });
+  // a loja montada no topo (o banco também exige o commit aprovado, lote
+  // 573); o checkout muda de branch só antes do functions
+  const amb = await ateFicha();
+  amb.deps.git = gitFalso({ head: OUTRO_SHA });
   const n = amb.api.chamadas.length;
   const r = await executarPasso(pedido("functions"), amb.deps);
   assertEquals(r.veredito, "NÃO");
@@ -2575,6 +2665,148 @@ Deno.test("functions: deploy da ÚLTIMA sem resposta (504) = INCERTO repassado, 
 });
 
 // ─── C2: login ──────────────────────────────────────────────────────────────
+
+// ─── o download do código no ar com a autorização da ORG (lote 573) ─────────
+
+/** CLI falso do download: grava o index.ts na --workdir (como o CLI) ou
+ * falha quando `falhar(opcoes)` diz. Guarda as opções de cada chamada. */
+function cliFalso(falhar = () => false) {
+  const chamadas = [];
+  const executar = async (args, opcoes) => {
+    chamadas.push({ args, opcoes });
+    if (falhar(opcoes))
+      throw new Error(
+        `functions download falhou: ${opcoes?.env?.SUPABASE_ACCESS_TOKEN ?? "sem token"}`,
+      );
+    const dir = args[args.indexOf("--workdir") + 1];
+    const nome = args[args.indexOf("download") + 1];
+    await Deno.mkdir(join(dir, "supabase", "functions", nome), {
+      recursive: true,
+    });
+    await Deno.writeTextFile(
+      join(dir, "supabase", "functions", nome, "index.ts"),
+      "export {};\n",
+    );
+    return "";
+  };
+  return { chamadas, executar };
+}
+const BAIXADO = (nome) => [
+  { caminho: `supabase/functions/${nome}/index.ts`, conteudo: "export {};\n" },
+];
+
+Deno.test("baixador (lote 573): SEM token é o portão de hoje — UMA chamada do CLI, sem ambiente próprio (o login de quem roda)", async () => {
+  const cli = cliFalso();
+  const r = await baixadorDeFuncaoPeloCli(cli.executar)(REF, "criar-pagamento");
+  assertEquals(r, BAIXADO("criar-pagamento"));
+  assertEquals(cli.chamadas.length, 1);
+  assertEquals(Object.keys(cli.chamadas[0].opcoes).sort(), ["cwd"]);
+});
+
+Deno.test("baixador (lote 573): COM o token da org, o CLI roda com SUPABASE_ACCESS_TOKEN = esse token (o resto do ambiente junto); deu certo = sem 2ª chamada", async () => {
+  const cli = cliFalso();
+  const r = await baixadorDeFuncaoPeloCli(cli.executar)(
+    REF,
+    "criar-pagamento",
+    { token: async () => ACCESS },
+  );
+  assertEquals(r, BAIXADO("criar-pagamento"));
+  assertEquals(cli.chamadas.length, 1);
+  const env = cli.chamadas[0].opcoes.env;
+  assertEquals(env.SUPABASE_ACCESS_TOKEN, ACCESS);
+  assert(
+    Object.keys(env).some((k) => k.toUpperCase() === "PATH"),
+    "o PATH do processo foi junto",
+  );
+});
+
+Deno.test("baixador (lote 573): token da org recusado ou que não se obtém = 2ª tentativa pelo login do CLI (sem ambiente próprio); as duas falhando = erro SEM o token", async () => {
+  // recusado pelo CLI: cai no login, que baixa
+  const cli = cliFalso((o) => o?.env !== undefined);
+  const r = await baixadorDeFuncaoPeloCli(cli.executar)(REF, "pix", {
+    token: async () => ACCESS,
+  });
+  assertEquals(r, BAIXADO("pix"));
+  assertEquals(cli.chamadas.length, 2);
+  assertEquals(cli.chamadas[1].opcoes.env, undefined);
+  // a renovação falha: nem tenta com token, vai direto ao login
+  const cli2 = cliFalso();
+  const r2 = await baixadorDeFuncaoPeloCli(cli2.executar)(REF, "pix", {
+    token: async () => {
+      throw new Error("refresh girado");
+    },
+  });
+  assertEquals(r2, BAIXADO("pix"));
+  assertEquals(cli2.chamadas.length, 1);
+  assertEquals(cli2.chamadas[0].opcoes.env, undefined);
+  // as duas falham: erro, e a mensagem não carrega o token
+  const cli3 = cliFalso(() => true);
+  let erro;
+  try {
+    await baixadorDeFuncaoPeloCli(cli3.executar)(REF, "pix", {
+      token: async () => ACCESS,
+    });
+  } catch (e) {
+    erro = e;
+  }
+  assert(erro instanceof Error, "tinha de falhar");
+  assert(!String(erro.message).includes(ACCESS), erro.message);
+  assertEquals(cli3.chamadas.length, 2);
+});
+
+Deno.test("functions (lote 573): o download do código no ar recebe a autorização da ORG desta rodada (o mesmo token OAuth), no passo functions e no conferir", async () => {
+  const amb = await ateFicha();
+  const vistos = [];
+  const baixar = amb.api.baixar;
+  amb.deps.baixarFuncao = async (ref, nome, extra) => {
+    vistos.push(
+      typeof extra?.token === "function" ? await extra.token() : "sem token",
+    );
+    return await baixar(ref, nome);
+  };
+  assertEquals(
+    (await executarPasso(pedido("functions"), amb.deps)).veredito,
+    "SIM",
+  );
+  const r = await executarPasso(pedido("functions"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  const c = await executarPasso(pedido("conferir"), amb.deps);
+  const f = c.itens.find((i) => i.item === "functions");
+  assertEquals(f.veredito, "SIM", f.detalhe);
+  assert(vistos.length >= 2 * PUBLICAVEIS.length, `${vistos.length}`);
+  assert(
+    vistos.every((t) => t === ACCESS),
+    [...new Set(vistos)].join(","),
+  );
+  assert(!amb.saida.join("\n").includes(ACCESS));
+});
+
+Deno.test("functions (lote 573): o download que falha diz a causa provável e o que fazer — no INCERTO do conferir e na publicação que republica", async () => {
+  const amb = await ateFicha();
+  assertEquals(
+    (await executarPasso(pedido("functions"), amb.deps)).veredito,
+    "SIM",
+  );
+  amb.deps.baixarFuncao = async () => {
+    throw new Error("supabase não encontrado");
+  };
+  const c = await executarPasso(pedido("conferir"), amb.deps);
+  const f = c.itens.find((i) => i.item === "functions");
+  assertEquals(f.veredito, "INCERTO", f.detalhe);
+  for (const trecho of [
+    "acesso da org central",
+    "login do CLI",
+    "supabase --version",
+    "supabase login",
+  ])
+    assertStringIncludes(f.detalhe, trecho);
+  const n = amb.saida.length;
+  const r = await executarPasso(pedido("functions"), amb.deps);
+  assertEquals(r.veredito, "SIM", r.mensagem);
+  const depois = amb.saida.slice(n).join("\n");
+  assertStringIncludes(depois, "supabase --version");
+  assertStringIncludes(depois, "republica");
+});
 
 Deno.test("login: endereços de <slug>.vercel.app e gancho DESLIGADO pelo B4 com o token OAuth; SIM conferido; o segredo do gancho não sai", async () => {
   const amb = await ateFicha();

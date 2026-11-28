@@ -115,7 +115,7 @@ export const VEREDITOS = Object.freeze({
 const CODIGO_DO_VEREDITO = { SIM: 0, NAO: 1, INCERTO: 3 };
 
 class UsoErrado extends Error {}
-class Recusa extends Error {}
+export class Recusa extends Error {}
 
 // ------------------------------------------------------------------ argumentos
 
@@ -441,7 +441,7 @@ const RE_RAMO = /^[A-Za-z0-9._/-]{1,200}$/;
  *
  * git: { head(): Promise<sha>, topoDoRamo(ramo): Promise<sha>, ler(sha, caminho) }
  */
-async function commitAprovado(git) {
+export async function commitAprovado(git) {
   let head;
   try {
     head = String(await git.head()).trim();

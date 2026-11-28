@@ -16,8 +16,8 @@
  *   abrir          --client-id <id> --redirect <url>   (client_secret pela ENTRADA)
  *   receber        (o código colado pela ENTRADA, nunca por argumento)
  *   criar-projeto  [--org <slug>]   (padrão: a org central, scripts/frota/org-central.json)
- *   banco
- *   ficha          [--nome <apelido>]
+ *   banco          (só com HEAD == topo da release; migrations do commit)
+ *   ficha         [--nome <apelido>]
  *   dominio        (grava <slug>.vercel.app em store_config.dominio_publico)
  *   segredos       (segredos-da-loja.mjs, B1)
  *   cadastro       (aguardando: cadastrar trava a publicação de todas as lojas)
@@ -73,7 +73,11 @@
  *    instalador, lote 566); a do cadastro, pelo aplicar-migrations.yml. Uma
  *    RECUSA sem dano (nada gravado, a instalação de pé: checkout velho, loja
  *    do cadastro atrasada, banco que mudou no meio) nunca rebaixa o SIM
- *    gravado — a rodada diz NÃO e o estado fica SIM;
+ *    gravado — a rodada diz NÃO e o estado fica SIM. Do zero ou atualizando,
+ *    o banco só instala as migrations do commit APROVADO (HEAD == topo do
+ *    ramo da release, o commitAprovado do functions), lidas DO COMMIT e nunca
+ *    da pasta (lote 573): checkout de outra branch, topo ilegível ou git que
+ *    não lê = NÃO antes de qualquer pedido ao Supabase, sem gravar nada;
  *  - primeira-admin chama o primeira-admin.mjs (B3) com o acesso OAuth desta
  *    rodada: o e-mail entra pela entrada e só vai ao banco (nunca ao estado, à
  *    saída nem à mensagem); a transação do B3 tem o SET LOCAL ROLE postgres
@@ -86,7 +90,10 @@
  *    do commit (o critério e o download do portão da release; lote 566) e
  *    republica o que difere. O download real (CLI do Supabase) só entra pela
  *    linha de comando (principal); sem ele, nada no ar é dado como igual.
- *    Mensagem de script B que manda
+ *    O download leva o token OAuth da ORG desta rodada (lote 573): o CLI
+ *    tenta com ele e, se não servir, com o login de quem roda (o portão da
+ *    release só usa o login, como antes); se os dois falham, a saída diz a
+ *    causa provável e o que fazer (semDownload). Mensagem de script B que manda
  *    "rodar sem --aplicar" para ler o estado é reescrita para o conferir
  *    (pelo nova-loja, sem --aplicar não se lê nada);
  *  - definir-dono (regra do sócio, 26/11): sem dono e com EXATAMENTE uma
@@ -145,10 +152,13 @@ import {
   pastaPadraoDoCofreDoBanco,
 } from "./cofre-local.mjs";
 import {
+  Recusa as RecusaDoCommit,
+  commitAprovado,
   executar as executarFunctions,
   gitReal,
 } from "./functions-da-loja.mjs";
 import {
+  arquivosDoCommit,
   arquivosDoRepo,
   clienteComRitmo,
   instalar,
@@ -1203,10 +1213,47 @@ const instalacaoDePe = (e) =>
   Array.isArray(e?.versoesNoLedger) &&
   e.versoesNoLedger.length > 0;
 
+/** As migrations que o banco pode instalar: só as do commit APROVADO da
+ * release (HEAD == topo do ramo da release, a MESMA exigência do passo
+ * functions), lidas do commit e nunca da árvore (lote 573). Sem isso, um
+ * checkout de outra branch levaria uma migration não juntada ao banco de uma
+ * loja nova e sujaria o ledger dela para sempre. Recusa = { r } (NÃO), antes
+ * de qualquer pedido ao Supabase e sem gravar nada, nem no estado: o SIM que
+ * já existia fica (nada mudou no banco). */
+async function migrationsAprovadas(d) {
+  const nada =
+    "Nada foi enviado ao banco e o estado desta loja não mudou: o banco só instala as migrations do commit aprovado da release (o mesmo que o functions publica).";
+  let topo;
+  try {
+    topo = await commitAprovado(d.git);
+  } catch (e) {
+    const motivo =
+      e instanceof RecusaDoCommit
+        ? e.message.replace(/\.?$/, ".")
+        : "o commit aprovado da release não foi conferido.";
+    return { r: resultado(NAO, `RECUSADO: ${motivo} ${nada}`) };
+  }
+  try {
+    const arquivos = d.arquivos(topo);
+    if (!Array.isArray(arquivos)) throw new Error("fora do formato");
+    return { topo, arquivos };
+  } catch {
+    return {
+      r: resultado(
+        NAO,
+        `não consegui ler as migrations do commit aprovado ${topo} pelo git (confira que o git funciona nesta pasta). ${nada}`,
+      ),
+    };
+  }
+}
+
 async function passoBanco(pedido, d) {
   const { slug } = pedido;
   const pre = await projetoPronto(d, slug, "banco");
   if (pre.falta) return resultado(NAO, pre.falta);
+  const aprovadas = await migrationsAprovadas(d);
+  if (aprovadas.r) return aprovadas.r;
+  const { arquivos } = aprovadas;
   const { gestao } = contexto(pedido, d);
   const p = await gestao.pedir("projeto", { ref: pre.ref });
   if (p?.status !== PRONTO) {
@@ -1225,7 +1272,6 @@ async function passoBanco(pedido, d) {
   // as leituras de antes e de depois inclusive, no relógio do passo.
   const ritmo = { agora: d.agora, esperar: d.dormir };
   const cliente = clienteComRitmo(clienteDoInstalador(gestao, pre.ref), ritmo);
-  const arquivos = d.arquivos();
   let antes;
   try {
     antes = await lerEstado(cliente);
@@ -1741,6 +1787,22 @@ function lidoDoB2(r) {
   };
 }
 
+/** O download do código no ar com a autorização da ORG desta rodada (lote
+ * 573): o baixador tenta primeiro com o access token da org central (o
+ * mesmo do resto do nova-loja) e só depois com o login do CLI de quem roda.
+ * Sem baixador (teste que não o deu), continua sem. */
+const comAcessoDaOrg = (baixar, token) =>
+  typeof baixar === "function"
+    ? (ref, nome) => baixar(ref, nome, { token })
+    : baixar;
+
+/** Por que o download do código no ar costuma falhar, e o que fazer. Só
+ * quando o B2 disse que um download FALHOU (não quando não há baixador). */
+const RE_DOWNLOAD_FALHOU = /o download falhou/;
+function semDownload(ref) {
+  return `O código no ar não foi baixado nem pelo acesso da org central nem pelo login do CLI do Supabase deste PC. Causa provável: o CLI supabase ausente do PATH, ou nenhuma das duas autorizações enxerga a organização do projeto ${ref}. O que fazer, na mesma janela: supabase --version tem de responder; supabase projects list tem de mostrar ${ref} (se não mostrar, supabase login com uma conta da organização). Enquanto isso, functions --aplicar republica todas (a versão que sobe prova o código) e o item functions do conferir fica INCERTO.`;
+}
+
 /** O B2 com o cliente OAuth desta rodada: só o commit aprovado (HEAD == topo
  * do ramo da release) publica, uma por vez, conferindo cada uma. A recusa
  * dele (HEAD fora do topo, loja fora do cadastro, fontes divergentes) é
@@ -1749,7 +1811,7 @@ async function passoFunctions(pedido, d) {
   const { slug } = pedido;
   const pre = await projetoPronto(d, slug, "functions");
   if (pre.falta) return resultado(NAO, pre.falta);
-  const { gestao } = contexto(pedido, d);
+  const { gestao, token } = contexto(pedido, d);
   const repetir =
     "Rode functions de novo: as que já estão no ar com o verify_jwt certo e o código do commit são puladas.";
   let r;
@@ -1760,7 +1822,7 @@ async function passoFunctions(pedido, d) {
         git: d.git,
         cliente: gestao,
         esperar: d.dormir,
-        baixarFuncao: d.baixarFuncao,
+        baixarFuncao: comAcessoDaOrg(d.baixarFuncao, token),
       },
     );
   } catch (erro) {
@@ -1777,6 +1839,8 @@ async function passoFunctions(pedido, d) {
   }
   const l = lidoDoB2(r);
   for (const x of [...l.antes, ...l.erros]) d.saida.out(x);
+  if ([...l.antes, ...l.erros].some((x) => RE_DOWNLOAD_FALHOU.test(x)))
+    d.saida.out(semDownload(pre.ref));
   const mensagem =
     l.erros.length > 0 ? `${l.corpo} (${l.erros.join("; ")})` : l.corpo;
   return await fecharPasso(
@@ -3271,13 +3335,17 @@ async function conferirNaLoja(pedido, d, ref, org, item) {
         git: d.git,
         cliente: leitura,
         esperar: d.dormir,
-        baixarFuncao: d.baixarFuncao,
+        baixarFuncao: comAcessoDaOrg(d.baixarFuncao, token),
       }),
     );
+    // o download que falhou ganha a causa provável e o que fazer ANTES da
+    // lista (que é cortada), para não sumir no corte (lote 573)
     item(
       "functions",
       l.veredito,
-      [l.corpo, ...l.erros].join("; ").slice(0, 600),
+      l.erros.some((x) => RE_DOWNLOAD_FALHOU.test(x))
+        ? `${l.corpo}. ${semDownload(ref)} ${l.erros.join("; ").slice(0, 300)}`
+        : [l.corpo, ...l.erros].join("; ").slice(0, 600),
     );
   } catch (erro) {
     item(
@@ -3608,7 +3676,7 @@ async function ensaio(pedido, d) {
       return resultado(NAO, `${ENSAIO} ${plano.motivo}`);
     return resultado(
       INCERTO,
-      `${ENSAIO} a fila deste checkout tem ${plano.total} migrations; num banco vazio iriam uma por chamada, cada uma com o registro no ledger na mesma transação; o que já estiver no ledger não é repetido. Numa loja que este comando já instalou e que uma release deixou para trás (e que ainda não está no cadastro da frota), só as migrations novas do fim iriam; recusa sem dano mantém o SIM do banco.`,
+      `${ENSAIO} a fila desta pasta tem ${plano.total} migrations; com --aplicar, só com o HEAD no topo do ramo da release, e as migrations lidas DO COMMIT (nunca da pasta); num banco vazio iriam uma por chamada, cada uma com o registro no ledger na mesma transação; o que já estiver no ledger não é repetido. Numa loja que este comando já instalou e que uma release deixou para trás (e que ainda não está no cadastro da frota), só as migrations novas do fim iriam; recusa sem dano mantém o SIM do banco.`,
     );
   }
   if (passo === "ficha") {
@@ -3713,7 +3781,10 @@ function completar(deps) {
   d.aleatorio ??= randomBytes;
   d.saida ??= { out: console.log, err: console.error };
   d.lerEntrada ??= lerLinhaDaEntrada;
-  d.arquivos ??= () => arquivosDoRepo();
+  // com o SHA (o passo banco, lote 573): as migrations DO COMMIT aprovado;
+  // sem ele (o ensaio e o conferir, só leitura): as da pasta
+  d.arquivos ??= (sha) =>
+    sha === undefined ? arquivosDoRepo() : arquivosDoCommit(sha);
   d.lojasBrutas ??= () => JSON.parse(readFileSync(CAMINHO_LOJAS, "utf8"));
   d.canaisBrutos ??= () =>
     JSON.parse(
