@@ -42,7 +42,11 @@ const PECA_DEPOIS_DE_CADA = /^[^\S\r\n]+(?:um|uma|pe[cç]a|unidade|item)\b/i;
 // certeza, e na dúvida o combo fica fora como na base.
 const FECHA_A_FRASE = /^[\s.!?…]*$/;
 
-function precoUnitarioDepois(depois: string): boolean {
+/** "Leve 2 kits por R$ 150 cada": o "cada" é do kit, não da peça. */
+const COMBO_DE_KITS = /\b(?:kits?|combos?|conjuntos?|pacotes?|caixas?|lotes?)\b[^\d$]{0,15}$/i;
+
+function precoUnitarioDepois(depois: string, antes: string): boolean {
+  if (COMBO_DE_KITS.test(antes)) return false;
   // A mesma regra para "por unidade" e "cada".
   const porUnidade = DEPOIS_DE_POR_UNIDADE.exec(depois);
   if (porUnidade) {
@@ -100,7 +104,7 @@ export function valoresCitados(texto: string | null | undefined): {
       DEPOIS_DE_VALOR_DE_FORA.test(depois) ||
       DEPOIS_DE_PRECO_DE_GRUPO.test(depois) ||
       (ANTES_DE_COMBO.test(trechoAntes) &&
-        !precoUnitarioDepois(depois))
+        !precoUnitarioDepois(depois, trechoAntes))
     ) {
       continue;
     }

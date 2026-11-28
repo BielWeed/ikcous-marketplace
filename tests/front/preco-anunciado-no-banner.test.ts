@@ -256,6 +256,7 @@ describe("precoAnunciadoVelho — o texto bate com o preço de agora?", () => {
     "Leve 2 blusas por R$ 150 por unidade (kit com 2 peças)",
     "Leve 2 blusas por R$ 150 cada, kit fechado",
     "Leve 2 blusas por R$ 150 por unidade. Unidade de venda: kit com 2 peças.",
+    "Leve 2 kits por R$ 150 cada",
   ])(
     "'%s' é preço do grupo, não da peça",
     (texto) => {
