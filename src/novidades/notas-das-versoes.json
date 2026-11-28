@@ -42,6 +42,7 @@
       "Na ficha de um pedido estornado, a cliente só lê que o dinheiro foi devolvido quando a devolução está confirmada; se o pagamento foi contestado no cartão, ela é orientada a acompanhar com o banco do cartão ou falar com a loja.",
       "Quando o pagamento chega depois de o pedido já estar cancelado, o guia do painel oferece um caminho só, devolver o valor pelo app, e a cliente lê que a loja vai devolver o valor e que pode fazer um pedido novo se ainda quiser a peça.",
       "Caixa aberto num dia e fechado depois da meia-noite: a sobra ou a falta, a sangria e o suprimento ficam no dia em que o caixa abriu, e o gasto pago nesse dia e lançado depois da meia-noite entra na conferência do caixa, sem falta falsa.",
+      "Se uma despesa é lançada ou marcada como paga em outro aparelho bem na hora em que o caixa é fechado, o fechamento não mostra mais uma \"Quebra de caixa\" falsa e o resultado do mês não conta a mesma perda duas vezes; a despesa fica fora do caixa já fechado.",
       "Se o caixa de ontem ainda está aberto, as retiradas e entradas de dinheiro dele não somem mais do saldo da conta.",
       "Na lista de Produtos do painel, aparece o preço que a loja cobra. Se os tamanhos têm preços diferentes, a lista mostra do menor ao maior."
     ],
