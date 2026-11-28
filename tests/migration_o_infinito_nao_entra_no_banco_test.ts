@@ -140,6 +140,12 @@ const SUCESSORAS = [
     consulta:
       "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
   },
+  // 20261660000000: o caixa de ontem aberto nao some do saldo (fin_conta_salvar, fin_caixa_movimentar_com_chave e fin_lancamento_cancelar).
+  {
+    versao: "20261660000000",
+    consulta:
+      "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

@@ -146,6 +146,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // (a cadeia do lucro: o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs chama a-peca-de-produto-excluido-posterior.cjs primeiro).
     s.nome !==
       "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql" &&
+    // A 20261660000000 (o caixa de ontem aberto nao some do saldo) e a SEGUNDA sucessora de fin_conta_salvar (99 -> 3999300 -> 1660) e a PRIMEIRA
+    // de fin_lancamento_cancelar (99 -> 1660); a terceira funcao dela (fin_caixa_movimentar_com_chave, da 252/1654) nao e da 8e. Tem a PROVA PROPRIA
+    // do que as consultas 216a/216b, 128a e 210a fazem com ela em tests/banco/o-caixa-de-ontem-aberto-nao-some-do-saldo-viva.cjs, e a 8e ja traz os
+    // dois pares; `noEstado` a desfaz antes (o-caixa-pertence-ao-dia-posterior.cjs chama o-caixa-de-ontem-aberto-posterior.cjs primeiro).
+    s.nome !== "20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql" &&
     // A 20261350000000 (a compra online trava o preco e espera a mesma chave) so redefine v23 e v24, em cima da 44; nenhuma
     // das duas e' funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 44 (a-compra-online-trava-posterior.cjs,
     // chamado por desfazerEntregaNaCidadeNaTransacao); aqui sai do rol pela mesma razao da 44 e da 1310.

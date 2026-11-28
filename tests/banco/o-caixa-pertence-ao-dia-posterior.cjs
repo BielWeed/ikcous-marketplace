@@ -48,6 +48,11 @@ const O_CAIXA_PERTENCE_AO_DIA = Object.freeze({ nome: NOME, corpos: CORPOS });
 
 /** Desfaz a 20261654000000 na transacao aberta, se no ar; repetir e' no-op. Devolve true se desfez. */
 async function desfazerCaixaDoDiaDaAberturaNaTransacao(cliente) {
+  // A 20261660000000 (o caixa de ontem aberto nao some do saldo) sucede o corpo de fin_caixa_movimentar_com_chave desta: sai ANTES
+  // (o pre-voo do rollback desta recusa o corpo dela). So se no ar; repetir e' no-op.
+  await require("./o-caixa-de-ontem-aberto-posterior.cjs").desfazerCaixaDeOntemAbertoNaTransacao(
+    cliente,
+  );
   let noAr = false;
   for (const [assinatura, [, desta]] of Object.entries(CORPOS)) {
     if ((await cliente.query(hashVivo(assinatura))).rows[0]?.h === desta)

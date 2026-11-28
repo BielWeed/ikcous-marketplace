@@ -5,7 +5,12 @@
 // 30/11 e mexido às 00:40 de 01/12 recebe o gasto "pago em 30/11"; o aviso da folha de
 // lançamento dizia "use a data de hoje", o que empurrava a lojista para 01/12. Agora,
 // com caixa aberto de um dia anterior, o aviso só aparece antes do dia da abertura e
-// fala da data do caixa aberto. Caixa de um dia só (ou sem caixa conhecido): igual.
+// fala da data do caixa aberto. Caixa de um dia só: igual.
+//
+// Sem caixa aberto CONHECIDO (fechado, leitura ainda carregando ou com erro), não há
+// conferência de caixa aberto nenhuma: o aviso "não entra na conferência do caixa aberto…
+// use a data de hoje" empurrava para hoje um pagamento antigo legítimo. Agora não avisa
+// (caça de 28/11/2026, achado 3 do lote 603).
 //
 // Sem @testing-library: `createRoot` + `act`, padrão da casa.
 import { act } from "react";
@@ -29,7 +34,7 @@ vi.mock("@/components/admin/financeiro/FluxoDeCaixaGrafico", () => ({
 }));
 
 import { NovoLancamentoFolha } from "@/components/admin/financeiro/NovoLancamentoFolha";
-import { diaDaAberturaDoCaixa } from "@/lib/financeiro";
+import { diaDaAberturaDoCaixa, diaDoCaixaAbertoLido } from "@/lib/financeiro";
 import {
   CONTA_BANCARIA,
   CONTA_CAIXA_DA_LOJA,
@@ -273,11 +278,9 @@ describe("folha de lançamento com caixa aberto de um dia anterior (30/11, hoje 
   });
 });
 
-describe("caixa de um dia só ou desconhecido: o aviso de antes, igual", () => {
+describe("caixa aberto de um dia só: o aviso de antes, igual", () => {
   for (const [rotulo, dia] of [
     ["caixa aberto hoje", HOJE],
-    ["sem caixa conhecido (null)", null],
-    ["sem a informação (prop ausente)", undefined],
     // Relógio do aparelho atrasado: dia da abertura DEPOIS de hoje não abre janela nenhuma.
     ["dia da abertura depois de hoje", "2026-12-02"],
   ] as const) {
@@ -298,6 +301,67 @@ describe("caixa de um dia só ou desconhecido: o aviso de antes, igual", () => {
     await escolher("fin-lanc-conta-destino", CONTA_BANCARIA);
     await mudarData("fin-lanc-realizacao", ABERTURA);
     expect(avisos()).toEqual([AVISO_ANTIGO_TRANSFERENCIA]);
+  });
+});
+
+describe("sem caixa aberto conhecido: nenhum aviso de conferência", () => {
+  for (const [rotulo, dia] of [
+    ["sem caixa aberto (null)", null],
+    ["sem a informação (prop ausente)", undefined],
+    ["dia vazio", ""],
+    ["dia inválido", "ontem"],
+  ] as const) {
+    it(`${rotulo}: gasto de ontem e de antes no Caixa não avisa`, async () => {
+      await abrirFolha(dia);
+      await escolher("fin-lanc-conta", CONTA_CAIXA_DA_LOJA);
+      await mudarData("fin-lanc-realizacao", ABERTURA);
+      expect(avisos()).toEqual([]);
+      await mudarData("fin-lanc-realizacao", ANTES_DA_ABERTURA);
+      expect(avisos()).toEqual([]);
+    });
+  }
+
+  it("sem caixa aberto, transferência de ontem com o Caixa: não avisa", async () => {
+    await abrirFolha(null);
+    await clicar(botao("Transferência"));
+    await escolher("fin-lanc-conta", CONTA_CAIXA_DA_LOJA);
+    await escolher("fin-lanc-conta-destino", CONTA_BANCARIA);
+    await mudarData("fin-lanc-realizacao", ABERTURA);
+    expect(avisos()).toEqual([]);
+  });
+});
+
+describe("o dia do caixa aberto só vale de uma leitura em dia", () => {
+  const lida = (abertoEm: string | null) => ({
+    dados: { sessao: abertoEm === null ? null : { abertoEm } },
+    carregando: false,
+    erro: null as string | null,
+  });
+
+  it("leitura em dia: o dia da abertura; sem sessão ou sem dados: nenhum", () => {
+    expect(diaDoCaixaAbertoLido(lida("2026-11-30T12:00:00Z"))).toBe(ABERTURA);
+    expect(diaDoCaixaAbertoLido(lida(null))).toBeNull();
+    expect(
+      diaDoCaixaAbertoLido({ dados: null, carregando: false, erro: null }),
+    ).toBeNull();
+  });
+
+  it("relendo por baixo de dados antigos (o caixa pode ter fechado em outro aparelho): nenhum", () => {
+    expect(
+      diaDoCaixaAbertoLido({
+        ...lida("2026-11-30T12:00:00Z"),
+        carregando: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("a releitura falhou e ficou o valor de antes: nenhum", () => {
+    expect(
+      diaDoCaixaAbertoLido({
+        ...lida("2026-11-30T12:00:00Z"),
+        erro: "Não foi possível carregar.",
+      }),
+    ).toBeNull();
   });
 });
 
@@ -327,7 +391,7 @@ describe("a tela do Financeiro passa o dia do caixa aberto para a folha", () => 
     movimentos: [],
   });
 
-  async function abrirTela(caixa: unknown) {
+  async function abrirTela(caixa: unknown, erroDoCaixa: unknown = null) {
     vi.useFakeTimers({ toFake: ["Date"] });
     // 01/12/2026, 00:40 em Brasília (UTC−3).
     vi.setSystemTime(new Date("2026-12-01T03:40:00Z"));
@@ -336,7 +400,9 @@ describe("a tela do Financeiro passa o dia do caixa aberto para a folha", () => 
         case "fin_contas_listar":
           return { data: CONTAS_DO_BANCO, error: null };
         case "fin_caixa_atual":
-          return { data: caixa, error: null };
+          return erroDoCaixa
+            ? { data: null, error: erroDoCaixa }
+            : { data: caixa, error: null };
         case "fin_resumo":
           return { data: { saldo_total: 0 }, error: null };
         default:
@@ -369,9 +435,23 @@ describe("a tela do Financeiro passa o dia do caixa aberto para a folha", () => 
     expect(avisos()).toEqual([AVISO_DO_DIA]);
   });
 
-  it("caixa fechado: ontem no Caixa avisa com o texto antigo", async () => {
-    await abrirTela(null);
+  it("caixa aberto hoje às 00:10: ontem no Caixa avisa com o texto antigo", async () => {
+    await abrirTela(sessao("2026-12-01T03:10:00Z"));
     await mudarData("fin-lanc-realizacao", ABERTURA);
     expect(avisos()).toEqual([AVISO_ANTIGO]);
+  });
+
+  it("caixa fechado: ontem e antes no Caixa não avisam (não há caixa aberto)", async () => {
+    await abrirTela(null);
+    await mudarData("fin-lanc-realizacao", ABERTURA);
+    expect(avisos()).toEqual([]);
+    await mudarData("fin-lanc-realizacao", ANTES_DA_ABERTURA);
+    expect(avisos()).toEqual([]);
+  });
+
+  it("a leitura do caixa falhou: não avisa (não se sabe se há caixa aberto)", async () => {
+    await abrirTela(null, { message: "falha de rede", code: "08006" });
+    await mudarData("fin-lanc-realizacao", ABERTURA);
+    expect(avisos()).toEqual([]);
   });
 });

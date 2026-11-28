@@ -3898,6 +3898,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "1dc6cfdb075e3a1a0882398e1220d0f1",
           versao: "20261399930000",
         },
+        // 28/11/2026 (lote 216): o caixa de ontem aberto nao some do saldo (a cadeia 99 -> 3999300 -> 1660).
+        {
+          fn: "fin_conta_salvar",
+          h: "d29894a41940ec4f5bc55ca2b103b69a",
+          versao: "20261660000000",
+        },
         {
           fn: "fin_dre",
           h: "afc3e13805ce37819cfdcd094043087c",
@@ -3924,6 +3930,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "fin_lancamento_baixar",
           h: "7d1204cdf214a290cfdb378482795f1b",
           versao: "20261654000000",
+        },
+        // 28/11/2026 (lote 216): o caixa de ontem aberto nao some do saldo (o cancelamento trava a sessao; a cadeia 99 -> 1660).
+        {
+          fn: "fin_lancamento_cancelar",
+          h: "ee75614cd65e5a7339045320e8a855c3",
+          versao: "20261660000000",
         },
         {
           fn: "fin_lancamento_salvar",
@@ -18058,6 +18070,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
     // 20261659000000: a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking.
     "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
+    // 20261660000000: o caixa de ontem aberto nao some do saldo.
+    "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

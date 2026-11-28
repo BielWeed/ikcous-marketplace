@@ -71,6 +71,9 @@
 --   * `fin_lancamento_salvar`  → 20261246000000 (o lançamento repetido não duplica)
 --                                e, DEPOIS dela, 20261654000000 (o caixa pertence ao dia em que abriu);
 --   * `fin_lancamento_baixar`  → 20261654000000 (o caixa pertence ao dia em que abriu: a baixa do dia da abertura entra na gaveta);
+--   * `fin_conta_salvar`       → 20261399930000 (o caixa e a conta recusam valor que não é número)
+--                                e, DEPOIS dela, 20261660000000 (o caixa de ontem aberto não some do saldo);
+--   * `fin_lancamento_cancelar` → 20261660000000 (o caixa de ontem aberto não some do saldo: trava a sessão antes de conferir);
 --   * `pedido__saldo_a_estornar`, `solicitar_estorno`, `admin_devolucao_concluir` e
 --     `autorizar_post_do_estorno` → 20261241000000 (o reembolso em dúvida prende o saldo). Estes quatro
 --     NÃO são corpos da 99 (são da 98, da 97 e da 96): o `final` de cada um é o da última de 92..202
@@ -181,6 +184,8 @@ WITH corpos AS (
     ('fin_caixa_abrir', '28ab512e291378a01d110e298af7a402', '20261370000000'),
     ('fin_caixa_abrir', '367d298dcc78bc2829fc4e0048005a0c', '20261399930000'),
     ('fin_conta_salvar', '1dc6cfdb075e3a1a0882398e1220d0f1', '20261399930000'),
+    ('fin_conta_salvar', 'd29894a41940ec4f5bc55ca2b103b69a', '20261660000000'),
+    ('fin_lancamento_cancelar', 'ee75614cd65e5a7339045320e8a855c3', '20261660000000'),
     ('painel_inicio', 'f11d22d076c59ab54d1beb280954dd15', '20261212000000'),
     ('get_admin_analytics_v2', '0a5f8c75bbeeda3777a6a7326a0e281c', '20261214000000'),
     ('crm_visao', 'c33073503fccc6caa5f1085265501eae', '20261227000000'),

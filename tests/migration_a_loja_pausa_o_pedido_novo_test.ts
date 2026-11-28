@@ -610,6 +610,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
     // 20261659000000: a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking.
     "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
+    // 20261660000000: o caixa de ontem aberto nao some do saldo.
+    "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

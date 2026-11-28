@@ -1138,6 +1138,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente",
   "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
   "215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente",
+  "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
+  "216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

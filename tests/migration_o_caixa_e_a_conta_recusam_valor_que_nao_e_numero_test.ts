@@ -212,7 +212,12 @@ Deno.test("3999300: db-apply exige as guardas, as funcoes vigentes sao estas e o
   const quem = (fn: string) =>
     fontes.filter((n) => definicao(ler(`supabase/migrations/${n}`), fn));
   assert.equal(quem("fin_caixa_abrir").at(-1), nome);
-  assert.equal(quem("fin_conta_salvar").at(-1), nome);
+  // A 20261660000000 (o caixa de ontem aberto nao some do saldo) sucede o corpo de fin_conta_salvar desta, e e' a unica depois dela.
+  const conta = quem("fin_conta_salvar");
+  assert.deepEqual(conta.slice(conta.indexOf(nome)), [
+    nome,
+    "20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql",
+  ]);
 
   const {
     conferirLista,
