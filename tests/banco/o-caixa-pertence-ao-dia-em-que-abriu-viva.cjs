@@ -829,6 +829,11 @@ async function main() {
   const resumo = [];
   try {
     await c.query("BEGIN");
+    // A 20261660000000 (o caixa de ontem aberto nao some do saldo) sucede o corpo de fin_caixa_movimentar_com_chave desta: esta prova
+    // mede a 20261654000000 (hash, 210a/210b, mutantes, rollback), entao a tira antes, dentro da transacao que termina em ROLLBACK.
+    await require("./o-caixa-de-ontem-aberto-posterior.cjs").desfazerCaixaDeOntemAbertoNaTransacao(
+      c,
+    );
 
     // Base ainda nos corpos anteriores (arvore local sem a migration)? Aplica; no CI ela ja esta no ar.
     const vivo = await hashes(c);

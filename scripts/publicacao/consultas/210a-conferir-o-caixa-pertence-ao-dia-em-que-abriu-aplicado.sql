@@ -51,8 +51,10 @@ WITH alvo(nome, assinatura, argumentos) AS (
   SELECT 'fin_caixa_fechar_sessao: EXECUTE authenticated, sem PUBLIC ou anon', 'sim',
     CASE WHEN COALESCE((SELECT acl FROM fn WHERE nome = 'fin_caixa_fechar_sessao'), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
+  -- A sucessora 20261660000000 (o caixa de ontem aberto nao some do saldo) tambem conta: ela mantem a data do dia da abertura e so
+  -- acrescenta a recusa da conta que so conta o saldo depois desse dia (a 216a confere qual).
   SELECT 'fin_caixa_movimentar_com_chave: corpo exato (md5)', 'f1b22fd85f7a4ae2200d37001c9e1ffb',
-    COALESCE((SELECT h FROM fn WHERE nome = 'fin_caixa_movimentar_com_chave'), 'AUSENTE')
+    COALESCE((SELECT CASE WHEN h = 'b7df8a8d11d64ab2cc2bd1dc31a57ae3' THEN 'f1b22fd85f7a4ae2200d37001c9e1ffb' ELSE h END FROM fn WHERE nome = 'fin_caixa_movimentar_com_chave'), 'AUSENTE')
   UNION ALL
   SELECT 'fin_caixa_movimentar_com_chave: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn WHERE nome = 'fin_caixa_movimentar_com_chave'), false) THEN 'sim' ELSE 'nao' END

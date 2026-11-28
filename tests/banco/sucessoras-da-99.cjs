@@ -212,6 +212,11 @@ const NOMES = [
   // 1658; nao e uma das 42, mas o rollback-manual dela desfaz as duas de uma vez). O rollback da 3992 e o da 5400 recusam com o corpo
   // novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql",
+  // O caixa de ontem aberto nao some do saldo (28/11/2026): UMA migration, TRES funcoes. fin_conta_salvar sucede o corpo da 3999300 (a
+  // CADEIA 99 -> 3999300 -> 1660: o `hashVigente` da 1660 e o `hashDesta` da 3999300) e fin_lancamento_cancelar o da 99 (99 -> 1660);
+  // fin_caixa_movimentar_com_chave (da 252, sucedida pela 1654) nao e das 42, mas entra porque o rollback-manual dela desfaz as tres de
+  // uma vez. O rollback da 3999300, o da 1654 e o da 99 recusam com o corpo novo no ar: ela cai antes (e e' a mais nova da lista).
+  "20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -226,6 +231,7 @@ const PARES_POR_MIGRATION = new Map([
   ["20261643000000_as_listas_dos_ajustes_nao_somem_entre_aparelhos.sql", 2],
   ["20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql", 4],
   ["20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql", 2],
+  ["20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql", 3],
   [
     "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
     2,

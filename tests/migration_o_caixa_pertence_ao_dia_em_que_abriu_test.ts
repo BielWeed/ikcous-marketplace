@@ -280,11 +280,21 @@ Deno.test("1654: db-apply exige o principio, as funcoes vigentes sao estas e o i
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort();
+  // A 20261660000000 (o caixa de ontem aberto nao some do saldo) sucede o corpo de fin_caixa_movimentar_com_chave desta; nenhuma
+  // outra redefine as quatro depois desta.
+  const SUCESSORA_1660 =
+    "20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql";
   for (const { fn } of FUNCOES) {
     const quem = fontes.filter((n) =>
       definicao(ler(`supabase/migrations/${n}`), fn),
     );
-    assert.equal(quem.at(-1), nome, fn);
+    const depois = quem.slice(quem.indexOf(nome) + 1);
+    assert.ok(quem.includes(nome), fn);
+    assert.deepEqual(
+      depois,
+      fn === "fin_caixa_movimentar_com_chave" ? [SUCESSORA_1660] : [],
+      fn,
+    );
   }
 
   const {
