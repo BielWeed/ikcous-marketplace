@@ -244,12 +244,18 @@ function cofreFechado(vault: DataVault): boolean {
 // Um id malformado faria o banco recusar o lote todo. Aceita exatamente o que
 // o Postgres aceita como uuid (hífen opcional depois de cada 4 dígitos, chaves
 // opcionais) e leva à forma com hífens.
-const ID_DO_POSTGRES = /^\{?[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}\}?$/;
+const SO_HEX = /^[0-9a-f]+$/;
 
 function idDeProduto(bruto: string): string | undefined {
-  const minusculo = bruto.toLowerCase();
-  if (!ID_DO_POSTGRES.test(minusculo)) return;
-  const hex = minusculo.replace(/[{}-]/g, "");
+  let texto = bruto.toLowerCase();
+  if (texto.startsWith("{")) texto = texto.slice(1);
+  if (texto.endsWith("}")) texto = texto.slice(0, -1);
+  // Cada trecho entre hífens tem de ter dígitos em múltiplos de 4: assim o
+  // hífen só cai depois de um bloco de 4, nunca duplo, no início ou no fim.
+  const trechos = texto.split("-");
+  if (trechos.some((t) => t.length % 4 !== 0 || !SO_HEX.test(t))) return;
+  const hex = trechos.join("");
+  if (hex.length !== 32) return;
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
