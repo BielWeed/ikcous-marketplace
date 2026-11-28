@@ -31,12 +31,14 @@ const AVISO_ETIQUETA_PAGA =
 const {
   invokeMock,
   pedidoState,
+  leituraDoPedidoMock,
   eventosState,
   tabelasLidas,
   eqChamadas,
   colunasPedidas,
 } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
+  leituraDoPedidoMock: vi.fn(),
   // O histórico de envio (`order_shipping_events`) é uma leitura À PARTE, só
   // quando o pedido já tem vínculo com etiqueta (lote 227).
   eventosState: {
@@ -86,11 +88,7 @@ vi.mock("@/lib/supabase", () => ({
             eq: (_coluna: string, valor: string) => {
               eqChamadas.push(valor);
               return {
-                maybeSingle: () =>
-                  Promise.resolve({
-                    data: pedidoState.data,
-                    error: pedidoState.error,
-                  }),
+                maybeSingle: leituraDoPedidoMock,
               };
             },
           };
@@ -159,6 +157,11 @@ describe("EtiquetaDoPedidoCard", () => {
     colunasPedidas.length = 0;
     pedidoState.data = pedido();
     pedidoState.error = null;
+    leituraDoPedidoMock
+      .mockReset()
+      .mockImplementation(() =>
+        Promise.resolve({ data: pedidoState.data, error: pedidoState.error }),
+      );
     eventosState.data = [];
     eventosState.error = null;
     eventosState.lanca = false;
@@ -900,6 +903,101 @@ describe("EtiquetaDoPedidoCard", () => {
       tracking_code,
     );
     expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it("não avisa nem repassa o rastreio do pedido anterior ao trocar de ficha durante a releitura", async () => {
+    const etiqueta = {
+      shipping_label_id: "lbl-ja-existe",
+      shipping_label_url: "https://imprimir.teste/etiqueta",
+    };
+    pedidoState.data = pedido({ ...etiqueta, tracking_code: "ME-ANTIGO" });
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(ORDER_A, { onTrackingAtualizado });
+
+    const pedidoRelido = pedido({ ...etiqueta, tracking_code: "ME-NOVO" });
+    let concluirReleitura: () => void = () => {};
+    const releitura = new Promise((resolve) => {
+      concluirReleitura = () => resolve({ data: pedidoRelido, error: null });
+    });
+    leituraDoPedidoMock.mockClear().mockReturnValueOnce(releitura);
+    invokeMock.mockResolvedValue({ data: { rastreio_preservado: true } });
+
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+    });
+    expect(leituraDoPedidoMock).toHaveBeenCalledTimes(1);
+
+    pedidoState.data = pedido({
+      id: ORDER_B,
+      shipping_option_id: "store-pickup",
+    });
+    await abrirCard(ORDER_B, { onTrackingAtualizado });
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+
+    await act(async () => {
+      concluirReleitura();
+    });
+
+    expect(toast.info).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(onTrackingAtualizado).not.toHaveBeenCalled();
+  });
+
+  it("avisa quando não consegue recarregar o pedido em vez de dizer que o código está atualizado", async () => {
+    pedidoState.data = pedido({
+      shipping_label_id: "lbl-ja-existe",
+      shipping_label_url: "https://imprimir.teste/etiqueta",
+      tracking_code: "ME-ANTIGO",
+    });
+    await abrirCard();
+
+    pedidoState.data = null;
+    invokeMock.mockResolvedValue({ data: { rastreio_preservado: true } });
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+    });
+
+    expect(toast.info).toHaveBeenCalledWith(
+      "Não foi possível recarregar o pedido agora. Tente novamente.",
+    );
+    expect(toast.info).not.toHaveBeenCalledWith(
+      "O código de rastreio já está atualizado.",
+    );
+  });
+
+  it("não repete o aviso de edição em outro aparelho quando o cartão já mostra o código salvo", async () => {
+    const etiqueta = {
+      shipping_label_id: "lbl-ja-existe",
+      shipping_label_url: "https://imprimir.teste/etiqueta",
+    };
+    pedidoState.data = pedido({ ...etiqueta, tracking_code: "ME-ANTIGO" });
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(ORDER_A, { onTrackingAtualizado });
+    expect(hospedeiro.textContent).toContain("ME-ANTIGO");
+
+    pedidoState.data = pedido({ ...etiqueta, tracking_code: "ME-NOVO" });
+    invokeMock.mockResolvedValue({ data: { rastreio_preservado: true } });
+
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+    });
+    expect(hospedeiro.textContent).toContain("ME-NOVO");
+    const avisoDeEdicao = expect.stringContaining(
+      "O rastreio foi alterado em outro aparelho.",
+    );
+    expect(toast.info).toHaveBeenCalledWith(avisoDeEdicao);
+    vi.mocked(toast.info).mockClear();
+    onTrackingAtualizado.mockClear();
+
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+    });
+    expect(onTrackingAtualizado).toHaveBeenCalledExactlyOnceWith(
+      ORDER_A,
+      "ME-NOVO",
+    );
+    expect(toast.info).not.toHaveBeenCalledWith(avisoDeEdicao);
   });
 
   it("só o id reservado mantém o rótulo anterior sem nova compra nem aviso de etiqueta paga", async () => {
