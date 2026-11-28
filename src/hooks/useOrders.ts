@@ -59,7 +59,7 @@ import {
   paradasPelaRede,
 } from "@/lib/religar-fila-offline";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
-import { supabase } from "@/lib/supabase";
+import { CHAVE_PUBLICA_DO_SUPABASE, supabase } from "@/lib/supabase";
 import {
   normalizarTextoDeBuscaDoPainel,
   prepararTextoDeBuscaDoPainel,
@@ -5585,7 +5585,10 @@ export function useOrders(
   );
 
   const createOrder = useCallback(
-    async (orderData: any, opts?: { comPagamentoOnline?: boolean }) => {
+    async (
+      orderData: any,
+      opts?: { comPagamentoOnline?: boolean; semSessao?: boolean },
+    ) => {
       // 🛡️ Checkout de Convidados: O login não é mais obrigatório no frontend.
       // O RPC v22 cuidará da atribuição do user_id (NULL para convidados).
 
@@ -5612,7 +5615,7 @@ export function useOrders(
         // em dobro — rede cai DEPOIS do commit e a retentativa REPETE a chave;
         // o servidor (20261038000000) devolve o pedido que já nasceu. Quem
         // chama sem chave continua funcionando (DEFAULT NULL no banco).
-        const { data, error } = await (supabase as any).rpc(rpc, {
+        const chamada = (supabase as any).rpc(rpc, {
           p_items: orderData.items.map((item: any) => ({
             product_id: item.product_id || item.productId,
             variant_id: item.variant_id || item.variantId || null,
@@ -5653,6 +5656,18 @@ export function useOrders(
           // DEPOIS que 20261172 estiver aplicada em TODAS as lojas — ver o
           // relatório da tarefa que introduziu este comentário.
         });
+        // PEDIDO DA VISITANTE SEMPRE SEM SESSÃO (caça 28/11/2026): o supabase-js
+        // põe no `Authorization` o token da sessão do aparelho NO INSTANTE do
+        // envio — outra aba que entrou numa conta logo depois de o checkout
+        // conferir a sessão faria o pedido sair na conta dela. Fixar a chave
+        // pública é o que o cliente já manda sem sessão: o banco vê o mesmo
+        // visitante de sempre (`auth.uid()` nulo) e nada no contrato muda.
+        const { data, error } = await (opts?.semSessao
+          ? chamada.setHeader(
+              "Authorization",
+              `Bearer ${CHAVE_PUBLICA_DO_SUPABASE}`,
+            )
+          : chamada);
 
         if (error) throw error;
         if (!data) throw new Error("Falha ao obter ID do pedido");
