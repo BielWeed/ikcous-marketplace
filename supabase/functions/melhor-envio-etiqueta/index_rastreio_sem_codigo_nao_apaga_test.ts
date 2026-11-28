@@ -198,7 +198,7 @@ Deno.test('handler - consulta com código novo atualiza o rastreio do pedido cor
         assertEquals(corpo.rastreio_atualizado, true)
         assertEquals(supa.atualizacoes, [{
             valores: { tracking_code: 'CODIGO-NOVO' },
-            filtros: [['id', PEDIDO_ID]],
+            filtros: [['id', PEDIDO_ID], ['shipping_label_id', LABEL_ID], ['tracking_code', 'CODIGO-SALVO']],
         }])
         assertEquals(supa.pedidoAtual.tracking_code, 'CODIGO-NOVO')
     })
