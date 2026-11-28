@@ -627,6 +627,14 @@ async function main() {
   await C.connect();
   const falhas = [];
   try {
+    // A 20261650000000 (a categoria so com produto excluido pode sair) sucede o corpo de apagar_categoria_vazia da
+    // 20261237000000: o HASH desta prova mede o clone com o corpo DELA. Clone proprio (rodar-isolado.cjs): desfazer e
+    // gravar aqui nao toca nenhuma outra prova.
+    await C.query("BEGIN");
+    await require("./a-categoria-so-com-excluidos-posterior.cjs").desfazerCategoriaSoComExcluidosNaTransacao(
+      C,
+    );
+    await C.query("COMMIT");
     await C.query(`CREATE ROLE ${PAPEL_RO} NOLOGIN NOSUPERUSER BYPASSRLS`);
     await C.query(`GRANT pg_read_all_data TO ${PAPEL_RO}`);
     for (const { nome, corpo } of PROVAS) {

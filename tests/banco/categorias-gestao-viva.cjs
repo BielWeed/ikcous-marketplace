@@ -1693,6 +1693,14 @@ async function main() {
   await C.connect();
   const falhas = [];
   try {
+    // A 20261650000000 (a categoria so com produto excluido pode sair) sucede o corpo de apagar_categoria_vazia DESTA:
+    // esta prova mede o corpo e o comportamento da 20261237000000 (o excluido ainda segura). O banco e' o clone proprio
+    // do rodar-isolado.cjs: desfazer e gravar aqui nao toca nenhuma outra prova.
+    await C.query("BEGIN");
+    await require("./a-categoria-so-com-excluidos-posterior.cjs").desfazerCategoriaSoComExcluidosNaTransacao(
+      C,
+    );
+    await C.query("COMMIT");
     for (const { nome, corpo } of PROVAS) {
       try {
         await corpo();
