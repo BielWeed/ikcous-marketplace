@@ -834,6 +834,12 @@ async function main() {
     await require("./o-caixa-de-ontem-aberto-posterior.cjs").desfazerCaixaDeOntemAbertoNaTransacao(
       c,
     );
+    // A 20261663000000 (a despesa nao entra no caixa fechado) sucede os corpos de fin_lancamento_salvar e fin_lancamento_baixar desta:
+    // esta prova mede a 20261654000000 (hash, 210a/210b, mutantes, rollback), entao a tira antes, dentro da transacao que termina em
+    // ROLLBACK.
+    await require("./a-despesa-nao-entra-no-caixa-fechado-posterior.cjs").desfazerDespesaNoCaixaFechadoNaTransacao(
+      c,
+    );
 
     // Base ainda nos corpos anteriores (arvore local sem a migration)? Aplica; no CI ela ja esta no ar.
     const vivo = await hashes(c);

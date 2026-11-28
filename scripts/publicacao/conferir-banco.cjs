@@ -3833,6 +3833,19 @@ const ROL_DA_213 = [
   "admin_devolucao_concluir: corpo esperado (md5)",
   "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
 ];
+// Lote 219 (20261663000000, a despesa nao entra no caixa fechado: fin_lancamento_salvar e fin_lancamento_baixar trocam so o corpo,
+// a leitura da sessao aberta passa a travar a linha). A 219a e a 219b tem o MESMO rol de 7 linhas (controle e, para cada funcao, o
+// md5, os atributos e a ACL); a 219a espera os corpos desta e a 219b os vigentes de antes (20261654000000). So catalogo: nenhuma le
+// lancamento ou sessao de caixa, e nenhuma chama funcao da loja.
+const ROL_DA_219 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_lancamento_salvar: corpo exato (md5)",
+  "fin_lancamento_salvar: assinatura e atributos conhecidos",
+  "fin_lancamento_salvar: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_lancamento_baixar: corpo exato (md5)",
+  "fin_lancamento_baixar: assinatura e atributos conhecidos",
+  "fin_lancamento_baixar: EXECUTE authenticated, sem PUBLIC ou anon",
+];
 // Lote 216 (20261660000000, o caixa de ontem aberto nao some do saldo: fin_conta_salvar, fin_caixa_movimentar_com_chave e
 // fin_lancamento_cancelar trocam so o corpo). A 216a e a 216b tem o MESMO rol de 10 linhas (controle e, para cada funcao, o md5, os
 // atributos e a ACL); a 216a espera os corpos desta e a 216b os vigentes de antes (20261399930000, 20261654000000 e 20261199000000).
@@ -3872,14 +3885,16 @@ const ROL_DA_221 = [
   "get_orders_by_otp_v2: EXECUTE esperado",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
-  "221a-conferir-o-codigo-do-pedido-vale-nos-dois-celulares-aplicado":
-    ROL_DA_221,
-  "221b-antes-o-codigo-do-pedido-vale-nos-dois-celulares-base-vigente":
-    ROL_DA_221,
   "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado":
     ROL_DA_216,
   "216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente":
     ROL_DA_216,
+  "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado": ROL_DA_219,
+  "219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente": ROL_DA_219,
+  "221a-conferir-o-codigo-do-pedido-vale-nos-dois-celulares-aplicado":
+    ROL_DA_221,
+  "221b-antes-o-codigo-do-pedido-vale-nos-dois-celulares-base-vigente":
+    ROL_DA_221,
   "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado":
     ROL_DA_215,
   "215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente":

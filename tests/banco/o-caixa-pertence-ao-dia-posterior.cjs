@@ -53,6 +53,11 @@ async function desfazerCaixaDoDiaDaAberturaNaTransacao(cliente) {
   await require("./o-caixa-de-ontem-aberto-posterior.cjs").desfazerCaixaDeOntemAbertoNaTransacao(
     cliente,
   );
+  // A 20261663000000 (a despesa nao entra no caixa fechado) sucede os corpos de fin_lancamento_salvar e fin_lancamento_baixar desta:
+  // sai ANTES (o pre-voo do rollback desta recusa o corpo dela). So se no ar; repetir e' no-op.
+  await require("./a-despesa-nao-entra-no-caixa-fechado-posterior.cjs").desfazerDespesaNoCaixaFechadoNaTransacao(
+    cliente,
+  );
   let noAr = false;
   for (const [assinatura, [, desta]] of Object.entries(CORPOS)) {
     if ((await cliente.query(hashVivo(assinatura))).rows[0]?.h === desta)

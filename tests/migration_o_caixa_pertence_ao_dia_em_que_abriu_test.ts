@@ -280,21 +280,26 @@ Deno.test("1654: db-apply exige o principio, as funcoes vigentes sao estas e o i
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort();
-  // A 20261660000000 (o caixa de ontem aberto nao some do saldo) sucede o corpo de fin_caixa_movimentar_com_chave desta; nenhuma
-  // outra redefine as quatro depois desta.
+  // A 20261660000000 (o caixa de ontem aberto nao some do saldo) sucede o corpo de fin_caixa_movimentar_com_chave desta, e a
+  // 20261663000000 (a despesa nao entra no caixa fechado) os de fin_lancamento_salvar e fin_lancamento_baixar; nenhuma outra
+  // redefine as quatro depois desta.
   const SUCESSORA_1660 =
     "20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql";
+  const SUCESSORA_1663 =
+    "20261663000000_a_despesa_nao_entra_no_caixa_fechado.sql";
+  const SUCESSORAS: Record<string, string[]> = {
+    fin_caixa_movimentar_com_chave: [SUCESSORA_1660],
+    fin_lancamento_salvar: [SUCESSORA_1663],
+    fin_lancamento_baixar: [SUCESSORA_1663],
+  };
   for (const { fn } of FUNCOES) {
     const quem = fontes.filter((n) =>
       definicao(ler(`supabase/migrations/${n}`), fn),
     );
     const depois = quem.slice(quem.indexOf(nome) + 1);
     assert.ok(quem.includes(nome), fn);
-    assert.deepEqual(
-      depois,
-      fn === "fin_caixa_movimentar_com_chave" ? [SUCESSORA_1660] : [],
-      fn,
-    );
+    // eslint-disable-next-line security/detect-object-injection -- fn vem da lista fechada FUNCOES.
+    assert.deepEqual(depois, SUCESSORAS[fn] ?? [], fn);
   }
 
   const {

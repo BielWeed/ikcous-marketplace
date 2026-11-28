@@ -146,6 +146,11 @@ const SUCESSORAS = [
     consulta:
       "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
   },
+  // 20261663000000: a despesa nao entra no caixa fechado (fin_lancamento_salvar e fin_lancamento_baixar).
+  {
+    versao: "20261663000000",
+    consulta: "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
+  },
   {
     versao: "20261665000000",
     consulta:
