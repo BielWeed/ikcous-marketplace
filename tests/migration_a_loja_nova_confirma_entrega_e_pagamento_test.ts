@@ -241,11 +241,9 @@ Deno.test("1652: pre-voo antes, colunas, corpo, conferencia; a loja que ja exist
 
 Deno.test("1652: entra na cadeia das sucessoras da 99, e as provas da 1643 a tiram antes", () => {
   const sucessoras = ler("tests/banco/sucessoras-da-99.cjs");
-  const iMinha = sucessoras.indexOf(`  "${nome}",\n];`);
-  assert.ok(
-    iMinha > sucessoras.indexOf(`  "${nome1643}",`),
-    "depois da 1643, a ultima",
-  );
+  // Depois da 1643 (a lista cresce no fim: a 20261654000000 entrou depois desta).
+  const iMinha = sucessoras.indexOf(`  "${nome}",\n`);
+  assert.ok(iMinha > sucessoras.indexOf(`  "${nome1643}",`), "depois da 1643");
   const posterior = ler("tests/banco/a-loja-nova-confirma-posterior.cjs");
   assert.ok(posterior.includes(`"${H_NOVO}"`));
   assert.ok(posterior.includes(nome));

@@ -3525,10 +3525,22 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "a27c9649621b3ac1502f458576120259",
           versao: "20261405900000",
         },
+        // 28/11/2026 (lote 210): o caixa pertence ao dia em que abriu (a cadeia 99 -> 1654).
+        {
+          fn: "fin_lancamento_baixar",
+          h: "7d1204cdf214a290cfdb378482795f1b",
+          versao: "20261654000000",
+        },
         {
           fn: "fin_lancamento_salvar",
           h: "1356dbfc037a9202ef163ba598854891",
           versao: "20261246000000",
+        },
+        // 28/11/2026 (lote 210): o caixa pertence ao dia em que abriu (a cadeia 99 -> 246 -> 1654).
+        {
+          fn: "fin_lancamento_salvar",
+          h: "3e31817ce1d13bb091ce2d0871cbd718",
+          versao: "20261654000000",
         },
         // 04/11/2026 (lote 119): o estorno em andamento nao e conta vencida (so o `vencido` de a_pagar muda; 99 -> 3993).
         {
@@ -17605,6 +17617,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "208a-conferir-a-loja-nova-confirma-entrega-e-pagamento-aplicado",
     // 20261653000000: a peca da variacao desligada espera a lojista.
     "209a-conferir-a-peca-da-variacao-desligada-espera-a-lojista-aplicado",
+    // 20261654000000: o caixa pertence ao dia em que abriu.
+    "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

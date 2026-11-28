@@ -4528,7 +4528,16 @@ export function useOrders(
       notes?: string,
       silent = false,
       statusEsperado?: OrderStatus,
+      /** `avancoConfirmadoPorQuemChamou`: o SUCESSO de um avanço (não do
+       *  cancelamento) fica sem o "Status atualizado com sucesso" daqui — quem
+       *  chamou sabe se a cliente vai ser avisada e dá a confirmação certa
+       *  (AdminOrdersView.handleStatusChange). Erro e fila offline seguem
+       *  avisados aqui. */
+      opcoes: { avancoConfirmadoPorQuemChamou?: boolean } = {},
     ) => {
+      const confirmaOSucesso =
+        !silent &&
+        !(status !== "cancelled" && opcoes.avancoConfirmadoPorQuemChamou);
       const originalOrder = orders.find((pedido) => pedido.id === orderId);
       // O retrato do pedido NO INSTANTE em que a atualização otimista o muda
       // (um para a lista na tela, outro para o cache do módulo, que pode estar
@@ -4866,7 +4875,9 @@ export function useOrders(
             avancosSemRespostaRef.current.delete(orderId);
             if (eraOAvancoSemResposta) {
               clearAnalyticsCache();
-              if (!silent) toast.success("Status atualizado com sucesso");
+              if (confirmaOSucesso) {
+                toast.success("Status atualizado com sucesso");
+              }
               // A hora da releitura é a da gravação perdida (o banco está na
               // etapa pedida): o carimbo do aviso, não o relógio local.
               return { gravadoNoBancoEm: horaGravadaNoBanco(linhaAtual) };
@@ -5078,7 +5089,7 @@ export function useOrders(
 
         avancosSemRespostaRef.current.delete(orderId);
         clearAnalyticsCache();
-        if (!silent) {
+        if (confirmaOSucesso) {
           toast.success(
             status === "cancelled"
               ? "Pedido cancelado."
