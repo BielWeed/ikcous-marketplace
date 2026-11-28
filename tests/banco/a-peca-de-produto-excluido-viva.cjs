@@ -1242,6 +1242,9 @@ async function main() {
       "use rodar-isolado.cjs: nunca mutar o banco base",
     );
     await D.connect();
+    await require("./o-reembolso-por-fora-posterior.cjs").desfazerReembolsoPorForaNoClone(
+      C,
+    );
     // Os md5 pinados no modulo posterior sao os dos corpos que os arquivos carregam.
     assert.equal(md5(corpoDe(DEVOLVER, "$devolver$")), HASH_DEVOLVER_DESTA);
     assert.equal(md5(corpoDe(CONCLUIR, "$$")), HASH_CONCLUIR_DESTA);

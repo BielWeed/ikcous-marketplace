@@ -228,6 +228,8 @@ const NOMES = [
   // 1663). So a leitura da sessao aberta passa a travar a linha (FOR SHARE). O rollback da 1654 recusa com o corpo novo no ar: ela cai
   // antes (e e' a mais nova da lista).
   "20261663000000_a_despesa_nao_entra_no_caixa_fechado.sql",
+  // A 1664 sucede o ranking da 1659. Reverte as cinco funções juntas antes da 1659.
+  "20261664000000_o_reembolso_por_fora_nao_conta_duas_vezes.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -244,6 +246,7 @@ const PARES_POR_MIGRATION = new Map([
   ["20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql", 2],
   ["20261660000000_o_caixa_de_ontem_aberto_nao_some_do_saldo.sql", 3],
   ["20261663000000_a_despesa_nao_entra_no_caixa_fechado.sql", 2],
+  ["20261664000000_o_reembolso_por_fora_nao_conta_duas_vezes.sql", 5],
   [
     "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
     4,

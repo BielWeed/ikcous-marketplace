@@ -1956,6 +1956,10 @@ async function desfazerPosterioresNaTransacao(c) {
   await require("./o-caixa-pertence-ao-dia-posterior.cjs").desfazerCaixaDoDiaDaAberturaNaTransacao(
     c,
   );
+  // A 1664 sucede a 241 (saldo e painel) e a 1659 (ranking).
+  await require("./o-reembolso-por-fora-posterior.cjs").desfazerReembolsoPorForaNaTransacao(
+    c,
+  );
   for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,

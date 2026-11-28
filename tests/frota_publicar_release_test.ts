@@ -4145,6 +4145,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
     "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
     "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
+    "220a-conferir-o-reembolso-por-fora-nao-conta-duas-vezes-aplicado",
     // 156a (20261404000000) fica de fora de proposito: a 404 esta em migrationsForaDaRelease
     // e nao tem lote no canais; a consulta segue no menu para quando ela for aplicada a parte.
   ]);

@@ -55,6 +55,9 @@ const PRODUTO_EXCLUIDO = Object.freeze({
 
 /** Desfaz a 20261659000000 na conexao aberta, se no ar; repetir e' no-op. Devolve true se desfez. */
 async function desfazerProdutoExcluidoNaTransacao(cliente) {
+  await require("./o-reembolso-por-fora-posterior.cjs").desfazerReembolsoPorForaNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(PRODUTO_EXCLUIDO.noAr);
   if (r.rows[0]?.sim !== true) return false;
   await cliente.query(

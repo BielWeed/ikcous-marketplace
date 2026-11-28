@@ -62,8 +62,10 @@ WITH fn AS (
          COALESCE((SELECT h FROM fn WHERE nome = 'resolver_peca_sem_tamanho' LIMIT 1) = '115378a67cd4f89b73129aeec4c46a7f', false)
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo esperado (md5)', '1624212a7096b6f49a80370b30191a15',
-         COALESCE((SELECT h FROM fn WHERE nome = 'get_admin_analytics_v2' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'get_admin_analytics_v2' LIMIT 1) = '1624212a7096b6f49a80370b30191a15', false)
+         COALESCE((SELECT CASE WHEN h = '3853f60efad86f22deb368ed791d76cb' THEN '1624212a7096b6f49a80370b30191a15' ELSE h END
+                     FROM fn WHERE nome = 'get_admin_analytics_v2' LIMIT 1), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'get_admin_analytics_v2' LIMIT 1)
+                   IN ('1624212a7096b6f49a80370b30191a15', '3853f60efad86f22deb368ed791d76cb'), false)
   UNION ALL
   SELECT 'as quatro funcoes: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, assinatura e EXECUTE de sempre',
          'sim',

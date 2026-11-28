@@ -223,7 +223,12 @@ Deno.test("1391200: o pre-voo vem antes da troca e a conferencia depois; o pre-v
   assert.ok(rollback.slice(iConfR).includes(`'${H_VIGENTE}'`));
 });
 
-Deno.test("1391200: so a 20261177 e este par definem fin__movimentos", () => {
+// A 20261664000000 (o reembolso por fora nao conta duas vezes) sucede este corpo (o par dela entra aqui de proposito; a prova
+// dela confere que ela parte deste corpo e que a 100a aceita a sucessora).
+const SUCESSORA =
+  "20261664000000_o_reembolso_por_fora_nao_conta_duas_vezes.sql";
+
+Deno.test("1391200: so a 20261177, este par e o par da sucessora 20261664 definem fin__movimentos", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -234,7 +239,13 @@ Deno.test("1391200: so a 20261177 e este par definem fin__movimentos", () => {
   );
   assert.deepEqual(
     definem.sort(),
-    [VIGENTE, NOME, `rollback-manual-${NOME}`].sort(),
+    [
+      VIGENTE,
+      NOME,
+      `rollback-manual-${NOME}`,
+      SUCESSORA,
+      `rollback-manual-${SUCESSORA}`,
+    ].sort(),
   );
 });
 

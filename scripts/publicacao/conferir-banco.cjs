@@ -288,7 +288,7 @@ function listarConsultas(dir = CONSULTAS_DIR) {
 /**
  * Divide um texto SQL nos seus statements de NÍVEL SUPERIOR — um `;` dentro
  * de comentário de linha (`--`, terminado por `\n` OU `\r`), comentário de
- * bloco (`/* *​/`, aninhável), string simples (`'...'`, escapada por
+ * bloco (`/* *�/`, aninhável), string simples (`'...'`, escapada por
  * duplicação, ou `E'...'`/`e'...'` com escape de barra), identificador
  * entre aspas (`"..."`) ou string delimitada (`$tag$...$tag$`, tag Unicode
  * — `$é$` é uma tag válida — e nunca disparada no MEIO de um identificador,
@@ -3846,6 +3846,30 @@ const ROL_DA_219 = [
   "fin_lancamento_baixar: assinatura e atributos conhecidos",
   "fin_lancamento_baixar: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
+// 1664: mesma ficha fechada antes e depois, só catálogo. As funções novas devem estar ausentes antes.
+const ROL_DA_220 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin__movimentos: corpo exato (md5)",
+  "fin__movimentos: assinatura, atributos e EXECUTE",
+  "pedido__saldo_a_estornar: corpo exato (md5)",
+  "pedido__saldo_a_estornar: assinatura, atributos e EXECUTE",
+  "admin_devolucao_reembolso_por_fora_apos_espera: corpo exato (md5)",
+  "admin_devolucao_reembolso_por_fora_apos_espera: assinatura, atributos e EXECUTE",
+  "pedido_reembolsos_e_saldo: corpo exato (md5)",
+  "pedido_reembolsos_e_saldo: assinatura, atributos e EXECUTE",
+  "get_admin_analytics_v2: corpo exato (md5)",
+  "get_admin_analytics_v2: assinatura, atributos e EXECUTE",
+  "order_refund__valor_coberto_por_fora: corpo exato (md5)",
+  "order_refund__valor_coberto_por_fora: assinatura, atributos e EXECUTE",
+  "order_refund__suspeitas_do_pedido: corpo exato (md5)",
+  "order_refund__suspeitas_do_pedido: assinatura, atributos e EXECUTE",
+  "admin_devolucao_confirmar_mesmo_dinheiro: corpo exato (md5)",
+  "admin_devolucao_confirmar_mesmo_dinheiro: assinatura, atributos e EXECUTE",
+  "admin_devolucao_confirmar_dois_reembolsos: corpo exato (md5)",
+  "admin_devolucao_confirmar_dois_reembolsos: assinatura, atributos e EXECUTE",
+  "1664: colunas, chaves e indices da conferencia",
+  "order_refund_prova: RLS e acesso fechado",
+];
 // Lote 216 (20261660000000, o caixa de ontem aberto nao some do saldo: fin_conta_salvar, fin_caixa_movimentar_com_chave e
 // fin_lancamento_cancelar trocam so o corpo). A 216a e a 216b tem o MESMO rol de 10 linhas (controle e, para cada funcao, o md5, os
 // atributos e a ACL); a 216a espera os corpos desta e a 216b os vigentes de antes (20261399930000, 20261654000000 e 20261199000000).
@@ -3877,6 +3901,10 @@ const ROL_DA_214 = [
 const ROL_FECHADO_POR_CONSULTA = {
   "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado": ROL_DA_219,
   "219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente": ROL_DA_219,
+  "220a-conferir-o-reembolso-por-fora-nao-conta-duas-vezes-aplicado":
+    ROL_DA_220,
+  "220b-antes-o-reembolso-por-fora-nao-conta-duas-vezes-base-vigente":
+    ROL_DA_220,
   "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado":
     ROL_DA_216,
   "216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente":

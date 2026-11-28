@@ -206,6 +206,21 @@ export interface LinhaDoSaldo {
   eh_pix: boolean;
 }
 
+interface DevolucaoParaConferir {
+  id: string;
+  protocolo: string;
+  valor: number;
+  registrado_em: string;
+}
+
+export interface PossivelReembolsoEmDobro {
+  refund_id: string;
+  caminho: "A" | "B";
+  valor_mp: number;
+  por_fora_em: string | null;
+  candidatos: DevolucaoParaConferir[];
+}
+
 /** O retorno inteiro de `pedido_reembolsos_e_saldo` (valores em reais). */
 export interface ReembolsosESaldo {
   total: number;
@@ -217,6 +232,7 @@ export interface ReembolsosESaldo {
   /** Linha resolvida por fora ainda viva no MP: valor preso até ele responder. */
   reservado_por_fora: number;
   linhas: LinhaDoSaldo[];
+  possivel_dobro: PossivelReembolsoEmDobro[];
 }
 
 const ehObjeto = (v: unknown): v is Record<string, unknown> =>
@@ -250,6 +266,51 @@ function lerLinha(v: unknown): LinhaDoSaldo | null {
     : null;
 }
 
+function ehData(v: unknown): v is string {
+  return typeof v === "string" && Number.isFinite(Date.parse(v));
+}
+
+function lerCandidato(v: unknown): DevolucaoParaConferir | null {
+  if (!ehObjeto(v)) return null;
+  const valor = reais(v.valor);
+  if (
+    typeof v.id !== "string" ||
+    typeof v.protocolo !== "string" ||
+    valor === null ||
+    valor <= 0 ||
+    !ehData(v.registrado_em)
+  )
+    return null;
+  return {
+    id: v.id,
+    protocolo: v.protocolo,
+    valor,
+    registrado_em: v.registrado_em,
+  };
+}
+
+function lerPossivelDobro(v: unknown): PossivelReembolsoEmDobro | null {
+  if (!ehObjeto(v) || !Array.isArray(v.candidatos)) return null;
+  const valor = reais(v.valor_mp);
+  const candidatos = v.candidatos.map(lerCandidato);
+  if (
+    typeof v.refund_id !== "string" ||
+    (v.caminho !== "A" && v.caminho !== "B") ||
+    valor === null ||
+    valor <= 0 ||
+    (v.por_fora_em !== null && !ehData(v.por_fora_em)) ||
+    candidatos.includes(null)
+  )
+    return null;
+  return {
+    refund_id: v.refund_id,
+    caminho: v.caminho,
+    valor_mp: valor,
+    por_fora_em: v.por_fora_em,
+    candidatos: candidatos as DevolucaoParaConferir[],
+  };
+}
+
 /**
  * Lê o jsonb de `pedido_reembolsos_e_saldo`. Forma inesperada (campo faltando,
  * tipo errado, uma linha só que seja) devolve `null` — a tela trata como erro
@@ -270,7 +331,16 @@ export function lerReembolsosESaldo(v: unknown): ReembolsosESaldo | null {
     v.reservado_por_fora,
   ].map(reais);
   const linhas = v.linhas.map(lerLinha);
-  if (numeros.includes(null) || linhas.includes(null)) return null;
+  // Campo opcional só para a transição de versão (banco anterior à 1664).
+  const avisos = v.possivel_dobro === undefined ? [] : v.possivel_dobro;
+  if (!Array.isArray(avisos)) return null;
+  const possivelDobro = avisos.map(lerPossivelDobro);
+  if (
+    numeros.includes(null) ||
+    linhas.includes(null) ||
+    possivelDobro.includes(null)
+  )
+    return null;
   const [
     total,
     valor_estornado,
@@ -289,6 +359,7 @@ export function lerReembolsosESaldo(v: unknown): ReembolsosESaldo | null {
     disponivel: Math.max(0, disponivel),
     reservado_por_fora: Math.max(0, reservado_por_fora),
     linhas: linhas as LinhaDoSaldo[],
+    possivel_dobro: possivelDobro as PossivelReembolsoEmDobro[],
   };
 }
 

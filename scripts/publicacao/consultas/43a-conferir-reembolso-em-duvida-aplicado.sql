@@ -59,6 +59,9 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
          CASE WHEN t.chave = 'concluir' AND md5(replace(p.prosrc, chr(13), '')) IN ('ea651d52157521c0fe7ffccc948b4b1a', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e', 'b55bf2488a1d5165afddaa4d103d3e18', '9ec7a021b965b7abdc77bc4b2b900c35')
            THEN t.hash_desta
            WHEN t.chave = 'avisa' AND md5(replace(p.prosrc, chr(13), '')) = '68792e520aa47e6e62330718430d82a8'
+           THEN t.hash_desta
+           WHEN (t.chave, md5(replace(p.prosrc, chr(13), ''))) IN (
+             ('saldo', '7f0c83c80b5f26df9cbc19e92384453d'), ('esperadev', '32c2bc1d99162e0450a11431fa8ae411'), ('painel', '801b199196120f82c4b57ab7abbc9c11'))
            THEN t.hash_desta ELSE md5(replace(p.prosrc, chr(13), '')) END AS m,
          (p.prosecdef AND l.lanname = t.lingua AND p.provolatile = t.volatilidade AND NOT p.proretset
             AND p.proconfig = ARRAY['search_path=public']::text[]) AS atributos_ok,
@@ -187,7 +190,9 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
   UNION ALL
   SELECT 'order_refund_prova: as tres colunas do desenho (refund_id, substituida_por_manual_em, por_fora_liberado_em)',
          'por_fora_liberado_em:timestamp with time zone,refund_id:uuid,substituida_por_manual_em:timestamp with time zone',
-         COALESCE((SELECT t.colunas FROM tab t), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN t.colunas = 'devolucao_id:uuid,por_fora_liberado_em:timestamp with time zone,refund_id:uuid,substituida_por_manual_em:timestamp with time zone'
+           THEN 'por_fora_liberado_em:timestamp with time zone,refund_id:uuid,substituida_por_manual_em:timestamp with time zone'
+           ELSE t.colunas END FROM tab t), 'AUSENTE')
   UNION ALL
   SELECT 'pedido__saldo_a_estornar: desconta o em duvida pela regra unica e respeita a substituida por manual',
          'sim',

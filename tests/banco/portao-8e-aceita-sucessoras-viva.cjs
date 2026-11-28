@@ -156,6 +156,8 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // tests/banco/a-despesa-nao-entra-no-caixa-fechado-viva.cjs, e a 8e ja traz os dois pares; `noEstado` a desfaz antes
     // (o-caixa-pertence-ao-dia-posterior.cjs chama a-despesa-nao-entra-no-caixa-fechado-posterior.cjs primeiro).
     s.nome !== "20261663000000_a_despesa_nao_entra_no_caixa_fechado.sql" &&
+    // A prova própria da 1664 mede os corpos do ranking e do saldo que a 8e aceita.
+    s.nome !== "20261664000000_o_reembolso_por_fora_nao_conta_duas_vezes.sql" &&
     // A 20261350000000 (a compra online trava o preco e espera a mesma chave) so redefine v23 e v24, em cima da 44; nenhuma
     // das duas e' funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 44 (a-compra-online-trava-posterior.cjs,
     // chamado por desfazerEntregaNaCidadeNaTransacao); aqui sai do rol pela mesma razao da 44 e da 1310.
@@ -461,6 +463,9 @@ let C; // a conexão única com o clone do rodar-isolado
 async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
+    await require("./o-reembolso-por-fora-posterior.cjs").desfazerReembolsoPorForaNaTransacao(
+      C,
+    );
     // A 20261654000000 (o caixa pertence ao dia em que abriu) sucede a 246 em fin_lancamento_salvar e a 99 em fin_lancamento_baixar: sai PRIMEIRO
     // (ordem inversa da aplicacao; so se no ar). O rollback dela devolve as quatro funcoes de uma vez.
     await require("./o-caixa-pertence-ao-dia-posterior.cjs").desfazerCaixaDoDiaDaAberturaNaTransacao(

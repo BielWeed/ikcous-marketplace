@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { AvisoDeReembolsoEmDobro } from "@/components/admin/AvisoDeReembolsoEmDobro";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
@@ -257,6 +258,7 @@ export function EstornoCard({
     emDuvida,
     disponivel,
     reservadoPorFora,
+    possivelDobro = [],
     carregando,
     pedidoCarregado,
     erro,
@@ -284,6 +286,7 @@ export function EstornoCard({
     order.status !== "cancelled" &&
     order.status !== "delivered" &&
     linhas.length === 0 &&
+    possivelDobro.length === 0 &&
     reservadoPorFora <= 0;
   const inputValorRef = useRef<HTMLInputElement>(null);
 
@@ -446,6 +449,16 @@ export function EstornoCard({
         Disponível: {formatCurrency(disponivel)}
         {emDuvida > 0 && ` · Em confirmação: ${formatCurrency(emDuvida)}`}
       </p>
+
+      {possivelDobro.map((aviso) => (
+        <AvisoDeReembolsoEmDobro
+          key={aviso.refund_id}
+          aviso={aviso}
+          pedidoId={order.id}
+          aoMudar={recarregar}
+          isOffline={isOffline}
+        />
+      ))}
 
       {estado === "bloqueado_status" && (
         <p className="text-xs font-bold text-amber-400">

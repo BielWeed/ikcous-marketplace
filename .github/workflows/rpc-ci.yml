@@ -396,6 +396,8 @@ on:
       - "scripts/publicacao/consultas/216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente.sql"
       - "scripts/publicacao/consultas/219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado.sql"
       - "scripts/publicacao/consultas/219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente.sql"
+      - "scripts/publicacao/consultas/220a-conferir-o-reembolso-por-fora-nao-conta-duas-vezes-aplicado.sql"
+      - "scripts/publicacao/consultas/220b-antes-o-reembolso-por-fora-nao-conta-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -766,6 +768,8 @@ on:
       - "scripts/publicacao/consultas/216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente.sql"
       - "scripts/publicacao/consultas/219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado.sql"
       - "scripts/publicacao/consultas/219b-antes-a-despesa-nao-entra-no-caixa-fechado-base-vigente.sql"
+      - "scripts/publicacao/consultas/220a-conferir-o-reembolso-por-fora-nao-conta-duas-vezes-aplicado.sql"
+      - "scripts/publicacao/consultas/220b-antes-o-reembolso-por-fora-nao-conta-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1688,6 +1692,11 @@ jobs:
       - name: Prova viva da despesa que nao entra no caixa fechado (20261663000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-despesa-nao-entra-no-caixa-fechado-viva.cjs
+      # Migration 20261664000000: A (linha nova do MP) e B (conclusao tardia da propria linha). Sem vinculo, duas saidas;
+      # com vinculo, um desconto; marcacao de dois encerra o aviso sem devolver saldo. ACL, catalogo e rollback. CLONE proprio.
+      - name: Prova viva do reembolso por fora que nao conta duas vezes (20261664000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-reembolso-por-fora-nao-conta-duas-vezes-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais

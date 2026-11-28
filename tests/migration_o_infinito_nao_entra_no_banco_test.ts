@@ -151,6 +151,12 @@ const SUCESSORAS = [
     versao: "20261663000000",
     consulta: "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
   },
+  // 20261664000000: o reembolso por fora nao conta duas vezes (fin__movimentos).
+  {
+    versao: "20261664000000",
+    consulta:
+      "220a-conferir-o-reembolso-por-fora-nao-conta-duas-vezes-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

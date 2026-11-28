@@ -17,8 +17,10 @@ WITH fn AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
+  -- A sucessora 20261664000000 (o reembolso por fora nao conta duas vezes) tambem conta: ela mantem os textos desta inteiros e
+  -- so altera os valores de reembolsos com vinculo confirmado (a 220a confere qual).
   SELECT 'fin__movimentos: corpo exato (md5)', '26473edd94ad6547d95de43433088304',
-    COALESCE((SELECT h FROM fn), 'AUSENTE')
+    COALESCE((SELECT CASE WHEN h = '17127ad84b6eb71e8cd1714d47855a68' THEN '26473edd94ad6547d95de43433088304' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'fin__movimentos: assinatura e atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public, uma so)', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END
