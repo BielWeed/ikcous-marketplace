@@ -255,7 +255,10 @@ describe("AdminOrdersView — confirmação do avanço e volta da ficha aberta p
     const [titulo, opcoes] = sucessos()[0]!;
     expect(titulo).toBe("Status atualizado com sucesso");
     expect(opcoes?.description).toBeUndefined();
-    expect(opcoes?.action?.label).toBe("Avisar pelo WhatsApp");
+    // Lote 599: rótulo curto, como o da outra confirmação. O botão do aviso
+    // não encolhe, e "Avisar pelo WhatsApp" deixava ~5 px para o título num
+    // celular pequeno com letra grande (uma coluna de letras).
+    expect(opcoes?.action?.label).toBe("WhatsApp");
     // O aviso do aplicativo chegou: nada mais a dizer.
     expect(sucessos()).toHaveLength(1);
 
@@ -341,7 +344,7 @@ describe("AdminOrdersView — confirmação do avanço e volta da ficha aberta p
     await avancarNaFicha(pedido);
     expect(updateOrderStatus.mock.calls[0]?.[1]).toBe("shipping");
     const [, opcoes] = sucessos()[0]!;
-    expect(opcoes?.action?.label).toBe("Avisar pelo WhatsApp");
+    expect(opcoes?.action?.label).toBe("WhatsApp");
 
     // A lista recebe a versão nova (etapa gravada e código salvo) e a
     // lojista volta para ela: a ficha fecha, a confirmação continua na tela.
