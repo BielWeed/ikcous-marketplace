@@ -3593,6 +3593,7 @@ const AppContent = () => {
                       onHeaderDockChange: setIsHeaderDocked,
                       // Só a cliente logada vê o aviso do pedido aguardando pagamento.
                       userId: user?.id,
+                      isActive: currentView === "home",
                     }}
                   />
                 </DeferredTabContent>
@@ -3717,6 +3718,7 @@ const AppContent = () => {
                         onHeaderDockChange: setIsHeaderDocked,
                         // Só a cliente logada vê o aviso do pedido aguardando pagamento.
                         userId: user?.id,
+                        isActive: currentView === "home",
                       }}
                     />
                   </DeferredTabContent>

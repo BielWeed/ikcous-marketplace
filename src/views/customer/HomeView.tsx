@@ -88,6 +88,11 @@ interface HomeViewProps {
   onHeaderDockChange?: (isDocked: boolean) => void;
   /** A cliente logada (vinda do App): sem ela, nada do aviso de pagamento. */
   userId?: string;
+  /**
+   * O Início é a tela atual. Ele fica montado escondido depois da primeira
+   * visita; escondido, o aviso de pagamento não lê e relê ao voltar.
+   */
+  isActive?: boolean;
 }
 
 export const HomeView = React.memo(function HomeView({
@@ -108,6 +113,7 @@ export const HomeView = React.memo(function HomeView({
   onSortByChange,
   onHeaderDockChange,
   userId,
+  isActive = true,
 }: HomeViewProps) {
   // Valor que não é uma ordenação de hoje (ex.: o antigo "sold", de quando
   // existia "Mais Vendidos") cai em Relevância, em vez de ordenar por nada.
@@ -567,6 +573,7 @@ export const HomeView = React.memo(function HomeView({
       <AvisoDePedidoAguardandoPagamentoDaConta
         userId={userId}
         onNavigate={onNavigate}
+        ativo={isActive}
         className="mx-3 mb-2 mt-3 sm:mx-4 lg:mx-0"
       />
       {/* Top Banners - Full Width */}

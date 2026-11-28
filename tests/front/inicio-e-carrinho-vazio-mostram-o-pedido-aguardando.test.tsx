@@ -5,7 +5,7 @@
 // (o carrinho foi esvaziado na criação do pedido). O comportamento do aviso
 // mora em inicio-avisa-pedido-aguardando-pagamento.test.tsx; aqui só a
 // ligação: as duas telas mostram o aviso para a cliente logada e o botão leva
-// ao detalhe do pedido.
+// ao detalhe do pedido; e o Início escondido não lê, relendo ao voltar.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import {
@@ -26,6 +26,8 @@ const ID = "11111111-2222-3333-4444-5555550abc12";
 const h = vi.hoisted(() => ({
   usuario: null as null | { id: string },
   tabelas: [] as string[],
+  // O pagamento já confirmado: o banco não devolve mais o pedido pendente.
+  pago: false,
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -33,16 +35,19 @@ vi.mock("@/hooks/useAuth", () => ({
 }));
 
 vi.mock("@/lib/supabase", () => {
-  const pendente = () => [
-    {
-      id: "11111111-2222-3333-4444-5555550abc12",
-      total: 129.9,
-      status: "pending",
-      payment_status: "aguardando",
-      expires_at: new Date(Date.now() + 20 * 60_000).toISOString(),
-      created_at: new Date().toISOString(),
-    },
-  ];
+  const pendente = () =>
+    h.pago
+      ? []
+      : [
+          {
+            id: "11111111-2222-3333-4444-5555550abc12",
+            total: 129.9,
+            status: "pending",
+            payment_status: "aguardando",
+            expires_at: new Date(Date.now() + 20 * 60_000).toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ];
   return {
     supabase: {
       from: (tabela: string) => {
@@ -136,6 +141,7 @@ describe("o aviso do pedido aguardando aparece no Início e no carrinho vazio", 
     vi.stubGlobal("CSS", { escape: (valor: string) => valor });
     h.usuario = { id: "conta-1" };
     h.tabelas.length = 0;
+    h.pago = false;
     navegar = vi.fn<(view: string, id?: string) => void>();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -162,7 +168,7 @@ describe("o aviso do pedido aguardando aparece no Início e no carrinho vazio", 
       (b) => b.textContent === "Ver e pagar",
     );
 
-  async function renderizarInicio() {
+  async function renderizarInicio(isActive?: boolean) {
     const { HomeView } = await import("@/views/customer/HomeView");
     await act(async () => {
       raiz.render(
@@ -178,10 +184,16 @@ describe("o aviso do pedido aguardando aparece no Início e no carrinho vazio", 
           onCategoryChange={() => {}}
           onSortByChange={() => {}}
           userId={h.usuario?.id}
+          isActive={isActive}
         />,
       );
     });
   }
+
+  const esperar = (ms: number) =>
+    act(async () => {
+      await new Promise((r) => setTimeout(r, ms));
+    });
 
   it("Início, cliente logada: mostra o aviso e 'Ver e pagar' abre o pedido", async () => {
     await renderizarInicio();
@@ -204,6 +216,38 @@ describe("o aviso do pedido aguardando aparece no Início e no carrinho vazio", 
     });
 
     expect(h.tabelas).not.toContain("marketplace_orders");
+    expect(hospedeiro.textContent).not.toContain("aguardando pagamento");
+  });
+
+  // O Início fica montado escondido depois da primeira visita (o App guarda a
+  // aba). Escondido, o aviso não lê nem mostra; ao voltar a ser a tela atual,
+  // relê — o Pix que o checkout confirmou enquanto isso não aparece mais.
+  it("Início escondido: nenhuma leitura de pedidos e nenhum aviso", async () => {
+    await renderizarInicio(false);
+    await esperar(100);
+
+    expect(h.tabelas).not.toContain("marketplace_orders");
+    expect(hospedeiro.textContent).not.toContain("aguardando pagamento");
+  });
+
+  it("Início volta a ser a tela atual: relê e o pedido que virou pago some", async () => {
+    await renderizarInicio(true);
+    await esperarAte(() => botaoVerEPagar() !== undefined);
+    expect(botaoVerEPagar()).toBeDefined();
+
+    // A cliente foi para o checkout; o Início ficou escondido.
+    await renderizarInicio(false);
+    await esperar(100);
+    expect(botaoVerEPagar()).toBeUndefined();
+
+    // O checkout confirmou o Pix; ela toca no Início.
+    h.pago = true;
+    h.tabelas.length = 0;
+    await renderizarInicio(true);
+    await esperarAte(() => h.tabelas.includes("marketplace_orders"));
+    await esperar(100);
+
+    expect(h.tabelas).toContain("marketplace_orders");
     expect(hospedeiro.textContent).not.toContain("aguardando pagamento");
   });
 
