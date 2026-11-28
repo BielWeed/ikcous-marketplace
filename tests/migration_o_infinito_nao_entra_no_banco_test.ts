@@ -134,6 +134,12 @@ const SUCESSORAS = [
     versao: "20261658000000",
     consulta: "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
   },
+  // 20261660000000: o caixa de ontem aberto nao some do saldo (fin_conta_salvar, fin_caixa_movimentar_com_chave e fin_lancamento_cancelar).
+  {
+    versao: "20261660000000",
+    consulta:
+      "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

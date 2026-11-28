@@ -3820,6 +3820,22 @@ const ROL_DA_213 = [
   "admin_devolucao_concluir: corpo esperado (md5)",
   "devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role",
 ];
+// Lote 216 (20261660000000, o caixa de ontem aberto nao some do saldo: fin_conta_salvar, fin_caixa_movimentar_com_chave e
+// fin_lancamento_cancelar trocam so o corpo). A 216a e a 216b tem o MESMO rol de 10 linhas (controle e, para cada funcao, o md5, os
+// atributos e a ACL); a 216a espera os corpos desta e a 216b os vigentes de antes (20261399930000, 20261654000000 e 20261199000000).
+// So catalogo: nenhuma le conta, lancamento ou sessao de caixa, e nenhuma chama funcao da loja.
+const ROL_DA_216 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_conta_salvar: corpo exato (md5)",
+  "fin_conta_salvar: assinatura e atributos conhecidos",
+  "fin_conta_salvar: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_caixa_movimentar_com_chave: corpo exato (md5)",
+  "fin_caixa_movimentar_com_chave: assinatura e atributos conhecidos",
+  "fin_caixa_movimentar_com_chave: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_lancamento_cancelar: corpo exato (md5)",
+  "fin_lancamento_cancelar: assinatura e atributos conhecidos",
+  "fin_lancamento_cancelar: EXECUTE authenticated, sem PUBLIC ou anon",
+];
 // Lote 214 (20261658000000, o frete de ida so volta com reembolso: solicitar_devolucao e devolucao_elegibilidade trocam so o corpo).
 // A 214a e a 214b tem o MESMO rol de 7 linhas (controle e, para cada funcao, o md5, os atributos e a ACL); a 214a espera os corpos desta
 // e a 214b os vigentes de antes (20261399992000 e 20261405400000). So catalogo: nenhuma le devolucao nem chama as funcoes.
@@ -3833,6 +3849,10 @@ const ROL_DA_214 = [
   "solicitar_devolucao: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
+  "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado":
+    ROL_DA_216,
+  "216b-antes-o-caixa-de-ontem-aberto-nao-some-do-saldo-base-vigente":
+    ROL_DA_216,
   "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado": ROL_DA_214,
   "214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente": ROL_DA_214,
   "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado":
