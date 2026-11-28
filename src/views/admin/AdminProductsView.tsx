@@ -62,6 +62,7 @@ import {
   ehConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { precoCobradoNaLista } from "@/lib/preco-cobrado-na-lista";
+import { nomeDoGrupoPrincipal } from "@/lib/preco-de-vitrine";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
@@ -3023,8 +3024,8 @@ const AdminProductCard = memo(function AdminProductCard({
     const hasCost = product.costPrice != null;
     const temCustoPositivo = hasCost && product.costPrice > 0;
     const invested = !hasCost ? null : product.costPrice * product.stock;
-    const variantesAtivas =
-      product.variants?.filter((v: { active: boolean }) => v.active) ?? [];
+    const variantes: Product["variants"] = product.variants;
+    const variantesAtivas = variantes?.filter((v) => v.active) ?? [];
     const receitaDoEstoque =
       variantesAtivas.length > 0
         ? variantesAtivas.reduce(
@@ -3048,11 +3049,28 @@ const AdminProductCard = memo(function AdminProductCard({
           ? receitaDoEstoque / product.stock
           : null
         : product.price;
+    const grupos = new Set(variantesAtivas.map((variante) => variante.name));
+    let precoMedioDaMargem = precoMedio;
+    // Na grade legada, só o grupo principal define o preço cobrado.
+    if (grupos.size > 1) {
+      const nomePrincipal = nomeDoGrupoPrincipal(grupos);
+      let estoquePrincipal = 0;
+      let receitaPrincipal = 0;
+      for (const variante of variantesAtivas) {
+        if (variante.name !== nomePrincipal) continue;
+        const estoque = variante.stockIncrement ?? 0;
+        estoquePrincipal += estoque;
+        receitaPrincipal += (variante.priceOverride ?? product.price) * estoque;
+      }
+      precoMedioDaMargem =
+        estoquePrincipal > 0 ? receitaPrincipal / estoquePrincipal : null;
+    }
     const margin =
-      !hasCost || product.variantsUnavailable || precoMedio === null
+      !hasCost || product.variantsUnavailable || precoMedioDaMargem === null
         ? null
-        : precoMedio > 0
-          ? ((precoMedio - product.costPrice) / precoMedio) * 100
+        : precoMedioDaMargem > 0
+          ? ((precoMedioDaMargem - product.costPrice) / precoMedioDaMargem) *
+            100
           : variantesAtivas.length > 0
             ? null
             : 0;

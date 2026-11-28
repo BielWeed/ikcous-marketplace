@@ -256,6 +256,45 @@ describe("Produtos: a lista mostra o preço que a loja cobra", () => {
     expect(classesDe(valor)).toContain("break-words");
   });
 
+  it("detalhado: a margem usa o preço da Cor, não o do Tamanho", async () => {
+    await montar(
+      "detailed",
+      [
+        { ...tamanho("P", 90), stockIncrement: 10 },
+        { ...tamanho("Azul", 60), name: "Cor", stockIncrement: 10 },
+      ],
+      { stock: 20, costPrice: 50 },
+    );
+
+    expect(textoDe(precoDoDetalhado())).toBe("R$ 60,00");
+    expect(hospedeiro.querySelector("[data-margem]")?.textContent).toBe(
+      "16,7%",
+    );
+  });
+
+  it("detalhado: com um grupo, a margem continua ponderada pelo estoque", async () => {
+    await montar(
+      "detailed",
+      [
+        { ...tamanho("P", 60), stockIncrement: 2 },
+        { ...tamanho("G", 90), stockIncrement: 4 },
+      ],
+      { stock: 6, costPrice: 50 },
+    );
+
+    expect(hospedeiro.querySelector("[data-margem]")?.textContent).toBe(
+      "37,5%",
+    );
+  });
+
+  it("detalhado: sem variações, a margem continua usando o preço base", async () => {
+    await montar("detailed", [], { price: 100, costPrice: 50 });
+
+    expect(hospedeiro.querySelector("[data-margem]")?.textContent).toBe(
+      "50,0%",
+    );
+  });
+
   it("variação inativa não muda o preço", async () => {
     await montar("compact", [tamanho("P", 89.9), tamanho("G", 150, false)]);
     expect(textoDe(precoDaGrade())).toBe("R$ 89,90");
