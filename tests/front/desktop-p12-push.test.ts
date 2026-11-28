@@ -35,13 +35,14 @@ describe("P12 — campanhas push no computador", () => {
     // 1.5.230: o resumo do envio separa recusa de aviso sem confirmação e mostra
     // a demora; só texto e lógica de resumo, as 208 classes ficam iguais.
     // O aviso do cupom citado reconhece o código com acento; só lógica, sem classe nova.
+    // O aviso avulso no sino leva id do aparelho (queda não duplica); só lógica e texto.
     const semComputador = fonte
       .replace(/\s+\b(?:lg|xl|2xl):[^\s"'\x60]+/g, "")
       .replace(/\s+/g, " ")
       .trim();
     expect(fonte.match(/\bclassName=/g)).toHaveLength(208);
     expect(createHash("sha256").update(semComputador).digest("hex")).toBe(
-      "6f51f1e85f414c790ba29f993af6f63e0e92ce3e4a374bf181dedabb34ed22aa",
+      "32b9963d56ed75e0bb15760bc4c924c80fa1a4d6896470856a0c710f637c81cc",
     );
   });
 

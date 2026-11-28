@@ -125,8 +125,9 @@ vi.mock("@/lib/supabase", () => ({
           insert: () => {
             estado.chamadasDoAviso += 1;
             if (estado.pendurar === "avisoRecusado") {
+              // Recusa de verdade traz código (RLS = 42501); sem código é queda.
               return Promise.resolve({
-                error: { message: "RLS negou a linha" },
+                error: { code: "42501", message: "RLS negou a linha" },
               });
             }
             return estado.pendurar === "aviso"
