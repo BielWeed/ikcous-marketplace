@@ -3591,6 +3591,8 @@ const AppContent = () => {
                       sortBy: sortBy,
                       onSortByChange: setSortBy,
                       onHeaderDockChange: setIsHeaderDocked,
+                      // Só a cliente logada vê o aviso do pedido aguardando pagamento.
+                      userId: user?.id,
                     }}
                   />
                 </DeferredTabContent>
@@ -3713,6 +3715,8 @@ const AppContent = () => {
                         sortBy: sortBy,
                         onSortByChange: setSortBy,
                         onHeaderDockChange: setIsHeaderDocked,
+                        // Só a cliente logada vê o aviso do pedido aguardando pagamento.
+                        userId: user?.id,
                       }}
                     />
                   </DeferredTabContent>
