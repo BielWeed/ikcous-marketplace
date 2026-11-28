@@ -699,6 +699,41 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261658000000: o frete de ida so volta com reembolso. DUAS funcoes: solicitar_devolucao (a soma do frete de ida conta so esta
+  // devolucao e as concluidas com reembolso; a lista negativa fica so na conta da quantidade) e devolucao_elegibilidade (o campo
+  // ja_reembolsada ao lado de ja_devolvida). O corpo exato (md5), os atributos e a ACL sao da consulta 214a; o comportamento, da prova viva.
+  "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql": [
+    {
+      funcao: "solicitar_devolucao",
+      esperado: [
+        {
+          texto:
+            "AND (d.id = v_id OR (d.status = 'concluida' AND d.resolucao_final = 'reembolso'))",
+          vezes: 1,
+        },
+        {
+          texto: "d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "devolucao_elegibilidade",
+      esperado: [
+        { texto: "'ja_devolvida', x.ja,", vezes: 1 },
+        { texto: "'ja_reembolsada', x.reembolsada,", vezes: 1 },
+        {
+          texto:
+            "AND d.status = 'concluida' AND d.resolucao_final = 'reembolso'",
+          vezes: 1,
+        },
+        {
+          texto: "d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   "20261650000000_a_categoria_so_com_produto_excluido_pode_sair.sql": [
     {
       funcao: "apagar_categoria_vazia",

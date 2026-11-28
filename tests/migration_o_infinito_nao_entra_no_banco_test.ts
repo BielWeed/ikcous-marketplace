@@ -129,6 +129,11 @@ const SUCESSORAS = [
     consulta:
       "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
   },
+  // 20261658000000: o frete de ida so volta com reembolso.
+  {
+    versao: "20261658000000",
+    consulta: "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

@@ -273,7 +273,12 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // A 20261405400000 (a devolucao integral com cupom nao perde o centavo) so redefine solicitar_devolucao, em cima da 3992; nao e funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 3992
     // (o-item-que-nao-veio-posterior.cjs chama a-devolucao-integral-nao-perde-o-centavo-do-cupom-posterior.cjs primeiro); aqui sai do rol pela mesma razao da 3997.
     s.nome !==
-      "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql",
+      "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql" &&
+    // A 20261658000000 (o frete de ida so volta com reembolso) e a TERCEIRA sucessora de devolucao_elegibilidade (99 -> 3992 -> 1658) e a
+    // de solicitar_devolucao sobre a 5400 (esta nao e da 8e). A 8e ja a aceita (consulta 8e, CTE sucessoras); `noEstado` a desfaz antes
+    // (o-item-que-nao-veio-posterior.cjs chama a-devolucao-integral-nao-perde-o-centavo-do-cupom-posterior.cjs, que chama
+    // o-frete-de-ida-so-volta-com-reembolso-posterior.cjs primeiro; o rollback dela devolve as duas de uma vez), como a 3992.
+    s.nome !== "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
