@@ -876,15 +876,16 @@ Deno.test("1642 e 1653: o corpo da 20261657000000 que as sucede não vira diverg
 // aplica a antecessora junto com a 1659 saia "AUSENTE" depois do COMMIT. O
 // marcador virou as duas metades, 1x cada, e tirar qualquer uma reprova.
 //
-// O QUE FICA DE FORA, de proposito e visivel aqui: a 1653 confere
-// "v_di.variant_id := NULL;" 1x na conclusao, e o bloco da 1659 tambem anula a
-// variacao do item de produto excluido. Nenhum texto contiguo casa 1x no corpo
-// da 1653, no da 1657 e no da 1659 ao mesmo tempo (a 1657 moveu a troca para
-// dentro do sub-bloco dela, com outro recuo e outro vizinho), entao um lote
-// 1653..1659 ainda sai "A MAIS" nesse marcador. O teste fixa que e' SO ele.
+// A troca "v_di.variant_id := NULL;" SAIU da entrada da 1653: o bloco da 1659
+// tambem anula a variacao do item de produto excluido, e nenhum texto contiguo
+// casa 1x no corpo da 1653, no da 1657 e no da 1659 ao mesmo tempo (a 1657
+// moveu a troca para dentro do sub-bloco dela, com outro recuo e outro
+// vizinho). A loja nova aplica a cadeia toda numa rodada, entao o lote
+// 1653..1659 tem de sair com 0 divergencia; o controle abaixo reprova se o
+// marcador voltar ao mapa.
 // --------------------------------------------------------------------------
 
-Deno.test("1642, 1653 e 1657: o corpo da 20261659000000 que as sucede nao vira divergencia falsa no retorno da conclusao", () => {
+Deno.test("1642, 1653 e 1657: o corpo da 20261659000000 que as sucede nao vira divergencia falsa (0 divergencia no lote)", () => {
   const SUCESSORA =
     "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql";
   const ANTECESSORAS = [
@@ -903,6 +904,7 @@ Deno.test("1642, 1653 e 1657: o corpo da 20261659000000 que as sucede nao vira d
   const mapa = new Map(Object.entries(VERIFICACOES));
   let conferidas = 0;
   let metades = 0;
+  let trocaConferida = false;
   for (const arquivo of ANTECESSORAS) {
     for (const checagem of checagensDe(mapa.get(arquivo))) {
       if (!REDEFINIDAS.has(checagem.funcao)) continue;
@@ -912,25 +914,32 @@ Deno.test("1642, 1653 e 1657: o corpo da 20261659000000 que as sucede nao vira d
         typeof m === "string" ? m : m.texto,
       );
       const avaliacao = avaliarChecagem(corpo1659, checagem);
+      // 0 divergencia: toda checagem das antecessoras verifica contra o corpo da 1659.
+      assertEquals(
+        avaliacao.situacao,
+        "verificada",
+        `${arquivo} / ${checagem.funcao} contra o corpo da 1659:\n${avaliacao.linhas.join("\n")}`,
+      );
       if (
         arquivo.startsWith("20261653000000") &&
         checagem.funcao === "admin_devolucao_concluir"
       ) {
-        // A lacuna conhecida: reprova SO pela troca da 1653, contada 2x.
-        assertEquals(avaliacao.situacao, "falhou");
-        const divergentes = checagem.esperado.filter(
-          (m) => !conferirMarcador(corpo1659, m).ok,
-        );
-        assertEquals(
-          divergentes.map((m) => (typeof m === "string" ? m : m.texto)),
-          [TROCA_DA_1653],
+        trocaConferida = true;
+        // CONTROLE: a troca nao esta no mapa; se voltar (1x), o lote reprova, porque ela casa 2x no corpo da 1659.
+        assert(
+          !textos.includes(TROCA_DA_1653),
+          "a troca da 1653 voltou ao mapa",
         );
         assertEquals(conferirMarcador(corpo1659, TROCA_DA_1653).achou, 2);
-      } else {
         assertEquals(
-          avaliacao.situacao,
-          "verificada",
-          `${arquivo} / ${checagem.funcao} contra o corpo da 1659:\n${avaliacao.linhas.join("\n")}`,
+          avaliarChecagem(corpo1659, {
+            ...checagem,
+            esperado: [
+              ...checagem.esperado,
+              { texto: TROCA_DA_1653, vezes: 1 },
+            ],
+          }).situacao,
+          "falhou",
         );
       }
       if (!textos.includes(REESTOCADOS)) continue;
@@ -959,4 +968,5 @@ Deno.test("1642, 1653 e 1657: o corpo da 20261659000000 que as sucede nao vira d
   assertEquals(conferidas, 7);
   // O retorno da conclusao: na 1642 e na 1653.
   assertEquals(metades, 2);
+  assert(trocaConferida, "a conclusao da 1653 nao foi conferida");
 });

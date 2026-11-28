@@ -863,7 +863,9 @@ const VERIFICACOES = {
           texto: "WHERE v.id = v_di.variant_id AND v.active = true) THEN",
           vezes: 1,
         },
-        { texto: "v_di.variant_id := NULL;", vezes: 1 },
+        // Sem "v_di.variant_id := NULL;": a 20261659000000 tambem anula a variacao (produto excluido) e ele casava 2x depois dela;
+        // nenhum texto contiguo casa 1x nos corpos da 1653, 1657 e 1659, e a loja nova aplica a cadeia toda numa rodada. O filtro e o
+        // produto pelo pai continuam aqui; a troca sob o produto ligado e' da entrada da 1657.
         { texto: "v_di.product_id := COALESCE(v_di.product_id,", vezes: 1 },
         // O retorno em DUAS metades, 1x cada: a 20261659000000 poe "- v_fora_do_estoque" entre elas e a soma 'fora_do_estoque' depois,
         // e o marcador inteiro (contiguo) casava 0x no corpo vivo depois dela (divergencia falsa num lote que a inclui).
