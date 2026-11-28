@@ -610,6 +610,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
     // 20261660000000: o caixa de ontem aberto nao some do saldo.
     "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
+    // 20261663000000: a despesa nao entra no caixa fechado.
+    "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

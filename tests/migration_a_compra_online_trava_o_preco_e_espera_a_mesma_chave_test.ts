@@ -407,6 +407,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado",
       "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
       "216a-conferir-o-caixa-de-ontem-aberto-nao-some-do-saldo-aplicado",
+      "219a-conferir-a-despesa-nao-entra-no-caixa-fechado-aplicado",
     ],
     "os lotes posteriores à 81a são anexados no fim, sem reordenar lotes anteriores",
   );
