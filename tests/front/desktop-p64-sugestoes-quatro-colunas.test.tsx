@@ -23,7 +23,8 @@ const produto = (id: string): Product => ({
   name: id,
   description: "",
   price: 100,
-  images: [],
+  // Com foto: a sugestão da busca vazia só mostra quem tem foto.
+  images: ["https://loja.test/foto.webp"],
   category: "Vestidos",
   stock: 5,
   sold: 0,

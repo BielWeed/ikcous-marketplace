@@ -1367,7 +1367,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       const produto = id ? products.find((p) => p.id === id) : undefined;
       if (!produto) continue;
       const velho = precoAnunciadoVelho(
-        [banner.title, banner.subtitle],
+        [banner.title, banner.subtitle, banner.badgeText],
         produto,
       );
       if (velho) avisos.set(banner.id, avisoDePrecoVelho(velho));
