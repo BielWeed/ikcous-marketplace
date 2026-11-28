@@ -8,9 +8,10 @@
  * nas 5 linhas e a 144a reprova SO os tres corpos; aplica a 20261399992000 e a 144a fica POSITIVA, enquanto a 144b reprova SO
  * os tres corpos.
  *
- * A 144a aceita tambem o corpo das duas SUCESSORAS: solicitar_devolucao da 20261405400000 (o centavo do cupom) e
- * devolucao_detalhe da 20261404000000 (a observacao da inspecao). A prova aplica as duas por cima e confere que a 144a segue
- * POSITIVA (e a 144b reprova os tres corpos), e que o corpo de uma sucessora com o texto trocado volta a reprovar so a linha dela.
+ * A 144a aceita tambem o corpo das SUCESSORAS: solicitar_devolucao da 20261405400000 (o centavo do cupom), devolucao_detalhe da
+ * 20261404000000 (a observacao da inspecao) e solicitar_devolucao e devolucao_elegibilidade da 20261658000000 (o frete de ida so
+ * volta com reembolso). A prova aplica as tres por cima e confere que a 144a segue POSITIVA (e a 144b reprova os tres corpos), e que
+ * o corpo de uma sucessora com o texto trocado volta a reprovar so a linha dela.
  *
  * Depois, UM estrago por vez (cada um num savepoint) e SO a(s) linha(s) certa(s) vira `nao`, nas TRES funcoes: corpo com outro
  * texto, sobrecarga, SECURITY INVOKER, STABLE/VOLATILE/IMMUTABLE, STRICT, search_path trocado/sem fixo/com configuracao a mais
@@ -41,6 +42,9 @@ const SUCESSORA_DETALHE =
   "20261404000000_a_observacao_da_inspecao_so_a_loja_ve.sql";
 const SUCESSORA_SOLICITAR =
   "20261405400000_a_devolucao_integral_nao_perde_o_centavo_do_cupom.sql";
+// A 20261658000000 sucede as DUAS: solicitar_devolucao (sobre a 20261405400000) e devolucao_elegibilidade (sobre esta).
+const SUCESSORA_FRETE =
+  "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql";
 const ELEGIBILIDADE = "public.devolucao_elegibilidade(uuid)";
 const SOLICITAR =
   "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])";
@@ -206,6 +210,13 @@ rodarProva(async (H) => {
       marcar(
         "144a segue POSITIVA com as duas sucessoras (20261404000000 e 20261405400000) por cima; 144b reprova os tres corpos; dados intactos",
       );
+      await c.query(lerMigration(SUCESSORA_FRETE));
+      await consulta(c, A);
+      await consulta(c, B, CORPOS);
+      assert.deepEqual(await dados(c), antesDaMigration);
+      marcar(
+        "144a segue POSITIVA com a 20261658000000 (solicitar_devolucao e devolucao_elegibilidade) por cima; 144b reprova os tres corpos; dados intactos",
+      );
       await sabotar(
         c,
         "devolucao_detalhe da sucessora com outro texto",
@@ -222,7 +233,7 @@ rodarProva(async (H) => {
       );
       await sabotar(
         c,
-        "devolucao_elegibilidade com outro texto (nao tem sucessora)",
+        "devolucao_elegibilidade da sucessora com outro texto",
         A,
         (cc) => trocarCorpo(cc, ELEGIBILIDADE),
         [i.el],

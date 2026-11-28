@@ -602,6 +602,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
     // 20261655000000: a loja nova so vende o que confirmou.
     "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
+    // 20261658000000: o frete de ida so volta com reembolso.
+    "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

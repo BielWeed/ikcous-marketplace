@@ -3800,7 +3800,21 @@ const ROL_DA_211B = [
   "v_store_config: as 48 colunas da 20261310000000 (ou as 50 desta), security_invoker",
   "tr_a_loja_so_entrega_o_confirmado: ausente, ou o desta (reaplicacao)",
 ];
+// Lote 214 (20261658000000, o frete de ida so volta com reembolso: solicitar_devolucao e devolucao_elegibilidade trocam so o corpo).
+// A 214a e a 214b tem o MESMO rol de 7 linhas (controle e, para cada funcao, o md5, os atributos e a ACL); a 214a espera os corpos desta
+// e a 214b os vigentes de antes (20261399992000 e 20261405400000). So catalogo: nenhuma le devolucao nem chama as funcoes.
+const ROL_DA_214 = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolucao_elegibilidade: corpo exato (md5)",
+  "devolucao_elegibilidade: uma so, assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=public, retorno jsonb)",
+  "devolucao_elegibilidade: EXECUTE authenticated, sem PUBLIC ou anon",
+  "solicitar_devolucao: corpo exato (md5)",
+  "solicitar_devolucao: uma so, assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, retorno jsonb)",
+  "solicitar_devolucao: EXECUTE authenticated, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "214a-conferir-o-frete-de-ida-so-volta-com-reembolso-aplicado": ROL_DA_214,
+  "214b-antes-o-frete-de-ida-so-volta-com-reembolso-base-vigente": ROL_DA_214,
   "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado": ROL_DA_211A,
   "211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente": ROL_DA_211B,
   "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado": ROL_DA_210,

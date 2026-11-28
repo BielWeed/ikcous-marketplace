@@ -31,6 +31,11 @@ const hashVivo = `SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHE
 
 /** Desfaz a 20261405400000 na transação aberta, se o corpo dela está no ar; repetir é no-op. Devolve true se desfez. */
 async function desfazerADevolucaoIntegralNaTransacao(c) {
+  // A 20261658000000 (o frete de ida so volta com reembolso) sucede o corpo de solicitar_devolucao desta migration: sai ANTES, senao o
+  // rollback desta recusa (B1_BASELINE_DIVERGENT, o corpo vivo nao e o da 5400). So se no ar; repetir e' no-op.
+  await require("./o-frete-de-ida-so-volta-com-reembolso-posterior.cjs").desfazerOFreteDeIdaNaTransacao(
+    c,
+  );
   const [hashVigente, hashDesta] = CORPOS;
   if ((await c.query(hashVivo, [ASSINATURA])).rows[0]?.h !== hashDesta)
     return false;

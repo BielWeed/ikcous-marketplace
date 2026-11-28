@@ -1556,6 +1556,17 @@ async function main() {
         "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
         "public.fin_lancamento_salvar(jsonb)",
       ],
+      // A 1658 (o frete de ida so volta com reembolso) troca so os corpos de devolucao_elegibilidade (sucede a 3992) e solicitar_devolucao
+      // (sucede a 5400); a 17a nao le nenhuma das duas. O rollback dela devolve as duas de uma vez (a primeira entrada desfaz; a outra ja
+      // encontra o corpo anterior, e a 5400 e a 3992 so caem depois dela, pela cadeia de posteriores).
+      [
+        "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql",
+        "public.devolucao_elegibilidade(uuid)",
+      ],
+      [
+        "20261658000000_o_frete_de_ida_so_volta_com_reembolso.sql",
+        "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

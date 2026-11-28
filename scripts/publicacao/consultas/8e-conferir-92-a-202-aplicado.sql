@@ -234,6 +234,7 @@ WITH corpos AS (
     ('fin_lancamento_salvar', '3e31817ce1d13bb091ce2d0871cbd718', '20261654000000'),
     ('fin_lancamento_baixar', '7d1204cdf214a290cfdb378482795f1b', '20261654000000'),
     ('devolucao_elegibilidade', 'bedd211bba45261dfbf962241ca3c9dd', '20261399992000'),
+    ('devolucao_elegibilidade', '4776618e9ccd401f7c7eb9518ceaa62d', '20261658000000'),
     ('devolucao_detalhe', 'a439e320641d553e3a21883c6606c6f2', '20261399992000'),
     ('devolucao_detalhe', 'b4eb7a928f8a6ff04c34e93f4f56188c', '20261404000000')), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),

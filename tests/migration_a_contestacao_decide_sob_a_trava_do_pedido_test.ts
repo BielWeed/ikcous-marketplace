@@ -577,6 +577,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-banner-tem-imagem-propria-no-computador-portao-viva.cjs",
     "tests/banco/o-resultado-mostra-tarifa-juro-e-quebra-como-despesa-portao-viva.cjs",
     "tests/banco/a-devolucao-integral-nao-perde-o-centavo-do-cupom-portao-viva.cjs",
+    // 20261658000000: o portao das consultas 214a/214b (o frete de ida so volta com reembolso).
+    "tests/banco/o-frete-de-ida-so-volta-com-reembolso-portao-viva.cjs",
     "tests/banco/cancelar-retirada-pronta-portao-viva.cjs",
     "tests/banco/cancelar-pedido-do-painel-confere-a-etapa-portao-viva.cjs",
     "tests/banco/o-cupom-que-nao-da-desconto-portao-viva.cjs",
