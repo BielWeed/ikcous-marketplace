@@ -1252,6 +1252,41 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     botao.focus({ preventScroll: true });
   }, [selectedOrder, viewRef]);
 
+  // Ficha aberta por link (aviso no celular, sino), não pela lista: na volta,
+  // a lista salva da última visita (outra página, outro filtro, uma busca)
+  // podia não ter o pedido, e ele parecia ter sumido. Se ele não está na lista
+  // carregada, a volta cai em Todos, página 1, sem busca nem período — como o
+  // atalho do Início faz. Aberta pela lista, nada muda: a lojista escolheu
+  // aqueles filtros.
+  const fichaAbertaPorLinkRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedOrderId) {
+      fichaAbertaPorLinkRef.current =
+        pedidoDaFichaRef.current === selectedOrderId ? null : selectedOrderId;
+      return;
+    }
+    const id = fichaAbertaPorLinkRef.current;
+    fichaAbertaPorLinkRef.current = null;
+    if (!id || orders.some((o) => o.id === id)) return;
+    setFilter("all");
+    setPaymentFilter("all");
+    setCanalFilter("all");
+    setSearchQuery("");
+    setDateRange({ start: "", end: "" });
+    setCurrentPage(0);
+    reiniciarScroll();
+  }, [
+    selectedOrderId,
+    orders,
+    setFilter,
+    setPaymentFilter,
+    setCanalFilter,
+    setSearchQuery,
+    setDateRange,
+    setCurrentPage,
+    reiniciarScroll,
+  ]);
+
   // Scroll position is handled by useScrollRestoration hook
 
   // Removidas funções bulk status e toggle selecionados para evitar erros de compilação.
@@ -1979,6 +2014,18 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     }
   }, [listaTemPedidos, totalAbsolutoNaLoja]);
 
+  // Abre a conversa com a mensagem da etapa NOVA a partir da confirmação do
+  // avanço (ver `handleStatusChange`). O toque pode vir segundos depois:
+  // lê a versão mais nova do pedido (código de rastreio salvo no meio) e, se
+  // ele já saiu da lista e da ficha, usa a que a confirmação guardou.
+  const whatsappDaEtapaRef = useRef<
+    (pedido: Order, status: OrderStatus) => void
+  >(() => {});
+  // Último avanço confirmado de cada pedido. A resposta do envio do aviso
+  // pode chegar fora de ordem (A→B e logo B→C): a de B não reescreve a
+  // confirmação de C nem monta o WhatsApp com a etapa velha.
+  const ultimoAvancoRef = useRef<Map<string, OrderStatus>>(new Map());
+
   // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
   // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.
   // onStatusChange` (OrderDetail.tsx) recebe a origem no 3º argumento, sem
@@ -2033,6 +2080,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         silent,
         statusEsperado ??
           (selectedOrder?.id === orderId ? selectedOrder.status : undefined),
+        // O "Status atualizado" do avanço sai daqui de baixo, que sabe se a
+        // cliente vai ser avisada.
+        { avancoConfirmadoPorQuemChamou: true },
       );
       guardadoNaFila = resultado === "guardado-na-fila";
       if (typeof resultado === "object" && resultado !== null) {
@@ -2158,15 +2208,71 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       return;
     }
 
-    // Pedido de convidado não tem para quem mandar push, e isso é esperado —
-    // o canal dele é o WhatsApp. Não é caso de aviso.
-    if (!alvo.userId) return;
+    // Confirmação do AVANÇO (o cancelamento o hook já confirmou). Ela diz se
+    // a cliente recebe o aviso automático e oferece o WhatsApp com a mensagem
+    // da etapa nova: o cartão, que tinha essa mensagem, sai da lista logo
+    // depois de avançar num filtro de status. Um id por pedido: quando a
+    // resposta do envio mostra que a cliente não ativou os avisos, a MESMA
+    // confirmação passa a dizer isso, em vez de empilhar outra.
+    const ehAvanco = newStatus !== "cancelled";
+    const idDaConfirmacao = `status-do-pedido-${orderId}`;
+    const temWhatsapp = !!linkWhatsappDoCliente(alvo.customer?.whatsapp);
+    const acaoDoWhatsapp = (label: string) =>
+      temWhatsapp
+        ? {
+            label,
+            onClick: () => whatsappDaEtapaRef.current(alvo, newStatus),
+          }
+        : undefined;
+    const semAvisoAutomatico = (motivo: string, semTelefone: string) =>
+      toast.success("Status atualizado.", {
+        id: idDaConfirmacao,
+        description: temWhatsapp
+          ? `${motivo}: mande pelo WhatsApp.`
+          : semTelefone,
+        action: acaoDoWhatsapp("WhatsApp"),
+        ...(temWhatsapp ? { duration: 8000 } : {}),
+      });
+
+    // Pedido de convidado não tem para quem mandar push: o canal dele é o
+    // WhatsApp, e a confirmação diz isso.
+    if (!alvo.userId) {
+      if (ehAvanco) {
+        semAvisoAutomatico(
+          "A cliente não recebe aviso automático",
+          "A cliente não recebe aviso automático deste pedido.",
+        );
+      }
+      return;
+    }
 
     // O status JÁ está gravado e o aviso ao cliente é secundário: não o
     // esperamos aqui, senão o botão do pedido ficava em "Processando..." pelo
     // tempo do envio (sem limite, com sinal ruim). A falha segue dando o aviso
     // amarelo, dentro da própria função.
-    void avisarOClienteDoStatus(orderId, newStatus, alvo, gravadoNoBancoEm);
+    if (!ehAvanco) {
+      void avisarOClienteDoStatus(orderId, newStatus, alvo, gravadoNoBancoEm);
+      return;
+    }
+    toast.success("Status atualizado com sucesso", {
+      id: idDaConfirmacao,
+      action: acaoDoWhatsapp("Avisar pelo WhatsApp"),
+      ...(temWhatsapp ? { duration: 8000 } : {}),
+    });
+    ultimoAvancoRef.current.set(orderId, newStatus);
+    void avisarOClienteDoStatus(
+      orderId,
+      newStatus,
+      alvo,
+      gravadoNoBancoEm,
+      () => {
+        if (ultimoAvancoRef.current.get(orderId) !== newStatus) return;
+        semAvisoAutomatico(
+          "A cliente não ativou os avisos no celular",
+          "A cliente não ativou os avisos no celular.",
+        );
+      },
+    );
   };
 
   const handleWhatsApp = useCallback(
@@ -2209,6 +2315,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     },
     [config.businessHours, isOffline, storeNameDaLoja],
   );
+  useEffect(() => {
+    whatsappDaEtapaRef.current = (pedido, status) => {
+      const maisNovo =
+        orders.find((o) => o.id === pedido.id) ??
+        (selectedOrder?.id === pedido.id ? selectedOrder : pedido);
+      handleWhatsApp({ ...maisNovo, status });
+    };
+  });
 
   // Removed early return loading block to prevent visual layout shifts
 
