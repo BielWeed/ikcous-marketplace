@@ -458,6 +458,17 @@ export function ShippingCalculator({
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<ShippingOption[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // "Loja sem frete" com ou sem contato depende do WhatsApp da loja, que pode
+  // chegar DEPOIS do 409 (config ainda carregando, ou a lojista cadastra ao
+  // vivo): a frase é escolhida ao desenhar, como no topo do checkout — nunca
+  // a guardada no momento do erro, que contradiria o aviso de cima.
+  const erroExibido =
+    error === FRASE_LOJA_SEM_FRETE ||
+    error === FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO
+      ? temWhatsappDaLoja
+        ? FRASE_LOJA_SEM_FRETE
+        : FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO
+      : error;
   // Aviso de cotação incompleta/parcial: aparece com "Tentar de novo" MAS não
   // é `error` — as opções que vieram (a retirada, por exemplo) seguem
   // escolhíveis e o status continua "pronto".
@@ -1631,7 +1642,7 @@ export function ShippingCalculator({
                   — só a frase; o botão fica fora do que é anunciado. */}
               <div role="alert" className="flex items-start gap-1.5">
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
-                <span>{error ?? aviso}</span>
+                <span>{erroExibido ?? aviso}</span>
               </div>
               {!(error && FRASES_DEFINITIVAS.has(error)) && (
                 <button

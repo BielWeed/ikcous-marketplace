@@ -156,6 +156,35 @@ describe("ShippingCalculator — loja sem CEP de origem diz o motivo e não ofer
     },
   );
 
+  it("o WhatsApp da loja chega DEPOIS do 409: a frase troca para a com contato, sem nova chamada", async () => {
+    lojaAtual.config = { freeShippingMin: 0, whatsappNumber: "" };
+    invoke.mockResolvedValue({
+      data: null,
+      error: erroHttp(respostaDaLojaSemCep()),
+    });
+    await cotar();
+    await esperarUmPouco();
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+      FRASE_SEM_CONTATO,
+    );
+
+    // A config da loja termina de carregar (ou a lojista cadastra o número
+    // ao vivo): o topo do checkout passa a "Fale com a loja" e a calculadora
+    // logo abaixo acompanha.
+    lojaAtual.config = {
+      freeShippingMin: 0,
+      whatsappNumber: "(34) 99999-9999",
+    };
+    await cotar();
+    await esperarUmPouco();
+
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+      FRASE_COM_CONTATO,
+    );
+    expect(hospedeiro.textContent).not.toContain("Tentar de novo");
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it("CONTROLE: o mesmo 409 sem código segue genérico e COM 'Tentar de novo'", async () => {
     lojaAtual.config = { freeShippingMin: 0, whatsappNumber: "34999999999" };
     invoke.mockResolvedValue({
