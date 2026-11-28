@@ -3800,7 +3800,24 @@ const ROL_DA_211B = [
   "v_store_config: as 48 colunas da 20261310000000 (ou as 50 desta), security_invoker",
   "tr_a_loja_so_entrega_o_confirmado: ausente, ou o desta (reaplicacao)",
 ];
+// Lote 215 (20261659000000, a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking: os corpos de
+// devolver_estoque, admin_devolucao_concluir, resolver_peca_sem_tamanho e get_admin_analytics_v2). Somente catalogo: nenhuma le pedido,
+// devolucao, produto nem peca e nenhuma chama funcao. A 215a espera os quatro corpos desta (md5); a 215b, os vigentes (1653, 1642 e
+// 3995) ou os desta. Rol de 7 nas duas.
+const ROL_DA_215 = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolver_estoque: corpo esperado (md5)",
+  "admin_devolucao_concluir: corpo esperado (md5)",
+  "resolver_peca_sem_tamanho: corpo esperado (md5)",
+  "get_admin_analytics_v2: corpo esperado (md5)",
+  "as quatro funcoes: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, assinatura e EXECUTE de sempre",
+  "produtos (id, deleted_at) e product_variants (id, product_id): as colunas que a regra nova le",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado":
+    ROL_DA_215,
+  "215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente":
+    ROL_DA_215,
   "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado": ROL_DA_211A,
   "211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente": ROL_DA_211B,
   "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado": ROL_DA_210,

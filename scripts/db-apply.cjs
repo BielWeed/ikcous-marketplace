@@ -712,6 +712,62 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261659000000: a peca de produto EXCLUIDO fica fora do estoque, e o vale-troca nao e dinheiro no ranking de lucro. QUATRO funcoes:
+  // devolver_estoque e admin_devolucao_concluir (corpos da 20261653000000) ganham UM bloco cada (o produto do item ou o pai da variacao
+  // com deleted_at preenchido: a peca nao volta ao estoque nem ao cantinho; a conclusao a conta em fora_do_estoque e mantem o carimbo);
+  // resolver_peca_sem_tamanho (corpo da 20261642000000) recusa o tamanho de produto excluido; get_admin_analytics_v2 (corpo da
+  // 20261399995000) conta o vale como dinheiro devolvido 0 nas DUAS copias. Os marcadores sao as decisoes que, tiradas, voltam o defeito.
+  // O corpo exato (md5) e da consulta 215a e do pos-voo; o comportamento, da prova viva a-peca-de-produto-excluido-viva.cjs.
+  "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql":
+    [
+      {
+        funcao: "devolver_estoque",
+        esperado: [
+          { texto: "WHERE p.deleted_at IS NOT NULL", vezes: 1 },
+          {
+            texto:
+              "OR p.id = (SELECT v.product_id FROM public.product_variants v WHERE v.id = v_item.variant_id))) THEN",
+            vezes: 1,
+          },
+        ],
+      },
+      {
+        funcao: "admin_devolucao_concluir",
+        esperado: [
+          { texto: "WHERE p.deleted_at IS NOT NULL", vezes: 1 },
+          {
+            texto: "v_fora_do_estoque := v_fora_do_estoque + v_di.quantidade;",
+            vezes: 1,
+          },
+          {
+            texto:
+              "'reestocados', v_reestocados - v_sem_tamanho - v_fora_do_estoque, 'sem_tamanho', v_sem_tamanho,",
+            vezes: 1,
+          },
+          { texto: "'fora_do_estoque', v_fora_do_estoque", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "resolver_peca_sem_tamanho",
+        esperado: [
+          {
+            texto:
+              "IF EXISTS (SELECT 1 FROM public.produtos p WHERE p.id = v_produto AND p.deleted_at IS NOT NULL) THEN",
+            vezes: 1,
+          },
+        ],
+      },
+      {
+        funcao: "get_admin_analytics_v2",
+        esperado: [
+          {
+            texto:
+              "CROSS JOIN LATERAL (SELECT CASE WHEN dv.resolucao_final = 'vale' THEN 0",
+            vezes: 2,
+          },
+        ],
+      },
+    ],
   // 20261653000000: a peca que volta para uma variacao desligada espera a lojista. devolver_estoque e admin_devolucao_concluir (corpos da
   // 20261642000000) ganham UM bloco cada: a variacao do item que nao esta ligada vira "sem variacao" e o item segue o ramo da 642 (cantinho
   // ou pai). Os marcadores sao as decisoes que, tiradas, voltam o defeito (o filtro de ligada, a troca para sem variacao, o produto pelo pai

@@ -454,6 +454,8 @@ on:
           - 210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente
           - 211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado
           - 211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente
+          - 215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado
+          - 215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente
           - backups
       projeto:
         description: "Projeto de destino: o nome EXATO de uma loja de scripts/frota/lojas.json (hoje loja, sandbox, ikcous-publicada ou savy); todas as lojas assinantes exigem expected_sha; nome desconhecido e recusado antes de qualquer segredo — achado da rodada 2"

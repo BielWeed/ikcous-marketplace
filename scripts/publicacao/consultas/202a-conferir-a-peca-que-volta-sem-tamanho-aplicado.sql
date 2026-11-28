@@ -4,6 +4,8 @@
 -- rollback) as linhas da migration respondem 'AUSENTE' ou 'nao' (a 202a negativa e' esperada), nunca erro.
 -- SUCESSORA: a 20261653000000 (a peca da variacao desligada espera a lojista) mantem o ramo da peca sem tamanho e so acrescenta o bloco
 -- da variacao desligada antes dele; os corpos dela contam como os desta nas linhas do md5 (a 209a confere qual).
+-- SUCESSORA: a 20261659000000 (a peca de produto excluido fica fora do estoque) mantem os corpos e so acrescenta o bloco do produto
+-- excluido; os corpos dela contam como os desta (a 215a confere qual).
 WITH fn AS (
   SELECT p.proname::text AS nome, md5(replace(p.prosrc, chr(13), '')) AS h, p.oid
     FROM pg_catalog.pg_proc p
@@ -33,20 +35,20 @@ WITH fn AS (
    WHERE to_regclass('public.pecas_sem_tamanho') IS NOT NULL
 ), itens(item, esperado, vivo, ok) AS (
   SELECT 'devolver_estoque: corpo exato (md5)', '80b1a90baf10d1b4c59484772e4864c4',
-         COALESCE((SELECT CASE WHEN h = '2913f3178498938d0a79e3b47a1084d1' THEN '80b1a90baf10d1b4c59484772e4864c4' ELSE h END FROM fn WHERE nome = 'devolver_estoque'), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque') IN ('80b1a90baf10d1b4c59484772e4864c4', '2913f3178498938d0a79e3b47a1084d1'), false)
+         COALESCE((SELECT CASE WHEN h IN ('2913f3178498938d0a79e3b47a1084d1', 'a2b4e093b3afee7b5f641a8dda2692c4') THEN '80b1a90baf10d1b4c59484772e4864c4' ELSE h END FROM fn WHERE nome = 'devolver_estoque'), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque') IN ('80b1a90baf10d1b4c59484772e4864c4', '2913f3178498938d0a79e3b47a1084d1', 'a2b4e093b3afee7b5f641a8dda2692c4'), false)
   UNION ALL
   SELECT 'admin_devolucao_concluir: corpo exato (md5)', '1a548896acb8248f1b1771d765c92fcb',
-         COALESCE((SELECT CASE WHEN h = 'd146dc7aefb07a0bf580ed7265d9453e' THEN '1a548896acb8248f1b1771d765c92fcb' ELSE h END FROM fn WHERE nome = 'admin_devolucao_concluir'), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir') IN ('1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e'), false)
+         COALESCE((SELECT CASE WHEN h IN ('d146dc7aefb07a0bf580ed7265d9453e', 'b0373391f4d900670f01188103928e07') THEN '1a548896acb8248f1b1771d765c92fcb' ELSE h END FROM fn WHERE nome = 'admin_devolucao_concluir'), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir') IN ('1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e', 'b0373391f4d900670f01188103928e07'), false)
   UNION ALL
   SELECT 'pecas_sem_tamanho_pendentes: corpo exato (md5)', 'd6a9047fe26305d0c1446c284033245d',
          COALESCE((SELECT h FROM fn WHERE nome = 'pecas_sem_tamanho_pendentes'), 'AUSENTE'),
          COALESCE((SELECT h FROM fn WHERE nome = 'pecas_sem_tamanho_pendentes') = 'd6a9047fe26305d0c1446c284033245d', false)
   UNION ALL
   SELECT 'resolver_peca_sem_tamanho: corpo exato (md5)', 'cac3d04d9be77c7d4004003bb70561c5',
-         COALESCE((SELECT h FROM fn WHERE nome = 'resolver_peca_sem_tamanho'), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'resolver_peca_sem_tamanho') = 'cac3d04d9be77c7d4004003bb70561c5', false)
+         COALESCE((SELECT CASE WHEN h = '115378a67cd4f89b73129aeec4c46a7f' THEN 'cac3d04d9be77c7d4004003bb70561c5' ELSE h END FROM fn WHERE nome = 'resolver_peca_sem_tamanho'), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'resolver_peca_sem_tamanho') IN ('cac3d04d9be77c7d4004003bb70561c5', '115378a67cd4f89b73129aeec4c46a7f'), false)
   UNION ALL
   SELECT 'as duas RPCs novas: uma so cada, SECURITY DEFINER, search_path=public e EXECUTE so do authenticated (nem PUBLIC, anon ou service_role)', 'sim',
          CASE WHEN novas.certas THEN 'sim' ELSE 'nao' END,

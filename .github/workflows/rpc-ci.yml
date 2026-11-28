@@ -384,6 +384,8 @@ on:
       - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
       - "scripts/publicacao/consultas/211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado.sql"
       - "scripts/publicacao/consultas/211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente.sql"
+      - "scripts/publicacao/consultas/215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado.sql"
+      - "scripts/publicacao/consultas/215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -742,6 +744,8 @@ on:
       - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
       - "scripts/publicacao/consultas/211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado.sql"
       - "scripts/publicacao/consultas/211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente.sql"
+      - "scripts/publicacao/consultas/215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado.sql"
+      - "scripts/publicacao/consultas/215b-antes-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1618,6 +1622,13 @@ jobs:
       - name: Prova viva da loja nova que so vende o que confirmou (20261655000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nova-so-vende-o-que-confirmou-viva.cjs
+      # Migration 20261659000000 (a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking): devolver_estoque
+      # pula o item de produto excluido, admin_devolucao_concluir o conta em fora_do_estoque (carimbo reestocado_em mantido),
+      # resolver_peca_sem_tamanho recusa o tamanho de produto excluido e get_admin_analytics_v2 nao desconta o vale (Financeiro como
+      # oraculo). Controle com os corpos anteriores, mutantes, reaplicar 2x e CRLF, rollback byte a byte, pre-voo e 215a/215b. CLONE proprio.
+      - name: Prova viva da peca de produto excluido e do vale no ranking (20261659000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-de-produto-excluido-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais

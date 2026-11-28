@@ -6,6 +6,8 @@
 -- pecas_sem_tamanho_da_devolucao (md5 a5514b503791af689ba68dfda6b76b6e), existe uma so, STABLE e com EXECUTE so do authenticated. NAO le
 -- nenhuma linha de pedido, devolucao, produto nem peca e NAO chama funcao nenhuma. Tudo true = aplicado; qualquer false = PARE e leia a
 -- linha. Depois do rollback-manual as linhas dos corpos e da leitura reprovam (voltam os da 20261642000000; a leitura sai).
+-- SUCESSORA: a 20261659000000 (a peca de produto excluido fica fora do estoque) mantem os corpos e so acrescenta o bloco do produto
+-- excluido; os corpos dela contam como os desta (a 215a confere qual).
 WITH fn AS (
   SELECT p.proname::text AS nome, md5(replace(p.prosrc, chr(13), '')) AS h, p.oid,
          p.prosecdef AND p.proconfig = ARRAY['search_path=public']::text[]
@@ -37,7 +39,7 @@ WITH fn AS (
          AND COALESCE((SELECT md5(replace(prosrc, chr(13), '')) FROM pg_catalog.pg_proc WHERE oid = to_regprocedure('public.pecas_sem_tamanho_pendentes(uuid)'))
                    = 'd6a9047fe26305d0c1446c284033245d', false)
          AND COALESCE((SELECT md5(replace(prosrc, chr(13), '')) FROM pg_catalog.pg_proc WHERE oid = to_regprocedure('public.resolver_peca_sem_tamanho(uuid,uuid)'))
-                   = 'cac3d04d9be77c7d4004003bb70561c5', false) AS certo
+                   IN ('cac3d04d9be77c7d4004003bb70561c5', '115378a67cd4f89b73129aeec4c46a7f'), false) AS certo
 ), da AS (
   SELECT (SELECT count(*) FROM pg_catalog.pg_proc x
            WHERE x.pronamespace = 'public'::regnamespace AND x.proname = 'pecas_sem_tamanho_da_devolucao') AS n,
@@ -56,12 +58,12 @@ WITH fn AS (
   LEFT JOIN pg_catalog.pg_language l ON l.oid = p.prolang
 ), itens(item, esperado, vivo, ok) AS (
   SELECT 'devolver_estoque: corpo esperado (md5)', '2913f3178498938d0a79e3b47a1084d1',
-         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1) = '2913f3178498938d0a79e3b47a1084d1', false)
+         COALESCE((SELECT CASE WHEN h = 'a2b4e093b3afee7b5f641a8dda2692c4' THEN '2913f3178498938d0a79e3b47a1084d1' ELSE h END FROM fn WHERE nome = 'devolver_estoque' LIMIT 1), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'devolver_estoque' LIMIT 1) IN ('2913f3178498938d0a79e3b47a1084d1', 'a2b4e093b3afee7b5f641a8dda2692c4'), false)
   UNION ALL
   SELECT 'admin_devolucao_concluir: corpo esperado (md5)', 'd146dc7aefb07a0bf580ed7265d9453e',
-         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1), 'AUSENTE'),
-         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1) = 'd146dc7aefb07a0bf580ed7265d9453e', false)
+         COALESCE((SELECT CASE WHEN h = 'b0373391f4d900670f01188103928e07' THEN 'd146dc7aefb07a0bf580ed7265d9453e' ELSE h END FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1), 'AUSENTE'),
+         COALESCE((SELECT h FROM fn WHERE nome = 'admin_devolucao_concluir' LIMIT 1) IN ('d146dc7aefb07a0bf580ed7265d9453e', 'b0373391f4d900670f01188103928e07'), false)
   UNION ALL
   SELECT 'devolver_estoque e admin_devolucao_concluir: uma so cada, plpgsql SECURITY DEFINER VOLATILE, search_path=public, devolver_estoque sem EXECUTE de aplicacao, admin_devolucao_concluir so de authenticated e service_role',
          'sim',

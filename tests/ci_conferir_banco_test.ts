@@ -1195,9 +1195,15 @@ Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-vo
   const sqlB = sqlSemComentarios(
     await Deno.readTextFile(`${CONSULTAS_DIR}/${B209}.sql`),
   );
-  // A 209a aceita SO os corpos desta; a 209b, os da 642 OU os desta (reaplicacao idempotente).
-  assertStringIncludes(sqlA, `= '${devDesta}'`);
-  assertStringIncludes(sqlA, `= '${conclDesta}'`);
+  // A 209a aceita SO os corpos desta (e os da SUCESSORA 20261659000000, a peca de produto excluido, que a 215a confere); a 209b, os
+  // da 642 OU os desta (reaplicacao idempotente).
+  const m1659 = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql`,
+  );
+  const dev1659 = md5(corpo(m1659, "devolver_estoque"));
+  const concl1659 = md5(corpo(m1659, "admin_devolucao_concluir"));
+  assertStringIncludes(sqlA, `IN ('${devDesta}', '${dev1659}')`);
+  assertStringIncludes(sqlA, `IN ('${conclDesta}', '${concl1659}')`);
   assert(
     !sqlA.includes(devVigente) && !sqlA.includes(conclVigente),
     "a 209a nao pode aceitar os corpos da 642",
@@ -1208,14 +1214,21 @@ Deno.test("209a/209b — rol fechado, um statement so de catalogo, md5 do pre-vo
   assertStringIncludes(sqlA, `n = 1 AND h = '${daDesta}'`);
   assert(!sqlA.includes("n = 0"), "a 209a nao aceita a leitura ausente");
   assertStringIncludes(sqlB, `n = 0 OR (n = 1 AND h = '${daDesta}'`);
-  // A consulta da antecessora direta (202a) aceita os desta como SUCESSORA: senao reprova em toda loja depois do apply.
+  // A consulta da antecessora direta (202a) aceita os desta como SUCESSORA (e os da 20261659000000, a sucessora desta): senao
+  // reprova em toda loja depois do apply.
   const a202 = sqlSemComentarios(
     await Deno.readTextFile(
       `${CONSULTAS_DIR}/202a-conferir-a-peca-que-volta-sem-tamanho-aplicado.sql`,
     ),
   );
-  assertStringIncludes(a202, `IN ('${devVigente}', '${devDesta}')`);
-  assertStringIncludes(a202, `IN ('${conclVigente}', '${conclDesta}')`);
+  assertStringIncludes(
+    a202,
+    `IN ('${devVigente}', '${devDesta}', '${dev1659}')`,
+  );
+  assertStringIncludes(
+    a202,
+    `IN ('${conclVigente}', '${conclDesta}', '${concl1659}')`,
+  );
   assertStringIncludes(
     rpc,
     "run: node tests/banco/rodar-isolado.cjs tests/banco/a-peca-da-variacao-desligada-viva.cjs",
@@ -3431,6 +3444,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "d146dc7aefb07a0bf580ed7265d9453e",
           versao: "20261653000000",
         },
+        // 28/11/2026 (lote 598): a peca de produto excluido fica fora do estoque (a cadeia 241 -> 343 -> 395200 -> 1642 -> 1653 -> 1659).
+        {
+          fn: "admin_devolucao_concluir",
+          h: "b0373391f4d900670f01188103928e07",
+          versao: "20261659000000",
+        },
         // 27/10/2026 (lote 231): a busca de devolucao acha o numero do pedido (a cadeia 199 -> 395).
         {
           fn: "admin_devolucoes_listar",
@@ -3601,6 +3620,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "get_admin_analytics_v2",
           h: "4f8fb94f6cb0018e10d0ef71541f1cbf",
           versao: "20261399995000",
+        },
+        // 28/11/2026 (lote 598): o vale-troca nao e dinheiro no ranking de lucro (... -> 3994 -> 3995 -> 1659).
+        {
+          fn: "get_admin_analytics_v2",
+          h: "1624212a7096b6f49a80370b30191a15",
+          versao: "20261659000000",
         },
         {
           fn: "get_admin_customers_paged",
@@ -9622,6 +9647,27 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo3995.replace(/\n/g, "\r\n"))
       .digest("hex"),
   };
+  // A 20261659000000 (o vale-troca nao e dinheiro no ranking de lucro) sucede a 3995 em get_admin_analytics_v2.
+  const texto1659 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql`,
+    )
+  ).replace(/\r/g, "");
+  const ini1659 = texto1659.indexOf(
+    cabecalhoDepois17("get_admin_analytics_v2"),
+  );
+  assert(ini1659 >= 0);
+  const abre1659 = texto1659.indexOf("AS $$", ini1659) + 5;
+  const corpo1659 = texto1659.slice(
+    abre1659,
+    texto1659.indexOf("$$;", abre1659),
+  );
+  const shaSucessora1659 = {
+    lf: criarHash("sha256").update(corpo1659).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo1659.replace(/\n/g, "\r\n"))
+      .digest("hex"),
+  };
   const shaSucessora50 = {
     lf: criarHash("sha256").update(corpo50).digest("hex"),
     crlf: criarHash("sha256")
@@ -9752,6 +9798,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora3994.crlf,
                 shaSucessora3995.lf,
                 shaSucessora3995.crlf,
+                shaSucessora1659.lf,
+                shaSucessora1659.crlf,
                 shaSucessora81.lf,
                 shaSucessora81.crlf,
                 shaSucessora85.lf,
@@ -9815,6 +9863,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                     shaSucessora3994.crlf,
                     shaSucessora3995.lf,
                     shaSucessora3995.crlf,
+                    shaSucessora1659.lf,
+                    shaSucessora1659.crlf,
                     x.lf,
                   ]
                 : lado === "depois" && f.nome === "get_admin_products_paged"
@@ -9867,6 +9917,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
               shaSucessora3994.crlf,
               shaSucessora3995.lf,
               shaSucessora3995.crlf,
+              shaSucessora1659.lf,
+              shaSucessora1659.crlf,
               shaSucessora81.lf,
               shaSucessora81.crlf,
               shaSucessora85.lf,
@@ -16358,7 +16410,7 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       // retirando exatamente as duas fórmulas declaradas, antes de comparar a regra histórica à 44m.
       assertEquals(
         vigente,
-        "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
+        "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
         "o painel mudou de corpo: refaca a regra da 44m contra o corpo novo",
       );
       // A 3997 (o ranking de lucro desconta a devolucao e o estorno) so troca a conta do lucro das vendas COM devolucao concluida ou
@@ -16367,6 +16419,8 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       // A 3994 (o item "Nao veio" fica com a cliente) so muda a conta das vendas COM item "Nao veio" numa devolucao: tambem nao muda
       // o numero sem devolucao (tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs, JSON inteiro igual).
       // A 3995 (o lucro do ranking casa com o Financeiro) tambem nao muda o numero sem devolucao nem estorno (tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs, JSON inteiro igual).
+      // A 1659 (o vale-troca nao e dinheiro no ranking) so muda o dinheiro devolvido da devolucao concluida por VALE: tambem nao muda o numero
+      // sem devolucao (tests/banco/a-peca-de-produto-excluido-viva.cjs, JSON inteiro igual sem devolucao).
       const corpoDaRegraHistorica =
         "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql";
       const funcao = (sql: string) => {
@@ -17621,6 +17675,8 @@ Deno.test("194a/194b — registradas no menu do conferir-banco-da-loja, nos dois
     "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
     // 20261655000000: a loja nova so vende o que confirmou.
     "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
+    // 20261659000000: a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking.
+    "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
   ];
   assertEquals(
     canais.provasDeObjetos

@@ -118,6 +118,12 @@ const SUCESSORAS = [
     versao: "20261655000000",
     consulta: "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
   },
+  // 20261659000000: a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking.
+  {
+    versao: "20261659000000",
+    consulta:
+      "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
+  },
 ];
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));

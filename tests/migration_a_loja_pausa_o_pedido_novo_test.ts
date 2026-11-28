@@ -602,6 +602,8 @@ Deno.test("196a/196b (rol fechado de 10 e 8), canais-de-backend, menu do conferi
     "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado",
     // 20261655000000: a loja nova so vende o que confirmou.
     "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado",
+    // 20261659000000: a peca de produto excluido fica fora do estoque e o vale nao e dinheiro no ranking.
+    "215a-conferir-a-peca-de-produto-excluido-fica-fora-e-o-vale-nao-e-dinheiro-aplicado",
   ];
   const lotes = lerCanais().provasDeObjetos;
   assertEquals(

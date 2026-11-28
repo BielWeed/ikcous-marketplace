@@ -207,6 +207,12 @@ const NOMES = [
   // fin_caixa_movimentar_com_chave (da 252) nao sao das 42, mas entram porque o rollback-manual dela desfaz as quatro de uma vez e a
   // conferencia "devolveu o corpo anterior" vale para cada uma. O rollback da 246 e o da 252 recusam com o corpo novo no ar: ela cai antes.
   "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
+  // A peca de produto excluido fica fora do estoque, e o vale nao e dinheiro no ranking (28/11/2026): UMA migration, QUATRO funcoes.
+  // get_admin_analytics_v2 sucede o corpo da 3995 (a CADEIA ... -> 3994 -> 3995 -> 1659: o `hashVigente` da 1659 e o `hashDesta` da 3995);
+  // devolver_estoque e admin_devolucao_concluir (da 653) e resolver_peca_sem_tamanho (da 642) nao sao das 42, mas entram porque o
+  // rollback-manual dela desfaz as quatro de uma vez e a conferencia "devolveu o corpo anterior" vale para cada uma. O rollback da 3995
+  // recusa com o corpo novo no ar: ela cai antes.
+  "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -220,6 +226,10 @@ const PARES_POR_MIGRATION = new Map([
   ["20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql", 3],
   ["20261643000000_as_listas_dos_ajustes_nao_somem_entre_aparelhos.sql", 2],
   ["20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql", 4],
+  [
+    "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
+    4,
+  ],
   [
     "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
     2,

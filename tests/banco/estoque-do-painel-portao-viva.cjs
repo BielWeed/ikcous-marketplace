@@ -1556,6 +1556,26 @@ async function main() {
         "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql",
         "public.fin_lancamento_salvar(jsonb)",
       ],
+      // A 1659 (a peca de produto excluido fica fora do estoque, e o vale nao e dinheiro no ranking) troca os corpos de
+      // get_admin_analytics_v2 (sucede a 3995), devolver_estoque e admin_devolucao_concluir (sucedem a 653) e resolver_peca_sem_tamanho
+      // (sucede a 642); a 17a le o analytics so pelo estoque, que ela nao muda. O rollback dela devolve as quatro de uma vez (a primeira
+      // entrada desfaz; as outras ja encontram o corpo anterior, e a conferencia do molde mede as quatro).
+      [
+        "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
+        "public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)",
+      ],
+      [
+        "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
+        "public.devolver_estoque(uuid)",
+      ],
+      [
+        "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
+        "public.get_admin_analytics_v2(integer)",
+      ],
+      [
+        "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
+        "public.resolver_peca_sem_tamanho(uuid,uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

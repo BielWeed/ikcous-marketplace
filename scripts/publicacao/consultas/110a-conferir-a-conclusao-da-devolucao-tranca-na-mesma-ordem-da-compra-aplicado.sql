@@ -3,6 +3,8 @@
 -- SUCESSORA: a 20261642000000 (a peca que volta sem tamanho) mantem a ordem global das travas e so acrescenta o ramo da peca sem tamanho; o
 -- corpo dela conta como o desta na linha do md5 (a 202a confere qual). A 20261653000000 (a peca da variacao desligada) sucede a
 -- 20261642000000 e tambem mantem a trava; o corpo dela conta igual (a 209a confere qual).
+-- SUCESSORA: a 20261659000000 (a peca de produto excluido fica fora do estoque) mantem os corpos e so acrescenta o bloco do produto
+-- excluido; os corpos dela contam como os desta (a 215a confere qual).
 WITH fn AS (
   SELECT p.oid, md5(replace(p.prosrc, chr(13), '')) AS h,
     (l.lanname = 'plpgsql'
@@ -25,7 +27,7 @@ WITH fn AS (
          CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'admin_devolucao_concluir: corpo exato (md5)', 'a152c8dcd7cf6d1e05e5aff128d6c45e',
-         COALESCE((SELECT CASE WHEN h IN ('1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e') THEN 'a152c8dcd7cf6d1e05e5aff128d6c45e' ELSE h END FROM fn LIMIT 1), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN h IN ('1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e', 'b0373391f4d900670f01188103928e07') THEN 'a152c8dcd7cf6d1e05e5aff128d6c45e' ELSE h END FROM fn LIMIT 1), 'AUSENTE')
   UNION ALL
   SELECT 'admin_devolucao_concluir: o corpo traz a ordem global das travas (uma vez)', 'sim',
          CASE WHEN NOT EXISTS (SELECT 1 FROM fn) THEN 'AUSENTE'

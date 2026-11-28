@@ -145,8 +145,19 @@ Deno.test("20261653: os corpos de partida ainda sao os vigentes (os da 202616420
     /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.admin_devolucao_concluir\s*\(/i,
   ]) {
     const f = fontes(re);
-    assertEquals(f.at(-1), NOME, `${re}: outra redefine depois desta`);
-    assertEquals(f.at(-2), NOME_642, `${re}: a antecessora e' a 642`);
+    // A 20261659000000 (a peca de produto excluido fica fora do estoque) e' a SUCESSORA desta nos dois corpos; o rollback dela
+    // devolve os desta byte a byte (tests/migration_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro_test.ts).
+    assertEquals(
+      f.at(-1),
+      "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql",
+      `${re}: outra redefine depois da sucessora`,
+    );
+    assertEquals(
+      f.at(-2),
+      NOME,
+      `${re}: outra redefine entre esta e a sucessora`,
+    );
+    assertEquals(f.at(-3), NOME_642, `${re}: a antecessora e' a 642`);
   }
 });
 

@@ -139,6 +139,13 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // 210a/210b fazem com ela em tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs, e a 8e ja traz os dois pares; `noEstado` a desfaz antes
     // (o-caixa-pertence-ao-dia-posterior.cjs, o rollback dela devolve as quatro de uma vez).
     s.nome !== "20261654000000_o_caixa_pertence_ao_dia_em_que_abriu.sql" &&
+    // A 20261659000000 (a peca de produto excluido fica fora do estoque, e o vale nao e dinheiro no ranking) e a DECIMA sucessora de
+    // get_admin_analytics_v2 (... -> 3994 -> 3995 -> 1659) e a de admin_devolucao_concluir (... -> 1653 -> 1659); as outras duas funcoes dela
+    // nao sao da 8e. Tem a PROVA PROPRIA do que a 8e, a 35a, a 45a, a 48a, a 53a, a 54a, a 135a, a 146a e a 147a fazem com ela (as
+    // fichas dizem o mesmo com ela e com o corpo anterior) em tests/banco/a-peca-de-produto-excluido-viva.cjs; `noEstado` a desfaz antes
+    // (a cadeia do lucro: o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs chama a-peca-de-produto-excluido-posterior.cjs primeiro).
+    s.nome !==
+      "20261659000000_a_peca_de_produto_excluido_fica_fora_e_o_vale_nao_e_dinheiro.sql" &&
     // A 20261350000000 (a compra online trava o preco e espera a mesma chave) so redefine v23 e v24, em cima da 44; nenhuma
     // das duas e' funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 44 (a-compra-online-trava-posterior.cjs,
     // chamado por desfazerEntregaNaCidadeNaTransacao); aqui sai do rol pela mesma razao da 44 e da 1310.

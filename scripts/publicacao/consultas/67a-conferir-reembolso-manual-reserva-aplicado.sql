@@ -1,4 +1,6 @@
 -- Somente catalogo, rol fechado de quatro linhas. Nenhum pedido ou dado de cliente.
+-- SUCESSORA: a 20261659000000 (a peca de produto excluido fica fora do estoque) mantem os corpos e so acrescenta o bloco do produto
+-- excluido; os corpos dela contam como os desta (a 215a confere qual).
 WITH f AS (
   SELECT p.*, l.lanname FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang
   WHERE p.oid=to_regprocedure('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)')
@@ -9,7 +11,7 @@ WITH f AS (
   UNION ALL
   -- O corpo da 343 OU o da sucessora dela, a 20261395200000 (so acrescenta o bloco das travas antes do laco): a sucessora conta como o da 343.
   SELECT 'admin_devolucao_concluir: corpo exato (md5)', 'ea651d52157521c0fe7ffccc948b4b1a',
-    COALESCE((SELECT CASE WHEN md5(replace(prosrc,chr(13),'')) IN ('a152c8dcd7cf6d1e05e5aff128d6c45e', '1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e')
+    COALESCE((SELECT CASE WHEN md5(replace(prosrc,chr(13),'')) IN ('a152c8dcd7cf6d1e05e5aff128d6c45e', '1a548896acb8248f1b1771d765c92fcb', 'd146dc7aefb07a0bf580ed7265d9453e', 'b0373391f4d900670f01188103928e07')
                          THEN 'ea651d52157521c0fe7ffccc948b4b1a' ELSE md5(replace(prosrc,chr(13),'')) END FROM f),'AUSENTE')
   UNION ALL
   SELECT 'admin_devolucao_concluir: atributos preservados', 'sim',
