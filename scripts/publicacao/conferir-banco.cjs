@@ -3800,6 +3800,17 @@ const ROL_DA_211B = [
   "v_store_config: as 48 colunas da 20261310000000 (ou as 50 desta), security_invoker",
   "tr_a_loja_so_entrega_o_confirmado: ausente, ou o desta (reaplicacao)",
 ];
+// Lote 212 (20261656000000, a visitante deixa o e-mail depois da compra: nascem informar_email_da_visitante, a porta da tela
+// "Pedido recebido!", e reivindicar_comprovante_da_visitante, a reserva do comprovante com o teto valendo tambem para pedido pago).
+// Somente catalogo: nenhuma le pedido nem contador e nenhuma chama funcao. A 212a espera as duas com o corpo desta (md5); a 212b, as
+// duas AUSENTES ou com o corpo desta (reaplicacao). Rol de 4, o mesmo nas duas (as duas funcoes, o teto da 20261217000000 e as colunas
+// de marketplace_orders que elas leem).
+const ROL_DA_212 = [
+  "informar_email_da_visitante: corpo exato (md5), uma so, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE de anon e authenticated (nem PUBLIC nem service_role)",
+  "reivindicar_comprovante_da_visitante: corpo exato (md5), uma so, plpgsql SECURITY DEFINER VOLATILE, search_path=public, EXECUTE so do service_role",
+  "o teto de e-mail da 20261217000000: reservar_vaga_de_email e chave_do_destinatario com os corpos dela, liberar_email_de_confirmacao no ar",
+  "marketplace_orders: as colunas que as duas leem, com o tipo esperado",
+];
 // Lote 213 (20261657000000, o produto com todos os tamanhos desligados nao volta a venda sozinho: os corpos de devolver_estoque e de
 // admin_devolucao_concluir mudam, um sub-bloco cada, dentro do bloco da 20261653000000). Somente catalogo: nenhuma le pedido, devolucao,
 // produto nem peca e nenhuma chama funcao. A 213a espera os corpos desta (md5); a 213b, os da 20261653000000 ou os desta (reaplicacao
@@ -3814,6 +3825,8 @@ const ROL_FECHADO_POR_CONSULTA = {
     ROL_DA_213,
   "213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente":
     ROL_DA_213,
+  "212a-conferir-a-visitante-deixa-o-email-aplicado": ROL_DA_212,
+  "212b-antes-a-visitante-deixa-o-email-ausente": ROL_DA_212,
   "211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado": ROL_DA_211A,
   "211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente": ROL_DA_211B,
   "210a-conferir-o-caixa-pertence-ao-dia-em-que-abriu-aplicado": ROL_DA_210,

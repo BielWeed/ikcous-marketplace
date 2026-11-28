@@ -112,13 +112,14 @@ function codigoDoErro(erro: unknown): string | null {
 /**
  * Classifica a falha de gravar/ler pelo CÓDIGO do Postgres (nunca pelo texto, que
  * a tela não mostra): 23505 = já existe pedido aberto igual (índice único); 42501
- * ou JWT vencido = sessão; sem código (TypeError de fetch, DOMException, aparelho
- * sem internet) = rede; o resto = "outra".
+ * ou JWT inválido/vencido (PGRST301/PGRST303) = sessão; sem código (TypeError de
+ * fetch, DOMException, aparelho sem internet) = rede; o resto = "outra".
  */
 export function classificarFalhaDoPedido(erro: unknown): FalhaDoPedido {
   const codigo = codigoDoErro(erro);
   if (codigo === "23505") return "ja_existe";
-  if (codigo === "42501" || codigo === "PGRST301") return "sem_sessao";
+  if (codigo === "42501" || codigo === "PGRST301" || codigo === "PGRST303")
+    return "sem_sessao";
   // Sem código: não veio do Postgres/PostgREST (fetch que não chegou, aborto).
   if (codigo === null || codigo === "") return "sem_rede";
   return "outra";

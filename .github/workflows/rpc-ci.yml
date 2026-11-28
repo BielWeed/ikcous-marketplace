@@ -384,6 +384,8 @@ on:
       - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
       - "scripts/publicacao/consultas/211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado.sql"
       - "scripts/publicacao/consultas/211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente.sql"
+      - "scripts/publicacao/consultas/212a-conferir-a-visitante-deixa-o-email-aplicado.sql"
+      - "scripts/publicacao/consultas/212b-antes-a-visitante-deixa-o-email-ausente.sql"
       - "scripts/publicacao/consultas/213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado.sql"
       - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -744,6 +746,8 @@ on:
       - "scripts/publicacao/consultas/210b-antes-o-caixa-pertence-ao-dia-em-que-abriu-base-vigente.sql"
       - "scripts/publicacao/consultas/211a-conferir-a-loja-nova-so-vende-o-que-confirmou-aplicado.sql"
       - "scripts/publicacao/consultas/211b-antes-a-loja-nova-so-vende-o-que-confirmou-base-vigente.sql"
+      - "scripts/publicacao/consultas/212a-conferir-a-visitante-deixa-o-email-aplicado.sql"
+      - "scripts/publicacao/consultas/212b-antes-a-visitante-deixa-o-email-ausente.sql"
       - "scripts/publicacao/consultas/213a-conferir-o-produto-todo-desligado-nao-volta-a-venda-aplicado.sql"
       - "scripts/publicacao/consultas/213b-antes-o-produto-todo-desligado-nao-volta-a-venda-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1622,6 +1626,14 @@ jobs:
       - name: Prova viva da loja nova que so vende o que confirmou (20261655000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nova-so-vende-o-que-confirmou-viva.cjs
+      # Migration 20261656000000 (a visitante deixa o e-mail depois da compra): informar_email_da_visitante grava customer_data.email uma vez,
+      # so em pedido de visitante (sem conta, loja online, pago na entrega), sem e-mail e com menos de 15 minutos, com formato valido; a
+      # linha trancada faz duas chamadas ao mesmo tempo gravarem uma vez so (duas conexoes). reivindicar_comprovante_da_visitante respeita
+      # o teto MESMO com o pedido pago (controle: a reivindicar_email_de_confirmacao passa). Permissoes, mutantes, reaplicar 2x e CRLF,
+      # pre-voo, rollback (as duas saem, o e-mail gravado fica) e consultas 212a/212b. CLONE proprio.
+      - name: Prova viva da visitante que deixa o e-mail depois da compra (20261656000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-visitante-deixa-o-email-viva.cjs
       # Migration 20261657000000 (o produto com TODOS os tamanhos desligados nao volta a venda sozinho): devolver_estoque e admin_devolucao_concluir so
       # tiram a variacao desligada do item quando o produto ainda tem variacao LIGADA (cantinho da 1653); com todas desligadas a peca fica na propria
       # variacao (como antes da 1653) e o pai, que a compra vende sem variacao ligada, nao recebe. Controle com os corpos da 1653 (o pai recebe), religar,

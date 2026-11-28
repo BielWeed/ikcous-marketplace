@@ -275,6 +275,90 @@ describe("useOrders — cartão aprovado na hora: o pedido novo avisa pago, não
     expect(avisosDoPainel()).toEqual(["generico"]);
   });
 
+  // O PIX pode ser pago minutos depois da compra: a lembrança dura 5 minutos,
+  // não alguns segundos.
+  it("dentro do prazo da lembrança: o PIX pago 4 minutos depois ainda avisa como pago", async () => {
+    await montarComFiltro("delivered");
+    lerPedidoDoInsert.mockResolvedValue({
+      data: linha("p-novo", "aguardando", "pending"),
+      error: null,
+    });
+    await act(async () => {
+      await evento!({
+        eventType: "INSERT",
+        new: linha("p-novo", "aguardando", "pending"),
+      });
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4 * 60_000);
+    });
+    await emitirUpdate(
+      linha("p-novo", "pago", "pending", "2026-11-28T10:04:00Z"),
+    );
+
+    expect(avisosDoPainel()).toEqual(["pagamento"]);
+  });
+
+  // Eventos fora de ordem: a versão MAIS VELHA que chega atrasada não volta a
+  // lembrança para trás — senão o passo seguinte, que não muda o status,
+  // anunciaria de novo a mudança que já foi avisada.
+  it("evento atrasado com versão mais velha não sobrescreve a lembrança do pedido novo", async () => {
+    await montarComFiltro("delivered");
+    lerPedidoDoInsert.mockResolvedValue({
+      data: linha("p-novo", "aguardando", "pending"),
+      error: null,
+    });
+    await act(async () => {
+      await evento!({
+        eventType: "INSERT",
+        new: linha("p-novo", "aguardando", "pending"),
+      });
+    });
+
+    // A versão das 10:05 chega antes da das 10:02.
+    await emitirUpdate(
+      linha("p-novo", "pago", "processing", "2026-11-28T10:05:00Z"),
+    );
+    await emitirUpdate(
+      linha("p-novo", "pago", "pending", "2026-11-28T10:02:00Z"),
+    );
+    // Passo seguinte sem mudar status nem pagamento (outro campo mudou).
+    await emitirUpdate(
+      linha("p-novo", "pago", "processing", "2026-11-28T10:10:00Z"),
+    );
+
+    expect(avisosDoPainel()).toEqual(["pagamento"]);
+  });
+
+  // A lembrança guarda o status que CHEGOU, não o de quando o pedido nasceu.
+  it("pendente → preparando → só o pagamento muda: a mudança de status não é anunciada de novo", async () => {
+    await montarComFiltro("delivered");
+    lerPedidoDoInsert.mockResolvedValue({
+      data: linha("p-novo", "aguardando", "pending"),
+      error: null,
+    });
+    await act(async () => {
+      await evento!({
+        eventType: "INSERT",
+        new: linha("p-novo", "aguardando", "pending"),
+      });
+    });
+
+    await emitirUpdate(
+      linha("p-novo", "pago", "pending", "2026-11-28T10:01:00Z"),
+    );
+    await emitirUpdate(
+      linha("p-novo", "pago", "processing", "2026-11-28T10:02:00Z"),
+    );
+    // Só o pagamento muda (para um valor que não é "pago"): sem aviso.
+    await emitirUpdate(
+      linha("p-novo", "estornado", "processing", "2026-11-28T10:03:00Z"),
+    );
+
+    expect(avisosDoPainel()).toEqual(["pagamento", "status"]);
+  });
+
   it("controle: pedido antigo que a tela não tem, atualizado de verdade, continua com o aviso neutro 'foi atualizado'", async () => {
     await montarComFiltro("all");
 

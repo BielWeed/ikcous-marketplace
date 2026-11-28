@@ -225,6 +225,15 @@ describe("useAnalytics: tentar de novo e cache de 30 s do resumo", () => {
     expect(frase()).toContain("Sua sessão expirou");
   });
 
+  it("erro só com o código PGRST303 (token vencido no PostgREST 13+) diz que a sessão expirou", async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: "PGRST303", status: 401, message: "token invalido" },
+    });
+    await disparar();
+    expect(frase()).toContain("Sua sessão expirou");
+  });
+
   it("erro só com o código 42501 diz que falta permissão", async () => {
     mockRpc.mockResolvedValue({
       data: null,

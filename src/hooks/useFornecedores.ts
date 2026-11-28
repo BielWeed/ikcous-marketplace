@@ -86,7 +86,9 @@ export function mensagemDeErroDosFornecedores(erro: unknown): string {
   if (erro instanceof ErroDosFornecedores) return erro.message;
   if (ehConsultaSemResposta(erro)) return MENSAGEM_CONEXAO_LENTA;
   const codigo = codigoDe(erro);
-  if (codigo === "42501" || codigo === "PGRST301") return FRASE_SO_ADMIN;
+  // PGRST301 = token inválido; PGRST303 = token vencido (PostgREST 13+).
+  if (codigo === "42501" || codigo === "PGRST301" || codigo === "PGRST303")
+    return FRASE_SO_ADMIN;
   if (codigo === "PGRST205" || codigo === "42P01") return FRASE_NAO_INSTALADO;
   if (
     codigo === "23514" ||

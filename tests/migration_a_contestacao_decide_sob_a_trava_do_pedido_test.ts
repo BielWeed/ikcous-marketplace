@@ -769,6 +769,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-caixa-pertence-ao-dia-em-que-abriu-viva.cjs",
     // 20261655000000: a loja nova so vende o que confirmou (forma_de_pagamento_aceita, gatilho da entrega na cidade, booleanos na vitrine e a trava do apply).
     "tests/banco/a-loja-nova-so-vende-o-que-confirmou-viva.cjs",
+    // 20261656000000: a visitante deixa o e-mail depois da compra (informar_email_da_visitante uma vez so, sob trava da linha; reivindicar_comprovante_da_visitante com o teto ate com pedido pago).
+    "tests/banco/a-visitante-deixa-o-email-viva.cjs",
     // 20261657000000: o produto todo desligado nao volta a venda (sem nenhuma variacao ligada a peca fica na propria variacao, o pai nao recebe).
     "tests/banco/o-produto-todo-desligado-nao-volta-a-venda-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).

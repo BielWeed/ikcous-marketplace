@@ -67,6 +67,8 @@ describe("classificarFalhaDoPedido", () => {
     [{ code: "23505", message: "dup" }, "ja_existe"],
     [{ code: "42501", message: "rls" }, "sem_sessao"],
     [{ code: "PGRST301", message: "jwt" }, "sem_sessao"],
+    // PostgREST 13+: token VENCIDO responde PGRST303 (o 301 ficou para inválido).
+    [{ code: "PGRST303", message: "JWT expired" }, "sem_sessao"],
     [{ code: "23514", message: "check" }, "outra"],
     [{ message: "TypeError: Failed to fetch" }, "sem_rede"],
     [{ code: "", message: "x" }, "sem_rede"],
