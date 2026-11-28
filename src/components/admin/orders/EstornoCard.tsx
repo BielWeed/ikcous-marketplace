@@ -139,6 +139,8 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
   // tentativa nova vai com chave nova, o MP não deduplica e o cliente
   // receberia em dobro.
   const { podeRepetir, confirmando } = acoesDaLinha(linha);
+  // Sem motivo gravado, a frase fecha com ponto (antes terminava em ": ").
+  const motivo = linha.ultimo_erro?.trim() ? `: ${linha.ultimo_erro}` : ".";
 
   if (linha.status === "falhou") {
     if (confirmando) {
@@ -148,14 +150,14 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
       };
     }
     return {
-      texto: `A devolução de ${valor} não foi concluída: ${linha.ultimo_erro ?? ""}`,
+      texto: `A devolução de ${valor} não foi concluída${motivo}`,
       podeTentarDeNovo: podeRepetir,
     };
   }
 
   // `recusado`, sem chargeback envolvido.
   return {
-    texto: `A devolução de ${valor} foi recusada: ${linha.ultimo_erro ?? ""}${confirmando ? ` ${TEXTO_CONFIRMANDO}` : ""}`,
+    texto: `A devolução de ${valor} foi recusada${motivo}${confirmando ? ` ${TEXTO_CONFIRMANDO}` : ""}`,
     podeTentarDeNovo: false,
   };
 }

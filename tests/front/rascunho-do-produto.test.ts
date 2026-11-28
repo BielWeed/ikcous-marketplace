@@ -76,6 +76,36 @@ describe("variacoesDoRascunhoComEstoqueDoBanco", () => {
     ).toEqual([]);
   });
 
+  it("troca de valor que o salvar já gravou sem resposta: a antiga volta como o banco a guardou", () => {
+    // Rascunho: "M" (v2) trocado para "GG". O salvar gravou e a resposta se
+    // perdeu: o banco guardou o "M" desligado e criou o "GG" (v9). Refazer a
+    // troca no próximo salvar criaria um segundo "GG" com o estoque copiado.
+    const daBase = [variacao("v2", 5, { name: "Tamanho", value: "M" })];
+    const doRascunho = [variacao("v2", 5, { name: "Tamanho", value: "GG" })];
+    const doBanco = [
+      variacao("v2", 5, { name: "Tamanho", value: "M", active: false }),
+      variacao("v9", 5, { name: "Tamanho", value: "GG" }),
+    ];
+
+    expect(
+      variacoesDoRascunhoComEstoqueDoBanco(doRascunho, doBanco, daBase),
+    ).toEqual([doBanco[0]]);
+  });
+
+  it("troca de valor ainda NÃO gravada (o banco segue com o M ligado): fica a do rascunho", () => {
+    const daBase = [variacao("v2", 5, { name: "Tamanho", value: "M" })];
+    const doRascunho = [variacao("v2", 5, { name: "Tamanho", value: "GG" })];
+    const doBanco = [variacao("v2", 5, { name: "Tamanho", value: "M" })];
+
+    const [resultado] = variacoesDoRascunhoComEstoqueDoBanco(
+      doRascunho,
+      doBanco,
+      daBase,
+    );
+    expect(resultado.value).toBe("GG");
+    expect(resultado.active).toBe(true);
+  });
+
   it("lista vazia no rascunho: nada volta (e o banco não é tocado)", () => {
     expect(
       variacoesDoRascunhoComEstoqueDoBanco([], [variacao("v1", 1)]),
