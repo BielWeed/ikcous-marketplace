@@ -128,6 +128,10 @@ describe("destinos de produto da vitrine", () => {
         banner("pausado-maiusculo", {
           link: `/Product-Detail?id=${pausado}`,
         }),
+        // O banco aceita o id sem hífens: o filtro também.
+        banner("pausado-sem-hifen", {
+          link: `/product-detail?id=${pausado.replaceAll("-", "")}`,
+        }),
         banner("esgotado", { link: link(esgotado) }),
         banner("categoria", { link: "/?category=Bolsas" }),
         banner("externo", { link: `https://externo.invalid${link(pausado)}` }),

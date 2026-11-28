@@ -241,9 +241,18 @@ function cofreFechado(vault: DataVault): boolean {
   return typeof vault.isClosed === "function" && vault.isClosed();
 }
 
-// Um id malformado faria o banco recusar o lote todo.
-const ID_DE_PRODUTO =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Um id malformado faria o banco recusar o lote todo. O banco também aceita
+// o id sem hífens (ou entre chaves): leva tudo à forma com hífens.
+const HEX_DO_ID = /^[0-9a-f]{32}$/;
+
+function idDeProduto(bruto: string): string | undefined {
+  const hex = bruto
+    .toLowerCase()
+    .replace(/^\{|\}$/g, "")
+    .replaceAll("-", "");
+  if (!HEX_DO_ID.test(hex)) return;
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 function produtoDoDestino(link: Banner["link"]): string | undefined {
   try {
@@ -255,7 +264,7 @@ function produtoDoDestino(link: Banner["link"]): string | undefined {
     const caminho = url.pathname.toLowerCase().replace(/\/$/, "");
     if (url.origin !== origem || caminho !== "/product-detail") return;
     const id = url.searchParams.get("id");
-    if (id && ID_DE_PRODUTO.test(id)) return id.toLowerCase();
+    if (id) return idDeProduto(id);
   } catch {
     // Link inválido não impede a checagem dos outros banners.
   }
