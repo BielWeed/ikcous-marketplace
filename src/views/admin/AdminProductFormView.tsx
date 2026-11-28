@@ -370,7 +370,14 @@ export const compressProductImage = async (
     // Pequena demais para reduzir, mas NÃO pode passar sem abrir: um arquivo
     // estragado (ou outro formato com extensão .jpg) subiria com "sucesso" e a
     // capa apareceria quebrada. A grande já é conferida logo abaixo, no <img>.
-    if (file.size < 100 * 1024) {
+    // WebP e AVIF não pulam o canvas, de nenhum peso: iPhone com iOS 13 ou
+    // mais velho não abre WebP (AVIF, até o 15), e a ORIGINAL é o plano B das
+    // miniaturas — ela tem de sair JPEG.
+    if (
+      file.size < 100 * 1024 &&
+      file.type !== "image/webp" &&
+      file.type !== "image/avif"
+    ) {
       void imagemAbre(file).then((abre) =>
         abre ? resolve(file) : reject(new FotoIlegivel()),
       );
