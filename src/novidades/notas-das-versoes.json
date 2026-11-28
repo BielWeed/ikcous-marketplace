@@ -4,10 +4,10 @@
     "novidades": [
       "Quem compra sem conta pode deixar o e-mail na tela \"Pedido recebido!\", logo depois da compra, e recebe o comprovante; com o e-mail no pedido, ela acompanha a compra em \"Meus pedidos\", na opção \"Rastrear sem Conta\".",
       "Na loja nova, o cartão \"Loja pronta\" do Início mostra a entrega e as formas de pagamento que vieram prontas, com os botões \"Está certo\" e \"Mudar\".",
-      "Salvar o Frete ou mexer nas formas de pagamento também confirma esses dois passos da loja nova.",
-      "Na loja nova, enquanto você não toca em \"Está certo\" no cartão \"Loja pronta\", a entrega na cidade e o pagamento na entrega não aparecem para as clientes. Se a loja ainda não pode receber pedido nenhum, o Início mostra \"Sua loja ainda não aceita pedidos. Confirme a entrega e o pagamento abaixo.\"",
+      "Na loja nova, salvar a tela Entrega e frete também confirma a entrega, e mexer nas formas de pagamento também confirma o pagamento.",
+      "Na loja nova, enquanto a entrega e o pagamento não são confirmados, a entrega na cidade e o pagamento na entrega não aparecem para as clientes. Se a loja ainda não pode receber pedido nenhum, o Início mostra \"Sua loja ainda não aceita pedidos. Confirme a entrega e o pagamento abaixo.\"",
       "Nessa loja, a cliente vê no carrinho \"Esta loja ainda está se preparando para receber pedidos pelo site.\" e, quando a loja tem WhatsApp, o botão \"Pedir pelo WhatsApp\" já com os itens escritos.",
-      "Ao avançar um pedido, o aviso \"Status atualizado com sucesso\" traz o botão do WhatsApp com a mensagem da etapa nova para a cliente; se ela comprou sem conta ou não ativou os avisos no celular, o aviso diz isso.",
+      "Ao avançar um pedido, o aviso de status atualizado traz o botão \"WhatsApp\" com a mensagem da etapa nova, quando o pedido tem o WhatsApp da cliente; se ela comprou sem conta ou não ativou os avisos no celular, o aviso diz isso.",
       "Na lista de banners, o banner ligado a um produto avisa quando o título, o texto ou o selo anuncia um preço ou um \"% OFF\" que o produto não tem mais. Valores de combo, cupom, frete e compra mínima não contam.",
       "Para a cliente com conta, a tela de finalizar a compra com o carrinho vazio também mostra o pedido que ficou aguardando pagamento."
     ],
@@ -27,7 +27,7 @@
       "Abrindo um pedido pelo aviso do celular ou pelo sino, a volta mostra todos os pedidos quando ele não estava na lista em que você parou.",
       "Na tela de Pedidos, a compra com cartão aprovada na hora avisa que o pagamento foi confirmado, e cancelar logo depois de avançar um pedido não reabre a confirmação com o WhatsApp da etapa que ficou para trás.",
       "Com um pedido aberto e algo ainda por salvar, tocar numa notificação de pedido mostra o que ela dizia, com o botão para abrir aquele pedido. Trocar de app e voltar rápido não deixa mais parados os números de pedidos e perguntas pendentes no menu nem os números do Início.",
-      "Quando a notificação de pedido novo não chega a nenhum aparelho da loja, ela é mandada de novo alguns segundos depois. A de pedido pago é mandada de novo quando o Mercado Pago repete a confirmação no mesmo dia.",
+      "Quando a notificação de pedido novo não chega a nenhum aparelho da loja, ela é mandada de novo alguns segundos depois. A de pedido pago que não chegou é mandada de novo se o Mercado Pago repetir a confirmação em até 24 horas do pagamento.",
       "Se a cliente com conta sai do app no meio da compra e, ao voltar, o mesmo frete aparece com outro preço, finalizar de novo não cria um segundo pedido.",
       "Se a internet cai no meio de devolver o dinheiro de um pedido, aprovar ou concluir uma devolução ou salvar um lançamento no Financeiro, o painel avisa que pode ter sido feito e pede para conferir antes de tentar de novo.",
       "Ao criar um cupom, se a internet cai, o painel confere a lista e diz se o cupom foi criado ou pede para olhar a lista antes de salvar de novo.",
@@ -35,7 +35,7 @@
       "Nos banners, quando subir, descer ou salvar não sai como pedido (outro aparelho mexeu ou a gravação falhou), a lista mostra a ordem que ficou salva, mesmo com a internet lenta.",
       "No desconto do frete nacional, rolar a página com o mouse em cima da porcentagem não muda mais o número, e a porcentagem zerada pede um valor maior que 0%.",
       "Ao sair da conta, a busca digitada na lista de Produtos do painel é apagada.",
-      "No ranking de produtos que mais dão lucro e no gráfico do dia, vale-troca não conta como dinheiro devolvido.",
+      "No ranking de produtos que mais dão lucro e no gráfico de lucro por dia, vale-troca não conta como dinheiro devolvido.",
       "Se uma devolução já foi concluída em outro aparelho, o painel avisa e mostra a ficha atualizada.",
       "Na devolução de parte de um pedido que já teve uma peça trocada ou que virou vale-troca, o frete de ida não é mais devolvido como se o pedido tivesse voltado inteiro.",
       "Na folha de pedir a devolução, a cliente só lê que o frete também é devolvido quando o pedido teve frete pago, e o cartão da devolução diz \"Essa devolução já avançou; veja o status acima.\" em vez de mostrar um erro quando o status já mudou.",
@@ -51,14 +51,15 @@
       "No celular, os campos de estoque, peso e medidas do produto abrem o teclado de números.",
       "Num produto que já tem um tipo de variação (por exemplo, só Tamanho), o painel não oferece mais um segundo tipo que seria recusado no fim: ele explica antes como gerar a grade com os dois.",
       "Em \"Valor a devolver\", o valor pode ser digitado com R$ na frente, e um texto que não é número mostra como escrever, por exemplo 50,00.",
-      "Se você digitar em um tamanho o mesmo preço do produto, ele acompanha as próximas mudanças de preço.",
+      "Ao concluir uma devolução como vale-troca, o painel mostra o valor sugerido do vale, com a mesma conta do reembolso: tira a peça que não veio e só soma o frete de ida quando o pedido voltou inteiro.",
+      "Ao gerar a grade, o tamanho em que você digita o mesmo preço do produto acompanha as próximas mudanças de preço dele.",
       "Ao mudar o preço de venda de um produto já salvo, o painel mostra quais tamanhos não vão acompanhar e oferece atualizar os que ainda estão com o preço antigo. A mudança vale depois de salvar.",
       "Na lista de Pedidos, o pedido feito sem conta ganha a marca \"sem conta\", e na ficha de um envio ainda sem etiqueta o botão \"Etiqueta\" no topo leva direto ao bloco de envio.",
       "Na devolução, quando o Melhor Envio recusa gerar o código de postagem, o aviso fica fixo na ficha e diz o que fazer antes de tocar de novo em \"Gerar código de postagem\".",
-      "No Início, a loja sem venda nos últimos dias vê \"Sem pedidos novos por enquanto\", sem falar em primeiro pedido, e a margem do mês avisa quando os produtos estão sem custo cadastrado.",
+      "No Início, a loja sem venda nos últimos dias vê \"Sem pedidos novos por enquanto\", sem falar em primeiro pedido, e, quando a margem do mês passa de 95%, lembra que produto sem custo cadastrado conta como custo zero.",
       "O carrinho diz como a cliente paga: \"Pagamento pelo app processado pelo Mercado Pago.\" ou \"Você paga na entrega, direto para a loja.\"",
       "A loja abre mais leve para a cliente: o texto das novidades do app só vem com o painel. Em Notificações, se você pulou várias versões, só a novidade mais nova ainda não lida aparece aberta.",
-      "Na busca sem resultado, as sugestões \"Alguns produtos da loja\" não mostram mais produto sem foto."
+      "Na busca sem resultado, as sugestões de produtos da loja não mostram mais produto sem foto."
     ]
   },
   "1.5.246": {
