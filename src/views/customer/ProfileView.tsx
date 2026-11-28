@@ -1227,6 +1227,7 @@ export function ProfileView({
                             type="button"
                             whileTap={{ scale: 0.95 }}
                             aria-pressed={isSelected}
+                            disabled={isUpdatingAvatar}
                             onClick={() => handleSelectPredefinedAvatar(avatar)}
                             className={`relative flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-solid transition-colors ${
                               isSelected
