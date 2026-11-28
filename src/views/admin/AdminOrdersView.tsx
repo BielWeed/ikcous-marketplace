@@ -2021,6 +2021,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   const whatsappDaEtapaRef = useRef<
     (pedido: Order, status: OrderStatus) => void
   >(() => {});
+  // Último avanço confirmado de cada pedido. A resposta do envio do aviso
+  // pode chegar fora de ordem (A→B e logo B→C): a de B não reescreve a
+  // confirmação de C nem monta o WhatsApp com a etapa velha.
+  const ultimoAvancoRef = useRef<Map<string, OrderStatus>>(new Map());
 
   // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
   // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.
@@ -2255,16 +2259,19 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       action: acaoDoWhatsapp("Avisar pelo WhatsApp"),
       ...(temWhatsapp ? { duration: 8000 } : {}),
     });
+    ultimoAvancoRef.current.set(orderId, newStatus);
     void avisarOClienteDoStatus(
       orderId,
       newStatus,
       alvo,
       gravadoNoBancoEm,
-      () =>
+      () => {
+        if (ultimoAvancoRef.current.get(orderId) !== newStatus) return;
         semAvisoAutomatico(
           "A cliente não ativou os avisos no celular",
           "A cliente não ativou os avisos no celular.",
-        ),
+        );
+      },
     );
   };
 

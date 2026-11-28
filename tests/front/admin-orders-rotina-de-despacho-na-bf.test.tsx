@@ -284,6 +284,50 @@ describe("AdminOrdersView — confirmação do avanço e volta da ficha aberta p
     expect(segunda?.action?.label).toBe("WhatsApp");
   });
 
+  it("resposta do aviso fora de ordem: a do avanço velho não reescreve a confirmação do novo", async () => {
+    let soltarPrimeira: (v: unknown) => void = () => {};
+    invoke.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          soltarPrimeira = r;
+        }),
+    );
+    // 1º avanço (pending -> processing): o envio do aviso fica pendurado.
+    await avancarNaFicha({ ...pedidoBase, userId: "cliente-fic-1" });
+
+    // 2º avanço (processing -> próxima etapa): resposta na hora, sem aparelho.
+    invoke.mockResolvedValue({ data: { enviados: 0, total: 0 }, error: null });
+    mockOrders = [
+      { ...pedidoBase, userId: "cliente-fic-1", status: "processing" },
+    ];
+    await renderizar(pedidoBase.id);
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Avançar"),
+    );
+    await act(async () => {
+      botao?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(updateOrderStatus).toHaveBeenCalledTimes(2);
+    const etapaNova = updateOrderStatus.mock.calls[1]?.[1];
+    expect(etapaNova).not.toBe("processing");
+    const antes = sucessos().length;
+
+    // Agora a resposta do 1º chega atrasada, também sem aparelho.
+    await act(async () => {
+      soltarPrimeira({ data: { enviados: 0, total: 0 }, error: null });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(sucessos()).toHaveLength(antes);
+
+    // O WhatsApp da confirmação que ficou abre com a etapa NOVA.
+    const [, ultima] = sucessos()[antes - 1]!;
+    act(() => {
+      ultima?.action?.onClick();
+    });
+    expect(abrirWhatsapp).toHaveBeenCalledTimes(1);
+  });
+
   it("pedido com conta sem telefone: confirma sem ação", async () => {
     await avancarNaFicha({
       ...pedidoBase,
