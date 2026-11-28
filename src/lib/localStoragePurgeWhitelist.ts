@@ -44,6 +44,16 @@ export const LOCALSTORAGE_PURGE_WHITELIST: readonly string[] = [
   // segundo pedido. Literal de proposito (este arquivo e so string in,
   // boolean out); o teste amarra o literal ao prefixo exportado pelo modulo.
   "ikcous-chave-do-pedido:",
+  // Chave da devolucao do painel (src/lib/chave-da-devolucao.ts, validade de
+  // 30 min): mesmo papel da chave da compra, do lado do ESTORNO. E ela que faz
+  // o "Devolver" repetido depois de um "nao da para saber" devolver a MESMA
+  // linha em vez de criar outra. Prefixo com HIFEN, fora do "ikcous_" acima;
+  // sem esta linha a purga de versao e o botao "Recarregar o app" a apagavam,
+  // o toque seguinte levava chave nova e o servidor criava o SEGUNDO estorno
+  // (o cliente recebia em dobro). Cobre tambem o formato antigo, so lido
+  // ("<prefixo><pedido>", sem os centavos). Registro adulterado nao trava
+  // nada: a leitura descarta o malformado e gera chave nova.
+  "ikcous-chave-da-devolucao:",
   // CPF digitado no cadastro, esperando a confirmação do e-mail
   // (src/lib/cpf-pendente-do-cadastro.ts, validade de 24 h). A chave usa
   // DOIS-PONTOS ("ikcous:cpf-..."), entao o "ikcous_" acima nao a cobre; sem
@@ -68,15 +78,26 @@ export const LOCALSTORAGE_PURGE_WHITELIST: readonly string[] = [
 //    o checkout remonta o pedido do carrinho (que pode ter mudado de preço ou
 //    estoque) e a pessoa cria um segundo pedido sem perceber. Sem CPF (removido
 //    na gravação) e vale no máximo 30 min (vencido, a leitura o descarta).
+//  - as tentativas de lançamento do financeiro ainda sem resposta
+//    (src/components/admin/financeiro/tentativasEmAberto.ts): a chave que faz
+//    salvar de novo o MESMO lançamento não gravá-lo duas vezes. Guarda só um
+//    resumo (hash) do conteúdo, a conta e a chave; vence em 10 min.
+//  - o rascunho do pedido de devolução da cliente
+//    (src/lib/rascunho-da-devolucao.ts): passo, itens, motivo, texto e QUANTAS
+//    fotos havia — nunca a foto em si (o módulo não a grava), então cabe na
+//    cota. Chave por conta e pedido: "ikcous:rascunho-da-devolucao:<conta>:<pedido>".
 //
-// SÓ estas três. Nada de sessão/token do Supabase (mora no localStorage, sob
+// SÓ estas cinco. Nada de sessão/token do Supabase (mora no localStorage, sob
 // `sb-`, e a purga do localStorage já cuida dele). Os literais espelham os dos
-// módulos (que não exportam as constantes); o teste amarra cada um gravando
-// pelo módulo de verdade.
+// módulos (nem todos exportam as constantes); o teste amarra cada um gravando
+// pelo módulo de verdade. As duas últimas também não travam a recuperação: a
+// leitura delas descarta o registro malformado.
 export const SESSIONSTORAGE_PURGE_WHITELIST: readonly string[] = [
   "ikcous:checkout-pedido-pendente:",
   "ikcous-rascunho-do-checkout-v1",
   "ikcous-pedido-sem-resposta-v1",
+  "fin-lancamento-tentativas-em-aberto",
+  "ikcous:rascunho-da-devolucao:",
 ];
 
 // Compartilha também o CRITÉRIO, não só a lista: os dois chamadores testam
