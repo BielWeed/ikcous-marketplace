@@ -23,6 +23,9 @@ const { toast } = vi.hoisted(() => ({
 
 let configAtual: Record<string, unknown>;
 let usuarioAtual = "admin-1";
+// A leitura da loja: concluída (`isLoaded`) e sem falha (`configIndisponivel`).
+let lojaCarregada = true;
+let lojaIndisponivel = false;
 const updateConfigMock = vi.fn(async (_mudanca: unknown, _opcoes: unknown) => {
   return true;
 });
@@ -31,7 +34,9 @@ vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: configAtual,
     updateConfig: updateConfigMock,
-    isLoaded: true,
+    isLoaded: lojaCarregada,
+    configIndisponivel: lojaIndisponivel,
+    refresh: vi.fn(),
   }),
 }));
 vi.mock("@/hooks/useOnlineStatus", () => ({
@@ -66,6 +71,8 @@ let hospedeiro: HTMLDivElement;
 beforeEach(() => {
   vi.clearAllMocks();
   usuarioAtual = "admin-1";
+  lojaCarregada = true;
+  lojaIndisponivel = false;
   visibilidade = "visible";
   configAtual = {
     storeName: "Ateliê da Serra",
@@ -336,5 +343,37 @@ describe("Minha loja — Descartar e Sair só apaga o rascunho que ela viu", () 
 
     await descartarESair();
     expect(localStorage.getItem(chave("admin-1"))).toBeNull();
+  });
+
+  // Rede lenta: a loja ainda não chegou (ou a leitura falhou) e ela descartou
+  // ao sair. O rascunho que o celular guardou nunca pôde ser oferecido: fica.
+  it("loja ainda carregando: o rascunho fica e é oferecido quando ela chega", async () => {
+    guardarRascunho("A história que o celular guardou", "Texto salvo");
+    const guardado = localStorage.getItem(chave("admin-1"));
+    lojaCarregada = false;
+    await montar();
+    expect(ofertaDeRascunho()).toBeUndefined();
+
+    await descartarESair();
+    expect(localStorage.getItem(chave("admin-1"))).toBe(guardado);
+
+    lojaCarregada = true;
+    await montar();
+    expect(ofertaDeRascunho()).toBeDefined();
+  });
+
+  it("leitura da loja falhou: o rascunho fica e é oferecido quando ela volta", async () => {
+    guardarRascunho("A história que o celular guardou", "Texto salvo");
+    const guardado = localStorage.getItem(chave("admin-1"));
+    lojaIndisponivel = true;
+    await montar();
+    expect(ofertaDeRascunho()).toBeUndefined();
+
+    await descartarESair();
+    expect(localStorage.getItem(chave("admin-1"))).toBe(guardado);
+
+    lojaIndisponivel = false;
+    await montar();
+    expect(ofertaDeRascunho()).toBeDefined();
   });
 });
